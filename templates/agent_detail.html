@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}Create Agent{% else %}Edit Agent{% endif %} - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>{% if is_new %}Create New Agent{% else %}Edit Agent{% endif %}</h1>
+            <p class="text-muted">{% if is_new %}Configure a new AI agent{% else %}Update agent configuration{% endif %}</p>
+        </div>
+        <div>
+            {% if not is_new %}
+            <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#testModal">
+                Test Agent
+            </button>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                Delete
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="post" action="{% if is_new %}{% url 'agent-create-save' %}{% else %}{% url 'agent-save' agent.filename %}{% endif %}">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Information -->
+                    <h5 class="mb-3">Basic Information</h5>
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Agent Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ agent.name }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3">{{ agent.description }}</textarea>
+                    </div>
+                    
+                    <!-- AI Configuration -->
+                    <h5 class="mb-3 mt-4">AI Configuration</h5>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="provider" class="form-label">Provider <span class="text-danger">*</span></label>
+                            <select class="form-select" id="provider" name="provider" required>
+                                <option value="openai" {% if agent.provider == 'openai' %}selected{% endif %}>OpenAI</option>
+                                <option value="gemini" {% if agent.provider == 'gemini' %}selected{% endif %}>Gemini</option>
+                                <option value="claude" {% if agent.provider == 'claude' %}selected{% endif %}>Claude</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="model" class="form-label">Model <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="model" name="model" value="{{ agent.model }}" required>
+                            <small class="text-muted">e.g., gpt-3.5-turbo, gpt-4, gemini-pro</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role</label>
+                        <textarea class="form-control" id="role" name="role" rows="2">{{ agent.role }}</textarea>
+                        <small class="text-muted">Define the agent's role or persona</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="task" class="form-label">Task</label>
+                        <textarea class="form-control" id="task" name="task" rows="8">{{ agent.task }}</textarea>
+                        <small class="text-muted">Describe the agent's task and instructions</small>
+                    </div>
+                    
+                    <!-- Parameters -->
+                    <h5 class="mb-3 mt-4">Parameters</h5>
+                    <p class="text-muted">Define parameters that can be passed to this agent</p>
+                    
+                    <div id="parametersContainer" class="mb-3">
+                        {% for param_key, param_def in agent.parameters.items %}
+                        <div class="parameter-row card mb-2">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Parameter Name</label>
+                                        <input type="text" class="form-control" name="param_key[]" value="{{ param_key }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Type</label>
+                                        <select class="form-select" name="param_type[]">
+                                            <option value="string" {% if param_def.type == 'string' %}selected{% endif %}>String</option>
+                                            <option value="number" {% if param_def.type == 'number' %}selected{% endif %}>Number</option>
+                                            <option value="boolean" {% if param_def.type == 'boolean' %}selected{% endif %}>Boolean</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label class="form-label">Description</label>
+                                        <input type="text" class="form-control" name="param_description[]" value="{{ param_def.description }}">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Required</label>
+                                        <div class="form-check mt-2">
+                                            <input type="checkbox" class="form-check-input" name="param_required[]" value="true" {% if param_def.required %}checked{% endif %}>
+                                            <label class="form-check-label">Yes</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-danger mt-2 remove-param">Remove</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <button type="button" class="btn btn-sm btn-secondary mb-3" id="addParameterBtn">+ Add Parameter</button>
+                    
+                    <!-- Submit Buttons -->
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            {% if is_new %}Create Agent{% else %}Save Changes{% endif %}
+                        </button>
+                        <a href="{% url 'agents' %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Agent Information</h6>
+            </div>
+            <div class="card-body">
+                {% if not is_new %}
+                <p><strong>Filename:</strong> {{ agent.filename }}</p>
+                {% endif %}
+                <p class="text-muted small">
+                    <strong>How it works:</strong><br>
+                    When executed, the agent combines the role and task to create a prompt,
+                    which is then sent to the specified AI provider and model.
+                    The response is returned as plain text for further processing.
+                </p>
+                <p class="text-muted small">
+                    <strong>Parameters:</strong><br>
+                    Parameters can be passed when executing the agent and will be included
+                    in the prompt sent to the AI.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Agent Modal -->
+{% if not is_new %}
+<div class="modal fade" id="testModal" tabindex="-1" aria-labelledby="testModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="testModalLabel">Test Agent: {{ agent.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="testInput" class="form-label">Input Text</label>
+                        <textarea class="form-control" id="testInput" name="input_text" rows="5" required></textarea>
+                    </div>
+                    
+                    {% if agent.parameters %}
+                    <div class="mb-3">
+                        <label class="form-label">Parameters (optional)</label>
+                        {% for param_key, param_def in agent.parameters.items %}
+                        <div class="mb-2">
+                            <label class="form-label small">{{ param_key }}{% if param_def.required %} <span class="text-danger">*</span>{% endif %}</label>
+                            <input type="hidden" name="test_param_key[]" value="{{ param_key }}">
+                            <input type="text" class="form-control" name="test_param_value[]" placeholder="{{ param_def.description }}" {% if param_def.required %}required{% endif %}>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <button type="submit" class="btn btn-primary" id="testSubmitBtn">
+                            <span class="spinner-border spinner-border-sm d-none" id="testSpinner"></span>
+                            Execute Agent
+                        </button>
+                    </div>
+                    
+                    <div id="testResultSection" style="display: none;">
+                        <hr>
+                        <h6>Result:</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <pre id="testResult" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="testErrorSection" style="display: none;">
+                        <hr>
+                        <div class="alert alert-danger" id="testError"></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Delete Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the agent <strong>{{ agent.name }}</strong>?</p>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" action="{% url 'agent-delete' agent.filename %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add parameter functionality
+    document.getElementById('addParameterBtn').addEventListener('click', function() {
+        const container = document.getElementById('parametersContainer');
+        const newRow = document.createElement('div');
+        newRow.className = 'parameter-row card mb-2';
+        newRow.innerHTML = `
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Parameter Name</label>
+                        <input type="text" class="form-control" name="param_key[]">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Type</label>
+                        <select class="form-select" name="param_type[]">
+                            <option value="string">String</option>
+                            <option value="number">Number</option>
+                            <option value="boolean">Boolean</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" name="param_description[]">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Required</label>
+                        <div class="form-check mt-2">
+                            <input type="checkbox" class="form-check-input" name="param_required[]" value="true">
+                            <label class="form-check-label">Yes</label>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-danger mt-2 remove-param">Remove</button>
+            </div>
+        `;
+        container.appendChild(newRow);
+    });
+    
+    // Remove parameter functionality (delegated event)
+    document.getElementById('parametersContainer').addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-param')) {
+            e.target.closest('.parameter-row').remove();
+        }
+    });
+    
+    {% if not is_new %}
+    // Handle test form submission
+    document.getElementById('testForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const submitBtn = document.getElementById('testSubmitBtn');
+        const spinner = document.getElementById('testSpinner');
+        
+        // Show spinner
+        spinner.classList.remove('d-none');
+        submitBtn.disabled = true;
+        
+        // Hide previous results
+        document.getElementById('testResultSection').style.display = 'none';
+        document.getElementById('testErrorSection').style.display = 'none';
+        
+        // Submit test request
+        fetch('{% url "agent-test" agent.filename %}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('testError').textContent = data.error;
+                document.getElementById('testErrorSection').style.display = 'block';
+            } else {
+                document.getElementById('testResult').textContent = data.result;
+                document.getElementById('testResultSection').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            document.getElementById('testError').textContent = 'Error: ' + error.message;
+            document.getElementById('testErrorSection').style.display = 'block';
+        })
+        .finally(() => {
+            spinner.classList.add('d-none');
+            submitBtn.disabled = false;
+        });
+    });
+    {% endif %}
+</script>
+{% endblock %}

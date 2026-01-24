@@ -49,8 +49,18 @@ class AIProviderFetchModelsTestCase(TestCase):
         mock_model2 = Mock()
         mock_model2.id = 'gpt-3.5-turbo'
         
+        mock_model3 = Mock()
+        mock_model3.id = 'o1-preview'
+        
+        mock_model4 = Mock()
+        mock_model4.id = 'gpt-4o-2024-05-13'
+        
+        # Add a non-GPT model that should be filtered out
+        mock_model5 = Mock()
+        mock_model5.id = 'text-embedding-ada-002'
+        
         mock_models_list = Mock()
-        mock_models_list.data = [mock_model1, mock_model2]
+        mock_models_list.data = [mock_model1, mock_model2, mock_model3, mock_model4, mock_model5]
         
         mock_client = Mock()
         mock_client.models.list.return_value = mock_models_list
@@ -65,17 +75,21 @@ class AIProviderFetchModelsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 2)
-        self.assertEqual(data['created_count'], 2)
+        self.assertEqual(data['total_count'], 4)  # Only 4 GPT/o1 models
+        self.assertEqual(data['created_count'], 4)
         self.assertEqual(data['existing_count'], 0)
         
         # Check models were created in database
         models = AIModel.objects.filter(provider=self.openai_provider)
-        self.assertEqual(models.count(), 2)
+        self.assertEqual(models.count(), 4)
         
         model_ids = [m.model_id for m in models]
         self.assertIn('gpt-4', model_ids)
         self.assertIn('gpt-3.5-turbo', model_ids)
+        self.assertIn('o1-preview', model_ids)
+        self.assertIn('gpt-4o-2024-05-13', model_ids)
+        # Embedding model should be filtered out
+        self.assertNotIn('text-embedding-ada-002', model_ids)
         
         # Check default values
         for model in models:
@@ -124,8 +138,35 @@ class AIProviderFetchModelsTestCase(TestCase):
         self.assertEqual(models.count(), 1)
         self.assertEqual(models.first().id, existing_model.id)
     
-    def test_fetch_gemini_models_creates_predefined_models(self):
-        """Test that fetching Gemini models creates predefined model list"""
+    @patch('google.genai.Client')
+    def test_fetch_gemini_models_creates_models_from_api(self, mock_genai_client):
+        """Test that fetching Gemini models fetches from API and creates models"""
+        # Mock Gemini API response
+        mock_model1 = Mock()
+        mock_model1.name = 'models/gemini-1.5-pro'
+        mock_model1.display_name = 'Gemini 1.5 Pro'
+        mock_model1.supported_generation_methods = ['generateContent']
+        
+        mock_model2 = Mock()
+        mock_model2.name = 'models/gemini-1.5-flash'
+        mock_model2.display_name = 'Gemini 1.5 Flash'
+        mock_model2.supported_generation_methods = ['generateContent']
+        
+        mock_model3 = Mock()
+        mock_model3.name = 'models/gemini-2.0-flash-exp'
+        mock_model3.display_name = 'Gemini 2.0 Flash'
+        mock_model3.supported_generation_methods = ['generateContent']
+        
+        # Add an embedding model that should be filtered out
+        mock_embedding_model = Mock()
+        mock_embedding_model.name = 'models/text-embedding-004'
+        mock_embedding_model.display_name = 'Text Embedding 004'
+        mock_embedding_model.supported_generation_methods = ['embedContent']
+        
+        mock_client = Mock()
+        mock_client.models.list.return_value = [mock_model1, mock_model2, mock_model3, mock_embedding_model]
+        mock_genai_client.return_value = mock_client
+        
         response = self.client.post(
             reverse('ai-provider-fetch-models', kwargs={'id': self.gemini_provider.id})
         )
@@ -134,19 +175,20 @@ class AIProviderFetchModelsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 4)
-        self.assertEqual(data['created_count'], 4)
+        self.assertEqual(data['total_count'], 3)  # Only 3 generative models
+        self.assertEqual(data['created_count'], 3)
         self.assertEqual(data['existing_count'], 0)
         
         # Check models were created
         models = AIModel.objects.filter(provider=self.gemini_provider)
-        self.assertEqual(models.count(), 4)
+        self.assertEqual(models.count(), 3)
         
         model_ids = [m.model_id for m in models]
-        self.assertIn('gemini-pro', model_ids)
-        self.assertIn('gemini-pro-vision', model_ids)
         self.assertIn('gemini-1.5-pro', model_ids)
         self.assertIn('gemini-1.5-flash', model_ids)
+        self.assertIn('gemini-2.0-flash-exp', model_ids)
+        # Embedding model should not be included
+        self.assertNotIn('text-embedding-004', model_ids)
     
     def test_fetch_claude_models_creates_predefined_models(self):
         """Test that fetching Claude models creates predefined model list"""

@@ -74,7 +74,7 @@
                     <i class="bi bi-building sidebar-icon"></i>
                     <span class="sidebar-text">Organisations</span>
                 </a>
-                
+
                 <!-- AI/KI Section with Collapse -->
                 <div class="sidebar-section">
                     <a class="sidebar-section-header" data-bs-toggle="collapse" href="#aiCollapse" role="button" aria-expanded="true" aria-controls="aiCollapse">
@@ -86,6 +86,11 @@
                             <i class="bi bi-robot sidebar-icon"></i>
                             <span class="sidebar-text">AI Providers</span>
                         </a>
+                                      <a href="{% url 'agents' %}" class="sidebar-link sidebar-link-sub">
+                    <span class="sidebar-icon">🎭</span>
+                    <span class="sidebar-text">AI Agents</span>
+                      </a>
+                                        
                         <a href="{% url 'ai-jobs-history' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'ai-jobs-history' %}active{% endif %}">
                             <i class="bi bi-clock-history sidebar-icon"></i>
                             <span class="sidebar-text">AI Jobs History</span>
@@ -93,6 +98,7 @@
                     </div>
                 </div>
                 
+
                 <a href="/admin/" class="sidebar-link">
                     <i class="bi bi-gear sidebar-icon"></i>
                     <span class="sidebar-text">Admin</span>
