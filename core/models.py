@@ -548,6 +548,7 @@ class GraphAPIConfiguration(SingletonModel):
     tenant_id = models.CharField(max_length=255, blank=True)
     client_id = models.CharField(max_length=255, blank=True)
     client_secret = EncryptedCharField(max_length=500, blank=True)
+    default_mail_sender = models.EmailField(blank=True, help_text="Default sender email (UPN) for outbound emails, e.g., support@domain.tld")
     enabled = models.BooleanField(default=False)
 
     class Meta:

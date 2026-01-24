@@ -314,8 +314,12 @@ class GraphAPIConfigurationAdmin(ConfigurationAdmin):
     
     fieldsets = (
         (None, {'fields': ('enabled',)}),
-        ('Graph API Settings', {'fields': ('tenant_id', 'client_id', 'client_secret')}),
+        ('Graph API Settings', {'fields': ('tenant_id', 'client_id', 'client_secret', 'default_mail_sender')}),
     )
+    
+    help_text = {
+        'default_mail_sender': 'The UPN (User Principal Name) that will be used as the sender for outbound emails. This user must exist in your Azure AD and the Graph API app must have Mail.Send permissions.'
+    }
 
 
 @admin.register(ZammadConfiguration)
