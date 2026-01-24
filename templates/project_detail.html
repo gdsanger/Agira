@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - Agira{% endblock %}
+
+{% block content %}
+<!-- Project Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>{{ project.name }}</h1>
+            <p class="text-muted">{{ project.description|default:"No description" }}</p>
+        </div>
+        <div>
+            {% if project.status == 'New' %}
+            <span class="badge bg-info fs-5">{{ project.status }}</span>
+            {% elif project.status == 'Working' %}
+            <span class="badge bg-primary fs-5">{{ project.status }}</span>
+            {% elif project.status == 'Finished' %}
+            <span class="badge bg-success fs-5">{{ project.status }}</span>
+            {% elif project.status == 'Canceled' %}
+            <span class="badge bg-secondary fs-5">{{ project.status }}</span>
+            {% else %}
+            <span class="badge bg-secondary fs-5">{{ project.status }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Tabs Navigation -->
+<ul class="nav nav-tabs mb-4" id="projectTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">
+            Overview
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="items-tab" data-bs-toggle="tab" data-bs-target="#items" type="button" role="tab" aria-controls="items" aria-selected="false">
+            Items <span class="badge bg-secondary">{{ project.items.count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="nodes-tab" data-bs-toggle="tab" data-bs-target="#nodes" type="button" role="tab" aria-controls="nodes" aria-selected="false">
+            Nodes <span class="badge bg-secondary">{{ project.nodes.count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="releases-tab" data-bs-toggle="tab" data-bs-target="#releases" type="button" role="tab" aria-controls="releases" aria-selected="false">
+            Releases <span class="badge bg-secondary">{{ project.releases.count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button" role="tab" aria-controls="activity" aria-selected="false">
+            Activity
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="projectTabContent">
+    <!-- Overview Tab -->
+    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Project Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <th style="width: 150px;">Name</th>
+                                    <td>{{ project.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Status</th>
+                                    <td>
+                                        {% if project.status == 'New' %}
+                                        <span class="badge bg-info">{{ project.status }}</span>
+                                        {% elif project.status == 'Working' %}
+                                        <span class="badge bg-primary">{{ project.status }}</span>
+                                        {% elif project.status == 'Finished' %}
+                                        <span class="badge bg-success">{{ project.status }}</span>
+                                        {% elif project.status == 'Canceled' %}
+                                        <span class="badge bg-secondary">{{ project.status }}</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ project.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Description</th>
+                                    <td>{{ project.description|default:"—" }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">GitHub Integration</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <th style="width: 150px;">Repository</th>
+                                    <td>
+                                        {% if project.github_owner and project.github_repo %}
+                                        <a href="https://github.com/{{ project.github_owner }}/{{ project.github_repo }}" target="_blank">
+                                            {{ project.github_owner }}/{{ project.github_repo }}
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted">Not configured</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Clients</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if project.clients.count > 0 %}
+                        <ul class="list-unstyled mb-0">
+                            {% for client in project.clients.all %}
+                            <li>{{ client.name }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="text-muted mb-0">No clients assigned</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items Tab -->
+    <div class="tab-pane fade" id="items" role="tabpanel" aria-labelledby="items-tab">
+        {% if project.items.count > 0 %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Assigned To</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in project.items.all %}
+                    <tr>
+                        <td><strong>{{ item.title }}</strong></td>
+                        <td>{{ item.type.name }}</td>
+                        <td>
+                            {% if item.status == 'Inbox' %}
+                            <span class="badge bg-info">{{ item.status }}</span>
+                            {% elif item.status == 'Backlog' %}
+                            <span class="badge bg-secondary">{{ item.status }}</span>
+                            {% elif item.status == 'Working' %}
+                            <span class="badge bg-primary">{{ item.status }}</span>
+                            {% elif item.status == 'Testing' %}
+                            <span class="badge bg-warning">{{ item.status }}</span>
+                            {% elif item.status == 'ReadyForRelease' %}
+                            <span class="badge bg-success">Ready for Release</span>
+                            {% elif item.status == 'Closed' %}
+                            <span class="badge bg-success">{{ item.status }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ item.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.assigned_to|default:"—" }}</td>
+                        <td>{{ item.updated_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            No items in this project yet.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Nodes Tab -->
+    <div class="tab-pane fade" id="nodes" role="tabpanel" aria-labelledby="nodes-tab">
+        {% if project.nodes.count > 0 %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Parent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for node in project.nodes.all %}
+                    <tr>
+                        <td><strong>{{ node.name }}</strong></td>
+                        <td><span class="badge bg-primary">{{ node.type }}</span></td>
+                        <td>{{ node.description|truncatewords:10|default:"—" }}</td>
+                        <td>{{ node.parent_node.name|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            No nodes in this project yet.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Releases Tab -->
+    <div class="tab-pane fade" id="releases" role="tabpanel" aria-labelledby="releases-tab">
+        {% if project.releases.count > 0 %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Version</th>
+                        <th>Status</th>
+                        <th>Risk</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for release in project.releases.all %}
+                    <tr>
+                        <td><strong>{{ release.name }}</strong></td>
+                        <td>{{ release.version }}</td>
+                        <td>
+                            {% if release.status == 'Planned' %}
+                            <span class="badge bg-info">{{ release.status }}</span>
+                            {% elif release.status == 'Working' %}
+                            <span class="badge bg-primary">{{ release.status }}</span>
+                            {% elif release.status == 'Closed' %}
+                            <span class="badge bg-success">{{ release.status }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ release.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if release.risk == 'Low' %}
+                            <span class="badge bg-success">{{ release.risk }}</span>
+                            {% elif release.risk == 'Normal' %}
+                            <span class="badge bg-info">{{ release.risk }}</span>
+                            {% elif release.risk == 'High' %}
+                            <span class="badge bg-warning">{{ release.risk }}</span>
+                            {% elif release.risk == 'VeryHigh' %}
+                            <span class="badge bg-danger">Very High</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ release.risk }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{% if release.update_date %}{{ release.update_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            No releases in this project yet.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Activity Tab -->
+    <div class="tab-pane fade" id="activity" role="tabpanel" aria-labelledby="activity-tab">
+        <h5>Recent Changes</h5>
+        {% if project.changes.count > 0 %}
+        <div class="list-group">
+            {% for change in project.changes.all|slice:":10" %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">{{ change.title }}</h6>
+                    <small>{{ change.created_at|date:"Y-m-d H:i" }}</small>
+                </div>
+                <p class="mb-1">{{ change.description|truncatewords:20|default:"No description" }}</p>
+                <small>
+                    Status: 
+                    {% if change.status == 'Draft' %}
+                    <span class="badge bg-secondary">{{ change.status }}</span>
+                    {% elif change.status == 'Planned' %}
+                    <span class="badge bg-info">{{ change.status }}</span>
+                    {% elif change.status == 'InProgress' %}
+                    <span class="badge bg-primary">In Progress</span>
+                    {% elif change.status == 'Done' %}
+                    <span class="badge bg-success">{{ change.status }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ change.status }}</span>
+                    {% endif %}
+                </small>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            No recent activity.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Back to list button -->
+<div class="mt-4">
+    <a href="{% url 'projects' %}" class="btn btn-secondary">← Back to Projects</a>
+</div>
+{% endblock %}

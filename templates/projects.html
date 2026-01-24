@@ -7,4 +7,73 @@
     <h1>Projects</h1>
     <p class="text-muted">Manage your projects</p>
 </div>
+
+<!-- Search Form -->
+<div class="mb-4">
+    <form method="get" action="{% url 'projects' %}" class="row g-3">
+        <div class="col-md-6">
+            <input type="text" name="q" class="form-control" placeholder="Search projects..." value="{{ search_query }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Search</button>
+            {% if search_query %}
+            <a href="{% url 'projects' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Projects Table -->
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>GitHub Repo</th>
+                <th>Clients</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for project in projects %}
+            <tr style="cursor: pointer;" onclick="window.location='{% url 'project-detail' project.id %}'">
+                <td><strong>{{ project.name }}</strong></td>
+                <td>
+                    {% if project.status == 'New' %}
+                    <span class="badge bg-info">{{ project.status }}</span>
+                    {% elif project.status == 'Working' %}
+                    <span class="badge bg-primary">{{ project.status }}</span>
+                    {% elif project.status == 'Finished' %}
+                    <span class="badge bg-success">{{ project.status }}</span>
+                    {% elif project.status == 'Canceled' %}
+                    <span class="badge bg-secondary">{{ project.status }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ project.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if project.github_owner and project.github_repo %}
+                    <a href="https://github.com/{{ project.github_owner }}/{{ project.github_repo }}" target="_blank" onclick="event.stopPropagation();">
+                        {{ project.github_owner }}/{{ project.github_repo }}
+                    </a>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>{{ project.clients.count }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="text-center text-muted">
+                    {% if search_query %}
+                    No projects found matching "{{ search_query }}"
+                    {% else %}
+                    No projects yet
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}
