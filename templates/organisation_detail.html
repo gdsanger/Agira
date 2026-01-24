@@ -67,6 +67,7 @@
                                 <th>Name</th>
                                 <th>Username</th>
                                 <th>Email</th>
+                                <th>Role</th>
                                 <th>Primary</th>
                                 <th>Actions</th>
                             </tr>
@@ -78,6 +79,9 @@
                                 <td>{{ user_org.user.username }}</td>
                                 <td>{{ user_org.user.email }}</td>
                                 <td>
+                                    <span class="badge bg-primary">{{ user_org.get_role_display }}</span>
+                                </td>
+                                <td>
                                     {% if user_org.is_primary %}
                                     <span class="badge bg-success">Yes</span>
                                     {% else %}
@@ -85,6 +89,15 @@
                                     {% endif %}
                                 </td>
                                 <td>
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#editUserModal"
+                                            data-user-id="{{ user_org.user.id }}"
+                                            data-user-name="{{ user_org.user.name }}"
+                                            data-user-role="{{ user_org.role }}"
+                                            data-is-primary="{{ user_org.is_primary|yesno:'true,false' }}">
+                                        Edit
+                                    </button>
                                     <button class="btn btn-sm btn-danger" 
                                             hx-post="{% url 'organisation-remove-user' organisation.id %}"
                                             hx-vals='{"user_id": "{{ user_org.user.id }}"}'
@@ -205,6 +218,14 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label for="role" class="form-label">Role *</label>
+                        <select class="form-select" id="role" name="role" required>
+                            {% for value, label in user_roles %}
+                            <option value="{{ value }}"{% if value == default_role %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="is_primary" name="is_primary" value="true">
                             <label class="form-check-label" for="is_primary">
@@ -216,6 +237,48 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editUserModalLabel">Edit User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editUserForm" hx-post="{% url 'organisation-update-user' organisation.id %}" hx-swap="none" hx-on::after-request="handleResponse(event)">
+                {% csrf_token %}
+                <input type="hidden" id="edit_user_id" name="user_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">User</label>
+                        <p class="form-control-plaintext" id="edit_user_name"></p>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_role" class="form-label">Role *</label>
+                        <select class="form-select" id="edit_role" name="role" required>
+                            {% for value, label in user_roles %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_is_primary" name="is_primary" value="true">
+                            <label class="form-check-label" for="edit_is_primary">
+                                Set as primary organisation
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update User</button>
                 </div>
             </form>
         </div>
@@ -258,6 +321,26 @@
 
 {% block extra_js %}
 <script>
+// Populate edit user modal with current values
+document.addEventListener('DOMContentLoaded', function() {
+    const editUserModal = document.getElementById('editUserModal');
+    if (editUserModal) {
+        editUserModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const userId = button.getAttribute('data-user-id');
+            const userName = button.getAttribute('data-user-name');
+            const userRole = button.getAttribute('data-user-role');
+            const isPrimary = button.getAttribute('data-is-primary') === 'true';
+            
+            // Set values in the form
+            document.getElementById('edit_user_id').value = userId;
+            document.getElementById('edit_user_name').textContent = userName;
+            document.getElementById('edit_role').value = userRole;
+            document.getElementById('edit_is_primary').checked = isPrimary;
+        });
+    }
+});
+
 // Handle delete response
 function handleDeleteResponse(event) {
     const xhr = event.detail.xhr;

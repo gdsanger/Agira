@@ -2,28 +2,26 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 import openai
+from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType, UserOrganisation)
+    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole)
+
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
 
-# Supported OpenAI models for filtering
-OPENAI_PREFERRED_MODELS = {
-    'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 
-    'gpt-4-32k', 'gpt-4-turbo-preview', 'gpt-4o-mini'
-}
 # Create markdown parser once at module level for better performance
 MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
 
@@ -1055,6 +1053,8 @@ def organisation_detail(request, id):
         'all_projects': all_projects,
         'user_organisations': user_organisations,
         'projects': projects,
+        'user_roles': UserRole.choices,
+        'default_role': UserRole.USER,
     }
     return render(request, 'organisation_detail.html', context)
 
@@ -1076,6 +1076,7 @@ def organisation_add_user(request, id):
     organisation = get_object_or_404(Organisation, id=id)
     user_id = request.POST.get('user_id')
     is_primary = request.POST.get('is_primary', 'false') == 'true'
+    role = request.POST.get('role', UserRole.USER)
     
     if not user_id:
         return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
@@ -1091,6 +1092,7 @@ def organisation_add_user(request, id):
         UserOrganisation.objects.create(
             organisation=organisation,
             user=user,
+            role=role,
             is_primary=is_primary
         )
         
@@ -1112,6 +1114,34 @@ def organisation_remove_user(request, id):
         user = get_object_or_404(User, id=user_id)
         organisation.user_organisations.filter(user=user).delete()
         return JsonResponse({'success': True, 'message': 'User removed successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_update_user(request, id):
+    """Update a user's role and primary status in an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    user_id = request.POST.get('user_id')
+    role = request.POST.get('role')
+    is_primary = request.POST.get('is_primary', 'false') == 'true'
+    
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+    
+    if not role:
+        return JsonResponse({'success': False, 'error': 'Role required'}, status=400)
+    
+    try:
+        user = get_object_or_404(User, id=user_id)
+        user_org = get_object_or_404(UserOrganisation, organisation=organisation, user=user)
+        
+        # Update the role and primary status
+        user_org.role = role
+        user_org.is_primary = is_primary
+        user_org.save()
+        
+        return JsonResponse({'success': True, 'message': 'User updated successfully'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
@@ -1312,22 +1342,38 @@ def ai_provider_fetch_models(request, id):
             openai_client = openai.OpenAI(api_key=provider.api_key)
             models_list = openai_client.models.list()
             
-            # Filter to commonly used GPT models
+            # Include all GPT models without restrictive filtering
+            # This includes gpt-3.5, gpt-4, gpt-4o, gpt-5, o1, o3, and all variants
             for model in models_list.data:
-                if model.id in OPENAI_PREFERRED_MODELS or model.id.startswith('gpt-4') or model.id.startswith('gpt-3.5'):
+                model_id_lower = model.id.lower()
+                # Include all GPT models (gpt-*, o1-*, o3-*) but exclude embeddings and other non-chat models
+                if (model_id_lower.startswith('gpt-') or 
+                    model_id_lower.startswith('o1-') or 
+                    model_id_lower.startswith('o3-')):
                     models_data.append({
                         'name': model.id,
                         'model_id': model.id
                     })
         
         elif provider.provider_type == 'Gemini':
-            # For Gemini, use predefined list as API doesn't have list endpoint
-            models_data = [
-                {'name': 'Gemini Pro', 'model_id': 'gemini-pro'},
-                {'name': 'Gemini Pro Vision', 'model_id': 'gemini-pro-vision'},
-                {'name': 'Gemini 1.5 Pro', 'model_id': 'gemini-1.5-pro'},
-                {'name': 'Gemini 1.5 Flash', 'model_id': 'gemini-1.5-flash'},
-            ]
+            # Use Gemini API to list all available models
+            gemini_client = genai.Client(api_key=provider.api_key)
+            models_list = gemini_client.models.list()
+            
+            # Filter to only generative models (exclude embedding models)
+            for model in models_list:
+                # Only include models that support generateContent
+                if (hasattr(model, 'supported_generation_methods') and 
+                    model.supported_generation_methods and 
+                    'generateContent' in model.supported_generation_methods):
+                    # Use the model name without 'models/' prefix if present
+                    model_id = getattr(model, 'name', str(model)).replace('models/', '')
+                    # Use display_name if available, otherwise use the model_id
+                    model_name = getattr(model, 'display_name', None) or model_id
+                    models_data.append({
+                        'name': model_name,
+                        'model_id': model_id
+                    })
         
         elif provider.provider_type == 'Claude':
             # For Claude, use predefined list (updated as of Jan 2026)
@@ -1721,3 +1767,62 @@ def agent_test(request, filename):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+def ai_jobs_history(request):
+    """AI Jobs History list view with filtering and pagination."""
+    jobs = AIJobsHistory.objects.select_related('user', 'provider', 'model').all()
+    
+    # Order by timestamp descending (newest first)
+    jobs = jobs.order_by('-timestamp')
+    
+    # Search filter (searches in agent name and error message)
+    q = request.GET.get('q', '')
+    if q:
+        jobs = jobs.filter(
+            Q(agent__icontains=q) | Q(error_message__icontains=q)
+        )
+    
+    # Status filter
+    status_filter = request.GET.get('status', '')
+    if status_filter:
+        jobs = jobs.filter(status=status_filter)
+    
+    # Provider filter
+    provider_filter = request.GET.get('provider', '')
+    if provider_filter:
+        try:
+            jobs = jobs.filter(provider_id=int(provider_filter))
+        except (ValueError, TypeError):
+            provider_filter = ''
+    
+    # Model filter
+    model_filter = request.GET.get('model', '')
+    if model_filter:
+        try:
+            jobs = jobs.filter(model_id=int(model_filter))
+        except (ValueError, TypeError):
+            model_filter = ''
+    
+    # Pagination - 25 items per page
+    paginator = Paginator(jobs, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    # Get all providers and models for filter dropdowns
+    providers = AIProvider.objects.all().order_by('name')
+    models = AIModel.objects.all().order_by('name')
+    
+    # Get status choices from model
+    from .models import AIJobStatus
+    status_choices = AIJobStatus.choices
+    
+    context = {
+        'page_obj': page_obj,
+        'search_query': q,
+        'providers': providers,
+        'models': models,
+        'status_choices': status_choices,
+        'selected_status': status_filter,
+        'selected_provider': provider_filter,
+        'selected_model': model_filter,
+    }
+    return render(request, 'ai_jobs_history.html', context)
