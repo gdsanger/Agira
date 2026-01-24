@@ -256,3 +256,24 @@ class ItemBoardViewsTestCase(TestCase):
         for view_name, template_name in views_and_templates:
             response = self.client.get(reverse(view_name))
             self.assertTemplateUsed(response, template_name)
+    
+    def test_invalid_project_id_handled_gracefully(self):
+        """Test that invalid project IDs are handled gracefully"""
+        # Test with non-numeric project ID
+        response = self.client.get(
+            reverse('items-backlog'),
+            {'project': 'invalid'}
+        )
+        self.assertEqual(response.status_code, 200)
+        # Should show all items when project filter is invalid
+        items = list(response.context['items'])
+        self.assertEqual(len(items), 1)
+        
+        # Test with empty string
+        response = self.client.get(
+            reverse('items-backlog'),
+            {'project': ''}
+        )
+        self.assertEqual(response.status_code, 200)
+        items = list(response.context['items'])
+        self.assertEqual(len(items), 1)

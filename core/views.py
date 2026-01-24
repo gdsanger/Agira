@@ -64,7 +64,11 @@ def items_backlog(request):
     # Project filter
     project_id = request.GET.get('project', '')
     if project_id:
-        items = items.filter(project_id=project_id)
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
     
     # Get all projects for filter dropdown
     projects = Project.objects.all().order_by('name')
@@ -93,7 +97,11 @@ def items_working(request):
     # Project filter
     project_id = request.GET.get('project', '')
     if project_id:
-        items = items.filter(project_id=project_id)
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
     
     # Get all projects for filter dropdown
     projects = Project.objects.all().order_by('name')
@@ -122,7 +130,11 @@ def items_testing(request):
     # Project filter
     project_id = request.GET.get('project', '')
     if project_id:
-        items = items.filter(project_id=project_id)
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
     
     # Get all projects for filter dropdown
     projects = Project.objects.all().order_by('name')
@@ -151,7 +163,11 @@ def items_ready(request):
     # Project filter
     project_id = request.GET.get('project', '')
     if project_id:
-        items = items.filter(project_id=project_id)
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
     
     # Get all projects for filter dropdown
     projects = Project.objects.all().order_by('name')
