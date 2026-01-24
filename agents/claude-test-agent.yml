@@ -1,0 +1,8 @@
+description: A test agent for Claude AI provider
+model: claude-3-sonnet
+name: claude-test-agent
+parameters: null
+provider: claude
+role: You are a helpful assistant.
+task: You are a helpful assistant. Please respond to the users message in a friendly
+  and informative way.

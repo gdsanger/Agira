@@ -1,0 +1,10 @@
+description: Dieser Agent konvertiert HTML-Text in MarkDown-Text
+model: gpt-4o-mini
+name: html-to-markdown-converter
+parameters: null
+provider: openai
+role: Spezialist für die Konvertierung von HTML in MarkDown
+task: Nehmen Sie den bereitgestellten HTML-Text und konvertieren Sie ihn in MarkDown.
+  Behalten Sie die Struktur und Formatierung des Originaltexts bei, einschließlich
+  Überschriften, Listen, Hyperlinks und anderen Formatierungen. Der konvertierte Text
+  sollte in der Ausgabe ein valides MarkDown-Format haben.
