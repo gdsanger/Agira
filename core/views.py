@@ -7,6 +7,7 @@ from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 import openai
+from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
@@ -1353,23 +1354,23 @@ def ai_provider_fetch_models(request, id):
         
         elif provider.provider_type == 'Gemini':
             # Use Gemini API to list all available models
-            from google import genai
             gemini_client = genai.Client(api_key=provider.api_key)
             models_list = gemini_client.models.list()
             
             # Filter to only generative models (exclude embedding models)
             for model in models_list:
                 # Only include models that support generateContent
-                if hasattr(model, 'supported_generation_methods') and model.supported_generation_methods:
-                    if 'generateContent' in model.supported_generation_methods:
-                        # Use the model name without 'models/' prefix if present
-                        model_id = model.name.replace('models/', '') if hasattr(model, 'name') else str(model)
-                        # Use display_name if available, otherwise use the model_id
-                        model_name = model.display_name if hasattr(model, 'display_name') and model.display_name else model_id
-                        models_data.append({
-                            'name': model_name,
-                            'model_id': model_id
-                        })
+                if (hasattr(model, 'supported_generation_methods') and 
+                    model.supported_generation_methods and 
+                    'generateContent' in model.supported_generation_methods):
+                    # Use the model name without 'models/' prefix if present
+                    model_id = getattr(model, 'name', str(model)).replace('models/', '')
+                    # Use display_name if available, otherwise use the model_id
+                    model_name = getattr(model, 'display_name', None) or model_id
+                    models_data.append({
+                        'name': model_name,
+                        'model_id': model_id
+                    })
         
         elif provider.provider_type == 'Claude':
             # For Claude, use predefined list (updated as of Jan 2026)
