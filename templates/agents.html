@@ -117,6 +117,7 @@
             </div>
             <div class="modal-body">
                 <form id="testForm">
+                    {% csrf_token %}
                     <input type="hidden" id="testAgentFilename" name="filename">
                     
                     <div class="mb-3">
