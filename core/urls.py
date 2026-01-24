@@ -43,6 +43,7 @@ urlpatterns = [
     path('organisations/<int:id>/update/', views.organisation_update, name='organisation-update'),
     path('organisations/<int:id>/delete/', views.organisation_delete, name='organisation-delete'),
     path('organisations/<int:id>/users/add/', views.organisation_add_user, name='organisation-add-user'),
+    path('organisations/<int:id>/users/update/', views.organisation_update_user, name='organisation-update-user'),
     path('organisations/<int:id>/users/remove/', views.organisation_remove_user, name='organisation-remove-user'),
     path('organisations/<int:id>/projects/link/', views.organisation_link_project, name='organisation-link-project'),
     path('organisations/<int:id>/projects/unlink/', views.organisation_unlink_project, name='organisation-unlink-project'),
