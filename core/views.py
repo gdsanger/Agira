@@ -6,15 +6,20 @@ from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+import openai
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType)
-from core.services.ai.openai_provider import OpenAIProvider
-from core.services.ai.gemini_provider import GeminiProvider
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+
+# Supported OpenAI models for filtering
+OPENAI_PREFERRED_MODELS = {
+    'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 
+    'gpt-4-32k', 'gpt-4-turbo-preview', 'gpt-4o-mini'
+}
 
 def home(request):
     """Home page view."""
@@ -814,7 +819,11 @@ def ai_provider_delete(request, id):
 
 @require_http_methods(["GET"])
 def ai_provider_get_api_key(request, id):
-    """Get decrypted API key for copying."""
+    """Get decrypted API key for copying. Requires authentication."""
+    # Check if user is authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
     provider = get_object_or_404(AIProvider, id=id)
     
     # Return the actual API key for clipboard copy
@@ -833,14 +842,12 @@ def ai_provider_fetch_models(request, id):
         
         if provider.provider_type == 'OpenAI':
             # Use OpenAI API to list models
-            import openai
             openai_client = openai.OpenAI(api_key=provider.api_key)
             models_list = openai_client.models.list()
             
             # Filter to commonly used GPT models
-            preferred_models = {'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 'gpt-4-32k', 'gpt-4-turbo-preview'}
             for model in models_list.data:
-                if model.id in preferred_models or model.id.startswith('gpt-4') or model.id.startswith('gpt-3.5'):
+                if model.id in OPENAI_PREFERRED_MODELS or model.id.startswith('gpt-4') or model.id.startswith('gpt-3.5'):
                     models_data.append({
                         'name': model.id,
                         'model_id': model.id
@@ -856,12 +863,12 @@ def ai_provider_fetch_models(request, id):
             ]
         
         elif provider.provider_type == 'Claude':
-            # For Claude, use predefined list
+            # For Claude, use predefined list (updated as of Jan 2026)
             models_data = [
+                {'name': 'Claude 3.5 Sonnet', 'model_id': 'claude-3-5-sonnet-20241022'},
                 {'name': 'Claude 3 Opus', 'model_id': 'claude-3-opus-20240229'},
                 {'name': 'Claude 3 Sonnet', 'model_id': 'claude-3-sonnet-20240229'},
                 {'name': 'Claude 3 Haiku', 'model_id': 'claude-3-haiku-20240307'},
-                {'name': 'Claude 3.5 Sonnet', 'model_id': 'claude-3-5-sonnet-20241022'},
             ]
         
         return JsonResponse({
