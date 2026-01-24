@@ -253,11 +253,16 @@ class AttachmentLinkAdmin(admin.ModelAdmin):
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
-    list_display = ['verb', 'actor', 'created_at', 'target_content_type', 'target_object_id']
+    list_display = ['created_at', 'verb', 'actor', 'summary', 'target_content_type', 'target_object_id']
     list_filter = ['verb', 'actor', 'created_at']
-    search_fields = ['verb', 'summary']
+    search_fields = ['summary', 'verb']
     autocomplete_fields = ['actor']
-    readonly_fields = ['created_at']
+    readonly_fields = ['created_at', 'target_content_type', 'target_object_id']
+    date_hierarchy = 'created_at'
+    
+    def has_add_permission(self, request):
+        # Activities are created by the system via ActivityService, not manually
+        return False
 
 
 # Configuration Admin Classes
