@@ -100,8 +100,10 @@ class ActivityService:
             activity_data['target_content_type'] = content_type
             activity_data['target_object_id'] = target.pk
         else:
-            # For global activities without a target, we still need to set the FK fields
-            # Use a dummy content type (Activity itself) to satisfy the non-null constraint
+            # For global activities without a target, we use a dummy ContentType
+            # to satisfy the non-null FK constraint. We use the Activity model itself
+            # with object_id=0 as a sentinel value to indicate "no real target".
+            # This is an intentional design choice to avoid creating additional models.
             dummy_content_type = ContentType.objects.get_for_model(Activity)
             activity_data['target_content_type'] = dummy_content_type
             activity_data['target_object_id'] = 0
