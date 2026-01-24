@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Items - Backlog - Agira{% endblock %}
+{% block title %}Items - Testing - Agira{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Items - Backlog</h1>
-    <p class="text-muted">Planned items for future work</p>
+    <h1>Items - Testing</h1>
+    <p class="text-muted">Items currently being tested</p>
 </div>
 
 <!-- Search and Filter -->
@@ -87,12 +87,12 @@
             {% empty %}
             <tr>
                 <td colspan="7" class="text-center text-muted py-4">
-                    <div class="mb-2">📋</div>
-                    <div>No items in backlog</div>
+                    <div class="mb-2">🧪</div>
+                    <div>No items in testing</div>
                     {% if search_query %}
                     <small>Try adjusting your search filters</small>
                     {% else %}
-                    <small>All backlog items have been processed!</small>
+                    <small>All items have passed testing!</small>
                     {% endif %}
                 </td>
             </tr>
