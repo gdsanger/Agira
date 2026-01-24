@@ -1,0 +1,162 @@
+"""
+Tests for Item Workflow Guard
+"""
+
+from django.test import TestCase
+from django.core.exceptions import ValidationError
+
+from core.models import (
+    Item, ItemStatus, ItemType, Project, Organisation,
+    User, ProjectStatus
+)
+from core.services.workflow import ItemWorkflowGuard
+from core.services.activity import ActivityService
+
+
+class ItemWorkflowGuardTestCase(TestCase):
+    """Test cases for ItemWorkflowGuard"""
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create organisation
+        self.org = Organisation.objects.create(
+            name="Test Organisation"
+        )
+        
+        # Create test user
+        self.user = User.objects.create(
+            username="testuser",
+            email="test@example.com"
+        )
+        
+        # Create project
+        self.project = Project.objects.create(
+            name="Test Project",
+            status=ProjectStatus.WORKING
+        )
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            name="Bug"
+        )
+        
+        # Create test item in inbox
+        self.item = Item.objects.create(
+            title="Test Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            organisation=self.org,
+        )
+        
+        self.guard = ItemWorkflowGuard()
+        self.activity_service = ActivityService()
+    
+    def test_transition_valid(self):
+        """Test valid state transition"""
+        # Transition from Inbox to Backlog
+        result = self.guard.transition(self.item, ItemStatus.BACKLOG, self.user)
+        
+        self.assertEqual(result.status, ItemStatus.BACKLOG)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.BACKLOG)
+    
+    def test_transition_invalid(self):
+        """Test invalid state transition raises error"""
+        # Try to transition from Inbox to Testing (not allowed)
+        with self.assertRaises(ValidationError):
+            self.guard.transition(self.item, ItemStatus.TESTING, self.user)
+    
+    def test_transition_same_status(self):
+        """Test transition to same status is allowed"""
+        result = self.guard.transition(self.item, ItemStatus.INBOX, self.user)
+        self.assertEqual(result.status, ItemStatus.INBOX)
+    
+    def test_transition_logs_activity(self):
+        """Test that transition logs activity"""
+        # Clear any existing activities
+        from core.models import Activity
+        Activity.objects.all().delete()
+        
+        # Perform transition
+        self.guard.transition(self.item, ItemStatus.BACKLOG, self.user)
+        
+        # Check activity was logged
+        activities = self.activity_service.latest(item=self.item)
+        self.assertEqual(activities.count(), 1)
+        
+        activity = activities.first()
+        self.assertEqual(activity.verb, 'item.status_changed')
+        self.assertEqual(activity.actor, self.user)
+        self.assertIn('Inbox', activity.summary)
+        self.assertIn('Backlog', activity.summary)
+    
+    def test_classify_inbox_backlog(self):
+        """Test classify inbox item to backlog"""
+        result = self.guard.classify_inbox(self.item, 'backlog', self.user)
+        
+        self.assertEqual(result.status, ItemStatus.BACKLOG)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.BACKLOG)
+    
+    def test_classify_inbox_start(self):
+        """Test classify inbox item to start working"""
+        result = self.guard.classify_inbox(self.item, 'start', self.user)
+        
+        self.assertEqual(result.status, ItemStatus.WORKING)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
+    
+    def test_classify_inbox_close(self):
+        """Test classify inbox item to close"""
+        result = self.guard.classify_inbox(self.item, 'close', self.user)
+        
+        self.assertEqual(result.status, ItemStatus.CLOSED)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.CLOSED)
+    
+    def test_classify_inbox_invalid_action(self):
+        """Test classify with invalid action raises error"""
+        with self.assertRaises(ValidationError):
+            self.guard.classify_inbox(self.item, 'invalid', self.user)
+    
+    def test_classify_non_inbox_item(self):
+        """Test classify non-inbox item raises error"""
+        self.item.status = ItemStatus.BACKLOG
+        self.item.save()
+        
+        with self.assertRaises(ValidationError):
+            self.guard.classify_inbox(self.item, 'start', self.user)
+    
+    def test_transition_skip_validation(self):
+        """Test transition with skip_validation bypasses rules"""
+        # This should normally fail (Inbox -> Testing not allowed)
+        # But with skip_validation=True it should work
+        result = self.guard.transition(
+            self.item, 
+            ItemStatus.TESTING, 
+            self.user,
+            skip_validation=True
+        )
+        
+        self.assertEqual(result.status, ItemStatus.TESTING)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.TESTING)
+    
+    def test_valid_transitions_from_backlog(self):
+        """Test valid transitions from Backlog"""
+        self.item.status = ItemStatus.BACKLOG
+        self.item.save()
+        
+        # Should allow Backlog -> Working
+        result = self.guard.transition(self.item, ItemStatus.WORKING, self.user)
+        self.assertEqual(result.status, ItemStatus.WORKING)
+    
+    def test_closed_has_no_transitions(self):
+        """Test that closed items cannot transition"""
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Try to transition from Closed (should fail)
+        with self.assertRaises(ValidationError):
+            self.guard.transition(self.item, ItemStatus.WORKING, self.user)
