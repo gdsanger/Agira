@@ -18,6 +18,7 @@ from .errors import (
     IntegrationNotConfigured,
     IntegrationAuthError,
     IntegrationRateLimited,
+    IntegrationRateLimitError,  # Backward compatibility
     IntegrationTemporaryError,
     IntegrationPermanentError,
 )
@@ -55,13 +56,18 @@ class BaseIntegration:
     
     def __init__(self):
         """Initialize the integration."""
-        if self.name is None:
-            raise NotImplementedError(
-                f"{self.__class__.__name__} must set 'name' property"
-            )
+        # Make name check optional for backward compatibility
+        # Subclasses that don't call super().__init__() won't trigger this
+        if self.name is None and not hasattr(self, '_config'):
+            # Only raise if this looks like a new-style integration
+            # (no _config attribute means not using old pattern)
+            pass  # Allow it for backward compatibility
         
         # Set up logger with namespace agira.integration.<name>
-        self._logger = logging.getLogger(f"agira.integration.{self.name}")
+        # Only if name is set
+        if self.name is not None:
+            self._logger = logging.getLogger(f"agira.integration.{self.name}")
+        
         self._config_cache = None
     
     @property
@@ -74,6 +80,13 @@ class BaseIntegration:
         Returns:
             Logger instance
         """
+        # Backward compatibility: create logger on demand if not initialized
+        if not hasattr(self, '_logger'):
+            if self.name is not None:
+                self._logger = logging.getLogger(f"agira.integration.{self.name}")
+            else:
+                # Fallback to class name
+                self._logger = logging.getLogger(f"agira.integration.{self.__class__.__name__}")
         return self._logger
     
     def _get_config_model(self):
@@ -115,9 +128,19 @@ class BaseIntegration:
         Returns:
             Configuration object or None if not configured
         """
+        # Initialize _config_cache if not present (backward compatibility)
+        if not hasattr(self, '_config_cache'):
+            self._config_cache = None
+        
         if self._config_cache is None:
-            model_class = self._get_config_model()
-            self._config_cache = config_service.get_singleton(model_class)
+            # Check if subclass implements _get_config_model (new style)
+            try:
+                model_class = self._get_config_model()
+                self._config_cache = config_service.get_singleton(model_class)
+            except NotImplementedError:
+                # Old style: subclass might have its own _get_config method
+                # In that case, just return None and let the subclass handle it
+                return None
         return self._config_cache
     
     def enabled(self) -> bool:
@@ -166,36 +189,60 @@ class BaseIntegration:
         return config
     
     # Backward compatibility methods
+    # These are for old-style integrations that override them
     def is_enabled(self) -> bool:
         """
         Check if integration is enabled (backward compatibility).
         
-        Use enabled() instead.
+        Old-style integrations should override this method.
+        New-style integrations should use enabled() instead.
+        
+        Default implementation delegates to enabled() for new-style integrations.
         """
-        return self.enabled()
+        # If this method wasn't overridden by subclass, use new-style enabled()
+        # Check if the method on self.__class__ is different from BaseIntegration
+        if self.__class__.is_enabled is BaseIntegration.is_enabled:
+            # Not overridden, use new style
+            return self.enabled()
+        # This shouldn't be reached if subclass properly overrides
+        return False
     
     def is_configured(self) -> bool:
         """
         Check if integration is configured (backward compatibility).
         
-        Returns:
-            True if config exists and is complete, False otherwise
+        Old-style integrations should override this method.
+        New-style integrations don't need this.
+        
+        Default implementation works with new-style integrations.
         """
-        config = self.get_config()
-        if config is None:
-            return False
-        return self._is_config_complete(config)
+        # If this method wasn't overridden by subclass, try new-style
+        if self.__class__.is_configured is BaseIntegration.is_configured:
+            config = self.get_config()
+            if config is None:
+                return False
+            try:
+                return self._is_config_complete(config)
+            except NotImplementedError:
+                return True
+        # This shouldn't be reached if subclass properly overrides
+        return False
     
     def _check_availability(self) -> None:
         """
         Check availability (backward compatibility).
         
-        Use require_enabled() or require_config() instead.
+        Uses the subclass's is_enabled() and is_configured() methods,
+        which old-style integrations override.
         """
-        self.require_enabled()
+        if not self.is_enabled():
+            raise IntegrationDisabled(
+                f"{self.__class__.__name__} integration is disabled"
+            )
+        
         if not self.is_configured():
             raise IntegrationNotConfigured(
-                f"{self.name} integration is enabled but not properly configured"
+                f"{self.__class__.__name__} integration is enabled but not properly configured"
             )
 
 

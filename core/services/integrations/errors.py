@@ -116,3 +116,7 @@ class IntegrationPermanentError(IntegrationError):
         Invalid request format, validation error, resource not found.
     """
     pass
+
+
+# Backward compatibility aliases
+IntegrationRateLimitError = IntegrationRateLimited

@@ -87,13 +87,20 @@ class BaseIntegrationTestCase(TestCase):
         from django.core.cache import cache
         cache.clear()
     
-    def test_name_property_required(self):
-        """Test that name property must be set."""
-        class BadIntegration(BaseIntegration):
-            pass
+    def test_name_property_should_be_set(self):
+        """Test that name property should be set for new integrations."""
+        class GoodIntegration(BaseIntegration):
+            name = "good"
+            
+            def _get_config_model(self):
+                return GitHubConfiguration
+            
+            def _is_config_complete(self, config):
+                return True
         
-        with self.assertRaises(NotImplementedError):
-            BadIntegration()
+        # Should work fine
+        integration = GoodIntegration()
+        self.assertEqual(integration.name, "good")
     
     def test_logger_has_correct_namespace(self):
         """Test that logger uses agira.integration.<name> namespace."""

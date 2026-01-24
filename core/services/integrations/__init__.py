@@ -18,6 +18,7 @@ from .errors import (
     IntegrationNotConfigured,
     IntegrationAuthError,
     IntegrationRateLimited,
+    IntegrationRateLimitError,  # Backward compatibility
     IntegrationTemporaryError,
     IntegrationPermanentError,
 )
@@ -31,6 +32,7 @@ __all__ = [
     'IntegrationNotConfigured',
     'IntegrationAuthError',
     'IntegrationRateLimited',
+    'IntegrationRateLimitError',  # Backward compatibility
     'IntegrationTemporaryError',
     'IntegrationPermanentError',
     # Classes
