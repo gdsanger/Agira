@@ -18,11 +18,6 @@ from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 
-# Supported OpenAI models for filtering
-OPENAI_PREFERRED_MODELS = {
-    'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 
-    'gpt-4-32k', 'gpt-4-turbo-preview', 'gpt-4o-mini'
-}
 # Create markdown parser once at module level for better performance
 MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
 
@@ -1343,22 +1338,38 @@ def ai_provider_fetch_models(request, id):
             openai_client = openai.OpenAI(api_key=provider.api_key)
             models_list = openai_client.models.list()
             
-            # Filter to commonly used GPT models
+            # Include all GPT models without restrictive filtering
+            # This includes gpt-3.5, gpt-4, gpt-4o, gpt-5, o1, o3, and all variants
             for model in models_list.data:
-                if model.id in OPENAI_PREFERRED_MODELS or model.id.startswith('gpt-4') or model.id.startswith('gpt-3.5'):
+                model_id_lower = model.id.lower()
+                # Include all GPT models (gpt-*, o1-*, o3-*) but exclude embeddings and other non-chat models
+                if (model_id_lower.startswith('gpt-') or 
+                    model_id_lower.startswith('o1-') or 
+                    model_id_lower.startswith('o3-')):
                     models_data.append({
                         'name': model.id,
                         'model_id': model.id
                     })
         
         elif provider.provider_type == 'Gemini':
-            # For Gemini, use predefined list as API doesn't have list endpoint
-            models_data = [
-                {'name': 'Gemini Pro', 'model_id': 'gemini-pro'},
-                {'name': 'Gemini Pro Vision', 'model_id': 'gemini-pro-vision'},
-                {'name': 'Gemini 1.5 Pro', 'model_id': 'gemini-1.5-pro'},
-                {'name': 'Gemini 1.5 Flash', 'model_id': 'gemini-1.5-flash'},
-            ]
+            # Use Gemini API to list all available models
+            from google import genai
+            gemini_client = genai.Client(api_key=provider.api_key)
+            models_list = gemini_client.models.list()
+            
+            # Filter to only generative models (exclude embedding models)
+            for model in models_list:
+                # Only include models that support generateContent
+                if hasattr(model, 'supported_generation_methods') and model.supported_generation_methods:
+                    if 'generateContent' in model.supported_generation_methods:
+                        # Use the model name without 'models/' prefix if present
+                        model_id = model.name.replace('models/', '') if hasattr(model, 'name') else str(model)
+                        # Use display_name if available, otherwise use the model_id
+                        model_name = model.display_name if hasattr(model, 'display_name') and model.display_name else model_id
+                        models_data.append({
+                            'name': model_name,
+                            'model_id': model_id
+                        })
         
         elif provider.provider_type == 'Claude':
             # For Claude, use predefined list (updated as of Jan 2026)
