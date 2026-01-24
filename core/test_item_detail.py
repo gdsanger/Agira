@@ -237,3 +237,126 @@ class ItemDetailWorkflowTest(TestCase):
         # Status should not change
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.BACKLOG)
+
+
+class ItemCRUDTest(TestCase):
+    """Test item CRUD operations."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User'
+        )
+        
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+        
+        self.project = Project.objects.create(name='Test Project')
+        self.project.clients.add(self.org)
+        
+        self.item_type = ItemType.objects.create(key='bug', name='Bug', is_active=True)
+        
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_item_create_view_loads(self):
+        """Test that item create view loads successfully."""
+        url = reverse('item-create')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Create New Item')
+        self.assertContains(response, 'title')
+        self.assertContains(response, 'project')
+        self.assertContains(response, 'type')
+    
+    def test_item_create_post(self):
+        """Test creating a new item via POST."""
+        url = reverse('item-create')
+        data = {
+            'title': 'New Test Item',
+            'description': 'Test description',
+            'solution_description': 'Test solution',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.INBOX,
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was created
+        item = Item.objects.filter(title='New Test Item').first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.description, 'Test description')
+        self.assertEqual(item.project, self.project)
+        self.assertEqual(item.type, self.item_type)
+    
+    def test_item_edit_view_loads(self):
+        """Test that item edit view loads successfully."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG
+        )
+        
+        url = reverse('item-edit', args=[item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Edit Item')
+        self.assertContains(response, item.title)
+    
+    def test_item_update_post(self):
+        """Test updating an item via POST."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG
+        )
+        
+        url = reverse('item-update', args=[item.id])
+        data = {
+            'title': 'Updated Test Item',
+            'description': 'Updated description',
+            'solution_description': 'Updated solution',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.WORKING,
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was updated
+        item.refresh_from_db()
+        self.assertEqual(item.title, 'Updated Test Item')
+        self.assertEqual(item.description, 'Updated description')
+        self.assertEqual(item.status, ItemStatus.WORKING)
+    
+    def test_item_delete_post(self):
+        """Test deleting an item via POST."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG
+        )
+        
+        item_id = item.id
+        url = reverse('item-delete', args=[item_id])
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was deleted
+        self.assertFalse(Item.objects.filter(id=item_id).exists())

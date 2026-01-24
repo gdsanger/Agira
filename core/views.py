@@ -577,6 +577,227 @@ def item_classify(request, item_id):
         return HttpResponse(str(e), status=400)
 
 
+def item_create(request):
+    """Item create page view."""
+    if request.method == 'GET':
+        # Show the create form
+        projects = Project.objects.all().order_by('name')
+        item_types = ItemType.objects.filter(is_active=True).order_by('name')
+        organisations = Organisation.objects.all().order_by('name')
+        users = User.objects.all().order_by('name')
+        statuses = ItemStatus.choices
+        
+        context = {
+            'item': None,
+            'projects': projects,
+            'item_types': item_types,
+            'organisations': organisations,
+            'users': users,
+            'statuses': statuses,
+        }
+        return render(request, 'item_form.html', context)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        project_id = request.POST.get('project')
+        project = get_object_or_404(Project, id=project_id)
+        
+        type_id = request.POST.get('type')
+        item_type = get_object_or_404(ItemType, id=type_id)
+        
+        # Create the item
+        item = Item(
+            project=project,
+            title=request.POST.get('title', ''),
+            description=request.POST.get('description', ''),
+            solution_description=request.POST.get('solution_description', ''),
+            type=item_type,
+            status=request.POST.get('status', ItemStatus.INBOX),
+        )
+        
+        # Set optional fields
+        org_id = request.POST.get('organisation')
+        if org_id:
+            item.organisation = get_object_or_404(Organisation, id=org_id)
+        
+        requester_id = request.POST.get('requester')
+        if requester_id:
+            item.requester = get_object_or_404(User, id=requester_id)
+        
+        assigned_to_id = request.POST.get('assigned_to')
+        if assigned_to_id:
+            item.assigned_to = get_object_or_404(User, id=assigned_to_id)
+        
+        parent_id = request.POST.get('parent')
+        if parent_id:
+            item.parent = get_object_or_404(Item, id=parent_id)
+        
+        solution_release_id = request.POST.get('solution_release')
+        if solution_release_id:
+            item.solution_release = get_object_or_404(Release, id=solution_release_id)
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.created',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Created item: {item.title}",
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Item created successfully',
+            'redirect': f'/items/{item.id}/',
+            'item_id': item.id
+        })
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        # Log the full error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Item creation failed: {str(e)}")
+        return JsonResponse({'success': False, 'error': 'Failed to create item. Please check your input.'}, status=400)
+
+
+def item_edit(request, item_id):
+    """Item edit page view."""
+    item = get_object_or_404(
+        Item.objects.select_related(
+            'project', 'type', 'organisation', 'requester', 
+            'assigned_to', 'solution_release', 'parent'
+        ),
+        id=item_id
+    )
+    
+    if request.method == 'GET':
+        # Show the edit form
+        projects = Project.objects.all().order_by('name')
+        item_types = ItemType.objects.filter(is_active=True).order_by('name')
+        organisations = Organisation.objects.all().order_by('name')
+        users = User.objects.all().order_by('name')
+        statuses = ItemStatus.choices
+        
+        # Get releases for the current project
+        releases = Release.objects.filter(project=item.project).order_by('-version')
+        
+        # Get potential parent items from the same project
+        parent_items = Item.objects.filter(project=item.project).exclude(id=item.id).order_by('title')
+        
+        context = {
+            'item': item,
+            'projects': projects,
+            'item_types': item_types,
+            'organisations': organisations,
+            'users': users,
+            'statuses': statuses,
+            'releases': releases,
+            'parent_items': parent_items,
+        }
+        return render(request, 'item_form.html', context)
+    
+    # Handle POST request (HTMX form submission) - handled by item_update
+    return redirect('item-update', item_id=item_id)
+
+
+@require_http_methods(["POST"])
+def item_update(request, item_id):
+    """Update item details."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Update basic fields
+        item.title = request.POST.get('title', item.title)
+        item.description = request.POST.get('description', item.description)
+        item.solution_description = request.POST.get('solution_description', item.solution_description)
+        item.status = request.POST.get('status', item.status)
+        
+        # Update foreign key fields
+        project_id = request.POST.get('project')
+        if project_id:
+            item.project = get_object_or_404(Project, id=project_id)
+        
+        type_id = request.POST.get('type')
+        if type_id:
+            item.type = get_object_or_404(ItemType, id=type_id)
+        
+        # Update optional foreign key fields
+        org_id = request.POST.get('organisation')
+        if org_id:
+            item.organisation = get_object_or_404(Organisation, id=org_id)
+        elif org_id == '':  # Empty string means clear the field
+            item.organisation = None
+        
+        requester_id = request.POST.get('requester')
+        if requester_id:
+            item.requester = get_object_or_404(User, id=requester_id)
+        elif requester_id == '':
+            item.requester = None
+        
+        assigned_to_id = request.POST.get('assigned_to')
+        if assigned_to_id:
+            item.assigned_to = get_object_or_404(User, id=assigned_to_id)
+        elif assigned_to_id == '':
+            item.assigned_to = None
+        
+        parent_id = request.POST.get('parent')
+        if parent_id:
+            item.parent = get_object_or_404(Item, id=parent_id)
+        elif parent_id == '':
+            item.parent = None
+        
+        solution_release_id = request.POST.get('solution_release')
+        if solution_release_id:
+            item.solution_release = get_object_or_404(Release, id=solution_release_id)
+        elif solution_release_id == '':
+            item.solution_release = None
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.updated',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Updated item: {item.title}",
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Item updated successfully',
+            'redirect': f'/items/{item.id}/'
+        })
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        # Log the full error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Item update failed for item {item_id}: {str(e)}")
+        return JsonResponse({'success': False, 'error': 'Failed to update item. Please check your input.'}, status=400)
+
+
+@require_http_methods(["POST"])
+def item_delete(request, item_id):
+    """Delete an item."""
+    item = get_object_or_404(Item, id=item_id)
+    project_id = item.project.id
+    
+    try:
+        item.delete()
+        return JsonResponse({
+            'success': True,
+            'message': 'Item deleted successfully',
+            'redirect': f'/projects/{project_id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
 # Project CRUD operations
 @require_http_methods(["POST"])
 def project_update(request, id):

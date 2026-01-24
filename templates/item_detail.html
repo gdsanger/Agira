@@ -1,6 +1,98 @@
 {% extends "base.html" %}
+{% load agira_filters %}
 
 {% block title %}{{ item.title }} - Agira{% endblock %}
+
+{% block extra_head %}
+<!-- Markdown Viewer Styles -->
+<style>
+.markdown-viewer {
+    width: 100%;
+    min-height: 300px;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 20px;
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+.markdown-viewer h1 {
+    font-size: 2em;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.3em;
+}
+.markdown-viewer h2 {
+    font-size: 1.5em;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.3em;
+}
+.markdown-viewer h3 {
+    font-size: 1.17em;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+.markdown-viewer code {
+    background-color: #2a2a2a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    color: #e06c75;
+}
+.markdown-viewer pre {
+    background-color: #2a2a2a;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+.markdown-viewer pre code {
+    background-color: transparent;
+    padding: 0;
+    color: #abb2bf;
+}
+.markdown-viewer blockquote {
+    border-left: 4px solid #444;
+    padding-left: 16px;
+    margin-left: 0;
+    color: #999;
+}
+.markdown-viewer ul, .markdown-viewer ol {
+    padding-left: 2em;
+}
+.markdown-viewer a {
+    color: #61afef;
+    text-decoration: none;
+}
+.markdown-viewer a:hover {
+    text-decoration: underline;
+}
+.markdown-viewer strong {
+    font-weight: bold;
+    color: #e5c07b;
+}
+.markdown-viewer em {
+    font-style: italic;
+    color: #c678dd;
+}
+.markdown-viewer table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+.markdown-viewer table th,
+.markdown-viewer table td {
+    border: 1px solid #444;
+    padding: 8px 12px;
+}
+.markdown-viewer table th {
+    background-color: #2a2a2a;
+    font-weight: bold;
+}
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -9,13 +101,29 @@
             <h1>{{ item.title }}</h1>
             <p class="text-muted">{{ item.project.name }} • {{ item.type.name }}</p>
         </div>
-        <div>
+        <div class="d-flex gap-2 align-items-center">
             <span id="status-badge" class="badge bg-primary" style="font-size: 1rem;">
                 {{ item.get_status_display }}
             </span>
+            <a href="{% url 'item-edit' item.id %}" class="btn btn-outline-primary btn-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil" viewBox="0 0 16 16">
+                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                </svg>
+                Edit
+            </a>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="confirmDelete()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
+                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                </svg>
+                Delete
+            </button>
         </div>
     </div>
 </div>
+
+<!-- Hidden CSRF token for delete operation -->
+{% csrf_token %}
 
 <!-- Tab Navigation -->
 <ul class="nav nav-tabs mb-4" id="itemTabs" role="tablist">
@@ -99,25 +207,29 @@
                         <h5 class="mb-0">Details</h5>
                     </div>
                     <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-md-3"><strong>Title:</strong></div>
-                            <div class="col-md-9">{{ item.title }}</div>
+                        <div class="mb-3">
+                            <strong>Title:</strong>
+                            <div class="mt-2">{{ item.title }}</div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3"><strong>Description:</strong></div>
-                            <div class="col-md-9">
+                        <div class="mb-3">
+                            <strong>Description:</strong>
+                            <div class="mt-2">
                                 {% if item.description %}
-                                    <div style="white-space: pre-wrap;">{{ item.description }}</div>
+                                    <div class="markdown-viewer">
+                                        {{ item.description|render_markdown }}
+                                    </div>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}
                             </div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3"><strong>Solution:</strong></div>
-                            <div class="col-md-9">
+                        <div class="mb-3">
+                            <strong>Solution:</strong>
+                            <div class="mt-2">
                                 {% if item.solution_description %}
-                                    <div style="white-space: pre-wrap;">{{ item.solution_description }}</div>
+                                    <div class="markdown-viewer">
+                                        {{ item.solution_description|render_markdown }}
+                                    </div>
                                 {% else %}
                                     <span class="text-muted">—</span>
                                 {% endif %}
@@ -274,31 +386,58 @@
 <script>
     // Show success toast on various events
     document.body.addEventListener('statusChanged', function(evt) {
-        showToast('Status changed successfully!');
+        showToast('success', 'Status changed successfully!');
     });
     
     document.body.addEventListener('commentAdded', function(evt) {
-        showToast('Comment added successfully!');
+        showToast('success', 'Comment added successfully!');
     });
     
     document.body.addEventListener('attachmentUploaded', function(evt) {
-        showToast('Attachment uploaded successfully!');
+        showToast('success', 'Attachment uploaded successfully!');
     });
     
-    function showToast(message) {
-        var toastEl = document.getElementById('successToast');
-        document.getElementById('toastMessage').textContent = message;
-        var toast = new bootstrap.Toast(toastEl);
+    function showToast(type, message) {
+        const toastEl = document.getElementById(type === 'success' ? 'successToast' : 'errorToast');
+        const messageEl = document.getElementById(type === 'success' ? 'toastMessage' : 'errorToastMessage');
+        messageEl.textContent = message;
+        const toast = new bootstrap.Toast(toastEl);
         toast.show();
     }
     
     // Handle HTMX errors
     document.body.addEventListener('htmx:responseError', function(evt) {
-        var errorToastEl = document.getElementById('errorToast');
         var errorMsg = evt.detail.xhr.responseText || 'An error occurred';
-        document.getElementById('errorToastMessage').textContent = errorMsg;
-        var toast = new bootstrap.Toast(errorToastEl);
-        toast.show();
+        showToast('error', errorMsg);
     });
+    
+    // Delete confirmation with toast notification
+    function confirmDelete() {
+        if (confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+            fetch('{% url 'item-delete' item.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message || 'Item deleted successfully!');
+                    setTimeout(() => {
+                        if (data.redirect) {
+                            window.location.href = data.redirect;
+                        }
+                    }, 1000);
+                } else {
+                    showToast('error', data.error || 'Failed to delete item');
+                }
+            })
+            .catch(error => {
+                showToast('error', 'An error occurred while deleting the item');
+            });
+        }
+    }
 </script>
 {% endblock %}
