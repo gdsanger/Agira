@@ -22,7 +22,7 @@ from core.models import (
     GraphAPIConfiguration,
     ZammadConfiguration,
 )
-from .exceptions import ServiceDisabled, ServiceNotConfigured
+# Note: exceptions module is available for service implementations to use
 
 
 # Cache configuration
@@ -62,8 +62,11 @@ def get_singleton(model_cls: Type[models.Model]) -> Optional[models.Model]:
         return cached_value
     
     # Not in cache, fetch from database
+    # Use get(pk=1) for singleton models to be explicit
     try:
-        obj = model_cls.objects.first()
+        obj = model_cls.objects.get(pk=1)
+    except model_cls.DoesNotExist:
+        obj = None
     except Exception:
         # Handle case where table doesn't exist yet (migrations)
         obj = None
