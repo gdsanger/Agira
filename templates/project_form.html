@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}{% if project %}Edit {{ project.name }}{% else %}New Project{% endif %} - Agira{% endblock %}
+
+{% block extra_head %}
+<!-- ToastUI Editor CSS -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'projects' %}">Projects</a></li>
+        {% if project %}
+        <li class="breadcrumb-item"><a href="{% url 'project-detail' project.id %}">{{ project.name }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Project</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>{% if project %}Edit Project{% else %}Create New Project{% endif %}</h1>
+    <p class="text-muted">{% if project %}Update project details{% else %}Add a new project to Agira{% endif %}</p>
+</div>
+
+<!-- Form Container with 2-Column Layout -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content -->
+    <div class="detail-main">
+        <form id="projectForm" 
+              hx-post="{% if project %}{% url 'project-update' project.id %}{% else %}{% url 'project-create' %}{% endif %}"
+              hx-swap="none"
+              hx-on::after-request="handleFormResponse(event)">
+            {% csrf_token %}
+            
+            <!-- Title -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Project Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="name" 
+                               name="name" 
+                               value="{% if project %}{{ project.name }}{% endif %}"
+                               required
+                               maxlength="255">
+                    </div>
+                    
+                    <!-- GitHub Repository -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="github_owner" class="form-label">GitHub Owner</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="github_owner" 
+                                   name="github_owner" 
+                                   value="{% if project %}{{ project.github_owner }}{% endif %}"
+                                   maxlength="255"
+                                   placeholder="organization or username">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="github_repo" class="form-label">GitHub Repository</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="github_repo" 
+                                   name="github_repo" 
+                                   value="{% if project %}{{ project.github_repo }}{% endif %}"
+                                   maxlength="255"
+                                   placeholder="repository-name">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Description with Markdown Editor -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Description</h5>
+                </div>
+                <div class="card-body">
+                    <div id="editor"></div>
+                    <input type="hidden" id="description" name="description">
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    {% if project %}Update Project{% else %}Create Project{% endif %}
+                </button>
+                <a href="{% if project %}{% url 'project-detail' project.id %}{% else %}{% url 'projects' %}{% endif %}" 
+                   class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Sidebar -->
+    <div class="detail-sidebar">
+        <!-- Status -->
+        <div class="project-info-card">
+            <div class="project-info-label">Status</div>
+            <select class="form-select" id="status" name="status" form="projectForm">
+                {% for status_value, status_label in statuses %}
+                <option value="{{ status_value }}" 
+                        {% if project and project.status == status_value %}selected{% endif %}>
+                    {{ status_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Repository Link -->
+        {% if project and project.github_owner and project.github_repo %}
+        <div class="project-info-card">
+            <div class="project-info-label">Repository</div>
+            <div class="project-info-value">
+                <a href="https://github.com/{{ project.github_owner }}/{{ project.github_repo }}" 
+                   target="_blank" 
+                   class="d-flex align-items-center gap-2">
+                    <span>{{ project.github_owner }}/{{ project.github_repo }}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-up-right" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5"/>
+                        <path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Help Text -->
+        <div class="project-info-card">
+            <div class="project-info-label">Help</div>
+            <div class="project-info-value">
+                <ul class="list-unstyled small text-muted mb-0">
+                    <li class="mb-2">• Use Markdown for rich formatting in description</li>
+                    <li class="mb-2">• GitHub repository links enable automatic issue tracking</li>
+                    <li>• All fields can be updated later</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ToastUI Editor JS -->
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
+<script>
+// Initialize ToastUI Editor
+const editor = new toastui.Editor({
+    el: document.querySelector('#editor'),
+    height: '400px',
+    initialEditType: 'markdown',
+    previewStyle: 'vertical',
+    {% if project and project.description %}
+    initialValue: '{{ project.description|escapejs }}',
+    {% else %}
+    initialValue: '',
+    {% endif %}
+    theme: 'dark'
+});
+
+// Sync editor content to hidden field on form submit
+document.getElementById('projectForm').addEventListener('submit', function() {
+    document.getElementById('description').value = editor.getMarkdown();
+});
+
+// Handle form response
+function handleFormResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200 || xhr.status === 201) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message || 'Project saved successfully');
+                
+                // Redirect after a short delay
+                setTimeout(() => {
+                    if (response.redirect) {
+                        window.location.href = response.redirect;
+                    } else if (response.project_id) {
+                        window.location.href = `/projects/${response.project_id}/`;
+                    }
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Failed to save project');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Error', response.error || 'Failed to save project');
+        } catch (e) {
+            showToast('error', 'Error', 'Failed to save project');
+        }
+    }
+}
+
+// Toast notification function
+function showToast(type, title, message) {
+    // Remove existing toasts
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(t => {
+        const bsToast = bootstrap.Toast.getInstance(t);
+        if (bsToast) bsToast.hide();
+    });
+    
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast toast-${type}`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    
+    toastEl.innerHTML = `
+        <div class="toast-header">
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            ${message}
+        </div>
+    `;
+    
+    container.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 3000 });
+    toast.show();
+    
+    // Remove from DOM after hidden
+    toastEl.addEventListener('hidden.bs.toast', () => {
+        toastEl.remove();
+    });
+}
+</script>
+{% endblock %}
