@@ -2,26 +2,38 @@
 Integration Base Package
 
 Provides base classes and utilities for external service integrations.
+
+This package serves as the foundation for all external service integrations
+in Agira (GitHub, Weaviate, Graph API, AI providers, etc.).
+
+Key Components:
+- errors.py: Integration-specific exceptions
+- base.py: BaseIntegration class with config/enabled checks
+- http.py: HTTP client with retry and error mapping
 """
 
-from .base import (
-    IntegrationBase,
+from .errors import (
     IntegrationError,
     IntegrationDisabled,
     IntegrationNotConfigured,
     IntegrationAuthError,
-    IntegrationRateLimitError,
-    IntegrationNotFoundError,
-    IntegrationValidationError,
+    IntegrationRateLimited,
+    IntegrationTemporaryError,
+    IntegrationPermanentError,
 )
+from .base import BaseIntegration
+from .http import HTTPClient
 
 __all__ = [
-    'IntegrationBase',
+    # Exceptions
     'IntegrationError',
     'IntegrationDisabled',
     'IntegrationNotConfigured',
     'IntegrationAuthError',
-    'IntegrationRateLimitError',
-    'IntegrationNotFoundError',
-    'IntegrationValidationError',
+    'IntegrationRateLimited',
+    'IntegrationTemporaryError',
+    'IntegrationPermanentError',
+    # Classes
+    'BaseIntegration',
+    'HTTPClient',
 ]
