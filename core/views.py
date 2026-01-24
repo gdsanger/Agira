@@ -10,6 +10,8 @@ from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType)
+from core.services.ai.openai_provider import OpenAIProvider
+from core.services.ai.gemini_provider import GeminiProvider
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -827,27 +829,18 @@ def ai_provider_fetch_models(request, id):
     provider = get_object_or_404(AIProvider, id=id)
     
     try:
-        # Import provider classes
-        from core.services.ai.openai_provider import OpenAIProvider
-        from core.services.ai.gemini_provider import GeminiProvider
-        
         models_data = []
         
         if provider.provider_type == 'OpenAI':
             # Use OpenAI API to list models
-            client = OpenAIProvider(
-                api_key=provider.api_key,
-                organization_id=provider.organization_id
-            )
-            
-            # Get models from OpenAI
             import openai
             openai_client = openai.OpenAI(api_key=provider.api_key)
             models_list = openai_client.models.list()
             
-            # Filter to just GPT models
+            # Filter to commonly used GPT models
+            preferred_models = {'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 'gpt-4-32k', 'gpt-4-turbo-preview'}
             for model in models_list.data:
-                if 'gpt' in model.id.lower():
+                if model.id in preferred_models or model.id.startswith('gpt-4') or model.id.startswith('gpt-3.5'):
                     models_data.append({
                         'name': model.id,
                         'model_id': model.id
@@ -889,12 +882,16 @@ def ai_model_create(request, provider_id):
     provider = get_object_or_404(AIProvider, id=provider_id)
     
     try:
+        # Get input values and convert empty strings to None for decimal fields
+        input_price = request.POST.get('input_price_per_1m_tokens', '').strip()
+        output_price = request.POST.get('output_price_per_1m_tokens', '').strip()
+        
         model = AIModel.objects.create(
             provider=provider,
             name=request.POST.get('name'),
             model_id=request.POST.get('model_id'),
-            input_price_per_1m_tokens=request.POST.get('input_price_per_1m_tokens') or None,
-            output_price_per_1m_tokens=request.POST.get('output_price_per_1m_tokens') or None,
+            input_price_per_1m_tokens=input_price if input_price else None,
+            output_price_per_1m_tokens=output_price if output_price else None,
             active=request.POST.get('active') == 'on',
             is_default=request.POST.get('is_default') == 'on'
         )
@@ -924,8 +921,13 @@ def ai_model_update(request, provider_id, model_id):
     try:
         model.name = request.POST.get('name', model.name)
         model.model_id = request.POST.get('model_id', model.model_id)
-        model.input_price_per_1m_tokens = request.POST.get('input_price_per_1m_tokens') or None
-        model.output_price_per_1m_tokens = request.POST.get('output_price_per_1m_tokens') or None
+        
+        # Handle decimal fields - convert empty strings to None
+        input_price = request.POST.get('input_price_per_1m_tokens', '').strip()
+        output_price = request.POST.get('output_price_per_1m_tokens', '').strip()
+        model.input_price_per_1m_tokens = input_price if input_price else None
+        model.output_price_per_1m_tokens = output_price if output_price else None
+        
         model.active = request.POST.get('active') == 'on'
         model.is_default = request.POST.get('is_default') == 'on'
         model.save()
