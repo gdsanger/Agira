@@ -47,19 +47,28 @@ def get_client() -> weaviate.WeaviateClient:
     
     logger.debug(f"Connecting to Weaviate at {config.url}")
     
+    # Parse URL components
+    from urllib.parse import urlparse
+    parsed = urlparse(config.url)
+    
+    # Extract host and port
+    http_secure = parsed.scheme == "https"
+    http_host = parsed.hostname or parsed.netloc
+    http_port = parsed.port or (443 if http_secure else 80)
+    
     # Build client with optional authentication
     if config.api_key:
         client = weaviate.connect_to_custom(
-            http_host=config.url.replace("http://", "").replace("https://", ""),
-            http_port=80 if "http://" in config.url else 443,
-            http_secure="https://" in config.url,
+            http_host=http_host,
+            http_port=http_port,
+            http_secure=http_secure,
             auth_credentials=Auth.api_key(config.api_key),
         )
     else:
         client = weaviate.connect_to_custom(
-            http_host=config.url.replace("http://", "").replace("https://", ""),
-            http_port=80 if "http://" in config.url else 443,
-            http_secure="https://" in config.url,
+            http_host=http_host,
+            http_port=http_port,
+            http_secure=http_secure,
         )
     
     return client

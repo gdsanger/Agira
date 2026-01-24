@@ -93,8 +93,11 @@ def ensure_schema(client: weaviate.WeaviateClient) -> None:
                 description="Last update timestamp for sync/refresh"
             ),
         ],
-        # Configure vectorizer - using default text2vec for semantic search
-        vectorizer_config=Configure.Vectorizer.text2vec_contextionary(),
+        # Use text2vec-transformers for semantic search
+        # Note: Requires a vectorizer module to be configured in Weaviate
+        # If using local Weaviate, you can configure transformers, openai, cohere, etc.
+        # If no vectorizer is available, remove this parameter and Weaviate will use default
+        # vectorizer_config can be omitted to use Weaviate's default configuration
     )
     
     logger.info(f"Collection '{COLLECTION_NAME}' created successfully")
