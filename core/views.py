@@ -8,12 +8,36 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 import markdown
+import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+
+# Create markdown parser once at module level for better performance
+MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
+
+# Allowed HTML tags and attributes for sanitization
+ALLOWED_TAGS = [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'strong', 'em', 'u', 'strike',
+    'ul', 'ol', 'li',
+    'blockquote', 'code', 'pre',
+    'a', 'img',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'
+]
+
+ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+    'code': ['class'],
+    'pre': ['class'],
+    'div': ['class'],
+    'span': ['class'],
+}
 
 def home(request):
     """Home page view."""
@@ -135,11 +159,21 @@ def project_detail(request, id):
         id=id
     )
     
-    # Render markdown description to HTML
+    # Render markdown description to HTML with sanitization
     description_html = None
     if project.description:
-        md = markdown.Markdown(extensions=['extra', 'codehilite', 'fenced_code'])
-        description_html = mark_safe(md.convert(project.description))
+        # Reset parser state for clean conversion
+        MARKDOWN_PARSER.reset()
+        # Convert markdown to HTML
+        html = MARKDOWN_PARSER.convert(project.description)
+        # Sanitize HTML to prevent XSS attacks
+        sanitized_html = bleach.clean(
+            html,
+            tags=ALLOWED_TAGS,
+            attributes=ALLOWED_ATTRIBUTES,
+            strip=True
+        )
+        description_html = mark_safe(sanitized_html)
     
     # Get all organisations for the client management
     all_organisations = Organisation.objects.all().order_by('name')
