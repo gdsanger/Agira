@@ -166,7 +166,7 @@ class GraphClient:
                 try:
                     error_json = response.json()
                     error_detail = error_json.get("error", {}).get("message", error_detail)
-                except:
+                except (ValueError, KeyError):
                     pass
                 
                 logger.error(

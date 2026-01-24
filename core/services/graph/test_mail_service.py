@@ -132,12 +132,10 @@ class SendEmailTestCase(TestCase):
             
             # Verify send_mail was called with default sender
             mock_client.send_mail.assert_called_once()
-            call_kwargs = mock_client.send_mail.call_args
-            # Use args attribute or kwargs
-            if call_kwargs.args:
-                self.assertEqual(call_kwargs.args[0], 'default@test.com')  # sender_upn
-            else:
-                self.assertEqual(call_kwargs.kwargs['sender_upn'], 'default@test.com')
+            # Check the sender_upn argument (first positional arg)
+            call = mock_client.send_mail.call_args_list[0]
+            sender_upn = call.args[0] if call.args else call.kwargs.get('sender_upn')
+            self.assertEqual(sender_upn, 'default@test.com')
     
     def test_send_email_raises_not_configured_when_no_sender_and_no_default(self):
         """Test that send_email raises error when no sender and no default."""
@@ -235,11 +233,8 @@ class SendEmailTestCase(TestCase):
         self.assertTrue(result.success)
         
         # Verify payload includes CC and BCC
-        call_kwargs = mock_client.send_mail.call_args
-        if call_kwargs.args and len(call_kwargs.args) > 1:
-            payload = call_kwargs.args[1]
-        else:
-            payload = call_kwargs.kwargs['payload']
+        call = mock_client.send_mail.call_args_list[0]
+        payload = call.args[1] if len(call.args) > 1 else call.kwargs.get('payload')
         
         self.assertIn('ccRecipients', payload['message'])
         self.assertIn('bccRecipients', payload['message'])

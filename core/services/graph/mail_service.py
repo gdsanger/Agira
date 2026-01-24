@@ -10,13 +10,16 @@ Version 1: Send Only (no inbound fetching or threading)
 import logging
 import base64
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 
 from core.services.config import get_graph_config
 from core.services.exceptions import ServiceNotConfigured, ServiceDisabled, ServiceError
 from .client import get_client
+
+if TYPE_CHECKING:
+    from core.models import Attachment, Item, User
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +47,10 @@ def send_email(
     cc: Optional[List[str]] = None,
     bcc: Optional[List[str]] = None,
     sender: Optional[str] = None,
-    attachments: Optional[List] = None,  # List[Attachment]
-    item = None,  # Item | None
-    author = None,  # User | None
-    visibility: str = "Internal",  # ItemComment.visibility
+    attachments: Optional[List["Attachment"]] = None,
+    item: Optional["Item"] = None,
+    author: Optional["User"] = None,
+    visibility: str = "Internal",
     client_ip: Optional[str] = None,
 ) -> GraphSendResult:
     """
