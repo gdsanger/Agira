@@ -71,7 +71,10 @@ def item_classify(request, item_id):
     action = request.POST.get('action')
     
     if not action:
-        return HttpResponse("Missing action parameter", status=400)
+        return HttpResponse(
+            "Missing 'action' parameter. Valid actions: 'backlog', 'start'", 
+            status=400
+        )
     
     try:
         # Use workflow guard to transition

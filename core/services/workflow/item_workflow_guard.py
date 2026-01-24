@@ -70,7 +70,7 @@ class ItemWorkflowGuard:
         
         # Validate target status is a valid choice
         if to_status not in dict(ItemStatus.choices):
-            raise ValidationError(_(f"Invalid status: {to_status}"))
+            raise ValidationError(_("Invalid status: %(status)s") % {'status': to_status})
         
         # Check if already in target status
         if from_status == to_status:
@@ -138,7 +138,12 @@ class ItemWorkflowGuard:
         }
         
         if action not in action_map:
-            raise ValidationError(_(f"Invalid action: {action}. Must be one of: {', '.join(action_map.keys())}"))
+            raise ValidationError(
+                _("Invalid action: %(action)s. Must be one of: %(valid_actions)s") % {
+                    'action': action,
+                    'valid_actions': ', '.join(action_map.keys())
+                }
+            )
         
         target_status = action_map[action]
         
@@ -159,7 +164,11 @@ class ItemWorkflowGuard:
         allowed_transitions = self.VALID_TRANSITIONS.get(from_status, [])
         
         if to_status not in allowed_transitions:
+            allowed_str = ', '.join(allowed_transitions) if allowed_transitions else 'None'
             raise ValidationError(
-                _(f"Invalid transition: {from_status} → {to_status}. "
-                  f"Allowed: {', '.join(allowed_transitions) or 'None'}")
+                _("Invalid transition: %(from_status)s → %(to_status)s. Allowed: %(allowed)s") % {
+                    'from_status': from_status,
+                    'to_status': to_status,
+                    'allowed': allowed_str
+                }
             )
