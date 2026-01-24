@@ -1,0 +1,55 @@
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">GitHub Integration</h5>
+    </div>
+    <div class="card-body">
+        {% if external_mappings %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Number</th>
+                            <th>State</th>
+                            <th>URL</th>
+                            <th>Last Synced</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mapping in external_mappings %}
+                        <tr>
+                            <td>
+                                <span class="badge {% if mapping.kind == 'Issue' %}bg-warning{% else %}bg-success{% endif %}">
+                                    {{ mapping.get_kind_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <strong>#{{ mapping.number }}</strong>
+                            </td>
+                            <td>
+                                <span class="badge {% if mapping.state == 'open' %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ mapping.state }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{{ mapping.html_url }}" target="_blank" rel="noopener noreferrer">
+                                    View on GitHub →
+                                </a>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{ mapping.last_synced_at|date:"Y-m-d H:i" }}</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center text-muted py-4">
+                <div class="mb-2">🔗</div>
+                <div>No GitHub mappings</div>
+                <small>This item is not linked to any GitHub issues or pull requests</small>
+            </div>
+        {% endif %}
+    </div>
+</div>

@@ -30,7 +30,9 @@
                     <small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small>
                 </td>
                 <td>
-                    <strong>{{ item.title }}</strong>
+                    <a href="{% url 'item-detail' item.id %}">
+                        <strong>{{ item.title }}</strong>
+                    </a>
                 </td>
                 <td>
                     <span class="badge bg-secondary">{{ item.type.name }}</span>

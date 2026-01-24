@@ -1,0 +1,81 @@
+{% load agira_filters %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Attachments</h5>
+    </div>
+    <div class="card-body">
+        <!-- Upload Form -->
+        <form 
+            hx-post="{% url 'item-upload-attachment' item.id %}" 
+            hx-encoding="multipart/form-data"
+            hx-swap="innerHTML"
+            hx-target="#attachments"
+            class="mb-4">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="attachment-file" class="form-label">Upload File</label>
+                <input 
+                    type="file" 
+                    class="form-control" 
+                    id="attachment-file" 
+                    name="file" 
+                    required>
+                <div class="form-text">Maximum file size: 25 MB</div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                📎 Upload Attachment
+            </button>
+        </form>
+        
+        <hr>
+        
+        <!-- Attachments List -->
+        <div id="attachments-list">
+            {% if attachments %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Size</th>
+                                <th>Uploaded</th>
+                                <th>Uploaded By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for attachment in attachments %}
+                            <tr>
+                                <td>
+                                    <strong>{{ attachment.original_name }}</strong>
+                                    {% if attachment.content_type %}
+                                        <br><small class="text-muted">{{ attachment.content_type }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ attachment.size_bytes|filesize }}
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ attachment.created_at|date:"Y-m-d H:i" }}</small>
+                                </td>
+                                <td>
+                                    {% if attachment.created_by %}
+                                        {{ attachment.created_by.name }}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-4">
+                    <div class="mb-2">📎</div>
+                    <div>No attachments yet</div>
+                    <small>Upload a file to get started!</small>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
