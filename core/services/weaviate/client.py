@@ -53,7 +53,7 @@ def get_client() -> weaviate.WeaviateClient:
     
     # Extract host and port
     http_secure = parsed.scheme == "https"
-    http_host = parsed.hostname or parsed.netloc
+    http_host = parsed.hostname or 'localhost'
     http_port = parsed.port or (443 if http_secure else 80)
     
     # Build client with optional authentication

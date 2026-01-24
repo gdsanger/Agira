@@ -137,11 +137,18 @@ def upsert_document(
             properties["url"] = url
         
         # Upsert using deterministic UUID
-        # This will insert if not exists, or update if exists
-        collection.data.insert(
-            properties=properties,
-            uuid=obj_uuid,
-        )
+        # Weaviate v4: Use replace() to update if exists, insert if not
+        try:
+            collection.data.replace(
+                properties=properties,
+                uuid=obj_uuid,
+            )
+        except Exception:
+            # If replace fails (object doesn't exist), insert it
+            collection.data.insert(
+                properties=properties,
+                uuid=obj_uuid,
+            )
         
         logger.debug(
             f"Upserted document: {source_type}:{source_id_str} -> {obj_uuid}"
@@ -280,7 +287,8 @@ def query(
                 "title": props.get("title"),
                 "text_preview": text_preview,
                 "url": props.get("url"),
-                "score": obj.metadata.distance if hasattr(obj.metadata, 'distance') else None,
+                # In Weaviate v4, distance is available in metadata for vector searches
+                "score": getattr(obj.metadata, 'distance', None),
             }
             results.append(result)
         

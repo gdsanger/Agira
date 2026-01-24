@@ -423,7 +423,7 @@ batch_upsert([
 **Problem:** Schema creation fails
 
 **Solutions:**
-- Verify Weaviate version compatibility (v4.x required)
+- Verify Weaviate server and client compatibility (Weaviate Python client v4.x required)
 - Check Weaviate logs for errors
 - Ensure sufficient permissions
 
@@ -465,9 +465,11 @@ API keys are stored encrypted in the database using `django-encrypted-model-fiel
 
 ## Dependencies
 
-- **weaviate-client** (v4.x): Python client for Weaviate
+- **weaviate-client** (v4.x): Python client library for Weaviate (compatible with Weaviate server v1.23+)
 - **Django** (v5.x): Web framework
 - **django-encrypted-model-fields**: For secure API key storage
+
+**Note:** The Weaviate Python client v4.x works with Weaviate server versions 1.23 and higher. Ensure your Weaviate server version is compatible.
 
 ## References
 
