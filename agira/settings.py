@@ -154,3 +154,16 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Field encryption key for encrypted fields
 # In production, this should be a long random string stored securely
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', 'D_GzCwyVvkyI1o5qUh9rle_JPKAghlTxDGTfC3RRmB4=')
+
+# Cache configuration
+# Using LocMemCache for simplicity and performance
+# In production, consider Redis or Memcached for multi-server deployments
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'agira-cache',
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        }
+    }
+}
