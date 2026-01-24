@@ -17,6 +17,7 @@ from .models import (
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+from .services.agents import AgentService
 
 # Supported OpenAI models for filtering
 OPENAI_PREFERRED_MODELS = {
@@ -1464,3 +1465,191 @@ def ai_model_delete(request, provider_id, model_id):
         
     except Exception as e:
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
+
+
+# ==================== Agent Views ====================
+
+def agents(request):
+    """Agent list page view."""
+    agent_service = AgentService()
+    agents_list = agent_service.list_agents()
+    
+    # Server-side search filter
+    q = request.GET.get('q', '')
+    if q:
+        agents_list = [a for a in agents_list if q.lower() in a.get('name', '').lower() or q.lower() in a.get('description', '').lower()]
+    
+    # Filter by provider
+    provider_filter = request.GET.get('provider', '')
+    if provider_filter:
+        agents_list = [a for a in agents_list if a.get('provider', '').lower() == provider_filter.lower()]
+    
+    # Get unique providers for filter dropdown
+    providers = sorted(list(set(a.get('provider', 'openai') for a in agent_service.list_agents())))
+    
+    context = {
+        'agents': agents_list,
+        'search_query': q,
+        'providers': providers,
+        'selected_provider': provider_filter,
+    }
+    return render(request, 'agents.html', context)
+
+
+def agent_detail(request, filename):
+    """Agent detail/edit page view."""
+    agent_service = AgentService()
+    agent = agent_service.get_agent(filename)
+    
+    if not agent:
+        return HttpResponse("Agent not found", status=404)
+    
+    context = {
+        'agent': agent,
+        'is_new': False,
+    }
+    return render(request, 'agent_detail.html', context)
+
+
+def agent_create(request):
+    """Agent create page view."""
+    context = {
+        'agent': {
+            'name': '',
+            'description': '',
+            'provider': 'openai',
+            'model': 'gpt-3.5-turbo',
+            'role': '',
+            'task': '',
+            'parameters': {},
+        },
+        'is_new': True,
+    }
+    return render(request, 'agent_detail.html', context)
+
+
+@require_http_methods(["POST"])
+def agent_save(request, filename=None):
+    """Save agent (create or update)."""
+    agent_service = AgentService()
+    
+    try:
+        # Get form data
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        provider = request.POST.get('provider', 'openai').strip()
+        model = request.POST.get('model', 'gpt-3.5-turbo').strip()
+        role = request.POST.get('role', '').strip()
+        task = request.POST.get('task', '').strip()
+        
+        # Validate required fields
+        if not name:
+            return HttpResponse("Agent name is required", status=400)
+        
+        # Build agent data
+        agent_data = {
+            'name': name,
+            'description': description,
+            'provider': provider,
+            'model': model,
+            'role': role,
+            'task': task,
+        }
+        
+        # Parse parameters from form (key1, value1, key2, value2, etc.)
+        parameters = {}
+        param_keys = request.POST.getlist('param_key[]')
+        param_types = request.POST.getlist('param_type[]')
+        param_descriptions = request.POST.getlist('param_description[]')
+        param_required = request.POST.getlist('param_required[]')
+        
+        for i, key in enumerate(param_keys):
+            if key.strip():
+                param_def = {}
+                if i < len(param_types) and param_types[i]:
+                    param_def['type'] = param_types[i]
+                if i < len(param_descriptions) and param_descriptions[i]:
+                    param_def['description'] = param_descriptions[i]
+                if i < len(param_required) and param_required[i] == 'true':
+                    param_def['required'] = True
+                else:
+                    param_def['required'] = False
+                    
+                parameters[key] = param_def
+        
+        if parameters:
+            agent_data['parameters'] = parameters
+        
+        # Determine filename
+        if not filename:
+            # Creating new agent - generate filename from name
+            safe_name = name.lower().replace(' ', '-').replace('_', '-')
+            # Remove any non-alphanumeric characters except hyphens
+            safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '-')
+            filename = f"{safe_name}.yml"
+        
+        # Save agent
+        agent_service.save_agent(filename, agent_data)
+        
+        # Redirect to detail view
+        return redirect('agent-detail', filename=filename)
+        
+    except Exception as e:
+        return HttpResponse(f"Error saving agent: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def agent_delete(request, filename):
+    """Delete an agent."""
+    agent_service = AgentService()
+    
+    try:
+        success = agent_service.delete_agent(filename)
+        if not success:
+            return HttpResponse("Agent not found", status=404)
+        
+        # Redirect to agent list
+        return redirect('agents')
+        
+    except Exception as e:
+        return HttpResponse(f"Error deleting agent: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def agent_test(request, filename):
+    """Test an agent with input text."""
+    agent_service = AgentService()
+    
+    try:
+        # Get input text and parameters from request
+        input_text = request.POST.get('input_text', '').strip()
+        
+        if not input_text:
+            return JsonResponse({'error': 'Input text is required'}, status=400)
+        
+        # Parse parameters if provided
+        parameters = {}
+        param_keys = request.POST.getlist('test_param_key[]')
+        param_values = request.POST.getlist('test_param_value[]')
+        
+        for i, key in enumerate(param_keys):
+            if key.strip() and i < len(param_values):
+                parameters[key] = param_values[i]
+        
+        # Get user and client IP
+        user = request.user if request.user.is_authenticated else None
+        client_ip = request.META.get('REMOTE_ADDR')
+        
+        # Execute agent
+        result = agent_service.execute_agent(
+            filename=filename,
+            input_text=input_text,
+            user=user,
+            client_ip=client_ip,
+            parameters=parameters if parameters else None
+        )
+        
+        return JsonResponse({'result': result})
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)

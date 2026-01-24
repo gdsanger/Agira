@@ -58,4 +58,13 @@ urlpatterns = [
     path('ai-providers/<int:provider_id>/models/add/', views.ai_model_create, name='ai-model-create'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/update/', views.ai_model_update, name='ai-model-update'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/delete/', views.ai_model_delete, name='ai-model-delete'),
+    
+    # Agent URLs
+    path('agents/', views.agents, name='agents'),
+    path('agents/new/', views.agent_create, name='agent-create'),
+    path('agents/<str:filename>/', views.agent_detail, name='agent-detail'),
+    path('agents/<str:filename>/save/', views.agent_save, name='agent-save'),
+    path('agents/create/save/', views.agent_save, name='agent-create-save'),
+    path('agents/<str:filename>/delete/', views.agent_delete, name='agent-delete'),
+    path('agents/<str:filename>/test/', views.agent_test, name='agent-test'),
 ]

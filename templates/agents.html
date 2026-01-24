@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}AI Agents - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>AI Agents</h1>
+            <p class="text-muted">Manage and execute AI agent configurations</p>
+        </div>
+        <a href="{% url 'agent-create' %}" class="btn btn-primary">
+            + New Agent
+        </a>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'agents' %}" class="row g-3">
+        <div class="col-md-4">
+            <input type="text" name="q" class="form-control" placeholder="Search agents..." value="{{ search_query }}">
+        </div>
+        <div class="col-md-3">
+            <select name="provider" class="form-select">
+                <option value="">All Providers</option>
+                {% for provider in providers %}
+                <option value="{{ provider }}" {% if selected_provider == provider %}selected{% endif %}>
+                    {{ provider|title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            {% if search_query or selected_provider %}
+            <a href="{% url 'agents' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Agents Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Provider</th>
+                        <th>Model</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for agent in agents %}
+                    <tr style="cursor: pointer;" onclick="window.location='{% url 'agent-detail' agent.filename %}'">
+                        <td>
+                            <strong>{{ agent.name }}</strong>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ agent.description|truncatewords:15 }}</small>
+                        </td>
+                        <td>
+                            {% if agent.provider == 'openai' %}
+                            <span class="badge bg-success">OpenAI</span>
+                            {% elif agent.provider == 'gemini' %}
+                            <span class="badge bg-info">Gemini</span>
+                            {% elif agent.provider == 'claude' %}
+                            <span class="badge bg-warning">Claude</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ agent.provider|title }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ agent.model }}</small>
+                        </td>
+                        <td onclick="event.stopPropagation();">
+                            <a href="{% url 'agent-detail' agent.filename %}" class="btn btn-sm btn-outline-primary">
+                                Edit
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-success" 
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#testModal"
+                                    data-agent-filename="{{ agent.filename }}"
+                                    data-agent-name="{{ agent.name }}">
+                                Test
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            {% if search_query or selected_provider %}
+                            No agents found matching the current filters.
+                            {% else %}
+                            No AI agents configured yet. Create one to get started.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Test Agent Modal -->
+<div class="modal fade" id="testModal" tabindex="-1" aria-labelledby="testModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="testModalLabel">Test Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testForm">
+                    <input type="hidden" id="testAgentFilename" name="filename">
+                    
+                    <div class="mb-3">
+                        <label for="testInput" class="form-label">Input Text</label>
+                        <textarea class="form-control" id="testInput" name="input_text" rows="5" required></textarea>
+                    </div>
+                    
+                    <div id="testParametersSection" class="mb-3" style="display: none;">
+                        <label class="form-label">Parameters (optional)</label>
+                        <div id="testParametersContainer"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <button type="submit" class="btn btn-primary" id="testSubmitBtn">
+                            <span class="spinner-border spinner-border-sm d-none" id="testSpinner"></span>
+                            Execute Agent
+                        </button>
+                    </div>
+                    
+                    <div id="testResultSection" style="display: none;">
+                        <hr>
+                        <h6>Result:</h6>
+                        <div class="card">
+                            <div class="card-body">
+                                <pre id="testResult" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="testErrorSection" style="display: none;">
+                        <hr>
+                        <div class="alert alert-danger" id="testError"></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Handle test modal
+    const testModal = document.getElementById('testModal');
+    testModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const filename = button.getAttribute('data-agent-filename');
+        const agentName = button.getAttribute('data-agent-name');
+        
+        // Set modal title and hidden filename
+        document.getElementById('testModalLabel').textContent = 'Test Agent: ' + agentName;
+        document.getElementById('testAgentFilename').value = filename;
+        
+        // Clear form
+        document.getElementById('testInput').value = '';
+        document.getElementById('testResultSection').style.display = 'none';
+        document.getElementById('testErrorSection').style.display = 'none';
+        document.getElementById('testResult').textContent = '';
+        document.getElementById('testError').textContent = '';
+    });
+    
+    // Handle test form submission
+    document.getElementById('testForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const filename = document.getElementById('testAgentFilename').value;
+        const inputText = document.getElementById('testInput').value;
+        const submitBtn = document.getElementById('testSubmitBtn');
+        const spinner = document.getElementById('testSpinner');
+        
+        // Show spinner
+        spinner.classList.remove('d-none');
+        submitBtn.disabled = true;
+        
+        // Hide previous results
+        document.getElementById('testResultSection').style.display = 'none';
+        document.getElementById('testErrorSection').style.display = 'none';
+        
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('input_text', inputText);
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+        // Submit test request
+        fetch(`/agents/${filename}/test/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('testError').textContent = data.error;
+                document.getElementById('testErrorSection').style.display = 'block';
+            } else {
+                document.getElementById('testResult').textContent = data.result;
+                document.getElementById('testResultSection').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            document.getElementById('testError').textContent = 'Error: ' + error.message;
+            document.getElementById('testErrorSection').style.display = 'block';
+        })
+        .finally(() => {
+            spinner.classList.add('d-none');
+            submitBtn.disabled = false;
+        });
+    });
+</script>
+{% endblock %}
