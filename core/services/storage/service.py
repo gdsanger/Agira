@@ -18,6 +18,10 @@ from .errors import AttachmentTooLarge, AttachmentNotFound, AttachmentWriteError
 from .paths import build_attachment_path, get_absolute_path, sanitize_filename
 
 
+# Configuration constants
+FILE_CHUNK_SIZE = 8192  # Size in bytes for reading/writing file chunks
+
+
 class AttachmentStorageService:
     """
     Service for managing attachment storage and linking.
@@ -51,8 +55,7 @@ class AttachmentStorageService:
         file_hash = hashlib.sha256()
         
         # Read in chunks to handle large files
-        chunk_size = 8192
-        while chunk := file_obj.read(chunk_size):
+        while chunk := file_obj.read(FILE_CHUNK_SIZE):
             file_hash.update(chunk)
         
         file_obj.seek(0)
@@ -172,8 +175,7 @@ class AttachmentStorageService:
             with open(absolute_path, 'wb') as dest:
                 file.seek(0)
                 # Write in chunks
-                chunk_size = 8192
-                while chunk := file.read(chunk_size):
+                while chunk := file.read(FILE_CHUNK_SIZE):
                     dest.write(chunk)
         except Exception as e:
             # Clean up attachment record if write fails

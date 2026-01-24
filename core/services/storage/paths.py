@@ -7,6 +7,9 @@ import re
 from pathlib import Path
 from typing import Union
 
+# Configuration constants
+MAX_FILENAME_LENGTH = 100  # Maximum length for sanitized filename (excluding extension)
+
 
 def sanitize_filename(filename: str) -> str:
     """
@@ -41,9 +44,8 @@ def sanitize_filename(filename: str) -> str:
         name = "file"
     
     # Limit length (leave room for attachment_id prefix and extension)
-    max_name_length = 100
-    if len(name) > max_name_length:
-        name = name[:max_name_length]
+    if len(name) > MAX_FILENAME_LENGTH:
+        name = name[:MAX_FILENAME_LENGTH]
     
     return f"{name}{ext}"
 
