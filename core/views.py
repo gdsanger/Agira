@@ -3,7 +3,10 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
-from .models import Project, Item, ItemStatus, Organisation, ItemType, Node, Release
+from .models import (
+    Project, Item, ItemStatus, Organisation, ItemType, Node, Release,
+    ProjectStatus, NodeType, ReleaseStatus
+)
 from .services.workflow import ItemWorkflowGuard
 
 def home(request):
@@ -44,7 +47,6 @@ def projects(request):
     
     # Get all organisations and statuses for filter dropdowns
     organisations = Organisation.objects.all().order_by('name')
-    from .models import ProjectStatus
     statuses = ProjectStatus.choices
     
     context = {
@@ -68,7 +70,6 @@ def project_detail(request, id):
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
     # Get node types for adding new nodes
-    from .models import NodeType
     node_types = NodeType.choices
     
     context = {
@@ -391,7 +392,6 @@ def project_add_release(request, id):
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
         
-        from .models import ReleaseStatus
         release = Release.objects.create(
             project=project,
             name=name,
