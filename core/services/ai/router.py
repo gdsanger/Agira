@@ -3,7 +3,7 @@ AI Router - Main entry point for AI services in Agira.
 """
 
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from django.utils import timezone
 
 from core.models import AIProvider, AIModel, AIJobsHistory, User
@@ -65,7 +65,7 @@ class AIRouter:
         self,
         provider_type: Optional[str] = None,
         model_id: Optional[str] = None
-    ) -> tuple[AIProvider, AIModel]:
+    ) -> Tuple[AIProvider, AIModel]:
         """
         Select provider and model based on parameters or defaults.
         
@@ -189,7 +189,7 @@ class AIRouter:
         input_tokens: Optional[int],
         output_tokens: Optional[int],
         duration_ms: int,
-        error_message: str = ""
+        error_message: Optional[str] = None
     ) -> None:
         """
         Update job with completion data.
