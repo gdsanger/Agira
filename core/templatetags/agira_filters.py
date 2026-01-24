@@ -1,7 +1,33 @@
 """Custom template filters for Agira."""
 from django import template
+from django.utils.safestring import mark_safe
+import markdown
+import bleach
 
 register = template.Library()
+
+# Create markdown parser once at module level for better performance
+MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
+
+# Allowed HTML tags and attributes for sanitization
+ALLOWED_TAGS = [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'strong', 'em', 'u', 'strike',
+    'ul', 'ol', 'li',
+    'blockquote', 'code', 'pre',
+    'a', 'img',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'
+]
+
+ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+    'code': ['class'],
+    'pre': ['class'],
+    'div': ['class'],
+    'span': ['class'],
+}
 
 
 @register.filter
@@ -28,3 +54,35 @@ def filesize(bytes_value):
         return f"{bytes_value / 1048576:.1f} MB"
     else:
         return f"{bytes_value / 1073741824:.1f} GB"
+
+
+@register.filter
+def render_markdown(text):
+    """
+    Render Markdown text to HTML with sanitization.
+    
+    Args:
+        text: Markdown-formatted text
+        
+    Returns:
+        Safe HTML string
+    """
+    if not text:
+        return ""
+    
+    # Reset parser state for clean conversion
+    MARKDOWN_PARSER.reset()
+    
+    # Convert markdown to HTML
+    html = MARKDOWN_PARSER.convert(text)
+    
+    # Sanitize HTML to prevent XSS attacks
+    sanitized_html = bleach.clean(
+        html,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True
+    )
+    
+    return mark_safe(sanitized_html)
+

@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}{% if item %}Edit {{ item.title }}{% else %}New Item{% endif %} - Agira{% endblock %}
+
+{% block extra_head %}
+<!-- ToastUI Editor CSS -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        {% if item %}
+        <li class="breadcrumb-item"><a href="{% url 'item-detail' item.id %}">{{ item.title }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Item</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>{% if item %}Edit Item{% else %}Create New Item{% endif %}</h1>
+    <p class="text-muted">{% if item %}Update item details{% else %}Add a new item to Agira{% endif %}</p>
+</div>
+
+<!-- Form Container with 2-Column Layout -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content -->
+    <div class="detail-main">
+        <form id="itemForm" 
+              hx-post="{% if item %}{% url 'item-update' item.id %}{% else %}{% url 'item-create' %}{% endif %}"
+              hx-swap="none"
+              hx-on::after-request="handleFormResponse(event)">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Basic Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="title" 
+                               name="title" 
+                               value="{% if item %}{{ item.title }}{% endif %}"
+                               required
+                               maxlength="500">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="project" class="form-label">Project <span class="text-danger">*</span></label>
+                            <select class="form-select" id="project" name="project" required>
+                                <option value="">Select project...</option>
+                                {% for proj in projects %}
+                                <option value="{{ proj.id }}" 
+                                        {% if item and item.project.id == proj.id %}selected{% endif %}>
+                                    {{ proj.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="type" name="type" required>
+                                <option value="">Select type...</option>
+                                {% for item_type in item_types %}
+                                <option value="{{ item_type.id }}" 
+                                        {% if item and item.type.id == item_type.id %}selected{% endif %}>
+                                    {{ item_type.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="parent" class="form-label">Parent Item</label>
+                            <select class="form-select" id="parent" name="parent">
+                                <option value="">None</option>
+                                {% if item %}
+                                    {% for parent_item in parent_items %}
+                                    <option value="{{ parent_item.id }}" 
+                                            {% if item.parent and item.parent.id == parent_item.id %}selected{% endif %}>
+                                        {{ parent_item.title }}
+                                    </option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Description with Markdown Editor -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Description</h5>
+                </div>
+                <div class="card-body">
+                    <div id="description-editor"></div>
+                    <input type="hidden" id="description" name="description">
+                </div>
+            </div>
+            
+            <!-- Solution Description with Markdown Editor -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Solution Description</h5>
+                </div>
+                <div class="card-body">
+                    <div id="solution-editor"></div>
+                    <input type="hidden" id="solution_description" name="solution_description">
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    {% if item %}Update Item{% else %}Create Item{% endif %}
+                </button>
+                <a href="{% if item %}{% url 'item-detail' item.id %}{% else %}{% url 'dashboard' %}{% endif %}" 
+                   class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Sidebar -->
+    <div class="detail-sidebar">
+        <!-- Status -->
+        <div class="project-info-card">
+            <div class="project-info-label">Status</div>
+            <select class="form-select" id="status" name="status" form="itemForm">
+                {% for status_value, status_label in statuses %}
+                <option value="{{ status_value }}" 
+                        {% if item and item.status == status_value %}selected{% endif %}
+                        {% if not item and status_value == 'Inbox' %}selected{% endif %}>
+                    {{ status_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Organisation -->
+        <div class="project-info-card">
+            <div class="project-info-label">Organisation</div>
+            <select class="form-select" id="organisation" name="organisation" form="itemForm">
+                <option value="">None</option>
+                {% for org in organisations %}
+                <option value="{{ org.id }}" 
+                        {% if item and item.organisation and item.organisation.id == org.id %}selected{% endif %}>
+                    {{ org.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Requester -->
+        <div class="project-info-card">
+            <div class="project-info-label">Requester</div>
+            <select class="form-select" id="requester" name="requester" form="itemForm">
+                <option value="">None</option>
+                {% for user in users %}
+                <option value="{{ user.id }}" 
+                        {% if item and item.requester and item.requester.id == user.id %}selected{% endif %}>
+                    {{ user.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Assigned To -->
+        <div class="project-info-card">
+            <div class="project-info-label">Assigned To</div>
+            <select class="form-select" id="assigned_to" name="assigned_to" form="itemForm">
+                <option value="">None</option>
+                {% for user in users %}
+                <option value="{{ user.id }}" 
+                        {% if item and item.assigned_to and item.assigned_to.id == user.id %}selected{% endif %}>
+                    {{ user.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Solution Release -->
+        {% if item %}
+        <div class="project-info-card">
+            <div class="project-info-label">Solution Release</div>
+            <select class="form-select" id="solution_release" name="solution_release" form="itemForm">
+                <option value="">None</option>
+                {% for release in releases %}
+                <option value="{{ release.id }}" 
+                        {% if item.solution_release and item.solution_release.id == release.id %}selected{% endif %}>
+                    {{ release.version }} - {{ release.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        
+        <!-- Help Text -->
+        <div class="project-info-card">
+            <div class="project-info-label">Help</div>
+            <div class="project-info-value">
+                <ul class="list-unstyled small text-muted mb-0">
+                    <li class="mb-2">• Use Markdown for rich formatting in descriptions</li>
+                    <li class="mb-2">• Required fields are marked with *</li>
+                    <li>• All fields can be updated later</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ToastUI Editor JS -->
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+
+<script>
+// Initialize ToastUI Editor for Description
+const descriptionEditor = new toastui.Editor({
+    el: document.querySelector('#description-editor'),
+    height: '400px',
+    initialEditType: 'markdown',
+    previewStyle: 'vertical',
+    {% if item and item.description %}
+    initialValue: '{{ item.description|escapejs }}',
+    {% else %}
+    initialValue: '',
+    {% endif %}
+    theme: 'dark'
+});
+
+// Initialize ToastUI Editor for Solution Description
+const solutionEditor = new toastui.Editor({
+    el: document.querySelector('#solution-editor'),
+    height: '400px',
+    initialEditType: 'markdown',
+    previewStyle: 'vertical',
+    {% if item and item.solution_description %}
+    initialValue: '{{ item.solution_description|escapejs }}',
+    {% else %}
+    initialValue: '',
+    {% endif %}
+    theme: 'dark'
+});
+
+// Sync editor content to hidden fields on form submit
+document.getElementById('itemForm').addEventListener('submit', function() {
+    document.getElementById('description').value = descriptionEditor.getMarkdown();
+    document.getElementById('solution_description').value = solutionEditor.getMarkdown();
+});
+
+// Handle form response
+function handleFormResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200 || xhr.status === 201) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message || 'Item saved successfully');
+                
+                // Redirect after a short delay
+                setTimeout(() => {
+                    if (response.redirect) {
+                        window.location.href = response.redirect;
+                    } else if (response.item_id) {
+                        window.location.href = `/items/${response.item_id}/`;
+                    }
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Failed to save item');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Error', response.error || 'Failed to save item');
+        } catch (e) {
+            showToast('error', 'Error', 'Failed to save item');
+        }
+    }
+}
+
+// Toast notification function
+function showToast(type, title, message) {
+    // Remove existing toasts
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(t => {
+        const bsToast = bootstrap.Toast.getInstance(t);
+        if (bsToast) bsToast.hide();
+    });
+    
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toastEl = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+    toastEl.className = `toast align-items-center text-white ${bgClass} border-0`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <strong>${title}:</strong> ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+    
+    container.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 5000 });
+    toast.show();
+    
+    // Remove from DOM after hidden
+    toastEl.addEventListener('hidden.bs.toast', () => {
+        toastEl.remove();
+    });
+}
+</script>
+{% endblock %}
