@@ -164,3 +164,40 @@ class BaseIntegration:
             )
         
         return config
+    
+    # Backward compatibility methods
+    def is_enabled(self) -> bool:
+        """
+        Check if integration is enabled (backward compatibility).
+        
+        Use enabled() instead.
+        """
+        return self.enabled()
+    
+    def is_configured(self) -> bool:
+        """
+        Check if integration is configured (backward compatibility).
+        
+        Returns:
+            True if config exists and is complete, False otherwise
+        """
+        config = self.get_config()
+        if config is None:
+            return False
+        return self._is_config_complete(config)
+    
+    def _check_availability(self) -> None:
+        """
+        Check availability (backward compatibility).
+        
+        Use require_enabled() or require_config() instead.
+        """
+        self.require_enabled()
+        if not self.is_configured():
+            raise IntegrationNotConfigured(
+                f"{self.name} integration is enabled but not properly configured"
+            )
+
+
+# Backward compatibility alias
+IntegrationBase = BaseIntegration

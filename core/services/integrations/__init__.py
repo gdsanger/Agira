@@ -21,7 +21,7 @@ from .errors import (
     IntegrationTemporaryError,
     IntegrationPermanentError,
 )
-from .base import BaseIntegration
+from .base import BaseIntegration, IntegrationBase
 from .http import HTTPClient
 
 __all__ = [
@@ -35,5 +35,6 @@ __all__ = [
     'IntegrationPermanentError',
     # Classes
     'BaseIntegration',
+    'IntegrationBase',  # Backward compatibility
     'HTTPClient',
 ]
