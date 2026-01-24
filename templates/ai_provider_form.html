@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{% if provider %}Edit{% else %}New{% endif %} AI Provider - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{% if provider %}Edit{% else %}New{% endif %} AI Provider</h1>
+    <p class="text-muted">Configure AI provider settings</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form hx-post="{% if provider %}{% url 'ai-provider-update' provider.id %}{% else %}{% url 'ai-provider-create' %}{% endif %}" hx-target="body">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{% if provider %}{{ provider.name }}{% endif %}" required>
+                        <div class="form-text">A friendly name for this provider</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="provider_type" class="form-label">Provider Type *</label>
+                        <select class="form-select" id="provider_type" name="provider_type" required>
+                            <option value="">Select provider type...</option>
+                            {% for type_value, type_label in provider_types %}
+                            <option value="{{ type_value }}" {% if provider and provider.provider_type == type_value %}selected{% endif %}>
+                                {{ type_label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="api_key" class="form-label">API Key *</label>
+                        <input type="password" class="form-control" id="api_key" name="api_key" {% if not provider %}required{% endif %} placeholder="{% if provider %}Leave empty to keep current{% else %}Enter API key{% endif %}">
+                        <div class="form-text">The API key will be encrypted in the database</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="organization_id" class="form-label">Organization ID</label>
+                        <input type="text" class="form-control" id="organization_id" name="organization_id" value="{% if provider %}{{ provider.organization_id }}{% endif %}">
+                        <div class="form-text">Optional: For OpenAI organization</div>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="active" name="active" {% if not provider or provider.active %}checked{% endif %}>
+                        <label class="form-check-label" for="active">
+                            Active
+                        </label>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            {% if provider %}Update{% else %}Create{% endif %} Provider
+                        </button>
+                        <a href="{% if provider %}{% url 'ai-provider-detail' provider.id %}{% else %}{% url 'ai-providers' %}{% endif %}" class="btn btn-secondary">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

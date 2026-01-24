@@ -30,4 +30,16 @@ urlpatterns = [
     path('items/<int:item_id>/tabs/activity/', views.item_activity_tab, name='item-activity-tab'),
     path('items/<int:item_id>/tabs/github/', views.item_github_tab, name='item-github-tab'),
     path('changes/', views.changes, name='changes'),
+    
+    # AI Provider URLs
+    path('ai-providers/', views.ai_providers, name='ai-providers'),
+    path('ai-providers/new/', views.ai_provider_create, name='ai-provider-create'),
+    path('ai-providers/<int:id>/', views.ai_provider_detail, name='ai-provider-detail'),
+    path('ai-providers/<int:id>/update/', views.ai_provider_update, name='ai-provider-update'),
+    path('ai-providers/<int:id>/delete/', views.ai_provider_delete, name='ai-provider-delete'),
+    path('ai-providers/<int:id>/get-api-key/', views.ai_provider_get_api_key, name='ai-provider-get-api-key'),
+    path('ai-providers/<int:id>/fetch-models/', views.ai_provider_fetch_models, name='ai-provider-fetch-models'),
+    path('ai-providers/<int:provider_id>/models/add/', views.ai_model_create, name='ai-model-create'),
+    path('ai-providers/<int:provider_id>/models/<int:model_id>/update/', views.ai_model_update, name='ai-model-update'),
+    path('ai-providers/<int:provider_id>/models/<int:model_id>/delete/', views.ai_model_delete, name='ai-model-delete'),
 ]
