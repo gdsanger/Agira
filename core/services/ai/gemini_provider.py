@@ -3,7 +3,8 @@ Google Gemini provider implementation.
 """
 
 from typing import List, Dict, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai.types import GenerateContentConfig, Content, Part
 from .base_provider import BaseProvider
 from .schemas import ProviderResponse
 
@@ -21,8 +22,8 @@ class GeminiProvider(BaseProvider):
         """
         super().__init__(api_key, **kwargs)
         
-        # Configure Gemini
-        genai.configure(api_key=self.api_key)
+        # Initialize Gemini client
+        self.client = genai.Client(api_key=self.api_key)
     
     @property
     def provider_type(self) -> str:
@@ -34,41 +35,41 @@ class GeminiProvider(BaseProvider):
         Convert OpenAI-style messages to Gemini format.
         
         Gemini uses a different conversation format:
-        - 'system' messages become part of the initial prompt
-        - 'user' and 'assistant' (model) alternate in the history
+        - 'system' messages become system_instruction
+        - 'user' and 'assistant' (model) alternate in the contents
         
         Args:
             messages: OpenAI-style messages
             
         Returns:
-            Tuple of (system_instruction, history)
+            Tuple of (system_instruction, contents)
         """
         system_instruction = None
-        history = []
+        contents = []
         
         for msg in messages:
             role = msg.get('role', '')
-            content = msg.get('content', '')
+            content_text = msg.get('content', '')
             
             if role == 'system':
                 # System messages become system instruction
                 if system_instruction is None:
-                    system_instruction = content
+                    system_instruction = content_text
                 else:
                     # Multiple system messages - append
-                    system_instruction += '\n\n' + content
+                    system_instruction += '\n\n' + content_text
             elif role == 'user':
-                history.append({
-                    'role': 'user',
-                    'parts': [content]
-                })
+                contents.append(Content(
+                    role='user',
+                    parts=[Part(text=content_text)]
+                ))
             elif role == 'assistant':
-                history.append({
-                    'role': 'model',
-                    'parts': [content]
-                })
+                contents.append(Content(
+                    role='model',
+                    parts=[Part(text=content_text)]
+                ))
         
-        return system_instruction, history
+        return system_instruction, contents
     
     def chat(
         self,
@@ -83,7 +84,7 @@ class GeminiProvider(BaseProvider):
         
         Args:
             messages: List of message dicts with 'role' and 'content'
-            model_id: Gemini model ID (e.g., 'gemini-pro')
+            model_id: Gemini model ID (e.g., 'gemini-2.0-flash-exp')
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             **kwargs: Additional Gemini parameters
@@ -92,58 +93,32 @@ class GeminiProvider(BaseProvider):
             ProviderResponse with completion text and token counts (if available)
         """
         # Convert messages to Gemini format
-        system_instruction, history = self._convert_messages_to_gemini(messages)
+        system_instruction, contents = self._convert_messages_to_gemini(messages)
         
         # Build generation config
-        generation_config = {}
+        config_kwargs = {}
         if temperature is not None:
-            generation_config['temperature'] = temperature
+            config_kwargs['temperature'] = temperature
         if max_tokens is not None:
-            generation_config['max_output_tokens'] = max_tokens
+            config_kwargs['max_output_tokens'] = max_tokens
         
-        # Create model instance with system instruction if provided
-        model_kwargs = {}
-        if system_instruction:
-            model_kwargs['system_instruction'] = system_instruction
+        config = GenerateContentConfig(**config_kwargs) if config_kwargs else None
         
-        model = genai.GenerativeModel(
-            model_name=model_id,
-            **model_kwargs
+        # Make API call
+        response = self.client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=config
         )
         
-        # Handle conversation
-        if len(history) == 0:
-            # No messages - shouldn't happen, but handle gracefully
-            response = model.generate_content(
-                "",
-                generation_config=generation_config if generation_config else None
-            )
-        elif len(history) == 1 and history[0]['role'] == 'user':
-            # Single user message - simple generation
-            response = model.generate_content(
-                history[0]['parts'][0],
-                generation_config=generation_config if generation_config else None
-            )
-        else:
-            # Multi-turn conversation - use chat
-            # For chat, we need to separate the last user message from history
-            chat_history = history[:-1] if history[-1]['role'] == 'user' else history
-            last_message = history[-1]['parts'][0] if history[-1]['role'] == 'user' else ""
-            
-            chat = model.start_chat(history=chat_history if chat_history else [])
-            response = chat.send_message(
-                last_message,
-                generation_config=generation_config if generation_config else None
-            )
-        
         # Extract text
-        text = response.text if hasattr(response, 'text') else ""
+        text = response.text if hasattr(response, 'text') and response.text else ""
         
         # Try to extract token counts (may not be available in all cases)
         input_tokens = None
         output_tokens = None
         
-        if hasattr(response, 'usage_metadata'):
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
             usage = response.usage_metadata
             if hasattr(usage, 'prompt_token_count'):
                 input_tokens = usage.prompt_token_count
