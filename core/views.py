@@ -92,11 +92,135 @@ def items_inbox(request):
 
 def items_backlog(request):
     """Items Backlog page view."""
-    return render(request, 'items_backlog.html')
+    items = Item.objects.filter(status=ItemStatus.BACKLOG).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_backlog.html', context)
 
 def items_working(request):
     """Items Working page view."""
-    return render(request, 'items_working.html')
+    items = Item.objects.filter(status=ItemStatus.WORKING).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_working.html', context)
+
+def items_testing(request):
+    """Items Testing page view."""
+    items = Item.objects.filter(status=ItemStatus.TESTING).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_testing.html', context)
+
+def items_ready(request):
+    """Items Ready for Release page view."""
+    items = Item.objects.filter(status=ItemStatus.READY_FOR_RELEASE).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_ready.html', context)
 
 def changes(request):
     """Changes page view."""
