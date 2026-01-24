@@ -124,7 +124,14 @@ def project_edit(request, id):
 
 def project_detail(request, id):
     """Project detail page view."""
-    project = get_object_or_404(Project, id=id)
+    project = get_object_or_404(
+        Project.objects.annotate(
+            inbox_count=Count('items', filter=Q(items__status=ItemStatus.INBOX)),
+            backlog_count=Count('items', filter=Q(items__status=ItemStatus.BACKLOG)),
+            working_count=Count('items', filter=Q(items__status=ItemStatus.WORKING)),
+        ),
+        id=id
+    )
     
     # Get all organisations for the client management
     all_organisations = Organisation.objects.all().order_by('name')

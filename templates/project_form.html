@@ -164,7 +164,7 @@ const editor = new toastui.Editor({
     initialEditType: 'markdown',
     previewStyle: 'vertical',
     {% if project and project.description %}
-    initialValue: {{ project.description|escapejs|safe|json_script:"initial-description" }},
+    initialValue: '{{ project.description|escapejs }}',
     {% else %}
     initialValue: '',
     {% endif %}
@@ -255,15 +255,4 @@ function showToast(type, title, message) {
     });
 }
 </script>
-
-{% if project and project.description %}
-<script id="initial-description" type="application/json">{{ project.description|escapejs }}</script>
-<script>
-    // Set initial value from JSON script tag
-    const initialDesc = document.getElementById('initial-description');
-    if (initialDesc) {
-        editor.setMarkdown(initialDesc.textContent);
-    }
-</script>
-{% endif %}
 {% endblock %}

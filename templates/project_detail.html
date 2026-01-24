@@ -110,7 +110,7 @@
                                     <span class="badge bg-secondary">{{ item.status }}</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ item.assigned_to.name|default:"—" }}</td>
+                                <td>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}—{% endif %}</td>
                                 <td>{{ item.updated_at|date:"Y-m-d H:i" }}</td>
                             </tr>
                             {% endfor %}
@@ -301,15 +301,15 @@
                 <div class="d-flex flex-column gap-2">
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">📥 Inbox</span>
-                        <span>{{ project.items.all|length }}</span>
+                        <span>{{ project.inbox_count|default:0 }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">📋 Backlog</span>
-                        <span>{{ project.items.all|length }}</span>
+                        <span>{{ project.backlog_count|default:0 }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">⚡ Working</span>
-                        <span>{{ project.items.all|length }}</span>
+                        <span>{{ project.working_count|default:0 }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">✅ Total</span>
