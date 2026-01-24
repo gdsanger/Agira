@@ -238,3 +238,131 @@ a:hover {
     margin-bottom: 1rem;
     color: var(--accent-primary);
 }
+
+/* Two Column Layout for Detail Views */
+.detail-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.detail-main {
+    min-width: 0; /* Prevents grid blowout */
+}
+
+.detail-sidebar {
+    min-width: 0;
+}
+
+@media (max-width: 992px) {
+    .detail-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: calc(var(--topbar-height) + 1rem);
+    right: 1rem;
+    z-index: 1050;
+    max-width: 350px;
+}
+
+.toast {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.toast-header {
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.toast.toast-success {
+    border-left: 4px solid var(--success);
+}
+
+.toast.toast-error {
+    border-left: 4px solid var(--danger);
+}
+
+.toast.toast-info {
+    border-left: 4px solid var(--info);
+}
+
+.toast.toast-warning {
+    border-left: 4px solid var(--warning);
+}
+
+/* Markdown Editor Styling */
+.toastui-editor-defaultUI {
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+}
+
+.toastui-editor-toolbar {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.toastui-editor-contents {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.toastui-editor-md-container,
+.toastui-editor-ww-container {
+    background-color: var(--bg-primary);
+}
+
+/* Project Info Card */
+.project-info-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.project-info-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.project-info-value {
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+/* Breadcrumbs */
+.breadcrumb {
+    background-color: transparent;
+    padding: 0;
+    margin-bottom: 1rem;
+}
+
+.breadcrumb-item {
+    color: var(--text-secondary);
+}
+
+.breadcrumb-item.active {
+    color: var(--text-primary);
+}
+
+.breadcrumb-item a {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    color: var(--accent-secondary);
+}

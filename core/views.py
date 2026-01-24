@@ -3,6 +3,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from .models import (
@@ -61,6 +62,65 @@ def projects(request):
         'selected_status': status_filter,
     }
     return render(request, 'projects.html', context)
+
+def project_create(request):
+    """Project create page view."""
+    if request.method == 'GET':
+        # Show the create form
+        statuses = ProjectStatus.choices
+        context = {
+            'project': None,
+            'statuses': statuses,
+        }
+        return render(request, 'project_form.html', context)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        project = Project.objects.create(
+            name=request.POST.get('name'),
+            description=request.POST.get('description', ''),
+            status=request.POST.get('status', ProjectStatus.NEW),
+            github_owner=request.POST.get('github_owner', ''),
+            github_repo=request.POST.get('github_repo', '')
+        )
+        return JsonResponse({
+            'success': True,
+            'message': 'Project created successfully',
+            'project_id': project.id,
+            'redirect': f'/projects/{project.id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+def project_edit(request, id):
+    """Project edit page view."""
+    project = get_object_or_404(Project, id=id)
+    
+    if request.method == 'GET':
+        # Show the edit form
+        statuses = ProjectStatus.choices
+        context = {
+            'project': project,
+            'statuses': statuses,
+        }
+        return render(request, 'project_form.html', context)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        project.name = request.POST.get('name', project.name)
+        project.description = request.POST.get('description', project.description)
+        project.status = request.POST.get('status', project.status)
+        project.github_owner = request.POST.get('github_owner', project.github_owner)
+        project.github_repo = request.POST.get('github_repo', project.github_repo)
+        project.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Project updated successfully',
+            'redirect': f'/projects/{project.id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 def project_detail(request, id):
     """Project detail page view."""
