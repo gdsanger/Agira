@@ -1300,7 +1300,7 @@ def ai_provider_get_api_key(request, id):
 
 @require_http_methods(["POST"])
 def ai_provider_fetch_models(request, id):
-    """Fetch available models from the provider API."""
+    """Fetch available models from the provider API and save them to the database."""
     provider = get_object_or_404(AIProvider, id=id)
     
     try:
@@ -1337,9 +1337,33 @@ def ai_provider_fetch_models(request, id):
                 {'name': 'Claude 3 Haiku', 'model_id': 'claude-3-haiku-20240307'},
             ]
         
+        # Save fetched models to the database
+        created_count = 0
+        existing_count = 0
+        
+        for model_data in models_data:
+            model, created = AIModel.objects.get_or_create(
+                provider=provider,
+                model_id=model_data['model_id'],
+                defaults={
+                    'name': model_data['name'],
+                    'active': True,
+                    'is_default': False,
+                    'input_price_per_1m_tokens': None,
+                    'output_price_per_1m_tokens': None,
+                }
+            )
+            if created:
+                created_count += 1
+            else:
+                existing_count += 1
+        
         return JsonResponse({
             'success': True,
-            'models': models_data
+            'models': models_data,
+            'created_count': created_count,
+            'existing_count': existing_count,
+            'total_count': len(models_data)
         })
         
     except Exception as e:

@@ -293,13 +293,18 @@
             if (data.success) {
                 resultDiv.innerHTML = `
                     <div class="alert alert-success">
-                        <strong>Found ${data.models.length} models:</strong>
+                        <strong>Found ${data.total_count} models:</strong>
                         <ul class="mb-0 mt-2">
                             ${data.models.map(m => `<li>${m.name} (${m.model_id})</li>`).join('')}
                         </ul>
+                        <hr>
+                        <small>✅ Created: ${data.created_count} | ℹ️ Already existed: ${data.existing_count}</small>
                     </div>
                 `;
-                showToast(`Found ${data.models.length} models`, 'success');
+                showToast(`Saved ${data.created_count} new models, ${data.existing_count} already existed`, 'success');
+                
+                // Refresh the models list (element with id="models-list" in the template)
+                htmx.ajax('GET', window.location.href, {target: '#models-list', select: '#models-list'});
             } else {
                 resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
                 showToast(data.error, 'error');
