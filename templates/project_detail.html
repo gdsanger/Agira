@@ -10,7 +10,7 @@
             <h1>{{ project.name }}</h1>
             <p class="text-muted">{{ project.description|default:"No description" }}</p>
         </div>
-        <div>
+        <div class="d-flex gap-2">
             {% if project.status == 'New' %}
             <span class="badge bg-info fs-5">{{ project.status }}</span>
             {% elif project.status == 'Working' %}
@@ -22,6 +22,12 @@
             {% else %}
             <span class="badge bg-secondary fs-5">{{ project.status }}</span>
             {% endif %}
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal">
+                Edit
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="deleteProject()">
+                Delete
+            </button>
         </div>
     </div>
 </div>
@@ -29,27 +35,32 @@
 <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-4" id="projectTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">
+        <button class="nav-link" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview">
             Overview
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="items-tab" data-bs-toggle="tab" data-bs-target="#items" type="button" role="tab" aria-controls="items" aria-selected="false">
+        <button class="nav-link" id="items-tab" data-bs-toggle="tab" data-bs-target="#items" type="button" role="tab" aria-controls="items">
             Items <span class="badge bg-secondary">{{ project.items.count }}</span>
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="nodes-tab" data-bs-toggle="tab" data-bs-target="#nodes" type="button" role="tab" aria-controls="nodes" aria-selected="false">
+        <button class="nav-link" id="nodes-tab" data-bs-toggle="tab" data-bs-target="#nodes" type="button" role="tab" aria-controls="nodes">
             Nodes <span class="badge bg-secondary">{{ project.nodes.count }}</span>
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="releases-tab" data-bs-toggle="tab" data-bs-target="#releases" type="button" role="tab" aria-controls="releases" aria-selected="false">
+        <button class="nav-link" id="releases-tab" data-bs-toggle="tab" data-bs-target="#releases" type="button" role="tab" aria-controls="releases">
             Releases <span class="badge bg-secondary">{{ project.releases.count }}</span>
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button" role="tab" aria-controls="activity" aria-selected="false">
+        <button class="nav-link" id="clients-tab" data-bs-toggle="tab" data-bs-target="#clients" type="button" role="tab" aria-controls="clients">
+            Clients <span class="badge bg-secondary">{{ project.clients.count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity" type="button" role="tab" aria-controls="activity">
             Activity
         </button>
     </li>
@@ -58,7 +69,7 @@
 <!-- Tab Content -->
 <div class="tab-content" id="projectTabContent">
     <!-- Overview Tab -->
-    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+    <div class="tab-pane fade" id="overview" role="tabpanel" aria-labelledby="overview-tab">
         <div class="row">
             <div class="col-md-6">
                 <div class="card mb-3">
@@ -121,29 +132,18 @@
                         </table>
                     </div>
                 </div>
-
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <h5 class="mb-0">Clients</h5>
-                    </div>
-                    <div class="card-body">
-                        {% if project.clients.count > 0 %}
-                        <ul class="list-unstyled mb-0">
-                            {% for client in project.clients.all %}
-                            <li>{{ client.name }}</li>
-                            {% endfor %}
-                        </ul>
-                        {% else %}
-                        <p class="text-muted mb-0">No clients assigned</p>
-                        {% endif %}
-                    </div>
-                </div>
             </div>
         </div>
     </div>
 
     <!-- Items Tab -->
     <div class="tab-pane fade" id="items" role="tabpanel" aria-labelledby="items-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Items</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                + Add Item
+            </button>
+        </div>
         {% if project.items.count > 0 %}
         <div class="table-responsive">
             <table class="table table-hover">
@@ -194,6 +194,12 @@
 
     <!-- Nodes Tab -->
     <div class="tab-pane fade" id="nodes" role="tabpanel" aria-labelledby="nodes-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Nodes</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addNodeModal">
+                + Add Node
+            </button>
+        </div>
         {% if project.nodes.count > 0 %}
         <div class="table-responsive">
             <table class="table table-hover">
@@ -226,6 +232,12 @@
 
     <!-- Releases Tab -->
     <div class="tab-pane fade" id="releases" role="tabpanel" aria-labelledby="releases-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Releases</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addReleaseModal">
+                + Add Release
+            </button>
+        </div>
         {% if project.releases.count > 0 %}
         <div class="table-responsive">
             <table class="table table-hover">
@@ -280,6 +292,32 @@
         {% endif %}
     </div>
 
+    <!-- Clients Tab -->
+    <div class="tab-pane fade" id="clients" role="tabpanel" aria-labelledby="clients-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Clients</h5>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addClientModal">
+                + Add Client
+            </button>
+        </div>
+        {% if project.clients.count > 0 %}
+        <div class="list-group">
+            {% for client in project.clients.all %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ client.name }}</span>
+                <button class="btn btn-sm btn-danger" onclick="removeClient({{ client.id }})">
+                    Remove
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            No clients assigned to this project yet.
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Activity Tab -->
     <div class="tab-pane fade" id="activity" role="tabpanel" aria-labelledby="activity-tab">
         <h5>Recent Changes</h5>
@@ -321,4 +359,393 @@
 <div class="mt-4">
     <a href="{% url 'projects' %}" class="btn btn-secondary">← Back to Projects</a>
 </div>
+
+<!-- Edit Project Modal -->
+<div class="modal fade" id="editProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editProjectForm">
+                    <div class="mb-3">
+                        <label for="projectName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="projectName" name="name" value="{{ project.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="projectDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="projectDescription" name="description" rows="3">{{ project.description }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="projectStatus" class="form-label">Status</label>
+                        <select class="form-select" id="projectStatus" name="status" required>
+                            <option value="New" {% if project.status == 'New' %}selected{% endif %}>New</option>
+                            <option value="Working" {% if project.status == 'Working' %}selected{% endif %}>Working</option>
+                            <option value="Finished" {% if project.status == 'Finished' %}selected{% endif %}>Finished</option>
+                            <option value="Canceled" {% if project.status == 'Canceled' %}selected{% endif %}>Canceled</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="projectGithubOwner" class="form-label">GitHub Owner</label>
+                        <input type="text" class="form-control" id="projectGithubOwner" name="github_owner" value="{{ project.github_owner }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="projectGithubRepo" class="form-label">GitHub Repo</label>
+                        <input type="text" class="form-control" id="projectGithubRepo" name="github_repo" value="{{ project.github_repo }}">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveProject()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addItemForm">
+                    <div class="mb-3">
+                        <label for="itemTitle" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="itemTitle" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="itemType" class="form-label">Type</label>
+                        <select class="form-select" id="itemType" name="type_id" required>
+                            <option value="">Select type...</option>
+                            {% for type in item_types %}
+                            <option value="{{ type.id }}">{{ type.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="itemDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="itemDescription" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addItem()">Add Item</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Node Modal -->
+<div class="modal fade" id="addNodeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Node</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNodeForm">
+                    <div class="mb-3">
+                        <label for="nodeName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="nodeName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="nodeType" class="form-label">Type</label>
+                        <select class="form-select" id="nodeType" name="type" required>
+                            <option value="">Select type...</option>
+                            {% for type_value, type_label in node_types %}
+                            <option value="{{ type_value }}">{{ type_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="nodeDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="nodeDescription" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addNode()">Add Node</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Release Modal -->
+<div class="modal fade" id="addReleaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Release</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addReleaseForm">
+                    <div class="mb-3">
+                        <label for="releaseName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="releaseName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="releaseVersion" class="form-label">Version</label>
+                        <input type="text" class="form-control" id="releaseVersion" name="version" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addRelease()">Add Release</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal fade" id="addClientModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Client</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addClientForm">
+                    <div class="mb-3">
+                        <label for="clientOrg" class="form-label">Organisation</label>
+                        <select class="form-select" id="clientOrg" name="organisation_id" required>
+                            <option value="">Select organisation...</option>
+                            {% for org in all_organisations %}
+                            <option value="{{ org.id }}">{{ org.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addClient()">Add Client</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const projectId = {{ project.id }};
+
+// Tab persistence with localStorage
+document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('#projectTabs button[data-bs-toggle="tab"]');
+    const savedTab = localStorage.getItem('project_{{ project.id }}_activeTab') || 'overview-tab';
+    
+    // Activate saved tab
+    const savedTabEl = document.getElementById(savedTab);
+    if (savedTabEl) {
+        const tab = new bootstrap.Tab(savedTabEl);
+        tab.show();
+    }
+    
+    // Save tab on change
+    tabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (event) {
+            localStorage.setItem('project_{{ project.id }}_activeTab', event.target.id);
+        });
+    });
+});
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function saveProject() {
+    const form = document.getElementById('editProjectForm');
+    const formData = new FormData(form);
+    
+    fetch(`/projects/${projectId}/update/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function deleteProject() {
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/projects/${projectId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.redirect;
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function addItem() {
+    const form = document.getElementById('addItemForm');
+    const formData = new FormData(form);
+    
+    fetch(`/projects/${projectId}/items/add/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function addNode() {
+    const form = document.getElementById('addNodeForm');
+    const formData = new FormData(form);
+    
+    fetch(`/projects/${projectId}/nodes/add/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function addRelease() {
+    const form = document.getElementById('addReleaseForm');
+    const formData = new FormData(form);
+    
+    fetch(`/projects/${projectId}/releases/add/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function addClient() {
+    const form = document.getElementById('addClientForm');
+    const formData = new FormData(form);
+    
+    fetch(`/projects/${projectId}/clients/add/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function removeClient(orgId) {
+    if (!confirm('Are you sure you want to remove this client?')) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('organisation_id', orgId);
+    
+    fetch(`/projects/${projectId}/clients/remove/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+</script>
 {% endblock %}
