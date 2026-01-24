@@ -8,7 +8,7 @@
         <form 
             hx-post="{% url 'item-upload-attachment' item.id %}" 
             hx-encoding="multipart/form-data"
-            hx-swap="outerHTML"
+            hx-swap="innerHTML"
             hx-target="#attachments"
             class="mb-4">
             {% csrf_token %}

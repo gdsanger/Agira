@@ -377,8 +377,16 @@ def item_upload_attachment(request, item_id):
         response['HX-Trigger'] = 'attachmentUploaded'
         return response
         
+    except ValidationError as e:
+        return HttpResponse(f"Validation error: {str(e)}", status=400)
+    except PermissionError as e:
+        return HttpResponse("Permission denied", status=403)
     except Exception as e:
-        return HttpResponse(f"Upload failed: {str(e)}", status=400)
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Attachment upload failed for item {item_id}: {str(e)}")
+        return HttpResponse("Upload failed. Please try again.", status=500)
 
 
 @require_POST
