@@ -265,76 +265,64 @@ class ConfigurationAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Prevent deletion of configuration
         return False
-
-
-@admin.register(GitHubConfiguration)
-class GitHubConfigurationAdmin(ConfigurationAdmin):
-    fieldsets = (
-        (None, {'fields': ('enabled',)}),
-        ('GitHub App', {'fields': ('app_id', 'installation_id', 'private_key', 'webhook_secret')}),
-    )
     
     def get_form(self, request, obj=None, **kwargs):
+        """Common method to mask encrypted fields in admin forms"""
         form = super().get_form(request, obj, **kwargs)
-        # Mask encrypted fields in admin
         if obj:
-            for field in ['private_key', 'webhook_secret']:
+            # Mask encrypted fields with placeholder
+            encrypted_fields = getattr(self, 'encrypted_fields', [])
+            for field in encrypted_fields:
                 if field in form.base_fields:
                     form.base_fields[field].widget.attrs['placeholder'] = '••••••••'
         return form
 
 
+@admin.register(GitHubConfiguration)
+class GitHubConfigurationAdmin(ConfigurationAdmin):
+    encrypted_fields = ['private_key', 'webhook_secret']
+    
+    fieldsets = (
+        (None, {'fields': ('enabled',)}),
+        ('GitHub App', {'fields': ('app_id', 'installation_id', 'private_key', 'webhook_secret')}),
+    )
+
+
 @admin.register(WeaviateConfiguration)
 class WeaviateConfigurationAdmin(ConfigurationAdmin):
+    encrypted_fields = ['api_key']
+    
     fieldsets = (
         (None, {'fields': ('enabled',)}),
         ('Weaviate Settings', {'fields': ('url', 'api_key')}),
     )
-    
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if obj and 'api_key' in form.base_fields:
-            form.base_fields['api_key'].widget.attrs['placeholder'] = '••••••••'
-        return form
 
 
 @admin.register(GooglePSEConfiguration)
 class GooglePSEConfigurationAdmin(ConfigurationAdmin):
+    encrypted_fields = ['api_key']
+    
     fieldsets = (
         (None, {'fields': ('enabled',)}),
         ('Google PSE Settings', {'fields': ('api_key', 'search_engine_id')}),
     )
-    
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if obj and 'api_key' in form.base_fields:
-            form.base_fields['api_key'].widget.attrs['placeholder'] = '••••••••'
-        return form
 
 
 @admin.register(GraphAPIConfiguration)
 class GraphAPIConfigurationAdmin(ConfigurationAdmin):
+    encrypted_fields = ['client_secret']
+    
     fieldsets = (
         (None, {'fields': ('enabled',)}),
         ('Graph API Settings', {'fields': ('tenant_id', 'client_id', 'client_secret')}),
     )
-    
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if obj and 'client_secret' in form.base_fields:
-            form.base_fields['client_secret'].widget.attrs['placeholder'] = '••••••••'
-        return form
 
 
 @admin.register(ZammadConfiguration)
 class ZammadConfigurationAdmin(ConfigurationAdmin):
+    encrypted_fields = ['api_token']
+    
     fieldsets = (
         (None, {'fields': ('enabled',)}),
         ('Zammad Settings', {'fields': ('url', 'api_token')}),
     )
-    
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if obj and 'api_token' in form.base_fields:
-            form.base_fields['api_token'].widget.attrs['placeholder'] = '••••••••'
-        return form

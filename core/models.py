@@ -493,6 +493,8 @@ class SingletonModel(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
+        # Prevent deletion of singleton configuration
+        # Override to do nothing rather than actually deleting
         pass
 
     @classmethod
