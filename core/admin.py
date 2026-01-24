@@ -227,11 +227,12 @@ class AttachmentAdmin(admin.ModelAdmin):
     def get_file_size(self, obj):
         if obj.size:
             # Convert bytes to human-readable format
+            size = obj.size
             for unit in ['B', 'KB', 'MB', 'GB']:
-                if obj.size < 1024.0:
-                    return f"{obj.size:.2f} {unit}"
-                obj.size /= 1024.0
-            return f"{obj.size:.2f} TB"
+                if size < 1024.0:
+                    return f"{size:.2f} {unit}"
+                size /= 1024.0
+            return f"{size:.2f} TB"
         return "-"
     get_file_size.short_description = 'File Size'
 
