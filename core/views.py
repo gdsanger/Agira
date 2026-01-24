@@ -6,6 +6,8 @@ from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from django.utils.safestring import mark_safe
+import markdown
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus)
@@ -133,6 +135,12 @@ def project_detail(request, id):
         id=id
     )
     
+    # Render markdown description to HTML
+    description_html = None
+    if project.description:
+        md = markdown.Markdown(extensions=['extra', 'codehilite', 'fenced_code'])
+        description_html = mark_safe(md.convert(project.description))
+    
     # Get all organisations for the client management
     all_organisations = Organisation.objects.all().order_by('name')
     
@@ -144,6 +152,7 @@ def project_detail(request, id):
     
     context = {
         'project': project,
+        'description_html': description_html,
         'all_organisations': all_organisations,
         'item_types': item_types,
         'node_types': node_types,

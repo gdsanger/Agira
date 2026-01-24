@@ -3,6 +3,82 @@
 
 {% block title %}{{ project.name }} - Agira{% endblock %}
 
+{% block extra_head %}
+<!-- Markdown Viewer Styles -->
+<style>
+.markdown-viewer {
+    width: 100%;
+    height: 600px;
+    overflow-y: auto;
+    padding: 20px;
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+.markdown-viewer h1 {
+    font-size: 2em;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.3em;
+}
+.markdown-viewer h2 {
+    font-size: 1.5em;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.3em;
+}
+.markdown-viewer h3 {
+    font-size: 1.17em;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+.markdown-viewer code {
+    background-color: #2a2a2a;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    color: #e06c75;
+}
+.markdown-viewer pre {
+    background-color: #2a2a2a;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+.markdown-viewer pre code {
+    background-color: transparent;
+    padding: 0;
+    color: #abb2bf;
+}
+.markdown-viewer blockquote {
+    border-left: 4px solid #444;
+    padding-left: 16px;
+    margin-left: 0;
+    color: #999;
+}
+.markdown-viewer ul, .markdown-viewer ol {
+    padding-left: 2em;
+}
+.markdown-viewer a {
+    color: #61afef;
+    text-decoration: none;
+}
+.markdown-viewer a:hover {
+    text-decoration: underline;
+}
+.markdown-viewer strong {
+    font-weight: bold;
+    color: #e5c07b;
+}
+.markdown-viewer em {
+    font-style: italic;
+    color: #c678dd;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Breadcrumb -->
 <nav aria-label="breadcrumb" class="mb-3">
@@ -17,29 +93,31 @@
     <!-- Left Column: Main Content (2/3) -->
     <div class="detail-main">
         <!-- Project Header -->
-        <div class="d-flex justify-content-between align-items-start mb-4">
-            <div>
-                <h1 class="mb-2">{{ project.name }}</h1>
-                {% if project.description %}
-                <div class="text-muted markdown-content">
-                    {{ project.description|linebreaks }}
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h1 class="mb-0">{{ project.name }}</h1>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'project-edit' project.id %}" class="btn btn-sm btn-primary">
+                        Edit
+                    </a>
+                    <button class="btn btn-sm btn-danger" 
+                            hx-post="{% url 'project-delete' project.id %}"
+                            hx-confirm="Are you sure you want to delete this project? This action cannot be undone."
+                            hx-swap="none"
+                            hx-on::after-request="handleDeleteResponse(event)">
+                        Delete
+                    </button>
                 </div>
-                {% else %}
-                <p class="text-muted">No description</p>
-                {% endif %}
             </div>
-            <div class="d-flex gap-2">
-                <a href="{% url 'project-edit' project.id %}" class="btn btn-sm btn-primary">
-                    Edit
-                </a>
-                <button class="btn btn-sm btn-danger" 
-                        hx-post="{% url 'project-delete' project.id %}"
-                        hx-confirm="Are you sure you want to delete this project? This action cannot be undone."
-                        hx-swap="none"
-                        hx-on::after-request="handleDeleteResponse(event)">
-                    Delete
-                </button>
+            
+            <!-- Description with Markdown Viewer -->
+            {% if description_html %}
+            <div class="markdown-viewer">
+                {{ description_html }}
             </div>
+            {% else %}
+            <p class="text-muted">No description</p>
+            {% endif %}
         </div>
 
         <!-- Tabs Navigation -->
