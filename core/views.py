@@ -925,6 +925,8 @@ def ai_provider_fetch_models(request, id):
                     'name': model_data['name'],
                     'active': True,
                     'is_default': False,
+                    'input_price_per_1m_tokens': None,
+                    'output_price_per_1m_tokens': None,
                 }
             )
             if created:

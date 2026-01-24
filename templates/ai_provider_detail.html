@@ -303,7 +303,7 @@
                 `;
                 showToast(`Saved ${data.created_count} new models, ${data.existing_count} already existed`, 'success');
                 
-                // Refresh the models list
+                // Refresh the models list (element with id="models-list" in the template)
                 htmx.ajax('GET', window.location.href, {target: '#models-list', select: '#models-list'});
             } else {
                 resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
