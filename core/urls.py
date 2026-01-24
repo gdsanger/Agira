@@ -31,6 +31,18 @@ urlpatterns = [
     path('items/<int:item_id>/tabs/github/', views.item_github_tab, name='item-github-tab'),
     path('changes/', views.changes, name='changes'),
     
+    # Organisation URLs
+    path('organisations/', views.organisations, name='organisations'),
+    path('organisations/new/', views.organisation_create, name='organisation-create'),
+    path('organisations/<int:id>/', views.organisation_detail, name='organisation-detail'),
+    path('organisations/<int:id>/edit/', views.organisation_edit, name='organisation-edit'),
+    path('organisations/<int:id>/update/', views.organisation_update, name='organisation-update'),
+    path('organisations/<int:id>/delete/', views.organisation_delete, name='organisation-delete'),
+    path('organisations/<int:id>/users/add/', views.organisation_add_user, name='organisation-add-user'),
+    path('organisations/<int:id>/users/remove/', views.organisation_remove_user, name='organisation-remove-user'),
+    path('organisations/<int:id>/projects/link/', views.organisation_link_project, name='organisation-link-project'),
+    path('organisations/<int:id>/projects/unlink/', views.organisation_unlink_project, name='organisation-unlink-project'),
+    
     # AI Provider URLs
     path('ai-providers/', views.ai_providers, name='ai-providers'),
     path('ai-providers/new/', views.ai_provider_create, name='ai-provider-create'),
