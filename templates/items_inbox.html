@@ -5,6 +5,116 @@
 {% block content %}
 <div class="page-header">
     <h1>Items - Inbox</h1>
-    <p class="text-muted">New and unprocessed items</p>
+    <p class="text-muted">New and unprocessed items awaiting classification</p>
 </div>
+
+<!-- Items Table -->
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Created</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Project</th>
+                <th>Organisation</th>
+                <th>Requester</th>
+                <th>Assigned To</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="inbox-items">
+            {% for item in items %}
+            <tr id="item-{{ item.id }}">
+                <td>
+                    <small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small>
+                </td>
+                <td>
+                    <strong>{{ item.title }}</strong>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ item.type.name }}</span>
+                </td>
+                <td>
+                    <small>{{ item.project.name }}</small>
+                </td>
+                <td>
+                    {% if item.organisation %}
+                    <small>{{ item.organisation.name }}</small>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.requester %}
+                    <small>{{ item.requester.username }}</small>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.assigned_to %}
+                    <small>{{ item.assigned_to.username }}</small>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button 
+                            class="btn btn-outline-primary"
+                            hx-post="{% url 'item-classify' item.id %}"
+                            hx-vals='{"action": "backlog"}'
+                            hx-target="#item-{{ item.id }}"
+                            hx-swap="outerHTML swap:1s"
+                            hx-confirm="Move this item to Backlog?">
+                            📋 Backlog
+                        </button>
+                        <button 
+                            class="btn btn-outline-success"
+                            hx-post="{% url 'item-classify' item.id %}"
+                            hx-vals='{"action": "start"}'
+                            hx-target="#item-{{ item.id }}"
+                            hx-swap="outerHTML swap:1s"
+                            hx-confirm="Start working on this item?">
+                            ⚡ Start Working
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                    <div class="mb-2">📭</div>
+                    <div>No items in inbox</div>
+                    <small>All items have been classified!</small>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Toast notification for successful actions -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                Item classified successfully!
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Show toast on successful classification
+    document.body.addEventListener('itemClassified', function(evt) {
+        var toastEl = document.getElementById('successToast');
+        var toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    });
+</script>
 {% endblock %}
