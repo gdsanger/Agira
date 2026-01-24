@@ -13,7 +13,7 @@ import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType)
+    AIProvider, AIModel, AIProviderType, UserOrganisation)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -944,6 +944,209 @@ def project_add_release(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+
+# ============================================================================
+# Organisation CRUD Views
+# ============================================================================
+
+def organisations(request):
+    """Organisations list view with filtering."""
+    orgs = Organisation.objects.all()
+    
+    # Annotate with user and project counts
+    orgs = orgs.annotate(
+        user_count=Count('user_organisations', distinct=True),
+        project_count=Count('projects', distinct=True)
+    )
+    
+    # Server-side search filter
+    q = request.GET.get('q', '')
+    if q:
+        orgs = orgs.filter(name__icontains=q)
+    
+    context = {
+        'organisations': orgs,
+        'search_query': q,
+    }
+    return render(request, 'organisations.html', context)
+
+
+def organisation_create(request):
+    """Organisation create page view."""
+    if request.method == 'GET':
+        # Show the create form
+        context = {
+            'organisation': None,
+        }
+        return render(request, 'organisation_form.html', context)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        organisation = Organisation.objects.create(
+            name=request.POST.get('name')
+        )
+        return JsonResponse({
+            'success': True,
+            'message': 'Organisation created successfully',
+            'organisation_id': organisation.id,
+            'redirect': f'/organisations/{organisation.id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+def organisation_edit(request, id):
+    """Organisation edit page view."""
+    organisation = get_object_or_404(Organisation, id=id)
+    
+    if request.method == 'GET':
+        # Show the edit form
+        context = {
+            'organisation': organisation,
+        }
+        return render(request, 'organisation_form.html', context)
+
+
+def organisation_update(request, id):
+    """Organisation update endpoint."""
+    organisation = get_object_or_404(Organisation, id=id)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        organisation.name = request.POST.get('name', organisation.name)
+        organisation.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Organisation updated successfully',
+            'redirect': f'/organisations/{organisation.id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+def organisation_detail(request, id):
+    """Organisation detail page view."""
+    organisation = get_object_or_404(
+        Organisation.objects.annotate(
+            user_count=Count('user_organisations', distinct=True),
+            project_count=Count('projects', distinct=True)
+        ),
+        id=id
+    )
+    
+    # Get all users for the user management
+    all_users = User.objects.filter(active=True).order_by('name')
+    
+    # Get all projects for the project linking
+    all_projects = Project.objects.all().order_by('name')
+    
+    # Get users in this organisation
+    user_organisations = organisation.user_organisations.select_related('user').order_by('user__name')
+    
+    # Get projects linked to this organisation
+    projects = organisation.projects.all().order_by('name')
+    
+    context = {
+        'organisation': organisation,
+        'all_users': all_users,
+        'all_projects': all_projects,
+        'user_organisations': user_organisations,
+        'projects': projects,
+    }
+    return render(request, 'organisation_detail.html', context)
+
+
+def organisation_delete(request, id):
+    """Delete an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    
+    try:
+        organisation.delete()
+        return JsonResponse({'success': True, 'redirect': '/organisations/'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_add_user(request, id):
+    """Add a user to an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    user_id = request.POST.get('user_id')
+    is_primary = request.POST.get('is_primary', 'false') == 'true'
+    
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+    
+    try:
+        user = get_object_or_404(User, id=user_id)
+        
+        # Check if user is already in this organisation
+        if organisation.user_organisations.filter(user=user).exists():
+            return JsonResponse({'success': False, 'error': 'User already in this organisation'}, status=400)
+        
+        # Create the UserOrganisation relationship
+        UserOrganisation.objects.create(
+            organisation=organisation,
+            user=user,
+            is_primary=is_primary
+        )
+        
+        return JsonResponse({'success': True, 'message': 'User added successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_remove_user(request, id):
+    """Remove a user from an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    user_id = request.POST.get('user_id')
+    
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+    
+    try:
+        user = get_object_or_404(User, id=user_id)
+        organisation.user_organisations.filter(user=user).delete()
+        return JsonResponse({'success': True, 'message': 'User removed successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_link_project(request, id):
+    """Link a project to an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    project_id = request.POST.get('project_id')
+    
+    if not project_id:
+        return JsonResponse({'success': False, 'error': 'Project ID required'}, status=400)
+    
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        project.clients.add(organisation)
+        return JsonResponse({'success': True, 'message': 'Project linked successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_unlink_project(request, id):
+    """Unlink a project from an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    project_id = request.POST.get('project_id')
+    
+    if not project_id:
+        return JsonResponse({'success': False, 'error': 'Project ID required'}, status=400)
+    
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        project.clients.remove(organisation)
+        return JsonResponse({'success': True, 'message': 'Project unlinked successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 # ============================================================================

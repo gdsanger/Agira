@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}{% if organisation %}Edit{% else %}New{% endif %} Organisation - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'organisations' %}">Organisations</a></li>
+        {% if organisation %}
+        <li class="breadcrumb-item"><a href="{% url 'organisation-detail' organisation.id %}">{{ organisation.name }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<div class="page-header">
+    <h1>{% if organisation %}Edit{% else %}New{% endif %} Organisation</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form id="organisationForm" method="POST" 
+              {% if organisation %}
+              hx-post="{% url 'organisation-update' organisation.id %}"
+              {% else %}
+              hx-post="{% url 'organisation-create' %}"
+              {% endif %}
+              hx-swap="none"
+              hx-on::after-request="handleFormResponse(event)">
+            {% csrf_token %}
+            
+            <div class="mb-3">
+                <label for="name" class="form-label">Name *</label>
+                <input type="text" class="form-control" id="name" name="name" 
+                       value="{% if organisation %}{{ organisation.name }}{% endif %}" required>
+            </div>
+            
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    {% if organisation %}Update{% else %}Create{% endif %}
+                </button>
+                <a href="{% if organisation %}{% url 'organisation-detail' organisation.id %}{% else %}{% url 'organisations' %}{% endif %}" 
+                   class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function handleFormResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message);
+                setTimeout(() => {
+                    window.location.href = response.redirect;
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Operation failed');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Error', response.error || 'Operation failed');
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    }
+}
+
+// Toast notification function
+function showToast(type, title, message) {
+    // Remove existing toasts
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(t => {
+        const bsToast = bootstrap.Toast.getInstance(t);
+        if (bsToast) bsToast.hide();
+    });
+    
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast toast-${type}`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    
+    toastEl.innerHTML = `
+        <div class="toast-header">
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            ${message}
+        </div>
+    `;
+    
+    container.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 3000 });
+    toast.show();
+    
+    // Remove from DOM after hidden
+    toastEl.addEventListener('hidden.bs.toast', () => {
+        toastEl.remove();
+    });
+}
+</script>
+{% endblock %}

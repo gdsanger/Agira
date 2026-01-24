@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ organisation.name }} - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'organisations' %}">Organisations</a></li>
+        <li class="breadcrumb-item active">{{ organisation.name }}</li>
+    </ol>
+</nav>
+
+<!-- 2-Column Layout -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content (2/3) -->
+    <div class="detail-main">
+        <!-- Organisation Header -->
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h1 class="mb-0">{{ organisation.name }}</h1>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'organisation-edit' organisation.id %}" class="btn btn-sm btn-primary">
+                        Edit
+                    </a>
+                    <button class="btn btn-sm btn-danger" 
+                            hx-post="{% url 'organisation-delete' organisation.id %}"
+                            hx-confirm="Are you sure you want to delete this organisation? This action cannot be undone."
+                            hx-swap="none"
+                            hx-on::after-request="handleDeleteResponse(event)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs mb-4" id="organisationTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab" aria-controls="users">
+                    Users <span class="badge bg-secondary">{{ organisation.user_count }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="projects-tab" data-bs-toggle="tab" data-bs-target="#projects" type="button" role="tab" aria-controls="projects">
+                    Projects <span class="badge bg-secondary">{{ organisation.project_count }}</span>
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="organisationTabContent">
+            <!-- Users Tab -->
+            <div class="tab-pane fade show active" id="users" role="tabpanel" aria-labelledby="users-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>Users</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                        + Add User
+                    </button>
+                </div>
+                {% if user_organisations %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Primary</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user_org in user_organisations %}
+                            <tr>
+                                <td><strong>{{ user_org.user.name }}</strong></td>
+                                <td>{{ user_org.user.username }}</td>
+                                <td>{{ user_org.user.email }}</td>
+                                <td>
+                                    {% if user_org.is_primary %}
+                                    <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger" 
+                                            hx-post="{% url 'organisation-remove-user' organisation.id %}"
+                                            hx-vals='{"user_id": "{{ user_org.user.id }}"}'
+                                            hx-swap="none"
+                                            hx-on::after-request="handleResponse(event)">
+                                        Remove
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No users in this organisation yet.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Projects Tab -->
+            <div class="tab-pane fade" id="projects" role="tabpanel" aria-labelledby="projects-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>Projects</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#linkProjectModal">
+                        + Link Project
+                    </button>
+                </div>
+                {% if projects %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for project in projects %}
+                            <tr style="cursor: pointer;" onclick="window.location='{% url 'project-detail' project.id %}'">
+                                <td><strong>{{ project.name }}</strong></td>
+                                <td>
+                                    {% if project.status == 'New' %}
+                                    <span class="badge bg-info">{{ project.status }}</span>
+                                    {% elif project.status == 'Working' %}
+                                    <span class="badge bg-primary">{{ project.status }}</span>
+                                    {% elif project.status == 'Finished' %}
+                                    <span class="badge bg-success">{{ project.status }}</span>
+                                    {% elif project.status == 'Canceled' %}
+                                    <span class="badge bg-secondary">{{ project.status }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ project.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td onclick="event.stopPropagation();">
+                                    <button class="btn btn-sm btn-danger" 
+                                            hx-post="{% url 'organisation-unlink-project' organisation.id %}"
+                                            hx-vals='{"project_id": "{{ project.id }}"}'
+                                            hx-swap="none"
+                                            hx-on::after-request="handleResponse(event)">
+                                        Unlink
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No projects linked to this organisation yet.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Sidebar (1/3) -->
+    <div class="detail-sidebar">
+        <!-- Statistics Card -->
+        <div class="project-info-card">
+            <div class="project-info-label">Statistics</div>
+            <div class="project-info-value">
+                <div class="d-flex flex-column gap-2">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">👥 Users</span>
+                        <strong>{{ organisation.user_count }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">📁 Projects</span>
+                        <strong>{{ organisation.project_count }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addUserModalLabel">Add User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addUserForm" hx-post="{% url 'organisation-add-user' organisation.id %}" hx-swap="none" hx-on::after-request="handleResponse(event)">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="user_id" class="form-label">User *</label>
+                        <select class="form-select" id="user_id" name="user_id" required>
+                            <option value="">Select a user...</option>
+                            {% for user in all_users %}
+                            <option value="{{ user.id }}">{{ user.name }} ({{ user.username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="is_primary" name="is_primary" value="true">
+                            <label class="form-check-label" for="is_primary">
+                                Set as primary organisation
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Link Project Modal -->
+<div class="modal fade" id="linkProjectModal" tabindex="-1" aria-labelledby="linkProjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="linkProjectModalLabel">Link Project</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="linkProjectForm" hx-post="{% url 'organisation-link-project' organisation.id %}" hx-swap="none" hx-on::after-request="handleResponse(event)">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="project_id" class="form-label">Project *</label>
+                        <select class="form-select" id="project_id" name="project_id" required>
+                            <option value="">Select a project...</option>
+                            {% for project in all_projects %}
+                            <option value="{{ project.id }}">{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Link Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Handle delete response
+function handleDeleteResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', 'Organisation deleted successfully');
+                setTimeout(() => {
+                    window.location.href = response.redirect || '/organisations/';
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Failed to delete organisation');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        showToast('error', 'Error', 'Failed to delete organisation');
+    }
+}
+
+// Handle generic response (add/remove user, link/unlink project)
+function handleResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message);
+                // Close modal if open
+                const modals = document.querySelectorAll('.modal.show');
+                modals.forEach(modal => {
+                    const bsModal = bootstrap.Modal.getInstance(modal);
+                    if (bsModal) bsModal.hide();
+                });
+                // Reload page to update lists
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Operation failed');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Error', response.error || 'Operation failed');
+        } catch (e) {
+            showToast('error', 'Error', 'Operation failed');
+        }
+    }
+}
+
+// Toast notification function
+function showToast(type, title, message) {
+    // Remove existing toasts
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(t => {
+        const bsToast = bootstrap.Toast.getInstance(t);
+        if (bsToast) bsToast.hide();
+    });
+    
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast toast-${type}`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    
+    toastEl.innerHTML = `
+        <div class="toast-header">
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            ${message}
+        </div>
+    `;
+    
+    container.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 3000 });
+    toast.show();
+    
+    // Remove from DOM after hidden
+    toastEl.addEventListener('hidden.bs.toast', () => {
+        toastEl.remove();
+    });
+}
+</script>
+{% endblock %}
