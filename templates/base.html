@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Agira v0.1{% endblock %}</title>
+    <title>{% block title %}Agira{% endblock %}</title>
     
     <!-- Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
@@ -18,37 +18,54 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'home' %}">Agira</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">Projekte</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">Items</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">Releases</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#">Changes</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/admin/">Admin</a>
-                    </li>
-                </ul>
-            </div>
+    <!-- Topbar -->
+    <nav class="topbar">
+        <div class="topbar-brand">
+            <a href="{% url 'home' %}">Agira</a>
         </div>
     </nav>
 
-    <main class="container-main">
-        {% block content %}{% endblock %}
-    </main>
+    <div class="layout-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <a href="{% url 'dashboard' %}" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-text">Dashboard</span>
+                </a>
+                <a href="{% url 'projects' %}" class="sidebar-link">
+                    <span class="sidebar-icon">📁</span>
+                    <span class="sidebar-text">Projects</span>
+                </a>
+                <div class="sidebar-section-title">Items</div>
+                <a href="{% url 'items-inbox' %}" class="sidebar-link sidebar-link-sub">
+                    <span class="sidebar-icon">📥</span>
+                    <span class="sidebar-text">Inbox</span>
+                </a>
+                <a href="{% url 'items-backlog' %}" class="sidebar-link sidebar-link-sub">
+                    <span class="sidebar-icon">📋</span>
+                    <span class="sidebar-text">Backlog</span>
+                </a>
+                <a href="{% url 'items-working' %}" class="sidebar-link sidebar-link-sub">
+                    <span class="sidebar-icon">⚡</span>
+                    <span class="sidebar-text">Working</span>
+                </a>
+                <a href="{% url 'changes' %}" class="sidebar-link">
+                    <span class="sidebar-icon">🔄</span>
+                    <span class="sidebar-text">Changes</span>
+                </a>
+                <a href="/admin/" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span>
+                    <span class="sidebar-text">Admin</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
 
     <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
