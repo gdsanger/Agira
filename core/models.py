@@ -13,6 +13,8 @@ class UserRole(models.TextChoices):
     USER = 'User', _('User')
     AGENT = 'Agent', _('Agent')
     APPROVER = 'Approver', _('Approver')
+    ISB = 'ISB', _('ISB')
+    MGMT = "Managemenet", _('Management')
 
 
 class ProjectStatus(models.TextChoices):
@@ -182,6 +184,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 class UserOrganisation(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='user_organisations')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_organisations')
+    role = models.CharField(max_length=20, choices=UserRole.choices, default=UserRole.USER)
     is_primary = models.BooleanField(default=False)
 
     class Meta:
