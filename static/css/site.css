@@ -232,12 +232,12 @@ body {
 /* Responsive Design */
 @media (max-width: 768px) {
     .sidebar {
-        transform: translateX(-100%);
+        transform: translateX(0);
         width: var(--sidebar-width);
     }
     
-    .sidebar:not(.collapsed) {
-        transform: translateX(0);
+    .sidebar.collapsed {
+        transform: translateX(-100%);
     }
     
     .main-content {

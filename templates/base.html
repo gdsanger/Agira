@@ -137,14 +137,22 @@
             collapseElements.forEach(function(collapseEl) {
                 collapseEl.addEventListener('show.bs.collapse', function() {
                     const header = document.querySelector('[href="#' + collapseEl.id + '"]');
-                    const chevron = header.querySelector('.sidebar-section-chevron');
-                    chevron.style.transform = 'rotate(0deg)';
+                    if (header) {
+                        const chevron = header.querySelector('.sidebar-section-chevron');
+                        if (chevron) {
+                            chevron.style.transform = 'rotate(0deg)';
+                        }
+                    }
                 });
                 
                 collapseEl.addEventListener('hide.bs.collapse', function() {
                     const header = document.querySelector('[href="#' + collapseEl.id + '"]');
-                    const chevron = header.querySelector('.sidebar-section-chevron');
-                    chevron.style.transform = 'rotate(-90deg)';
+                    if (header) {
+                        const chevron = header.querySelector('.sidebar-section-chevron');
+                        if (chevron) {
+                            chevron.style.transform = 'rotate(-90deg)';
+                        }
+                    }
                 });
             });
         });
