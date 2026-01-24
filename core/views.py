@@ -1,4 +1,5 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
+from .models import Project
 
 def home(request):
     """Home page view."""
@@ -10,7 +11,26 @@ def dashboard(request):
 
 def projects(request):
     """Projects page view."""
-    return render(request, 'projects.html')
+    projects_list = Project.objects.all()
+    
+    # Server-side search filter
+    q = request.GET.get('q', '')
+    if q:
+        projects_list = projects_list.filter(name__icontains=q)
+    
+    context = {
+        'projects': projects_list,
+        'search_query': q,
+    }
+    return render(request, 'projects.html', context)
+
+def project_detail(request, id):
+    """Project detail page view."""
+    project = get_object_or_404(Project, id=id)
+    context = {
+        'project': project,
+    }
+    return render(request, 'project_detail.html', context)
 
 def items_inbox(request):
     """Items Inbox page view."""
