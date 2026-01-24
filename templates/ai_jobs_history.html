@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}AI Jobs History - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>AI Jobs History</h1>
+            <p class="text-muted">View all AI job executions and their status</p>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'ai-jobs-history' %}" class="row g-3">
+        <div class="col-md-3">
+            <input type="text" name="q" class="form-control" placeholder="Search agent or error..." value="{{ search_query }}">
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select">
+                <option value="">All Status</option>
+                {% for status_value, status_label in status_choices %}
+                <option value="{{ status_value }}" {% if selected_status == status_value %}selected{% endif %}>
+                    {{ status_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="provider" class="form-select">
+                <option value="">All Providers</option>
+                {% for provider in providers %}
+                <option value="{{ provider.id }}" {% if selected_provider|stringformat:"s" == provider.id|stringformat:"s" %}selected{% endif %}>
+                    {{ provider.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="model" class="form-select">
+                <option value="">All Models</option>
+                {% for model in models %}
+                <option value="{{ model.id }}" {% if selected_model|stringformat:"s" == model.id|stringformat:"s" %}selected{% endif %}>
+                    {{ model.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            {% if search_query or selected_status or selected_provider or selected_model %}
+            <a href="{% url 'ai-jobs-history' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Jobs Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Agent</th>
+                        <th>User</th>
+                        <th>Provider</th>
+                        <th>Model</th>
+                        <th>Status</th>
+                        <th>Duration</th>
+                        <th>Tokens (In/Out)</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in page_obj %}
+                    <tr>
+                        <td>
+                            <small class="text-muted">{{ job.timestamp|date:"Y-m-d H:i:s" }}</small>
+                        </td>
+                        <td>
+                            <small>{{ job.agent }}</small>
+                        </td>
+                        <td>
+                            {% if job.user %}
+                            {{ job.user.username }}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.provider %}
+                            {{ job.provider.name }}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.model %}
+                            <small>{{ job.model.name }}</small>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.status == 'Completed' %}
+                            <span class="badge bg-success">{{ job.status }}</span>
+                            {% elif job.status == 'Error' %}
+                            <span class="badge bg-danger">{{ job.status }}</span>
+                            {% elif job.status == 'Pending' %}
+                            <span class="badge bg-secondary">{{ job.status }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ job.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.duration_ms %}
+                            <small>{{ job.duration_ms }} ms</small>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.input_tokens and job.output_tokens %}
+                            <small>{{ job.input_tokens }} / {{ job.output_tokens }}</small>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small>{{ job.costs|floatformat:6 }}</small>
+                        </td>
+                    </tr>
+                    {% if job.error_message %}
+                    <tr class="table-danger">
+                        <td colspan="9">
+                            <small><strong>Error:</strong> {{ job.error_message }}</small>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center">
+                            {% if search_query or selected_status or selected_provider or selected_model %}
+                            No jobs found matching the current filters.
+                            {% else %}
+                            No AI jobs executed yet.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination Controls -->
+        {% if page_obj.has_other_pages %}
+        <nav aria-label="Page navigation" class="mt-3">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}{% if selected_model %}&model={{ selected_model }}{% endif %}">First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}{% if selected_model %}&model={{ selected_model }}{% endif %}">Previous</a>
+                </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}{% if selected_model %}&model={{ selected_model }}{% endif %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}{% if selected_model %}&model={{ selected_model }}{% endif %}">Last</a>
+                </li>
+                {% endif %}
+            </ul>
+            <div class="text-center text-muted">
+                <small>Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} jobs</small>
+            </div>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
@@ -13,7 +14,7 @@ import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType, UserOrganisation)
+    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -1464,3 +1465,64 @@ def ai_model_delete(request, provider_id, model_id):
         
     except Exception as e:
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
+
+
+def ai_jobs_history(request):
+    """AI Jobs History list view with filtering and pagination."""
+    jobs = AIJobsHistory.objects.select_related('user', 'provider', 'model').all()
+    
+    # Order by timestamp descending (newest first)
+    jobs = jobs.order_by('-timestamp')
+    
+    # Search filter (searches in agent name and error message)
+    q = request.GET.get('q', '')
+    if q:
+        jobs = jobs.filter(
+            Q(agent__icontains=q) | Q(error_message__icontains=q)
+        )
+    
+    # Status filter
+    status_filter = request.GET.get('status', '')
+    if status_filter:
+        jobs = jobs.filter(status=status_filter)
+    
+    # Provider filter
+    provider_filter = request.GET.get('provider', '')
+    if provider_filter:
+        try:
+            jobs = jobs.filter(provider_id=int(provider_filter))
+        except (ValueError, TypeError):
+            provider_filter = ''
+    
+    # Model filter
+    model_filter = request.GET.get('model', '')
+    if model_filter:
+        try:
+            jobs = jobs.filter(model_id=int(model_filter))
+        except (ValueError, TypeError):
+            model_filter = ''
+    
+    # Pagination - 25 items per page
+    paginator = Paginator(jobs, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    # Get all providers and models for filter dropdowns
+    providers = AIProvider.objects.all().order_by('name')
+    models = AIModel.objects.all().order_by('name')
+    
+    # Get status choices from model
+    from .models import AIJobStatus
+    status_choices = AIJobStatus.choices
+    
+    context = {
+        'page_obj': page_obj,
+        'search_query': q,
+        'providers': providers,
+        'models': models,
+        'status_choices': status_choices,
+        'selected_status': status_filter,
+        'selected_provider': provider_filter,
+        'selected_model': model_filter,
+    }
+    return render(request, 'ai_jobs_history.html', context)
