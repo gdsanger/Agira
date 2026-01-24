@@ -230,5 +230,6 @@ class HTTPClient:
         # DELETE might return empty response
         try:
             return response.json()
-        except Exception:
+        except (ValueError, httpx.ResponseNotRead):
+            # Empty response or non-JSON response is acceptable for DELETE
             return {}

@@ -139,6 +139,7 @@ class GitHubService(IntegrationBase):
         """
         try:
             from django.contrib.contenttypes.models import ContentType
+            from django.core.exceptions import ObjectDoesNotExist
             
             Activity.objects.create(
                 target_content_type=ContentType.objects.get_for_model(Item),
@@ -147,7 +148,8 @@ class GitHubService(IntegrationBase):
                 actor=actor,
                 summary=summary,
             )
-        except Exception as e:
+        except (ObjectDoesNotExist, ValueError, TypeError) as e:
+            # Activity logging is non-critical, log and continue
             logger.warning(f"Failed to log activity: {e}")
     
     def create_issue_for_item(
@@ -291,6 +293,8 @@ class GitHubService(IntegrationBase):
         Returns:
             Number of mappings updated
         """
+        from core.services.integrations.base import IntegrationError
+        
         mappings = item.external_mappings.all()
         count = 0
         
@@ -298,9 +302,15 @@ class GitHubService(IntegrationBase):
             try:
                 self.sync_mapping(mapping)
                 count += 1
-            except Exception as e:
+            except IntegrationError as e:
+                # Log integration errors but continue with other mappings
                 logger.error(
                     f"Failed to sync mapping {mapping.id}: {e}"
+                )
+            except Exception as e:
+                # Catch unexpected errors to prevent partial failures
+                logger.exception(
+                    f"Unexpected error syncing mapping {mapping.id}: {e}"
                 )
         
         return count
