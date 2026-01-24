@@ -1,10 +1,17 @@
-from django.shortcuts import render, get_object_or_404
-from django.http import HttpResponse
-from django.views.decorators.http import require_POST
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.db import models
-from .models import Project, Item, ItemStatus
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
+from .models import (
+    Project, Item, ItemStatus, ItemComment, User, 
+    Attachment, AttachmentLink, AttachmentRole, Activity
+)
 from .services.workflow import ItemWorkflowGuard
+from .services.activity import ActivityService
+from .services.storage import AttachmentStorageService
 
 def home(request):
     """Home page view."""
@@ -183,6 +190,178 @@ def items_ready(request):
 def changes(request):
     """Changes page view."""
     return render(request, 'changes.html')
+
+def item_detail(request, item_id):
+    """Item detail page with tabs."""
+    item = get_object_or_404(
+        Item.objects.select_related(
+            'project', 'type', 'organisation', 'requester', 
+            'assigned_to', 'solution_release'
+        ),
+        id=item_id
+    )
+    
+    # Get initial tab from query parameter (default: overview)
+    active_tab = request.GET.get('tab', 'overview')
+    
+    context = {
+        'item': item,
+        'active_tab': active_tab,
+        'available_statuses': ItemStatus.choices,
+    }
+    return render(request, 'item_detail.html', context)
+
+
+def item_comments_tab(request, item_id):
+    """HTMX endpoint to load comments tab."""
+    item = get_object_or_404(Item, id=item_id)
+    comments = item.comments.select_related('author').order_by('created_at')
+    
+    context = {
+        'item': item,
+        'comments': comments,
+    }
+    return render(request, 'partials/item_comments_tab.html', context)
+
+
+def item_attachments_tab(request, item_id):
+    """HTMX endpoint to load attachments tab."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get attachments linked to this item
+    content_type = ContentType.objects.get_for_model(Item)
+    attachment_links = AttachmentLink.objects.filter(
+        target_content_type=content_type,
+        target_object_id=item.id,
+        role=AttachmentRole.ITEM_FILE
+    ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+    
+    attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    
+    context = {
+        'item': item,
+        'attachments': attachments,
+    }
+    return render(request, 'partials/item_attachments_tab.html', context)
+
+
+def item_activity_tab(request, item_id):
+    """HTMX endpoint to load activity tab."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get activities for this item
+    activity_service = ActivityService()
+    activities = activity_service.latest(limit=100, item=item)
+    
+    context = {
+        'item': item,
+        'activities': activities,
+    }
+    return render(request, 'partials/item_activity_tab.html', context)
+
+
+def item_github_tab(request, item_id):
+    """HTMX endpoint to load GitHub tab."""
+    item = get_object_or_404(Item, id=item_id)
+    external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+    
+    context = {
+        'item': item,
+        'external_mappings': external_mappings,
+    }
+    return render(request, 'partials/item_github_tab.html', context)
+
+
+@require_POST
+def item_change_status(request, item_id):
+    """HTMX endpoint to change item status."""
+    item = get_object_or_404(Item, id=item_id)
+    new_status = request.POST.get('status')
+    
+    if not new_status:
+        return HttpResponse("Missing 'status' parameter", status=400)
+    
+    try:
+        guard = ItemWorkflowGuard()
+        guard.transition(item, new_status, actor=request.user if request.user.is_authenticated else None)
+        
+        # Return updated status badge
+        response = render(request, 'partials/item_status_badge.html', {'item': item})
+        response['HX-Trigger'] = 'statusChanged'
+        return response
+        
+    except ValidationError as e:
+        return HttpResponse(str(e), status=400)
+
+
+@require_POST
+def item_add_comment(request, item_id):
+    """HTMX endpoint to add a comment to an item."""
+    item = get_object_or_404(Item, id=item_id)
+    body = request.POST.get('body', '').strip()
+    
+    if not body:
+        return HttpResponse("Comment body cannot be empty", status=400)
+    
+    # Create comment
+    comment = ItemComment.objects.create(
+        item=item,
+        author=request.user if request.user.is_authenticated else None,
+        body=body,
+    )
+    
+    # Log activity
+    activity_service = ActivityService()
+    activity_service.log(
+        verb='comment.added',
+        target=item,
+        actor=request.user if request.user.is_authenticated else None,
+        summary=f"Added comment",
+    )
+    
+    # Return updated comments list
+    response = redirect('item-comments-tab', item_id=item.id)
+    response['HX-Trigger'] = 'commentAdded'
+    return response
+
+
+@require_POST
+def item_upload_attachment(request, item_id):
+    """HTMX endpoint to upload an attachment to an item."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    if 'file' not in request.FILES:
+        return HttpResponse("No file provided", status=400)
+    
+    uploaded_file = request.FILES['file']
+    
+    try:
+        # Store attachment
+        storage_service = AttachmentStorageService()
+        attachment = storage_service.store_attachment(
+            file=uploaded_file,
+            target=item,
+            role=AttachmentRole.ITEM_FILE,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='attachment.uploaded',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Uploaded file: {attachment.original_name}",
+        )
+        
+        # Return updated attachments list
+        response = redirect('item-attachments-tab', item_id=item.id)
+        response['HX-Trigger'] = 'attachmentUploaded'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Upload failed: {str(e)}", status=400)
+
 
 @require_POST
 def item_classify(request, item_id):

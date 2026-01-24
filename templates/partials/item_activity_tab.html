@@ -1,0 +1,38 @@
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Activity Stream</h5>
+    </div>
+    <div class="card-body">
+        {% if activities %}
+            <div class="timeline">
+                {% for activity in activities %}
+                <div class="activity-item mb-3 p-3" style="background-color: var(--bg-tertiary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong>
+                                {% if activity.actor %}
+                                    {{ activity.actor.name }}
+                                {% else %}
+                                    System
+                                {% endif %}
+                            </strong>
+                            <span class="text-muted mx-2">•</span>
+                            <span class="badge bg-secondary">{{ activity.verb }}</span>
+                        </div>
+                        <small class="text-muted">{{ activity.created_at|date:"Y-m-d H:i" }}</small>
+                    </div>
+                    {% if activity.summary %}
+                        <div class="text-muted">{{ activity.summary }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center text-muted py-4">
+                <div class="mb-2">📊</div>
+                <div>No activity yet</div>
+                <small>Activity will appear here as changes are made</small>
+            </div>
+        {% endif %}
+    </div>
+</div>

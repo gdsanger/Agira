@@ -51,7 +51,7 @@
                     <small class="text-muted">{{ item.updated_at|date:"Y-m-d H:i" }}</small>
                 </td>
                 <td>
-                    <strong>{{ item.title }}</strong>
+                    <a href="{% url 'item-detail' item.id %}"><strong>{{ item.title }}</strong></a>
                     {% if item.description %}
                     <br><small class="text-muted">{{ item.description|truncatewords:15 }}</small>
                     {% endif %}

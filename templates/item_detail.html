@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.title }} - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h1>{{ item.title }}</h1>
+            <p class="text-muted">{{ item.project.name }} • {{ item.type.name }}</p>
+        </div>
+        <div>
+            <span id="status-badge" class="badge bg-primary" style="font-size: 1rem;">
+                {{ item.get_status_display }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-4" id="itemTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button 
+            class="nav-link {% if active_tab == 'overview' %}active{% endif %}" 
+            id="overview-tab" 
+            data-bs-toggle="tab" 
+            data-bs-target="#overview" 
+            type="button" 
+            role="tab">
+            Overview
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button 
+            class="nav-link {% if active_tab == 'comments' %}active{% endif %}" 
+            id="comments-tab" 
+            data-bs-toggle="tab" 
+            data-bs-target="#comments" 
+            type="button" 
+            role="tab"
+            hx-get="{% url 'item-comments-tab' item.id %}"
+            hx-target="#comments"
+            hx-trigger="click once">
+            Comments
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button 
+            class="nav-link {% if active_tab == 'attachments' %}active{% endif %}" 
+            id="attachments-tab" 
+            data-bs-toggle="tab" 
+            data-bs-target="#attachments" 
+            type="button" 
+            role="tab"
+            hx-get="{% url 'item-attachments-tab' item.id %}"
+            hx-target="#attachments"
+            hx-trigger="click once">
+            Attachments
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button 
+            class="nav-link {% if active_tab == 'activity' %}active{% endif %}" 
+            id="activity-tab" 
+            data-bs-toggle="tab" 
+            data-bs-target="#activity" 
+            type="button" 
+            role="tab"
+            hx-get="{% url 'item-activity-tab' item.id %}"
+            hx-target="#activity"
+            hx-trigger="click once">
+            Activity
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button 
+            class="nav-link {% if active_tab == 'github' %}active{% endif %}" 
+            id="github-tab" 
+            data-bs-toggle="tab" 
+            data-bs-target="#github" 
+            type="button" 
+            role="tab"
+            hx-get="{% url 'item-github-tab' item.id %}"
+            hx-target="#github"
+            hx-trigger="click once">
+            GitHub
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="itemTabContent">
+    <!-- Overview Tab -->
+    <div class="tab-pane fade {% if active_tab == 'overview' %}show active{% endif %}" id="overview" role="tabpanel">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-3"><strong>Title:</strong></div>
+                            <div class="col-md-9">{{ item.title }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3"><strong>Description:</strong></div>
+                            <div class="col-md-9">
+                                {% if item.description %}
+                                    <div style="white-space: pre-wrap;">{{ item.description }}</div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3"><strong>Solution:</strong></div>
+                            <div class="col-md-9">
+                                {% if item.solution_description %}
+                                    <div style="white-space: pre-wrap;">{{ item.solution_description }}</div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Properties</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <strong>Status:</strong>
+                            <div id="status-section" class="mt-2">
+                                <select class="form-select form-select-sm" id="status-select">
+                                    {% for value, display in available_statuses %}
+                                    <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>
+                                        {{ display }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <button 
+                                    class="btn btn-sm btn-primary mt-2"
+                                    hx-post="{% url 'item-change-status' item.id %}"
+                                    hx-vals='js:{status: document.getElementById("status-select").value}'
+                                    hx-target="#status-badge"
+                                    hx-swap="innerHTML">
+                                    Apply
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Type:</strong>
+                            <div>{{ item.type.name }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Project:</strong>
+                            <div>{{ item.project.name }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Organisation:</strong>
+                            <div>{% if item.organisation %}{{ item.organisation.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Requester:</strong>
+                            <div>{% if item.requester %}{{ item.requester.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Assigned To:</strong>
+                            <div>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Solution Release:</strong>
+                            <div>{% if item.solution_release %}{{ item.solution_release.version }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Created:</strong>
+                            <div><small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small></div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Updated:</strong>
+                            <div><small class="text-muted">{{ item.updated_at|date:"Y-m-d H:i" }}</small></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Comments Tab -->
+    <div class="tab-pane fade {% if active_tab == 'comments' %}show active{% endif %}" id="comments" role="tabpanel">
+        {% if active_tab == 'comments' %}
+            {% include 'partials/item_comments_tab.html' %}
+        {% else %}
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Attachments Tab -->
+    <div class="tab-pane fade {% if active_tab == 'attachments' %}show active{% endif %}" id="attachments" role="tabpanel">
+        {% if active_tab == 'attachments' %}
+            {% include 'partials/item_attachments_tab.html' %}
+        {% else %}
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Activity Tab -->
+    <div class="tab-pane fade {% if active_tab == 'activity' %}show active{% endif %}" id="activity" role="tabpanel">
+        {% if active_tab == 'activity' %}
+            {% include 'partials/item_activity_tab.html' %}
+        {% else %}
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- GitHub Tab -->
+    <div class="tab-pane fade {% if active_tab == 'github' %}show active{% endif %}" id="github" role="tabpanel">
+        {% if active_tab == 'github' %}
+            {% include 'partials/item_github_tab.html' %}
+        {% else %}
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">
+                Action completed successfully!
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+    <div id="errorToast" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="errorToastMessage">
+                An error occurred!
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Show success toast on various events
+    document.body.addEventListener('statusChanged', function(evt) {
+        showToast('Status changed successfully!');
+    });
+    
+    document.body.addEventListener('commentAdded', function(evt) {
+        showToast('Comment added successfully!');
+        // Reload comments tab
+        htmx.trigger('#comments-tab', 'click');
+    });
+    
+    document.body.addEventListener('attachmentUploaded', function(evt) {
+        showToast('Attachment uploaded successfully!');
+        // Reload attachments tab
+        htmx.trigger('#attachments-tab', 'click');
+    });
+    
+    function showToast(message) {
+        var toastEl = document.getElementById('successToast');
+        document.getElementById('toastMessage').textContent = message;
+        var toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    }
+    
+    // Handle HTMX errors
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        var errorToastEl = document.getElementById('errorToast');
+        var errorMsg = evt.detail.xhr.responseText || 'An error occurred';
+        document.getElementById('errorToastMessage').textContent = errorMsg;
+        var toast = new bootstrap.Toast(errorToastEl);
+        toast.show();
+    });
+</script>
+{% endblock %}
