@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}AI Providers - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>AI Providers</h1>
+            <p class="text-muted">Manage AI provider configurations and models</p>
+        </div>
+        <a href="{% url 'ai-provider-create' %}" class="btn btn-primary">
+            + New Provider
+        </a>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'ai-providers' %}" class="row g-3">
+        <div class="col-md-3">
+            <input type="text" name="q" class="form-control" placeholder="Search providers..." value="{{ search_query }}">
+        </div>
+        <div class="col-md-3">
+            <select name="provider_type" class="form-select">
+                <option value="">All Provider Types</option>
+                {% for type_value, type_label in provider_types %}
+                <option value="{{ type_value }}" {% if selected_provider_type == type_value %}selected{% endif %}>
+                    {{ type_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="active" class="form-select">
+                <option value="">All Status</option>
+                <option value="true" {% if selected_active == 'true' %}selected{% endif %}>Active</option>
+                <option value="false" {% if selected_active == 'false' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            {% if search_query or selected_provider_type or selected_active %}
+            <a href="{% url 'ai-providers' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Providers Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Models</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for provider in providers %}
+                    <tr style="cursor: pointer;" onclick="window.location='{% url 'ai-provider-detail' provider.id %}'">
+                        <td>
+                            <strong>{{ provider.name }}</strong>
+                            {% if provider.organization_id %}
+                            <br><small class="text-muted">Org: {{ provider.organization_id }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if provider.provider_type == 'OpenAI' %}
+                            <span class="badge bg-success">{{ provider.provider_type }}</span>
+                            {% elif provider.provider_type == 'Gemini' %}
+                            <span class="badge bg-info">{{ provider.provider_type }}</span>
+                            {% elif provider.provider_type == 'Claude' %}
+                            <span class="badge bg-warning">{{ provider.provider_type }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ provider.provider_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ provider.model_count }} model{{ provider.model_count|pluralize }}</span>
+                        </td>
+                        <td>
+                            {% if provider.active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ provider.created_at|date:"Y-m-d H:i" }}</small>
+                        </td>
+                        <td onclick="event.stopPropagation();">
+                            <a href="{% url 'ai-provider-detail' provider.id %}" class="btn btn-sm btn-outline-primary">
+                                View
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center">
+                            {% if search_query or selected_provider_type or selected_active %}
+                            No providers found matching the current filters.
+                            {% else %}
+                            No AI providers configured yet. Create one to get started.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container for notifications -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11;">
+    <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-body">
+            <!-- Toast message will be inserted here -->
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Listen for toast trigger from HTMX
+    document.body.addEventListener('showToast', function(evt) {
+        const toastEl = document.getElementById('toast');
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    });
+</script>
+{% endblock %}

@@ -8,7 +8,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
-    Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus)
+    Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
+    AIProvider, AIModel, AIProviderType)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -674,3 +675,293 @@ def project_add_release(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+
+# ============================================================================
+# AI Provider CRUD Views
+# ============================================================================
+
+def ai_providers(request):
+    """AI Providers list view with filtering."""
+    providers = AIProvider.objects.all()
+    
+    # Annotate with model count
+    providers = providers.annotate(
+        model_count=Count('models')
+    )
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        providers = providers.filter(
+            Q(name__icontains=q) | Q(provider_type__icontains=q)
+        )
+    
+    # Provider type filter
+    provider_type_filter = request.GET.get('provider_type', '')
+    if provider_type_filter:
+        providers = providers.filter(provider_type=provider_type_filter)
+    
+    # Active filter
+    active_filter = request.GET.get('active', '')
+    if active_filter:
+        providers = providers.filter(active=(active_filter == 'true'))
+    
+    # Get provider types for filter dropdown
+    provider_types = AIProviderType.choices
+    
+    context = {
+        'providers': providers,
+        'search_query': q,
+        'provider_types': provider_types,
+        'selected_provider_type': provider_type_filter,
+        'selected_active': active_filter,
+    }
+    return render(request, 'ai_providers.html', context)
+
+
+def ai_provider_detail(request, id):
+    """AI Provider detail view with models."""
+    provider = get_object_or_404(AIProvider, id=id)
+    
+    # Get all models for this provider
+    models = provider.models.all().order_by('-is_default', 'name')
+    
+    # Get provider types for dropdown
+    provider_types = AIProviderType.choices
+    
+    context = {
+        'provider': provider,
+        'models': models,
+        'provider_types': provider_types,
+    }
+    return render(request, 'ai_provider_detail.html', context)
+
+
+def ai_provider_create(request):
+    """Create a new AI Provider."""
+    if request.method == 'GET':
+        provider_types = AIProviderType.choices
+        context = {
+            'provider': None,
+            'provider_types': provider_types,
+        }
+        return render(request, 'ai_provider_form.html', context)
+    
+    # Handle POST request
+    try:
+        provider = AIProvider.objects.create(
+            name=request.POST.get('name'),
+            provider_type=request.POST.get('provider_type'),
+            api_key=request.POST.get('api_key'),
+            organization_id=request.POST.get('organization_id', ''),
+            active=request.POST.get('active') == 'on'
+        )
+        
+        # Return HTMX response with redirect
+        response = HttpResponse()
+        response['HX-Redirect'] = f'/ai-providers/{provider.id}/'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Error creating provider: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_provider_update(request, id):
+    """Update AI Provider."""
+    provider = get_object_or_404(AIProvider, id=id)
+    
+    try:
+        provider.name = request.POST.get('name', provider.name)
+        provider.provider_type = request.POST.get('provider_type', provider.provider_type)
+        provider.organization_id = request.POST.get('organization_id', provider.organization_id)
+        provider.active = request.POST.get('active') == 'on'
+        
+        # Only update api_key if a new one is provided
+        api_key = request.POST.get('api_key', '').strip()
+        if api_key:
+            provider.api_key = api_key
+        
+        provider.save()
+        
+        # Return success toast trigger
+        response = HttpResponse()
+        response['HX-Trigger'] = 'showToast'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Error updating provider: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_provider_delete(request, id):
+    """Delete AI Provider."""
+    provider = get_object_or_404(AIProvider, id=id)
+    
+    try:
+        provider.delete()
+        
+        # Return redirect to list
+        response = HttpResponse()
+        response['HX-Redirect'] = '/ai-providers/'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Error deleting provider: {str(e)}", status=400)
+
+
+@require_http_methods(["GET"])
+def ai_provider_get_api_key(request, id):
+    """Get decrypted API key for copying."""
+    provider = get_object_or_404(AIProvider, id=id)
+    
+    # Return the actual API key for clipboard copy
+    return JsonResponse({
+        'api_key': provider.api_key
+    })
+
+
+@require_http_methods(["POST"])
+def ai_provider_fetch_models(request, id):
+    """Fetch available models from the provider API."""
+    provider = get_object_or_404(AIProvider, id=id)
+    
+    try:
+        # Import provider classes
+        from core.services.ai.openai_provider import OpenAIProvider
+        from core.services.ai.gemini_provider import GeminiProvider
+        
+        models_data = []
+        
+        if provider.provider_type == 'OpenAI':
+            # Use OpenAI API to list models
+            client = OpenAIProvider(
+                api_key=provider.api_key,
+                organization_id=provider.organization_id
+            )
+            
+            # Get models from OpenAI
+            import openai
+            openai_client = openai.OpenAI(api_key=provider.api_key)
+            models_list = openai_client.models.list()
+            
+            # Filter to just GPT models
+            for model in models_list.data:
+                if 'gpt' in model.id.lower():
+                    models_data.append({
+                        'name': model.id,
+                        'model_id': model.id
+                    })
+        
+        elif provider.provider_type == 'Gemini':
+            # For Gemini, use predefined list as API doesn't have list endpoint
+            models_data = [
+                {'name': 'Gemini Pro', 'model_id': 'gemini-pro'},
+                {'name': 'Gemini Pro Vision', 'model_id': 'gemini-pro-vision'},
+                {'name': 'Gemini 1.5 Pro', 'model_id': 'gemini-1.5-pro'},
+                {'name': 'Gemini 1.5 Flash', 'model_id': 'gemini-1.5-flash'},
+            ]
+        
+        elif provider.provider_type == 'Claude':
+            # For Claude, use predefined list
+            models_data = [
+                {'name': 'Claude 3 Opus', 'model_id': 'claude-3-opus-20240229'},
+                {'name': 'Claude 3 Sonnet', 'model_id': 'claude-3-sonnet-20240229'},
+                {'name': 'Claude 3 Haiku', 'model_id': 'claude-3-haiku-20240307'},
+                {'name': 'Claude 3.5 Sonnet', 'model_id': 'claude-3-5-sonnet-20241022'},
+            ]
+        
+        return JsonResponse({
+            'success': True,
+            'models': models_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to fetch models: {str(e)}'
+        }, status=400)
+
+
+@require_http_methods(["POST"])
+def ai_model_create(request, provider_id):
+    """Create a new AI Model for a provider."""
+    provider = get_object_or_404(AIProvider, id=provider_id)
+    
+    try:
+        model = AIModel.objects.create(
+            provider=provider,
+            name=request.POST.get('name'),
+            model_id=request.POST.get('model_id'),
+            input_price_per_1m_tokens=request.POST.get('input_price_per_1m_tokens') or None,
+            output_price_per_1m_tokens=request.POST.get('output_price_per_1m_tokens') or None,
+            active=request.POST.get('active') == 'on',
+            is_default=request.POST.get('is_default') == 'on'
+        )
+        
+        # If this is set as default, unset other defaults
+        if model.is_default:
+            AIModel.objects.filter(provider=provider).exclude(id=model.id).update(is_default=False)
+        
+        # Return updated models list
+        models = provider.models.all().order_by('-is_default', 'name')
+        context = {
+            'provider': provider,
+            'models': models,
+        }
+        return render(request, 'partials/ai_models_list.html', context)
+        
+    except Exception as e:
+        return HttpResponse(f"Error creating model: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_model_update(request, provider_id, model_id):
+    """Update an AI Model."""
+    provider = get_object_or_404(AIProvider, id=provider_id)
+    model = get_object_or_404(AIModel, id=model_id, provider=provider)
+    
+    try:
+        model.name = request.POST.get('name', model.name)
+        model.model_id = request.POST.get('model_id', model.model_id)
+        model.input_price_per_1m_tokens = request.POST.get('input_price_per_1m_tokens') or None
+        model.output_price_per_1m_tokens = request.POST.get('output_price_per_1m_tokens') or None
+        model.active = request.POST.get('active') == 'on'
+        model.is_default = request.POST.get('is_default') == 'on'
+        model.save()
+        
+        # If this is set as default, unset other defaults
+        if model.is_default:
+            AIModel.objects.filter(provider=provider).exclude(id=model.id).update(is_default=False)
+        
+        # Return updated models list
+        models = provider.models.all().order_by('-is_default', 'name')
+        context = {
+            'provider': provider,
+            'models': models,
+        }
+        return render(request, 'partials/ai_models_list.html', context)
+        
+    except Exception as e:
+        return HttpResponse(f"Error updating model: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_model_delete(request, provider_id, model_id):
+    """Delete an AI Model."""
+    provider = get_object_or_404(AIProvider, id=provider_id)
+    model = get_object_or_404(AIModel, id=model_id, provider=provider)
+    
+    try:
+        model.delete()
+        
+        # Return updated models list
+        models = provider.models.all().order_by('-is_default', 'name')
+        context = {
+            'provider': provider,
+            'models': models,
+        }
+        return render(request, 'partials/ai_models_list.html', context)
+        
+    except Exception as e:
+        return HttpResponse(f"Error deleting model: {str(e)}", status=400)
