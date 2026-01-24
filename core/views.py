@@ -6,7 +6,7 @@ from django.db import models
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from .models import (
-    Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation
+    Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation, 
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
