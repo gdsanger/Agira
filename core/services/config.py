@@ -68,7 +68,8 @@ def get_singleton(model_cls: Type[models.Model]) -> Optional[models.Model]:
     except model_cls.DoesNotExist:
         obj = None
     except Exception:
-        # Handle case where table doesn't exist yet (migrations)
+        # Handle edge cases like table not existing yet during migrations
+        # or database connection issues during startup
         obj = None
     
     # Cache the result (even if None to avoid repeated DB queries)
