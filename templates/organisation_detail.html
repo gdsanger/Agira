@@ -221,7 +221,7 @@
                         <label for="role" class="form-label">Role *</label>
                         <select class="form-select" id="role" name="role" required>
                             {% for value, label in user_roles %}
-                            <option value="{{ value }}"{% if value == 'User' %} selected{% endif %}>{{ label }}</option>
+                            <option value="{{ value }}"{% if value == default_role %} selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>

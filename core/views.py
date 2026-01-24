@@ -1055,6 +1055,7 @@ def organisation_detail(request, id):
         'user_organisations': user_organisations,
         'projects': projects,
         'user_roles': UserRole.choices,
+        'default_role': UserRole.USER,
     }
     return render(request, 'organisation_detail.html', context)
 
@@ -1076,7 +1077,7 @@ def organisation_add_user(request, id):
     organisation = get_object_or_404(Organisation, id=id)
     user_id = request.POST.get('user_id')
     is_primary = request.POST.get('is_primary', 'false') == 'true'
-    role = request.POST.get('role', 'User')
+    role = request.POST.get('role', UserRole.USER)
     
     if not user_id:
         return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
