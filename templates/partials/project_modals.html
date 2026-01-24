@@ -1,0 +1,164 @@
+<!-- Add Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addItemForm" hx-post="{% url 'project-add-item' project.id %}" hx-swap="none" hx-on::after-request="handleModalResponse(event, 'addItemModal')">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="itemTitle" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="itemTitle" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="itemType" class="form-label">Type</label>
+                        <select class="form-select" id="itemType" name="type_id" required>
+                            <option value="">Select type...</option>
+                            {% for type in item_types %}
+                            <option value="{{ type.id }}">{{ type.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="itemDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="itemDescription" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addItemForm" class="btn btn-primary">Add Item</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Node Modal -->
+<div class="modal fade" id="addNodeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Node</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNodeForm" hx-post="{% url 'project-add-node' project.id %}" hx-swap="none" hx-on::after-request="handleModalResponse(event, 'addNodeModal')">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="nodeName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="nodeName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="nodeType" class="form-label">Type</label>
+                        <select class="form-select" id="nodeType" name="type" required>
+                            <option value="">Select type...</option>
+                            {% for type_value, type_label in node_types %}
+                            <option value="{{ type_value }}">{{ type_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="nodeDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="nodeDescription" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addNodeForm" class="btn btn-primary">Add Node</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Release Modal -->
+<div class="modal fade" id="addReleaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Release</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addReleaseForm" hx-post="{% url 'project-add-release' project.id %}" hx-swap="none" hx-on::after-request="handleModalResponse(event, 'addReleaseModal')">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="releaseName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="releaseName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="releaseVersion" class="form-label">Version</label>
+                        <input type="text" class="form-control" id="releaseVersion" name="version" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addReleaseForm" class="btn btn-primary">Add Release</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal fade" id="addClientModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Client</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addClientForm" hx-post="{% url 'project-add-client' project.id %}" hx-swap="none" hx-on::after-request="handleModalResponse(event, 'addClientModal')">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="clientOrg" class="form-label">Organisation</label>
+                        <select class="form-select" id="clientOrg" name="organisation_id" required>
+                            <option value="">Select organisation...</option>
+                            {% for org in all_organisations %}
+                            <option value="{{ org.id }}">{{ org.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addClientForm" class="btn btn-primary">Add Client</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle modal form responses
+function handleModalResponse(event, modalId) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message);
+                // Close modal
+                const modalEl = document.getElementById(modalId);
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                // Reload page after short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Operation failed');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        showToast('error', 'Error', 'Operation failed');
+    }
+}
+</script>
