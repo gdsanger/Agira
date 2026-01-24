@@ -7,7 +7,8 @@ from .models import (
     Item, ItemRelation, ExternalIssueMapping, ItemComment,
     Attachment, AttachmentLink, Activity,
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
-    GraphAPIConfiguration, ZammadConfiguration
+    GraphAPIConfiguration, ZammadConfiguration,
+    AIProvider, AIModel, AIJobsHistory
 )
 
 
@@ -325,3 +326,60 @@ class ZammadConfigurationAdmin(ConfigurationAdmin):
         (None, {'fields': ('enabled',)}),
         ('Zammad Settings', {'fields': ('url', 'api_token')}),
     )
+
+
+# AI Admin Classes
+@admin.register(AIProvider)
+class AIProviderAdmin(admin.ModelAdmin):
+    list_display = ['name', 'provider_type', 'active', 'created_at']
+    list_filter = ['provider_type', 'active']
+    search_fields = ['name']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        (None, {'fields': ('name', 'provider_type', 'active')}),
+        ('API Configuration', {'fields': ('api_key', 'organization_id')}),
+        ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+    
+    def get_form(self, request, obj=None, **kwargs):
+        """Mask API key in admin forms"""
+        form = super().get_form(request, obj, **kwargs)
+        if obj and 'api_key' in form.base_fields:
+            form.base_fields['api_key'].widget.attrs['placeholder'] = '••••••••'
+        return form
+
+
+@admin.register(AIModel)
+class AIModelAdmin(admin.ModelAdmin):
+    list_display = ['name', 'provider', 'model_id', 'active', 'input_price_per_1m_tokens', 'output_price_per_1m_tokens', 'is_default']
+    list_filter = ['provider', 'active', 'is_default']
+    search_fields = ['name', 'model_id']
+    autocomplete_fields = ['provider']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        (None, {'fields': ('provider', 'name', 'model_id', 'active', 'is_default')}),
+        ('Pricing', {'fields': ('input_price_per_1m_tokens', 'output_price_per_1m_tokens')}),
+        ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+
+@admin.register(AIJobsHistory)
+class AIJobsHistoryAdmin(admin.ModelAdmin):
+    list_display = ['timestamp', 'agent', 'user', 'provider', 'model', 'status', 'costs', 'duration_ms', 'input_tokens', 'output_tokens']
+    list_filter = ['status', 'provider', 'model', 'agent']
+    search_fields = ['agent', 'user__username', 'error_message']
+    autocomplete_fields = ['user', 'provider', 'model']
+    readonly_fields = ['timestamp']
+    
+    fieldsets = (
+        (None, {'fields': ('agent', 'user', 'status', 'client_ip')}),
+        ('AI Provider', {'fields': ('provider', 'model')}),
+        ('Metrics', {'fields': ('input_tokens', 'output_tokens', 'costs', 'duration_ms')}),
+        ('Metadata', {'fields': ('timestamp', 'error_message')}),
+    )
+    
+    def has_add_permission(self, request):
+        # Jobs are created by the system, not manually
+        return False
