@@ -143,3 +143,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Custom User Model
+AUTH_USER_MODEL = 'core.User'
+
+# Media files (uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Field encryption key for encrypted fields
+# In production, this should be a long random string stored securely
+FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', 'D_GzCwyVvkyI1o5qUh9rle_JPKAghlTxDGTfC3RRmB4=')
