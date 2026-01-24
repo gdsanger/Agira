@@ -13,7 +13,7 @@ import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType, UserOrganisation)
+    AIProvider, AIModel, AIProviderType, UserOrganisation, UserRole)
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -1054,6 +1054,8 @@ def organisation_detail(request, id):
         'all_projects': all_projects,
         'user_organisations': user_organisations,
         'projects': projects,
+        'user_roles': UserRole.choices,
+        'default_role': UserRole.USER,
     }
     return render(request, 'organisation_detail.html', context)
 
@@ -1075,6 +1077,7 @@ def organisation_add_user(request, id):
     organisation = get_object_or_404(Organisation, id=id)
     user_id = request.POST.get('user_id')
     is_primary = request.POST.get('is_primary', 'false') == 'true'
+    role = request.POST.get('role', UserRole.USER)
     
     if not user_id:
         return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
@@ -1090,6 +1093,7 @@ def organisation_add_user(request, id):
         UserOrganisation.objects.create(
             organisation=organisation,
             user=user,
+            role=role,
             is_primary=is_primary
         )
         
@@ -1111,6 +1115,34 @@ def organisation_remove_user(request, id):
         user = get_object_or_404(User, id=user_id)
         organisation.user_organisations.filter(user=user).delete()
         return JsonResponse({'success': True, 'message': 'User removed successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def organisation_update_user(request, id):
+    """Update a user's role and primary status in an organisation."""
+    organisation = get_object_or_404(Organisation, id=id)
+    user_id = request.POST.get('user_id')
+    role = request.POST.get('role')
+    is_primary = request.POST.get('is_primary', 'false') == 'true'
+    
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+    
+    if not role:
+        return JsonResponse({'success': False, 'error': 'Role required'}, status=400)
+    
+    try:
+        user = get_object_or_404(User, id=user_id)
+        user_org = get_object_or_404(UserOrganisation, organisation=organisation, user=user)
+        
+        # Update the role and primary status
+        user_org.role = role
+        user_org.is_primary = is_primary
+        user_org.save()
+        
+        return JsonResponse({'success': True, 'message': 'User updated successfully'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
