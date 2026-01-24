@@ -155,6 +155,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # In production, this should be a long random string stored securely
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', 'D_GzCwyVvkyI1o5qUh9rle_JPKAghlTxDGTfC3RRmB4=')
 
+# Attachment Storage Configuration
+AGIRA_DATA_DIR = BASE_DIR / os.getenv('AGIRA_DATA_DIR', 'data')
+AGIRA_MAX_ATTACHMENT_SIZE_MB = int(os.getenv('AGIRA_MAX_ATTACHMENT_SIZE_MB', '25'))
+
 # Cache configuration
 # Using LocMemCache for simplicity and performance
 # In production, consider Redis or Memcached for multi-server deployments

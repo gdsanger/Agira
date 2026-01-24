@@ -220,21 +220,22 @@ class ItemCommentAdmin(admin.ModelAdmin):
 
 @admin.register(Attachment)
 class AttachmentAdmin(admin.ModelAdmin):
-    list_display = ['original_name', 'project', 'content_type', 'get_file_size', 'uploaded_at', 'uploaded_by']
-    list_filter = ['project', 'content_type']
-    search_fields = ['original_name', 'description']
-    autocomplete_fields = ['project', 'uploaded_by']
-    readonly_fields = ['uploaded_at', 'sha256', 'get_file_size']
+    list_display = ['created_at', 'original_name', 'get_file_size', 'created_by', 'is_deleted']
+    list_filter = ['is_deleted', 'created_at']
+    search_fields = ['original_name', 'sha256']
+    autocomplete_fields = ['created_by']
+    readonly_fields = ['created_at', 'sha256', 'get_file_size', 'storage_path']
     
     fieldsets = (
-        (None, {'fields': ('project', 'file', 'original_name', 'description')}),
-        ('Metadata', {'fields': ('content_type', 'get_file_size', 'sha256', 'uploaded_at', 'uploaded_by')}),
+        (None, {'fields': ('original_name', 'content_type', 'is_deleted')}),
+        ('Storage', {'fields': ('storage_path', 'get_file_size', 'sha256')}),
+        ('Metadata', {'fields': ('created_at', 'created_by')}),
     )
     
     def get_file_size(self, obj):
-        if obj.size:
+        if obj.size_bytes:
             # Convert bytes to human-readable format
-            size = obj.size
+            size = obj.size_bytes
             for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
                 if size < 1024.0 or unit == 'TB':
                     return f"{size:.2f} {unit}"
@@ -245,10 +246,11 @@ class AttachmentAdmin(admin.ModelAdmin):
 
 @admin.register(AttachmentLink)
 class AttachmentLinkAdmin(admin.ModelAdmin):
-    list_display = ['attachment', 'role', 'target_content_type', 'target_object_id']
-    list_filter = ['role', 'target_content_type']
+    list_display = ['attachment', 'role', 'target_content_type', 'target_object_id', 'created_at']
+    list_filter = ['role', 'target_content_type', 'created_at']
     search_fields = ['attachment__original_name']
     autocomplete_fields = ['attachment']
+    readonly_fields = ['created_at']
 
 
 @admin.register(Activity)

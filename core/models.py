@@ -6,7 +6,6 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
-import hashlib
 
 
 # Enums as TextChoices
@@ -420,30 +419,24 @@ class ItemComment(models.Model):
 
 
 class Attachment(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='attachments')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_attachments')
-    file = models.FileField(upload_to='attachments/%Y/%m/%d/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_attachments')
     original_name = models.CharField(max_length=500)
-    content_type = models.CharField(max_length=255)
-    size = models.BigIntegerField()
-    sha256 = models.CharField(max_length=64, blank=True)
-    description = models.TextField(blank=True)
+    content_type = models.CharField(max_length=255, blank=True)
+    size_bytes = models.BigIntegerField()
+    sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    storage_path = models.CharField(max_length=1000)
+    is_deleted = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['-uploaded_at']
-
-    def save(self, *args, **kwargs):
-        if self.file and not self.sha256:
-            self.file.seek(0)
-            file_hash = hashlib.sha256()
-            for chunk in self.file.chunks():
-                file_hash.update(chunk)
-            self.sha256 = file_hash.hexdigest()
-        super().save(*args, **kwargs)
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_at']),
+            models.Index(fields=['sha256']),
+        ]
 
     def __str__(self):
-        return f"{self.project.name} - {self.original_name}"
+        return f"{self.original_name} (ID: {self.id})"
 
 
 class AttachmentLink(models.Model):
@@ -452,10 +445,11 @@ class AttachmentLink(models.Model):
     target_object_id = models.PositiveIntegerField()
     target = GenericForeignKey('target_content_type', 'target_object_id')
     role = models.CharField(max_length=30, choices=AttachmentRole.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['attachment', 'target_content_type', 'target_object_id'], name='unique_attachment_target')
+            models.UniqueConstraint(fields=['attachment', 'target_content_type', 'target_object_id', 'role'], name='unique_attachment_target_role')
         ]
         ordering = ['attachment']
 
