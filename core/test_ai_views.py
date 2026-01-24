@@ -240,3 +240,165 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Check total models count
         models = AIModel.objects.filter(provider=self.openai_provider)
         self.assertEqual(models.count(), 2)
+
+
+class AIJobsHistoryViewTestCase(TestCase):
+    """Test cases for AI Jobs History view"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.client = Client()
+        
+        # Create test provider and model
+        self.provider = AIProvider.objects.create(
+            name='Test Provider',
+            provider_type='OpenAI',
+            api_key='test-key',
+            active=True
+        )
+        
+        self.model = AIModel.objects.create(
+            provider=self.provider,
+            name='gpt-4',
+            model_id='gpt-4',
+            active=True,
+            is_default=True
+        )
+    
+    def test_ai_jobs_history_view_loads(self):
+        """Test that the AI Jobs History view loads successfully"""
+        from core.models import AIJobsHistory, User, AIJobStatus
+        
+        # Create a test user
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        
+        # Create some test job history entries
+        AIJobsHistory.objects.create(
+            agent='core.ai',
+            user=user,
+            provider=self.provider,
+            model=self.model,
+            status=AIJobStatus.COMPLETED,
+            input_tokens=100,
+            output_tokens=50,
+            costs=0.001500,
+            duration_ms=1234
+        )
+        
+        AIJobsHistory.objects.create(
+            agent='core.ai',
+            user=user,
+            provider=self.provider,
+            model=self.model,
+            status=AIJobStatus.ERROR,
+            input_tokens=50,
+            output_tokens=0,
+            costs=0.000500,
+            duration_ms=500,
+            error_message='Test error'
+        )
+        
+        # Get the view
+        response = self.client.get(reverse('ai-jobs-history'))
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'ai_jobs_history.html')
+        
+        # Check context contains page_obj
+        self.assertIn('page_obj', response.context)
+        
+        # Check pagination (should have 2 jobs on page 1)
+        page_obj = response.context['page_obj']
+        self.assertEqual(len(page_obj), 2)
+    
+    def test_ai_jobs_history_filtering_by_status(self):
+        """Test filtering jobs by status"""
+        from core.models import AIJobsHistory, User, AIJobStatus
+        
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        
+        # Create jobs with different statuses
+        AIJobsHistory.objects.create(
+            agent='core.ai',
+            user=user,
+            provider=self.provider,
+            model=self.model,
+            status=AIJobStatus.COMPLETED,
+            input_tokens=100,
+            output_tokens=50,
+            costs=0.001500,
+            duration_ms=1234
+        )
+        
+        AIJobsHistory.objects.create(
+            agent='core.ai',
+            user=user,
+            provider=self.provider,
+            model=self.model,
+            status=AIJobStatus.ERROR,
+            input_tokens=50,
+            output_tokens=0,
+            costs=0.000500,
+            duration_ms=500
+        )
+        
+        # Filter by completed status
+        response = self.client.get(reverse('ai-jobs-history') + '?status=Completed')
+        
+        self.assertEqual(response.status_code, 200)
+        page_obj = response.context['page_obj']
+        
+        # Should only have 1 completed job
+        self.assertEqual(len(page_obj), 1)
+        self.assertEqual(page_obj[0].status, AIJobStatus.COMPLETED)
+    
+    def test_ai_jobs_history_pagination(self):
+        """Test pagination with 25 items per page"""
+        from core.models import AIJobsHistory, User, AIJobStatus
+        
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        
+        # Create 30 jobs to test pagination
+        for i in range(30):
+            AIJobsHistory.objects.create(
+                agent='core.ai',
+                user=user,
+                provider=self.provider,
+                model=self.model,
+                status=AIJobStatus.COMPLETED,
+                input_tokens=100,
+                output_tokens=50,
+                costs=0.001500,
+                duration_ms=1234
+            )
+        
+        # Get first page
+        response = self.client.get(reverse('ai-jobs-history'))
+        page_obj = response.context['page_obj']
+        
+        # Should have 25 items on first page
+        self.assertEqual(len(page_obj), 25)
+        self.assertTrue(page_obj.has_next())
+        self.assertFalse(page_obj.has_previous())
+        
+        # Get second page
+        response = self.client.get(reverse('ai-jobs-history') + '?page=2')
+        page_obj = response.context['page_obj']
+        
+        # Should have 5 items on second page
+        self.assertEqual(len(page_obj), 5)
+        self.assertFalse(page_obj.has_next())
+        self.assertTrue(page_obj.has_previous())

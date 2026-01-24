@@ -59,4 +59,7 @@ urlpatterns = [
     path('ai-providers/<int:provider_id>/models/add/', views.ai_model_create, name='ai-model-create'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/update/', views.ai_model_update, name='ai-model-update'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/delete/', views.ai_model_delete, name='ai-model-delete'),
+    
+    # AI Jobs History URLs
+    path('ai-jobs-history/', views.ai_jobs_history, name='ai-jobs-history'),
 ]
