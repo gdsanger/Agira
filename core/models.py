@@ -569,3 +569,104 @@ class ZammadConfiguration(SingletonModel):
 
     def __str__(self):
         return "Zammad Configuration"
+
+
+# AI Models
+class AIProviderType(models.TextChoices):
+    OPENAI = 'OpenAI', _('OpenAI')
+    GEMINI = 'Gemini', _('Gemini')
+    CLAUDE = 'Claude', _('Claude')
+
+
+class AIJobStatus(models.TextChoices):
+    PENDING = 'Pending', _('Pending')
+    COMPLETED = 'Completed', _('Completed')
+    ERROR = 'Error', _('Error')
+
+
+class AIProvider(models.Model):
+    """AI Provider configuration (OpenAI, Gemini, Claude, etc.)"""
+    name = models.CharField(max_length=255)
+    provider_type = models.CharField(max_length=20, choices=AIProviderType.choices)
+    api_key = EncryptedCharField(max_length=500)
+    organization_id = models.CharField(max_length=255, blank=True, help_text="Optional: For OpenAI organization")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['provider_type', 'name']
+        verbose_name = 'AI Provider'
+        verbose_name_plural = 'AI Providers'
+
+    def __str__(self):
+        return f"{self.name} ({self.provider_type})"
+
+
+class AIModel(models.Model):
+    """AI Model configuration with pricing"""
+    provider = models.ForeignKey(AIProvider, on_delete=models.CASCADE, related_name='models')
+    name = models.CharField(max_length=255)
+    model_id = models.CharField(max_length=255, help_text="Provider model string (e.g., gpt-4, gemini-pro)")
+    input_price_per_1m_tokens = models.DecimalField(
+        max_digits=10, 
+        decimal_places=4, 
+        null=True, 
+        blank=True,
+        help_text="Price per 1M input tokens"
+    )
+    output_price_per_1m_tokens = models.DecimalField(
+        max_digits=10, 
+        decimal_places=4, 
+        null=True, 
+        blank=True,
+        help_text="Price per 1M output tokens"
+    )
+    active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False, help_text="Use as default model for this provider")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['provider', 'name']
+        verbose_name = 'AI Model'
+        verbose_name_plural = 'AI Models'
+        constraints = [
+            models.UniqueConstraint(fields=['provider', 'model_id'], name='unique_provider_model')
+        ]
+
+    def __str__(self):
+        return f"{self.provider.provider_type} - {self.name}"
+
+
+class AIJobsHistory(models.Model):
+    """History of AI API calls for logging and cost tracking"""
+    agent = models.CharField(max_length=255, default='core.ai', help_text="Agent name or 'core.ai' for direct calls")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ai_jobs')
+    provider = models.ForeignKey(AIProvider, on_delete=models.SET_NULL, null=True, related_name='jobs')
+    model = models.ForeignKey(AIModel, on_delete=models.SET_NULL, null=True, related_name='jobs')
+    status = models.CharField(max_length=20, choices=AIJobStatus.choices, default=AIJobStatus.PENDING)
+    client_ip = models.GenericIPAddressField(null=True, blank=True)
+    
+    input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    costs = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True, help_text="Total cost in USD")
+    
+    timestamp = models.DateTimeField(auto_now_add=True)
+    duration_ms = models.IntegerField(null=True, blank=True, help_text="Duration in milliseconds")
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'AI Job History'
+        verbose_name_plural = 'AI Jobs History'
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['provider', 'model']),
+            models.Index(fields=['user']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        model_name = self.model.name if self.model else 'Unknown'
+        return f"{self.agent} - {model_name} ({self.status}) @ {self.timestamp}"
