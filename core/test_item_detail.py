@@ -166,8 +166,8 @@ class ItemDetailViewTest(TestCase):
         url = reverse('item-add-comment', args=[self.item.id])
         response = self.client.post(url, {'body': 'New test comment'})
         
-        # Should redirect to comments tab
-        self.assertEqual(response.status_code, 302)
+        # Should return rendered template (200)
+        self.assertEqual(response.status_code, 200)
         
         # Verify comment was created
         comment = ItemComment.objects.filter(item=self.item, body='New test comment').first()

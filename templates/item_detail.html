@@ -136,21 +136,26 @@
                         <div class="mb-3">
                             <strong>Status:</strong>
                             <div id="status-section" class="mt-2">
-                                <select class="form-select form-select-sm" id="status-select">
-                                    {% for value, display in available_statuses %}
-                                    <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>
-                                        {{ display }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                                <button 
-                                    class="btn btn-sm btn-primary mt-2"
-                                    hx-post="{% url 'item-change-status' item.id %}"
-                                    hx-vals='js:{status: document.getElementById("status-select").value}'
-                                    hx-target="#status-badge"
-                                    hx-swap="innerHTML">
-                                    Apply
-                                </button>
+                                <form id="status-form">
+                                    {% csrf_token %}
+                                    <select class="form-select form-select-sm" id="status-select">
+                                        {% for value, display in available_statuses %}
+                                        <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>
+                                            {{ display }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                    <button 
+                                        type="button"
+                                        class="btn btn-sm btn-primary mt-2"
+                                        hx-post="{% url 'item-change-status' item.id %}"
+                                        hx-vals='js:{status: document.getElementById("status-select").value}'
+                                        hx-target="#status-badge"
+                                        hx-swap="innerHTML"
+                                        hx-include="#status-form">
+                                        Apply
+                                    </button>
+                                </form>
                             </div>
                         </div>
                         <div class="mb-3">
@@ -274,14 +279,10 @@
     
     document.body.addEventListener('commentAdded', function(evt) {
         showToast('Comment added successfully!');
-        // Reload comments tab
-        htmx.trigger('#comments-tab', 'click');
     });
     
     document.body.addEventListener('attachmentUploaded', function(evt) {
         showToast('Attachment uploaded successfully!');
-        // Reload attachments tab
-        htmx.trigger('#attachments-tab', 'click');
     });
     
     function showToast(message) {

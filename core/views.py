@@ -320,7 +320,12 @@ def item_add_comment(request, item_id):
     )
     
     # Return updated comments list
-    response = redirect('item-comments-tab', item_id=item.id)
+    comments = item.comments.select_related('author').order_by('created_at')
+    context = {
+        'item': item,
+        'comments': comments,
+    }
+    response = render(request, 'partials/item_comments_tab.html', context)
     response['HX-Trigger'] = 'commentAdded'
     return response
 
@@ -355,7 +360,20 @@ def item_upload_attachment(request, item_id):
         )
         
         # Return updated attachments list
-        response = redirect('item-attachments-tab', item_id=item.id)
+        content_type = ContentType.objects.get_for_model(Item)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=item.id,
+            role=AttachmentRole.ITEM_FILE
+        ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+        
+        attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+        
+        context = {
+            'item': item,
+            'attachments': attachments,
+        }
+        response = render(request, 'partials/item_attachments_tab.html', context)
         response['HX-Trigger'] = 'attachmentUploaded'
         return response
         

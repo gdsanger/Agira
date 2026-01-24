@@ -4,7 +4,8 @@
     </div>
     <div class="card-body">
         <!-- Add Comment Form -->
-        <form hx-post="{% url 'item-add-comment' item.id %}" hx-swap="none" class="mb-4">
+        <form hx-post="{% url 'item-add-comment' item.id %}" hx-swap="outerHTML" hx-target="#comments" class="mb-4">
+            {% csrf_token %}
             <div class="mb-3">
                 <label for="comment-body" class="form-label">Add Comment</label>
                 <textarea 

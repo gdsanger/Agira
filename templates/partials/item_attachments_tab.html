@@ -1,3 +1,4 @@
+{% load agira_filters %}
 <div class="card">
     <div class="card-header">
         <h5 class="mb-0">Attachments</h5>
@@ -7,8 +8,10 @@
         <form 
             hx-post="{% url 'item-upload-attachment' item.id %}" 
             hx-encoding="multipart/form-data"
-            hx-swap="none"
+            hx-swap="outerHTML"
+            hx-target="#attachments"
             class="mb-4">
+            {% csrf_token %}
             <div class="mb-3">
                 <label for="attachment-file" class="form-label">Upload File</label>
                 <input 
@@ -49,13 +52,7 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if attachment.size_bytes < 1024 %}
-                                        {{ attachment.size_bytes }} B
-                                    {% elif attachment.size_bytes < 1048576 %}
-                                        {{ attachment.size_bytes|floatformat:0|add:"1024"|floatformat:0|slice:":-3" }} KB
-                                    {% else %}
-                                        {% widthratio attachment.size_bytes 1048576 1 %} MB
-                                    {% endif %}
+                                    {{ attachment.size_bytes|filesize }}
                                 </td>
                                 <td>
                                     <small class="text-muted">{{ attachment.created_at|date:"Y-m-d H:i" }}</small>
