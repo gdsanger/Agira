@@ -168,7 +168,11 @@
                             <span class="badge bg-secondary">{{ item.status }}</span>
                             {% elif item.status == 'Working' %}
                             <span class="badge bg-primary">{{ item.status }}</span>
-                            {% elif item.status == 'Done' %}
+                            {% elif item.status == 'Testing' %}
+                            <span class="badge bg-warning">{{ item.status }}</span>
+                            {% elif item.status == 'ReadyForRelease' %}
+                            <span class="badge bg-success">Ready for Release</span>
+                            {% elif item.status == 'Closed' %}
                             <span class="badge bg-success">{{ item.status }}</span>
                             {% else %}
                             <span class="badge bg-secondary">{{ item.status }}</span>
@@ -263,7 +267,7 @@
                             <span class="badge bg-secondary">{{ release.risk }}</span>
                             {% endif %}
                         </td>
-                        <td>{{ release.update_date|date:"Y-m-d"|default:"—" }}</td>
+                        <td>{% if release.update_date %}{{ release.update_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
