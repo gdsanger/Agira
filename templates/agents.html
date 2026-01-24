@@ -201,13 +201,20 @@
         formData.append('input_text', inputText);
         
         // Get CSRF token
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (!csrfToken) {
+            document.getElementById('testError').textContent = 'Error: CSRF token not found';
+            document.getElementById('testErrorSection').style.display = 'block';
+            spinner.classList.add('d-none');
+            submitBtn.disabled = false;
+            return;
+        }
         
         // Submit test request
         fetch(`/agents/${filename}/test/`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': csrfToken,
+                'X-CSRFToken': csrfToken.value,
             },
             body: formData
         })

@@ -43,7 +43,9 @@ class AgentService:
                     agents.append(agent_data)
             except Exception as e:
                 # Log error but continue processing other agents
-                print(f"Error loading agent {file_path}: {e}")
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error loading agent {file_path}: {e}")
                 continue
         
         # Sort by name
@@ -216,5 +218,7 @@ class AgentService:
                 
                 return data
         except Exception as e:
-            print(f"Error parsing {file_path}: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error parsing {file_path}: {e}")
             return None

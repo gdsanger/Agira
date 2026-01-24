@@ -1648,6 +1648,14 @@ def agent_create_save(request):
         safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '-')
         filename = f"{safe_name}.yml"
         
+        # Check if file already exists and add suffix if needed
+        counter = 1
+        original_filename = filename
+        while agent_service.get_agent(filename) is not None:
+            name_part = original_filename.replace('.yml', '')
+            filename = f"{name_part}-{counter}.yml"
+            counter += 1
+        
         # Save agent
         agent_service.save_agent(filename, agent_data)
         
