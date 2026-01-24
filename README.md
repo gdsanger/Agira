@@ -1,8 +1,7 @@
 # Agira
 
-Agira ist ein schlankes, pragmatisches Projekt-, Change- und Arbeitsmanagement-System für Softwareentwicklung  
-mit starkem Fokus auf **Nachvollziehbarkeit**, **Integration** und **KI-Unterstützung** –  
-ohne Overengineering, ohne Scrum-Zwang und ohne klassische Ticket-System-Komplexität.
+Agira ist ein pragmatisches Projekt-, Change- und Arbeitsmanagement-System für Softwareentwicklung  
+mit starkem Fokus auf **Nachvollziehbarkeit**, **Integration** und **KI-Unterstützung**. 
 
 Agira folgt bewusst einem **Kigil-Prinzip**:  
 > *Der Weg von Idee → Umsetzung → Deployment soll so kurz, klar und transparent wie möglich sein.*
@@ -53,6 +52,8 @@ Agira verfolgt einen anderen Ansatz:
   - E-Mail (Mail In/Out)
   - optionale Systeme (Zammad, Graph API, Google PSE)
 - **KI:** Agentenbasierte Architektur (adaptiert aus KIGate)
+
+- Bei der Uis muss auf Usability geachtet werden. Sie muss mindest Qualitätsstandard eines Premium Tools wie Jira, JetBrains, DevOps usw. erfüllen. Die einfache und pragmatische Struktur muss in der UI abgebildet sein. 
 
 ---
 
