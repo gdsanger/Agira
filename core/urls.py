@@ -64,7 +64,7 @@ urlpatterns = [
     path('agents/new/', views.agent_create, name='agent-create'),
     path('agents/<str:filename>/', views.agent_detail, name='agent-detail'),
     path('agents/<str:filename>/save/', views.agent_save, name='agent-save'),
-    path('agents/create/save/', views.agent_save, name='agent-create-save'),
+    path('agents/save/', views.agent_create_save, name='agent-create-save'),
     path('agents/<str:filename>/delete/', views.agent_delete, name='agent-delete'),
     path('agents/<str:filename>/test/', views.agent_test, name='agent-test'),
 ]

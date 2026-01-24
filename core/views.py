@@ -1529,8 +1529,8 @@ def agent_create(request):
 
 
 @require_http_methods(["POST"])
-def agent_save(request, filename=None):
-    """Save agent (create or update)."""
+def agent_save(request, filename):
+    """Save agent (update existing)."""
     agent_service = AgentService()
     
     try:
@@ -1556,7 +1556,7 @@ def agent_save(request, filename=None):
             'task': task,
         }
         
-        # Parse parameters from form (key1, value1, key2, value2, etc.)
+        # Parse parameters from form
         parameters = {}
         param_keys = request.POST.getlist('param_key[]')
         param_types = request.POST.getlist('param_type[]')
@@ -1580,13 +1580,73 @@ def agent_save(request, filename=None):
         if parameters:
             agent_data['parameters'] = parameters
         
-        # Determine filename
-        if not filename:
-            # Creating new agent - generate filename from name
-            safe_name = name.lower().replace(' ', '-').replace('_', '-')
-            # Remove any non-alphanumeric characters except hyphens
-            safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '-')
-            filename = f"{safe_name}.yml"
+        # Save agent
+        agent_service.save_agent(filename, agent_data)
+        
+        # Redirect to detail view
+        return redirect('agent-detail', filename=filename)
+        
+    except Exception as e:
+        return HttpResponse(f"Error saving agent: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def agent_create_save(request):
+    """Save agent (create new)."""
+    agent_service = AgentService()
+    
+    try:
+        # Get form data
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        provider = request.POST.get('provider', 'openai').strip()
+        model = request.POST.get('model', 'gpt-3.5-turbo').strip()
+        role = request.POST.get('role', '').strip()
+        task = request.POST.get('task', '').strip()
+        
+        # Validate required fields
+        if not name:
+            return HttpResponse("Agent name is required", status=400)
+        
+        # Build agent data
+        agent_data = {
+            'name': name,
+            'description': description,
+            'provider': provider,
+            'model': model,
+            'role': role,
+            'task': task,
+        }
+        
+        # Parse parameters from form
+        parameters = {}
+        param_keys = request.POST.getlist('param_key[]')
+        param_types = request.POST.getlist('param_type[]')
+        param_descriptions = request.POST.getlist('param_description[]')
+        param_required = request.POST.getlist('param_required[]')
+        
+        for i, key in enumerate(param_keys):
+            if key.strip():
+                param_def = {}
+                if i < len(param_types) and param_types[i]:
+                    param_def['type'] = param_types[i]
+                if i < len(param_descriptions) and param_descriptions[i]:
+                    param_def['description'] = param_descriptions[i]
+                if i < len(param_required) and param_required[i] == 'true':
+                    param_def['required'] = True
+                else:
+                    param_def['required'] = False
+                    
+                parameters[key] = param_def
+        
+        if parameters:
+            agent_data['parameters'] = parameters
+        
+        # Creating new agent - generate filename from name
+        safe_name = name.lower().replace(' ', '-').replace('_', '-')
+        # Remove any non-alphanumeric characters except hyphens
+        safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '-')
+        filename = f"{safe_name}.yml"
         
         # Save agent
         agent_service.save_agent(filename, agent_data)

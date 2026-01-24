@@ -1,0 +1,6 @@
+name: test-demo-agent
+description: A test agent for demonstration purposes
+provider: openai
+model: gpt-3.5-turbo
+role: You are a helpful assistant for testing purposes.
+task: Respond to the user input with a friendly greeting and echo their message back.
