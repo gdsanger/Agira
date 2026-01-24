@@ -147,12 +147,18 @@ class BaseIntegration:
         """
         Check if this integration is enabled.
         
+        For new-style integrations, checks the 'enabled' field in the config model.
+        Old-style integrations should override is_enabled() instead.
+        
         Returns:
             True if integration is enabled, False otherwise
         """
         config = self.get_config()
         if config is None:
             return False
+        # Note: Expects 'enabled' field in config model
+        # Old integrations may use different field names (e.g., 'enable_github')
+        # and should override is_enabled() instead
         return getattr(config, 'enabled', False)
     
     def require_enabled(self) -> None:
@@ -199,13 +205,9 @@ class BaseIntegration:
         
         Default implementation delegates to enabled() for new-style integrations.
         """
-        # If this method wasn't overridden by subclass, use new-style enabled()
-        # Check if the method on self.__class__ is different from BaseIntegration
-        if self.__class__.is_enabled is BaseIntegration.is_enabled:
-            # Not overridden, use new style
-            return self.enabled()
-        # This shouldn't be reached if subclass properly overrides
-        return False
+        # Default implementation for new-style integrations
+        # Old-style integrations will override this entire method
+        return self.enabled()
     
     def is_configured(self) -> bool:
         """
@@ -216,17 +218,15 @@ class BaseIntegration:
         
         Default implementation works with new-style integrations.
         """
-        # If this method wasn't overridden by subclass, try new-style
-        if self.__class__.is_configured is BaseIntegration.is_configured:
-            config = self.get_config()
-            if config is None:
-                return False
-            try:
-                return self._is_config_complete(config)
-            except NotImplementedError:
-                return True
-        # This shouldn't be reached if subclass properly overrides
-        return False
+        # Default implementation for new-style integrations
+        # Old-style integrations will override this entire method
+        config = self.get_config()
+        if config is None:
+            return False
+        try:
+            return self._is_config_complete(config)
+        except NotImplementedError:
+            return True
     
     def _check_availability(self) -> None:
         """
