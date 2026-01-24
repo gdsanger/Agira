@@ -22,6 +22,7 @@ from .services.storage import AttachmentStorageService
 OPENAI_PREFERRED_MODELS = {
     'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo', 
     'gpt-4-32k', 'gpt-4-turbo-preview', 'gpt-4o-mini'
+}
 # Create markdown parser once at module level for better performance
 MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
 
@@ -735,7 +736,7 @@ def organisations(request):
     # Annotate with user and project counts
     orgs = orgs.annotate(
         user_count=Count('user_organisations', distinct=True),
-        project_count=Count('project_clients', distinct=True)
+        project_count=Count('projects', distinct=True)
     )
     
     # Server-side search filter
@@ -809,7 +810,7 @@ def organisation_detail(request, id):
     organisation = get_object_or_404(
         Organisation.objects.annotate(
             user_count=Count('user_organisations', distinct=True),
-            project_count=Count('project_clients', distinct=True)
+            project_count=Count('projects', distinct=True)
         ),
         id=id
     )
@@ -824,7 +825,7 @@ def organisation_detail(request, id):
     user_organisations = organisation.user_organisations.select_related('user').order_by('user__name')
     
     # Get projects linked to this organisation
-    projects = organisation.project_clients.all().order_by('name')
+    projects = organisation.projects.all().order_by('name')
     
     context = {
         'organisation': organisation,
