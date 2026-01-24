@@ -6,9 +6,6 @@ import bleach
 
 register = template.Library()
 
-# Create markdown parser once at module level for better performance
-MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
-
 # Allowed HTML tags and attributes for sanitization
 ALLOWED_TAGS = [
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -70,11 +67,11 @@ def render_markdown(text):
     if not text:
         return ""
     
-    # Reset parser state for clean conversion
-    MARKDOWN_PARSER.reset()
+    # Create a new markdown parser instance for thread safety
+    md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
     
     # Convert markdown to HTML
-    html = MARKDOWN_PARSER.convert(text)
+    html = md_parser.convert(text)
     
     # Sanitize HTML to prevent XSS attacks
     sanitized_html = bleach.clean(

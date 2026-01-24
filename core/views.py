@@ -649,7 +649,11 @@ def item_create(request):
     except ValidationError as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        # Log the full error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Item creation failed: {str(e)}")
+        return JsonResponse({'success': False, 'error': 'Failed to create item. Please check your input.'}, status=400)
 
 
 def item_edit(request, item_id):
@@ -763,7 +767,11 @@ def item_update(request, item_id):
     except ValidationError as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        # Log the full error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Item update failed for item {item_id}: {str(e)}")
+        return JsonResponse({'success': False, 'error': 'Failed to update item. Please check your input.'}, status=400)
 
 
 @require_http_methods(["POST"])
