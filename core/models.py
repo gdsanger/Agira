@@ -504,6 +504,16 @@ class SingletonModel(models.Model):
 
 
 class GitHubConfiguration(SingletonModel):
+    # Enable/disable flag
+    enable_github = models.BooleanField(default=False, help_text="Enable GitHub integration")
+    
+    # API Configuration
+    github_token = EncryptedCharField(max_length=500, blank=True, help_text="GitHub Personal Access Token or App token")
+    github_api_base_url = models.URLField(default='https://api.github.com', help_text="GitHub API base URL")
+    default_github_owner = models.CharField(max_length=255, blank=True, help_text="Default GitHub owner/organization")
+    github_copilot_username = models.CharField(max_length=255, blank=True, help_text="GitHub username for Copilot attribution")
+    
+    # Legacy fields (for GitHub App integration)
     app_id = models.CharField(max_length=255, blank=True)
     installation_id = models.CharField(max_length=255, blank=True)
     private_key = EncryptedCharField(max_length=5000, blank=True)

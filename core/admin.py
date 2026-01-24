@@ -189,11 +189,17 @@ class ItemRelationAdmin(admin.ModelAdmin):
 
 @admin.register(ExternalIssueMapping)
 class ExternalIssueMappingAdmin(admin.ModelAdmin):
-    list_display = ['item', 'kind', 'number', 'state', 'github_id', 'last_synced_at']
+    list_display = ['item', 'kind', 'number', 'state', 'last_synced_at', 'get_github_link']
     list_filter = ['kind', 'state']
-    search_fields = ['item__title', 'number', 'github_id']
+    search_fields = ['item__title', 'number', 'html_url']
     autocomplete_fields = ['item']
-    readonly_fields = ['last_synced_at']
+    readonly_fields = ['github_id', 'html_url', 'last_synced_at']
+    
+    def get_github_link(self, obj):
+        if obj.html_url:
+            return format_html('<a href="{}" target="_blank">View on GitHub</a>', obj.html_url)
+        return '-'
+    get_github_link.short_description = 'GitHub Link'
 
 
 @admin.register(ItemComment)
@@ -280,11 +286,18 @@ class ConfigurationAdmin(admin.ModelAdmin):
 
 @admin.register(GitHubConfiguration)
 class GitHubConfigurationAdmin(ConfigurationAdmin):
-    encrypted_fields = ['private_key', 'webhook_secret']
+    encrypted_fields = ['github_token', 'private_key', 'webhook_secret']
     
     fieldsets = (
-        (None, {'fields': ('enabled',)}),
-        ('GitHub App', {'fields': ('app_id', 'installation_id', 'private_key', 'webhook_secret')}),
+        (None, {'fields': ('enable_github',)}),
+        ('GitHub API', {
+            'fields': ('github_token', 'github_api_base_url', 'default_github_owner', 'github_copilot_username'),
+            'description': 'Configure GitHub Personal Access Token or App token. Token needs repo access.'
+        }),
+        ('Legacy GitHub App', {
+            'fields': ('enabled', 'app_id', 'installation_id', 'private_key', 'webhook_secret'),
+            'classes': ('collapse',)
+        }),
     )
 
 
