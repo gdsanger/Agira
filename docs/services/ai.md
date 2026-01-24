@@ -22,7 +22,9 @@ agira/core/services/ai/
 ├── openai_provider.py   # OpenAI implementation
 ├── gemini_provider.py   # Gemini implementation
 ├── pricing.py           # Cost calculation
-└── schemas.py           # Data classes for requests/responses
+├── schemas.py           # Data classes for requests/responses
+├── test_ai.py           # Comprehensive test suite
+└── demo.py              # Example usage script
 ```
 
 ### Database Models
@@ -248,3 +250,30 @@ Common exceptions:
 - Rate limiting
 - Token usage alerts
 - Cost budgets per user/project
+
+## Quick Start / Demo
+
+A demonstration script is included to help you understand how to use the AI service:
+
+```bash
+# After configuring providers and models in Django admin
+python core/services/ai/demo.py
+```
+
+The demo script shows:
+- Simple text generation
+- Multi-turn conversations
+- Explicit provider selection
+- User tracking
+- Recent jobs history
+
+You can also explore the usage patterns directly in Python:
+
+```python
+# In Django shell or your code
+from core.services.ai import AIRouter
+
+router = AIRouter()
+response = router.generate(prompt="Hello, AI!")
+print(response.text)
+```
