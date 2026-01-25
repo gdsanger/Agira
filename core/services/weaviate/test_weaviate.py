@@ -809,3 +809,143 @@ class FetchObjectTestCase(TestCase):
         # Verify fetch_object_by_type was called with correct type and ID
         mock_fetch_by_type.assert_called_once_with("item", str(item.pk))
         self.assertIsNotNone(result)
+
+
+class ExternalIssueMappingSerializationTestCase(TestCase):
+    """Test ExternalIssueMapping serialization with GitHub data fetching."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.models import Project, Item, ItemType, ExternalIssueMapping, Organisation
+        
+        # Create test organisation
+        self.org = Organisation.objects.create(name="Test Org")
+        
+        # Create test project with GitHub config
+        self.project = Project.objects.create(
+            name="Test Project",
+            github_owner="test-owner",
+            github_repo="test-repo"
+        )
+        
+        # Create test item type
+        self.item_type = ItemType.objects.create(
+            key="bug",
+            name="Bug"
+        )
+        
+        # Create test item
+        self.item = Item.objects.create(
+            title="Test Item",
+            description="Local description",
+            project=self.project,
+            type=self.item_type,
+            organisation=self.org
+        )
+        
+        # Create external issue mapping
+        self.mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=12345,
+            number=42,
+            kind='Issue',
+            state='open',
+            html_url='https://github.com/test-owner/test-repo/issues/42'
+        )
+    
+    def test_serialize_github_issue_without_fetch(self):
+        """Test serializing ExternalIssueMapping without fetching from GitHub."""
+        from core.services.weaviate.serializers import _serialize_github_issue
+        
+        result = _serialize_github_issue(self.mapping, fetch_from_github=False)
+        
+        # Should use local Item data
+        self.assertEqual(result['type'], 'github_issue')
+        self.assertEqual(result['object_id'], str(self.mapping.id))
+        self.assertEqual(result['title'], 'Test Item')
+        self.assertIn('Local description', result['text'])
+        self.assertEqual(result['status'], 'open')
+        self.assertEqual(result['source_system'], 'github')
+        self.assertEqual(result['external_key'], 'test-owner/test-repo#42')
+    
+    @patch('core.services.weaviate.serializers._fetch_github_issue_data')
+    def test_serialize_github_issue_with_fetch_success(self, mock_fetch):
+        """Test serializing ExternalIssueMapping with successful GitHub fetch."""
+        from core.services.weaviate.serializers import _serialize_github_issue
+        
+        # Mock GitHub API response
+        mock_fetch.return_value = {
+            'title': 'Real GitHub Issue Title',
+            'body': 'Real GitHub issue body with details',
+            'state': 'open',
+            'labels': [
+                {'name': 'bug'},
+                {'name': 'high-priority'}
+            ],
+            'created_at': '2024-01-15T10:30:00Z',
+            'updated_at': '2024-01-16T14:45:00Z'
+        }
+        
+        result = _serialize_github_issue(self.mapping, fetch_from_github=True)
+        
+        # Should use GitHub data
+        self.assertEqual(result['type'], 'github_issue')
+        self.assertEqual(result['title'], 'Real GitHub Issue Title')
+        self.assertIn('Real GitHub issue body with details', result['text'])
+        self.assertIn('bug, high-priority', result['text'])
+        self.assertEqual(result['status'], 'open')
+        
+        # Verify GitHub fetch was called
+        mock_fetch.assert_called_once_with(
+            owner='test-owner',
+            repo='test-repo',
+            number=42,
+            kind='Issue'
+        )
+    
+    @patch('core.services.weaviate.serializers._fetch_github_issue_data')
+    def test_serialize_github_issue_with_fetch_failure(self, mock_fetch):
+        """Test serializing ExternalIssueMapping when GitHub fetch fails."""
+        from core.services.weaviate.serializers import _serialize_github_issue
+        
+        # Mock GitHub fetch failure
+        mock_fetch.return_value = None
+        
+        result = _serialize_github_issue(self.mapping, fetch_from_github=True)
+        
+        # Should fall back to local Item data
+        self.assertEqual(result['type'], 'github_issue')
+        self.assertEqual(result['title'], 'Test Item')
+        self.assertIn('Local description', result['text'])
+    
+    @patch('core.services.weaviate.serializers._fetch_github_issue_data')
+    def test_serialize_github_pr(self, mock_fetch):
+        """Test serializing ExternalIssueMapping for a Pull Request."""
+        from core.services.weaviate.serializers import _serialize_github_issue
+        from core.models import ExternalIssueMapping
+        
+        # Create PR mapping
+        pr_mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=67890,
+            number=100,
+            kind='PR',
+            state='merged',
+            html_url='https://github.com/test-owner/test-repo/pull/100'
+        )
+        
+        mock_fetch.return_value = {
+            'title': 'Fix critical bug',
+            'body': 'This PR fixes the critical bug',
+            'state': 'merged',
+            'labels': [],
+            'created_at': '2024-01-15T10:30:00Z',
+            'updated_at': '2024-01-16T14:45:00Z'
+        }
+        
+        result = _serialize_github_issue(pr_mapping, fetch_from_github=True)
+        
+        # Should be typed as github_pr
+        self.assertEqual(result['type'], 'github_pr')
+        self.assertEqual(result['title'], 'Fix critical bug')
+        self.assertEqual(result['status'], 'merged')
