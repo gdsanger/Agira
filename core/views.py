@@ -495,8 +495,8 @@ def item_link_github(request, item_id):
         number = request.POST.get('number', '').strip()
         
         # Get owner and repo from project configuration
-        owner = item.project.github_owner.strip()
-        repo = item.project.github_repo.strip()
+        owner = (item.project.github_owner or '').strip()
+        repo = (item.project.github_repo or '').strip()
         
         if not owner or not repo:
             missing_fields = []
