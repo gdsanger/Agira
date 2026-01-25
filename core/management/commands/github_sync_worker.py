@@ -192,7 +192,14 @@ class Command(BaseCommand):
         )
 
         # 2. Update Item status if issue was closed
-        if mapping.state == 'closed' and item.status != ItemStatus.TESTING:
+        # Skip status update if:
+        # - Item is already TESTING (no need to update)
+        # - Item is CLOSED (preserve final state - closed items should not be reopened)
+        should_update_status = (
+            mapping.state == 'closed' and
+            item.status not in (ItemStatus.TESTING, ItemStatus.CLOSED)
+        )
+        if should_update_status:
             if not dry_run:
                 with transaction.atomic():
                     item.status = ItemStatus.TESTING
