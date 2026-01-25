@@ -310,7 +310,7 @@ class RAGPipelineService:
                     query=query,
                     limit=limit * DEDUP_FETCH_MULTIPLIER,  # Fetch more for deduplication
                     alpha=alpha,
-                    where=where_filter,
+                    filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
                 )
                 
