@@ -221,12 +221,22 @@ def project_detail(request, id):
     # Get node types for adding new nodes
     node_types = NodeType.choices
     
+    # Count attachments for this project
+    content_type = ContentType.objects.get_for_model(Project)
+    attachments_count = AttachmentLink.objects.filter(
+        target_content_type=content_type,
+        target_object_id=project.id,
+        role=AttachmentRole.PROJECT_FILE,
+        attachment__is_deleted=False
+    ).count()
+    
     context = {
         'project': project,
         'description_html': description_html,
         'all_organisations': all_organisations,
         'item_types': item_types,
         'node_types': node_types,
+        'attachments_count': attachments_count,
     }
     return render(request, 'project_detail.html', context)
 
@@ -905,7 +915,12 @@ def item_upload_attachment(request, item_id):
             summary=f"Uploaded file: {attachment.original_name}",
         )
         
-        # Return updated attachments list
+        # Return success response (for AJAX uploads)
+        # If this is an AJAX request (multi-file upload), return simple success
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and not request.headers.get('HX-Request'):
+            return HttpResponse("Upload successful", status=200)
+        
+        # Return updated attachments list for HTMX requests
         content_type = ContentType.objects.get_for_model(Item)
         attachment_links = AttachmentLink.objects.filter(
             target_content_type=content_type,
@@ -1495,6 +1510,133 @@ def project_add_release(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+def project_attachments_tab(request, id):
+    """Return the project attachments tab content."""
+    project = get_object_or_404(Project, id=id)
+    
+    # Get attachments linked to this project
+    content_type = ContentType.objects.get_for_model(Project)
+    attachment_links = AttachmentLink.objects.filter(
+        target_content_type=content_type,
+        target_object_id=project.id,
+        role=AttachmentRole.PROJECT_FILE
+    ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+    
+    attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    
+    context = {
+        'project': project,
+        'attachments': attachments,
+    }
+    return render(request, 'partials/project_attachments_tab.html', context)
+
+
+@require_POST
+def project_upload_attachment(request, id):
+    """Upload an attachment to a project."""
+    project = get_object_or_404(Project, id=id)
+    
+    if 'file' not in request.FILES:
+        return HttpResponse("No file provided", status=400)
+    
+    uploaded_file = request.FILES['file']
+    
+    try:
+        # Store attachment
+        storage_service = AttachmentStorageService()
+        attachment = storage_service.store_attachment(
+            file=uploaded_file,
+            target=project,
+            role=AttachmentRole.PROJECT_FILE,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='attachment.uploaded',
+            target=project,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Uploaded file: {attachment.original_name}",
+        )
+        
+        # Return success response (for AJAX uploads)
+        # If this is an AJAX request (multi-file upload), return simple success
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and not request.headers.get('HX-Request'):
+            return HttpResponse("Upload successful", status=200)
+        
+        # Return updated attachments list for HTMX requests
+        content_type = ContentType.objects.get_for_model(Project)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=project.id,
+            role=AttachmentRole.PROJECT_FILE
+        ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+        
+        attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+        
+        context = {
+            'project': project,
+            'attachments': attachments,
+        }
+        response = render(request, 'partials/project_attachments_tab.html', context)
+        response['HX-Trigger'] = 'attachmentUploaded'
+        return response
+        
+    except ValidationError as e:
+        return HttpResponse(f"Validation error: {str(e)}", status=400)
+    except PermissionError as e:
+        return HttpResponse("Permission denied", status=403)
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Attachment upload failed for project {id}: {str(e)}")
+        return HttpResponse("Upload failed. Please try again.", status=500)
+
+
+@require_POST
+def project_delete_attachment(request, attachment_id):
+    """Delete a project attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        # Get the project for activity logging
+        attachment_link = AttachmentLink.objects.filter(
+            attachment=attachment,
+            role=AttachmentRole.PROJECT_FILE
+        ).first()
+        
+        if attachment_link and hasattr(attachment_link.target, 'id'):
+            project = attachment_link.target
+        else:
+            project = None
+        
+        # Store filename for logging
+        filename = attachment.original_name
+        
+        # Delete the attachment (soft delete)
+        storage_service = AttachmentStorageService()
+        storage_service.delete_attachment(attachment)
+        
+        # Log activity if we have a project
+        if project:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='attachment.deleted',
+                target=project,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f"Deleted file: {filename}",
+            )
+        
+        return JsonResponse({'success': True, 'message': 'Attachment deleted successfully'})
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Attachment deletion failed: {str(e)}")
+        return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
 
 
 # ============================================================================

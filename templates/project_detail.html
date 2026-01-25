@@ -150,6 +150,11 @@
                     Clients <span class="badge bg-secondary">{{ project.clients.count }}</span>
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#project-attachments" type="button" role="tab" aria-controls="project-attachments">
+                    Attachments <span class="badge bg-secondary">{{ attachments_count }}</span>
+                </button>
+            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -338,6 +343,19 @@
                     No clients assigned to this project yet.
                 </div>
                 {% endif %}
+            </div>
+            
+            <!-- Attachments Tab -->
+            <div class="tab-pane fade" id="project-attachments" role="tabpanel" aria-labelledby="attachments-tab"
+                 hx-get="{% url 'project-attachments-tab' project.id %}"
+                 hx-trigger="load once"
+                 hx-swap="innerHTML">
+                <!-- Content will be loaded via HTMX -->
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
