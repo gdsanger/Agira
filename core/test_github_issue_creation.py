@@ -3,10 +3,9 @@ Tests for GitHub issue creation from Item admin action.
 """
 
 from unittest.mock import Mock, patch
-from django.test import TestCase, RequestFactory
+from django.test import TestCase
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
-from django.contrib.messages.storage.fallback import FallbackStorage
 
 from core.models import (
     GitHubConfiguration,
@@ -28,10 +27,11 @@ class MockRequest:
     
     def __init__(self, user):
         self.user = user
-        self._messages = FallbackStorage(RequestFactory().get('/'))
+        # Use a simple list for messages instead of FallbackStorage
+        self._messages_list = []
     
     def _get_messages(self):
-        return getattr(self._messages, '_queued_messages', [])
+        return self._messages_list
 
 
 class GitHubIssueCreationTestCase(TestCase):
@@ -147,7 +147,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertFalse(service.can_create_issue_for_item(item))
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_creates_issue_for_backlog_item(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_creates_issue_for_backlog_item(self, mock_message_user, mock_create_issue):
         """Test that admin action creates GitHub issue for Backlog item."""
         item = Item.objects.create(
             project=self.project,
@@ -180,7 +181,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(mapping.state, 'open')
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_skips_inbox_item(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_skips_inbox_item(self, mock_message_user, mock_create_issue):
         """Test that admin action skips Inbox items."""
         item = Item.objects.create(
             project=self.project,
@@ -199,7 +201,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_skips_item_with_existing_issue(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_skips_item_with_existing_issue(self, mock_message_user, mock_create_issue):
         """Test that admin action skips items that already have a GitHub issue."""
         item = Item.objects.create(
             project=self.project,
@@ -228,7 +231,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 1)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_creates_multiple_issues(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_creates_multiple_issues(self, mock_message_user, mock_create_issue):
         """Test that admin action can create multiple issues."""
         item1 = Item.objects.create(
             project=self.project,
@@ -288,7 +292,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(mapping3.number, 103)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_handles_mixed_statuses(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_handles_mixed_statuses(self, mock_message_user, mock_create_issue):
         """Test that admin action creates issues for valid statuses and skips others."""
         valid_item = Item.objects.create(
             project=self.project,
@@ -321,7 +326,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(ExternalIssueMapping.objects.filter(item=valid_item).count(), 1)
         self.assertEqual(ExternalIssueMapping.objects.filter(item=invalid_item).count(), 0)
     
-    def test_admin_action_requires_github_enabled(self):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_requires_github_enabled(self, mock_message_user):
         """Test that admin action fails when GitHub is disabled."""
         self.config.enable_github = False
         self.config.save()
@@ -339,7 +345,8 @@ class GitHubIssueCreationTestCase(TestCase):
         # Check that no mapping was created
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
     
-    def test_admin_action_requires_github_configured(self):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_requires_github_configured(self, mock_message_user):
         """Test that admin action fails when GitHub is not configured."""
         self.config.github_token = ''
         self.config.save()
@@ -358,7 +365,8 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
-    def test_admin_action_handles_project_without_github_repo(self, mock_create_issue):
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_handles_project_without_github_repo(self, mock_message_user, mock_create_issue):
         """Test that admin action handles items from projects without GitHub configuration."""
         project_no_github = Project.objects.create(
             name='Project Without GitHub',
