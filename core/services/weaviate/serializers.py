@@ -40,7 +40,7 @@ def _get_model_type(instance: models.Model) -> Optional[str]:
     return type_map.get(model_name)
 
 
-def to_agira_object(instance: models.Model) -> Optional[Dict[str, Any]]:
+def to_agira_object(instance: models.Model, fetch_from_github: bool = False) -> Optional[Dict[str, Any]]:
     """
     Convert a Django model instance to an AgiraObject dictionary.
     
@@ -49,6 +49,7 @@ def to_agira_object(instance: models.Model) -> Optional[Dict[str, Any]]:
     
     Args:
         instance: Django model instance to serialize
+        fetch_from_github: For ExternalIssueMapping, fetch fresh data from GitHub API
         
     Returns:
         Dictionary with AgiraObject properties, or None if unsupported type
@@ -80,7 +81,7 @@ def to_agira_object(instance: models.Model) -> Optional[Dict[str, Any]]:
     elif isinstance(instance, Release):
         return _serialize_release(instance)
     elif isinstance(instance, ExternalIssueMapping):
-        return _serialize_github_issue(instance)
+        return _serialize_github_issue(instance, fetch_from_github=fetch_from_github)
     else:
         logger.warning(f"Unsupported model type for Weaviate: {instance.__class__.__name__}")
         return None
@@ -309,25 +310,84 @@ def _serialize_release(release) -> Dict[str, Any]:
     }
 
 
-def _serialize_github_issue(mapping) -> Dict[str, Any]:
-    """Serialize an ExternalIssueMapping instance (GitHub issue/PR)."""
+def _serialize_github_issue(mapping, fetch_from_github: bool = False) -> Dict[str, Any]:
+    """
+    Serialize an ExternalIssueMapping instance (GitHub issue/PR).
+    
+    Args:
+        mapping: ExternalIssueMapping instance
+        fetch_from_github: If True, fetch the actual issue/PR data from GitHub API
+        
+    Returns:
+        Dictionary with AgiraObject properties
+    """
     # Determine if it's an issue or PR
     obj_type = 'github_pr' if mapping.kind == 'PR' else 'github_issue'
     
     # Build external key from item's GitHub info
     external_key = None
-    if mapping.item and mapping.item.project:
-        project = mapping.item.project
-        if project.github_owner and project.github_repo:
-            external_key = f"{project.github_owner}/{project.github_repo}#{mapping.number}"
+    project = mapping.item.project if mapping.item else None
+    if project and project.github_owner and project.github_repo:
+        external_key = f"{project.github_owner}/{project.github_repo}#{mapping.number}"
     
-    # Build title and text from the mapped item
+    # Default values from local Item data
     title = mapping.item.title if mapping.item else f"GitHub {mapping.kind} #{mapping.number}"
     text = mapping.item.description if mapping.item else ""
+    state = mapping.state
+    created_at = None
+    updated_at = mapping.last_synced_at
     
-    # Add GitHub state
-    if mapping.state:
-        text = f"State: {mapping.state}\n\n{text}"
+    # Optionally fetch from GitHub API for richer data
+    if fetch_from_github and project and project.github_owner and project.github_repo:
+        try:
+            github_data = _fetch_github_issue_data(
+                owner=project.github_owner,
+                repo=project.github_repo,
+                number=mapping.number,
+                kind=mapping.kind
+            )
+            
+            if github_data:
+                # Use GitHub data if available
+                title = github_data.get('title', title)
+                body = github_data.get('body', '')
+                state = github_data.get('state', state)
+                
+                # Build richer text content
+                text_parts = []
+                if body:
+                    text_parts.append(body)
+                
+                # Add labels if present
+                labels = github_data.get('labels', [])
+                if labels:
+                    label_names = [label.get('name', '') for label in labels if isinstance(label, dict)]
+                    if label_names:
+                        text_parts.append(f"\n\nLabels: {', '.join(label_names)}")
+                
+                text = '\n'.join(text_parts) if text_parts else ''
+                
+                # Parse timestamps
+                if github_data.get('created_at'):
+                    try:
+                        created_at = datetime.fromisoformat(github_data['created_at'].replace('Z', '+00:00'))
+                    except (ValueError, AttributeError):
+                        pass
+                
+                if github_data.get('updated_at'):
+                    try:
+                        updated_at = datetime.fromisoformat(github_data['updated_at'].replace('Z', '+00:00'))
+                    except (ValueError, AttributeError):
+                        pass
+                
+                logger.info(f"Fetched GitHub {mapping.kind} data for #{mapping.number}: {title}")
+        except Exception as e:
+            # Log error but continue with local data
+            logger.warning(f"Failed to fetch GitHub data for {mapping.kind} #{mapping.number}: {e}")
+    
+    # Add state prefix to text
+    if state:
+        text = f"State: {state}\n\n{text}"
     
     return {
         'type': obj_type,
@@ -336,10 +396,48 @@ def _serialize_github_issue(mapping) -> Dict[str, Any]:
         'org_id': str(mapping.item.organisation_id) if mapping.item and mapping.item.organisation_id else None,
         'title': title,
         'text': text,
-        'status': mapping.state,
+        'status': state,
         'url': mapping.html_url or f"/items/{mapping.item_id}/",
         'source_system': 'github',
         'external_key': external_key,
-        'created_at': datetime.now(),  # ExternalIssueMapping doesn't have created_at
-        'updated_at': mapping.last_synced_at,
+        'created_at': created_at or datetime.now(),
+        'updated_at': updated_at or datetime.now(),
     }
+
+
+def _fetch_github_issue_data(owner: str, repo: str, number: int, kind: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch issue or PR data from GitHub API.
+    
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        number: Issue/PR number
+        kind: 'Issue' or 'PR'
+        
+    Returns:
+        GitHub issue/PR data dictionary, or None if unavailable
+    """
+    try:
+        from core.services.github.service import GitHubService
+        
+        github_service = GitHubService()
+        
+        # Check if GitHub is available
+        if not github_service.is_enabled() or not github_service.is_configured():
+            logger.debug("GitHub service not available, skipping fetch")
+            return None
+        
+        client = github_service._get_client()
+        
+        # Fetch issue or PR data
+        if kind == 'PR':
+            data = client.get_pr(owner, repo, number)
+        else:
+            data = client.get_issue(owner, repo, number)
+        
+        return data
+        
+    except Exception as e:
+        logger.warning(f"Failed to fetch GitHub {kind} {owner}/{repo}#{number}: {e}")
+        return None

@@ -354,8 +354,11 @@ def upsert_object(type: str, object_id: str) -> Optional[str]:
     This method loads the Django object by type and ID, serializes it using
     the appropriate serializer, and upserts it into Weaviate.
     
+    For GitHub issues/PRs (ExternalIssueMapping), this will fetch fresh data
+    from the GitHub API to ensure the most up-to-date content is indexed.
+    
     Args:
-        type: Type of object (e.g., "item", "comment", "project")
+        type: Type of object (e.g., "item", "comment", "project", "github_issue", "github_pr")
         object_id: Django object ID (as string)
         
     Returns:
@@ -378,8 +381,11 @@ def upsert_object(type: str, object_id: str) -> Optional[str]:
         logger.warning(f"Object not found: {type}:{object_id}")
         return None
     
+    # For GitHub issues/PRs, fetch fresh data from GitHub API
+    fetch_from_github = type in ('github_issue', 'github_pr')
+    
     # Serialize to AgiraObject dict
-    obj_dict = to_agira_object(instance)
+    obj_dict = to_agira_object(instance, fetch_from_github=fetch_from_github)
     if obj_dict is None:
         logger.warning(f"Could not serialize object: {type}:{object_id}")
         return None
@@ -434,7 +440,7 @@ def delete_object(type: str, object_id: str) -> bool:
         client.close()
 
 
-def upsert_instance(instance) -> Optional[str]:
+def upsert_instance(instance, fetch_from_github: bool = False) -> Optional[str]:
     """
     Upsert a Django model instance into Weaviate.
     
@@ -443,6 +449,7 @@ def upsert_instance(instance) -> Optional[str]:
     
     Args:
         instance: Django model instance (Item, Comment, Project, etc.)
+        fetch_from_github: For ExternalIssueMapping, fetch fresh data from GitHub API
         
     Returns:
         Weaviate object UUID as string, or None if unsupported type
@@ -459,7 +466,7 @@ def upsert_instance(instance) -> Optional[str]:
     from core.services.weaviate.serializers import to_agira_object
     
     # Serialize to AgiraObject dict
-    obj_dict = to_agira_object(instance)
+    obj_dict = to_agira_object(instance, fetch_from_github=fetch_from_github)
     if obj_dict is None:
         logger.warning(f"Could not serialize instance: {instance.__class__.__name__} (pk={instance.pk})")
         return None
