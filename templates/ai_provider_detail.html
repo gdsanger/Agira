@@ -84,20 +84,6 @@
                 </form>
             </div>
         </div>
-        
-        <!-- Fetch Models -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Fetch Available Models</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted">Fetch available models from the provider API</p>
-                <button type="button" class="btn btn-outline-primary" onclick="fetchModels({{ provider.id }})">
-                    🔄 Fetch Models
-                </button>
-                <div id="fetch-models-result" class="mt-3"></div>
-            </div>
-        </div>
     </div>
     
     <!-- AI Models List -->
@@ -105,11 +91,26 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">AI Models</h5>
-                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addModelModal">
-                    + Add Model
-                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                            hx-post="{% url 'ai-provider-fetch-models' provider.id %}"
+                            hx-target="#models-list"
+                            hx-indicator="#fetch-indicator"
+                            hx-on::after-request="if(event.detail.successful) showToast('Models fetched successfully', 'success')">
+                        🔄 Fetch Models
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addModelModal">
+                        + Add Model
+                    </button>
+                </div>
             </div>
             <div class="card-body" id="models-list">
+                <div id="fetch-indicator" class="htmx-indicator">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Fetching models...
+                </div>
                 {% include "partials/ai_models_list.html" %}
             </div>
         </div>
@@ -273,45 +274,6 @@
             }
         } catch (error) {
             showToast('Failed to copy API key: ' + error.message, 'error');
-        }
-    }
-    
-    async function fetchModels(providerId) {
-        const resultDiv = document.getElementById('fetch-models-result');
-        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div> Fetching models...';
-        
-        try {
-            const response = await fetch(`/ai-providers/${providerId}/fetch-models/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                resultDiv.innerHTML = `
-                    <div class="alert alert-success">
-                        <strong>Found ${data.total_count} models:</strong>
-                        <ul class="mb-0 mt-2">
-                            ${data.models.map(m => `<li>${m.name} (${m.model_id})</li>`).join('')}
-                        </ul>
-                        <hr>
-                        <small>✅ Created: ${data.created_count} | ℹ️ Already existed: ${data.existing_count}</small>
-                    </div>
-                `;
-                showToast(`Saved ${data.created_count} new models, ${data.existing_count} already existed`, 'success');
-                
-                // Refresh the models list (element with id="models-list" in the template)
-                htmx.ajax('GET', window.location.href, {target: '#models-list', select: '#models-list'});
-            } else {
-                resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                showToast(data.error, 'error');
-            }
-        } catch (error) {
-            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            showToast('Failed to fetch models: ' + error.message, 'error');
         }
     }
     

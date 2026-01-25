@@ -58,6 +58,8 @@ urlpatterns = [
     path('ai-providers/<int:id>/fetch-models/', views.ai_provider_fetch_models, name='ai-provider-fetch-models'),
     path('ai-providers/<int:provider_id>/models/add/', views.ai_model_create, name='ai-model-create'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/update/', views.ai_model_update, name='ai-model-update'),
+    path('ai-providers/<int:provider_id>/models/<int:model_id>/update-field/', views.ai_model_update_field, name='ai-model-update-field'),
+    path('ai-providers/<int:provider_id>/models/<int:model_id>/toggle-active/', views.ai_model_toggle_active, name='ai-model-toggle-active'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/delete/', views.ai_model_delete, name='ai-model-delete'),
     
     # Agent URLs

@@ -1394,7 +1394,7 @@ def ai_provider_fetch_models(request, id):
                 model_id=model_data['model_id'],
                 defaults={
                     'name': model_data['name'],
-                    'active': True,
+                    'active': False,  # New models are inactive by default
                     'is_default': False,
                     'input_price_per_1m_tokens': None,
                     'output_price_per_1m_tokens': None,
@@ -1405,13 +1405,13 @@ def ai_provider_fetch_models(request, id):
             else:
                 existing_count += 1
         
-        return JsonResponse({
-            'success': True,
-            'models': models_data,
-            'created_count': created_count,
-            'existing_count': existing_count,
-            'total_count': len(models_data)
-        })
+        # Return updated models list using the partial template
+        models = provider.models.all().order_by('-is_default', 'name')
+        context = {
+            'provider': provider,
+            'models': models,
+        }
+        return render(request, 'partials/ai_models_list.html', context)
         
     except Exception as e:
         return JsonResponse({
@@ -1511,6 +1511,51 @@ def ai_model_delete(request, provider_id, model_id):
         
     except Exception as e:
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_model_update_field(request, provider_id, model_id):
+    """Update a single field of an AI Model via HTMX."""
+    provider = get_object_or_404(AIProvider, id=provider_id)
+    model = get_object_or_404(AIModel, id=model_id, provider=provider)
+    
+    try:
+        field = request.POST.get('field')
+        value = request.POST.get('value', '').strip()
+        
+        if field == 'input_price_per_1m_tokens':
+            model.input_price_per_1m_tokens = value if value else None
+        elif field == 'output_price_per_1m_tokens':
+            model.output_price_per_1m_tokens = value if value else None
+        else:
+            return HttpResponse("Invalid field", status=400)
+        
+        model.save()
+        return HttpResponse(status=200)
+        
+    except Exception as e:
+        return HttpResponse(f"Error updating field: {str(e)}", status=400)
+
+
+@require_http_methods(["POST"])
+def ai_model_toggle_active(request, provider_id, model_id):
+    """Toggle the active status of an AI Model via HTMX."""
+    provider = get_object_or_404(AIProvider, id=provider_id)
+    model = get_object_or_404(AIModel, id=model_id, provider=provider)
+    
+    try:
+        model.active = not model.active
+        model.save()
+        
+        # Return just the updated table row
+        context = {
+            'provider': provider,
+            'model': model,
+        }
+        return render(request, 'partials/ai_model_row.html', context)
+        
+    except Exception as e:
+        return HttpResponse(f"Error toggling active status: {str(e)}", status=400)
 
 
 # ==================== Agent Views ====================
