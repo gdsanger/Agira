@@ -176,6 +176,22 @@ class Command(BaseCommand):
         }
 
         item = mapping.item
+        
+        # Early exit: Skip synchronization for items with Closed status
+        # Items in Closed status are functionally complete and should not be synced
+        # to avoid unnecessary GitHub API calls
+        if item.status == ItemStatus.CLOSED:
+            logger.info(
+                f"Skipping sync for Item #{item.id} (ExternalIssueMapping #{mapping.id}, "
+                f"Issue #{mapping.number}) - Item status is Closed"
+            )
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  Issue #{mapping.number}: Skipped (Item #{item.id} is Closed)"
+                )
+            )
+            return result
+        
         old_mapping_state = mapping.state
         old_item_status = item.status
 
