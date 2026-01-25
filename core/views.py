@@ -497,7 +497,7 @@ def item_link_github(request, item_id):
             verb='github.linked',
             target=item,
             actor=request.user if request.user.is_authenticated else None,
-            summary=f"Linked GitHub {kind.value} #{number}",
+            summary=f"Linked GitHub {dict(ExternalIssueKind.choices)[kind]} #{number}",
         )
         
         # Return updated GitHub tab
@@ -735,8 +735,9 @@ def item_view_attachment(request, attachment_id):
         
         # Process based on file type
         if extension == 'md':
-            # Render markdown to HTML
-            html_content = MARKDOWN_PARSER.reset().convert(file_content.decode('utf-8'))
+            # Render markdown to HTML - create parser instance per request for thread safety
+            md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+            html_content = md_parser.convert(file_content.decode('utf-8'))
             # Sanitize HTML
             clean_html = bleach.clean(
                 html_content,

@@ -285,7 +285,7 @@ document.getElementById('ai-title-btn').addEventListener('click', async function
     const descriptionText = descriptionEditor.getMarkdown();
     
     if (!descriptionText || descriptionText.trim() === '') {
-        showToast('error', 'Error', 'Please enter a description first');
+        showToast('error', 'Please enter a description first');
         return;
     }
     
@@ -308,12 +308,12 @@ document.getElementById('ai-title-btn').addEventListener('click', async function
         
         if (response.ok && data.success) {
             document.getElementById('title').value = data.title;
-            showToast('success', 'Success', 'Title generated successfully');
+            showToast('success', 'Title generated successfully');
         } else {
-            showToast('error', 'Error', data.error || 'Failed to generate title');
+            showToast('error', data.error || 'Failed to generate title');
         }
     } catch (error) {
-        showToast('error', 'Error', 'Failed to generate title');
+        showToast('error', 'Failed to generate title');
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalHTML;
@@ -326,7 +326,7 @@ document.getElementById('ai-optimize-btn').addEventListener('click', async funct
     const descriptionText = descriptionEditor.getMarkdown();
     
     if (!descriptionText || descriptionText.trim() === '') {
-        showToast('error', 'Error', 'Please enter a description first');
+        showToast('error', 'Please enter a description first');
         return;
     }
     
@@ -349,12 +349,12 @@ document.getElementById('ai-optimize-btn').addEventListener('click', async funct
         
         if (response.ok && data.success) {
             descriptionEditor.setMarkdown(data.text);
-            showToast('success', 'Success', 'Text optimized successfully');
+            showToast('success', 'Text optimized successfully');
         } else {
-            showToast('error', 'Error', data.error || 'Failed to optimize text');
+            showToast('error', data.error || 'Failed to optimize text');
         }
     } catch (error) {
-        showToast('error', 'Error', 'Failed to optimize text');
+        showToast('error', 'Failed to optimize text');
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalHTML;
@@ -369,7 +369,7 @@ function handleFormResponse(event) {
         try {
             const response = JSON.parse(xhr.responseText);
             if (response.success) {
-                showToast('success', 'Success', response.message || 'Item saved successfully');
+                showToast('success', response.message || 'Item saved successfully');
                 
                 // Redirect after a short delay
                 setTimeout(() => {
@@ -380,64 +380,60 @@ function handleFormResponse(event) {
                     }
                 }, 1000);
             } else {
-                showToast('error', 'Error', response.error || 'Failed to save item');
+                showToast('error', response.error || 'Failed to save item');
             }
         } catch (e) {
-            showToast('error', 'Error', 'An unexpected error occurred');
+            showToast('error', 'An unexpected error occurred');
         }
     } else {
         try {
             const response = JSON.parse(xhr.responseText);
-            showToast('error', 'Error', response.error || 'Failed to save item');
+            showToast('error', response.error || 'Failed to save item');
         } catch (e) {
-            showToast('error', 'Error', 'Failed to save item');
+            showToast('error', 'Failed to save item');
         }
     }
 }
 
 // Toast notification function
-function showToast(type, title, message) {
-    // Remove existing toasts
-    const existingToasts = document.querySelectorAll('.toast');
-    existingToasts.forEach(t => {
-        const bsToast = bootstrap.Toast.getInstance(t);
-        if (bsToast) bsToast.hide();
-    });
-    
-    // Create toast container if it doesn't exist
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-        document.body.appendChild(container);
+function showToast(type, message) {
+    const toastEl = document.getElementById(type === 'success' ? 'successToast' : 'errorToast');
+    if (!toastEl) {
+        // Create toast elements if they don't exist (for item form page)
+        const container = document.querySelector('.toast-container') || createToastContainer();
+        const toast = createToastElement(type, message);
+        container.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: 5000 });
+        bsToast.show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+        return;
     }
     
-    // Create toast element
+    const messageEl = document.getElementById(type === 'success' ? 'toastMessage' : 'errorToastMessage');
+    messageEl.textContent = message;
+    const toast = new bootstrap.Toast(toastEl);
+    toast.show();
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+    document.body.appendChild(container);
+    return container;
+}
+
+function createToastElement(type, message) {
     const toastEl = document.createElement('div');
-    const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+    const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
     toastEl.className = `toast align-items-center text-white ${bgClass} border-0`;
     toastEl.setAttribute('role', 'alert');
-    toastEl.setAttribute('aria-live', 'assertive');
-    toastEl.setAttribute('aria-atomic', 'true');
-    
     toastEl.innerHTML = `
         <div class="d-flex">
-            <div class="toast-body">
-                <strong>${title}:</strong> ${message}
-            </div>
+            <div class="toast-body">${message}</div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     `;
-    
-    container.appendChild(toastEl);
-    
-    const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 5000 });
-    toast.show();
-    
-    // Remove from DOM after hidden
-    toastEl.addEventListener('hidden.bs.toast', () => {
-        toastEl.remove();
-    });
+    return toastEl;
 }
 </script>
 {% endblock %}

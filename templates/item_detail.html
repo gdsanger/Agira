@@ -567,17 +567,25 @@
                             // Show PDF in iframe
                             modalContent.innerHTML = `<iframe src="data:application/pdf;base64,${data.content_base64}" style="width: 100%; height: 600px;" frameborder="0"></iframe>`;
                         } else if (extension === '.html' || extension === '.htm') {
-                            // Show HTML in iframe for safety - using DOM manipulation for security
+                            // Show HTML in iframe for safety - using DOM manipulation with strict sandboxing
                             const iframe = document.createElement('iframe');
                             iframe.style.width = '100%';
                             iframe.style.height = '600px';
                             iframe.style.background = 'white';
                             iframe.setAttribute('frameborder', '0');
+                            // Strict sandboxing - only allow same-origin, no scripts
                             iframe.setAttribute('sandbox', 'allow-same-origin');
+                            // Create a blob URL for the content instead of using srcdoc
+                            const blob = new Blob([data.content], { type: 'text/html' });
+                            const blobUrl = URL.createObjectURL(blob);
                             modalContent.innerHTML = '';
                             modalContent.appendChild(iframe);
-                            // Set content after adding to DOM
-                            iframe.srcdoc = data.content;
+                            iframe.src = blobUrl;
+                            // Clean up blob URL when modal is closed
+                            document.getElementById('attachmentViewerModal').addEventListener('hidden.bs.modal', function cleanup() {
+                                URL.revokeObjectURL(blobUrl);
+                                this.removeEventListener('hidden.bs.modal', cleanup);
+                            });
                         } else {
                             // Plain text
                             modalContent.innerHTML = `<pre style="white-space: pre-wrap; background-color: #1a1a1a; padding: 20px; border-radius: 4px; max-height: 600px; overflow-y: auto;">${data.content}</pre>`;
