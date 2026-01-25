@@ -132,6 +132,19 @@
         </main>
     </div>
 
+    <!-- Toast Container for notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11;">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto" id="toast-title">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toast-body">
+                <!-- Toast message will be inserted here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     
@@ -182,6 +195,40 @@
                 });
             });
         });
+    </script>
+    
+    <!-- Toast notification script -->
+    <script>
+        // Global function to show toast messages
+        function showToast(message, severity = 'info') {
+            const toastEl = document.getElementById('toast');
+            const toastBody = document.getElementById('toast-body');
+            const toastTitle = document.getElementById('toast-title');
+            const toastHeader = toastEl.querySelector('.toast-header');
+            
+            // Set message
+            toastBody.textContent = message;
+            
+            // Set title and color based on severity
+            toastHeader.classList.remove('bg-success', 'bg-danger', 'bg-warning', 'bg-info');
+            if (severity === 'success') {
+                toastTitle.textContent = 'Success';
+                toastHeader.classList.add('bg-success', 'text-white');
+            } else if (severity === 'error' || severity === 'danger') {
+                toastTitle.textContent = 'Error';
+                toastHeader.classList.add('bg-danger', 'text-white');
+            } else if (severity === 'warning') {
+                toastTitle.textContent = 'Warning';
+                toastHeader.classList.add('bg-warning', 'text-dark');
+            } else {
+                toastTitle.textContent = 'Info';
+                toastHeader.classList.add('bg-info', 'text-white');
+            }
+            
+            // Show toast
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
     </script>
     
     {% block extra_js %}{% endblock %}

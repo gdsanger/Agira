@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}{% if change %}Edit {{ change.title }}{% else %}New Change{% endif %} - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'changes' %}">Changes</a></li>
+        {% if change %}
+        <li class="breadcrumb-item"><a href="{% url 'change-detail' change.id %}">{{ change.title }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Change</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>{% if change %}Edit Change{% else %}Create New Change{% endif %}</h1>
+    <p class="text-muted">{% if change %}Update change details{% else %}Create a new change record for deployment or update{% endif %}</p>
+</div>
+
+<!-- Form Container -->
+<div class="row">
+    <div class="col-lg-8">
+        <form id="changeForm" 
+              hx-post="{% if change %}{% url 'change-update' change.id %}{% else %}{% url 'change-create' %}{% endif %}"
+              hx-swap="none"
+              hx-on::after-request="handleFormResponse(event)">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Basic Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="title" 
+                               name="title" 
+                               value="{% if change %}{{ change.title }}{% endif %}"
+                               required
+                               maxlength="500">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="project" class="form-label">Project <span class="text-danger">*</span></label>
+                        <select class="form-select" id="project" name="project" required>
+                            <option value="">Select a project...</option>
+                            {% for proj in projects %}
+                            <option value="{{ proj.id }}" {% if change and change.project.id == proj.id %}selected{% endif %}>
+                                {{ proj.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="status" class="form-label">Status</label>
+                            <select class="form-select" id="status" name="status">
+                                {% for status_value, status_label in statuses %}
+                                <option value="{{ status_value }}" {% if change and change.status == status_value %}selected{% endif %}>
+                                    {{ status_label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="risk" class="form-label">Risk Level</label>
+                            <select class="form-select" id="risk" name="risk">
+                                {% for risk_value, risk_label in risk_levels %}
+                                <option value="{{ risk_value }}" {% if change and change.risk == risk_value %}selected{% endif %}>
+                                    {{ risk_label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="release" class="form-label">Release (Optional)</label>
+                        <select class="form-select" id="release" name="release">
+                            <option value="">No release association</option>
+                            {% for rel in releases %}
+                            <option value="{{ rel.id }}" {% if change and change.release and change.release.id == rel.id %}selected{% endif %}>
+                                {{ rel.project.name }} - {{ rel.version }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" 
+                                  id="description" 
+                                  name="description" 
+                                  rows="5">{% if change %}{{ change.description }}{% endif %}</textarea>
+                        <small class="text-muted">Markdown supported</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Schedule -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Schedule</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="planned_start" class="form-label">Planned Start</label>
+                            <input type="datetime-local" 
+                                   class="form-control" 
+                                   id="planned_start" 
+                                   name="planned_start"
+                                   value="{% if change and change.planned_start %}{{ change.planned_start|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="planned_end" class="form-label">Planned End</label>
+                            <input type="datetime-local" 
+                                   class="form-control" 
+                                   id="planned_end" 
+                                   name="planned_end"
+                                   value="{% if change and change.planned_end %}{{ change.planned_end|date:'Y-m-d\TH:i' }}{% endif %}">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="executed_at" class="form-label">Executed At</label>
+                        <input type="datetime-local" 
+                               class="form-control" 
+                               id="executed_at" 
+                               name="executed_at"
+                               value="{% if change and change.executed_at %}{{ change.executed_at|date:'Y-m-d\TH:i' }}{% endif %}">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Risk & Mitigation -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Risk Assessment & Mitigation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="risk_description" class="form-label">Risk Description</label>
+                        <textarea class="form-control" 
+                                  id="risk_description" 
+                                  name="risk_description" 
+                                  rows="4">{% if change %}{{ change.risk_description }}{% endif %}</textarea>
+                        <small class="text-muted">Describe potential risks associated with this change</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="mitigation" class="form-label">Mitigation Plan</label>
+                        <textarea class="form-control" 
+                                  id="mitigation" 
+                                  name="mitigation" 
+                                  rows="4">{% if change %}{{ change.mitigation }}{% endif %}</textarea>
+                        <small class="text-muted">How will risks be mitigated?</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Rollback & Communication -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Rollback & Communication</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="rollback_plan" class="form-label">Rollback Plan</label>
+                        <textarea class="form-control" 
+                                  id="rollback_plan" 
+                                  name="rollback_plan" 
+                                  rows="4">{% if change %}{{ change.rollback_plan }}{% endif %}</textarea>
+                        <small class="text-muted">Steps to rollback if the change fails</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="communication_plan" class="form-label">Communication Plan</label>
+                        <textarea class="form-control" 
+                                  id="communication_plan" 
+                                  name="communication_plan" 
+                                  rows="4">{% if change %}{{ change.communication_plan }}{% endif %}</textarea>
+                        <small class="text-muted">How stakeholders will be informed</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex gap-2 mb-4">
+                <button type="submit" class="btn btn-primary">
+                    {% if change %}Update Change{% else %}Create Change{% endif %}
+                </button>
+                <a href="{% if change %}{% url 'change-detail' change.id %}{% else %}{% url 'changes' %}{% endif %}" 
+                   class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function handleFormResponse(event) {
+        const xhr = event.detail.xhr;
+        
+        try {
+            const response = JSON.parse(xhr.response);
+            
+            if (response.success) {
+                showToast(response.message, 'success');
+                
+                // Redirect after a short delay
+                if (response.redirect) {
+                    setTimeout(() => {
+                        window.location.href = response.redirect;
+                    }, 500);
+                }
+            } else {
+                showToast(response.error || 'An error occurred', 'error');
+            }
+        } catch (e) {
+            console.error('Error parsing response:', e);
+            showToast('An unexpected error occurred', 'error');
+        }
+    }
+</script>
+{% endblock %}

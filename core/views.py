@@ -17,7 +17,7 @@ from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
-    ExternalIssueMapping, ExternalIssueKind)
+    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -345,8 +345,60 @@ def items_ready(request):
     return render(request, 'items_ready.html', context)
 
 def changes(request):
-    """Changes page view."""
-    return render(request, 'changes.html')
+    """Changes list page view."""
+    changes_list = Change.objects.all().select_related(
+        'project', 'created_by', 'release'
+    ).prefetch_related('approvals__approver')
+    
+    # Server-side search filter
+    q = request.GET.get('q', '')
+    if q:
+        changes_list = changes_list.filter(
+            Q(title__icontains=q) | Q(description__icontains=q)
+        )
+    
+    # Filter by project
+    project_filter = request.GET.get('project', '')
+    if project_filter:
+        try:
+            changes_list = changes_list.filter(project_id=int(project_filter))
+        except (ValueError, TypeError):
+            project_filter = ''
+    
+    # Filter by status
+    status_filter = request.GET.get('status', '')
+    if status_filter:
+        changes_list = changes_list.filter(status=status_filter)
+    
+    # Filter by risk level
+    risk_filter = request.GET.get('risk', '')
+    if risk_filter:
+        changes_list = changes_list.filter(risk=risk_filter)
+    
+    # Annotate with approval counts
+    changes_list = changes_list.annotate(
+        total_approvals=Count('approvals'),
+        approved_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.APPROVED)),
+        pending_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.PENDING)),
+        rejected_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.REJECTED))
+    )
+    
+    # Get all projects, statuses and risk levels for filter dropdowns
+    projects = Project.objects.all().order_by('name')
+    statuses = ChangeStatus.choices
+    risk_levels = RiskLevel.choices
+    
+    context = {
+        'changes': changes_list,
+        'search_query': q,
+        'projects': projects,
+        'statuses': statuses,
+        'risk_levels': risk_levels,
+        'selected_project': project_filter,
+        'selected_status': status_filter,
+        'selected_risk': risk_filter,
+    }
+    return render(request, 'changes.html', context)
 
 def item_detail(request, item_id):
     """Item detail page with tabs."""
@@ -2358,3 +2410,351 @@ def weaviate_push(request, object_type, object_id):
             'available': True,
             'error': f'Error pushing to Weaviate: {str(e)}',
         })
+
+
+# Change Management Views
+
+def change_detail(request, id):
+    """Change detail page view."""
+    change = get_object_or_404(
+        Change.objects.select_related(
+            'project', 'created_by', 'release'
+        ).prefetch_related('approvals__approver'),
+        id=id
+    )
+    
+    # Render markdown fields to HTML with sanitization
+    description_html = None
+    if change.description:
+        MARKDOWN_PARSER.reset()
+        html = MARKDOWN_PARSER.convert(change.description)
+        description_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
+    
+    risk_description_html = None
+    if change.risk_description:
+        MARKDOWN_PARSER.reset()
+        html = MARKDOWN_PARSER.convert(change.risk_description)
+        risk_description_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
+    
+    mitigation_html = None
+    if change.mitigation:
+        MARKDOWN_PARSER.reset()
+        html = MARKDOWN_PARSER.convert(change.mitigation)
+        mitigation_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
+    
+    rollback_plan_html = None
+    if change.rollback_plan:
+        MARKDOWN_PARSER.reset()
+        html = MARKDOWN_PARSER.convert(change.rollback_plan)
+        rollback_plan_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
+    
+    communication_plan_html = None
+    if change.communication_plan:
+        MARKDOWN_PARSER.reset()
+        html = MARKDOWN_PARSER.convert(change.communication_plan)
+        communication_plan_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
+    
+    # Get all users for approver selection
+    all_users = User.objects.filter(active=True).order_by('name')
+    
+    # Get items associated with this change
+    items = change.items.all().select_related('project', 'type')
+    
+    context = {
+        'change': change,
+        'description_html': description_html,
+        'risk_description_html': risk_description_html,
+        'mitigation_html': mitigation_html,
+        'rollback_plan_html': rollback_plan_html,
+        'communication_plan_html': communication_plan_html,
+        'all_users': all_users,
+        'items': items,
+    }
+    return render(request, 'change_detail.html', context)
+
+
+def change_create(request):
+    """Change create page view."""
+    if request.method == 'GET':
+        # Show the create form
+        projects = Project.objects.all().order_by('name')
+        statuses = ChangeStatus.choices
+        risk_levels = RiskLevel.choices
+        releases = Release.objects.all().select_related('project').order_by('-update_date')
+        
+        context = {
+            'change': None,
+            'projects': projects,
+            'statuses': statuses,
+            'risk_levels': risk_levels,
+            'releases': releases,
+        }
+        return render(request, 'change_form.html', context)
+    
+    # Handle POST request (HTMX form submission)
+    try:
+        project_id = request.POST.get('project')
+        if not project_id:
+            return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
+        
+        project = get_object_or_404(Project, id=project_id)
+        
+        # Get release if provided
+        release = None
+        release_id = request.POST.get('release')
+        if release_id:
+            release = get_object_or_404(Release, id=release_id)
+        
+        # Parse datetime fields
+        planned_start = request.POST.get('planned_start')
+        planned_end = request.POST.get('planned_end')
+        executed_at = request.POST.get('executed_at')
+        
+        change = Change.objects.create(
+            project=project,
+            title=request.POST.get('title'),
+            description=request.POST.get('description', ''),
+            planned_start=planned_start if planned_start else None,
+            planned_end=planned_end if planned_end else None,
+            executed_at=executed_at if executed_at else None,
+            status=request.POST.get('status', ChangeStatus.DRAFT),
+            risk=request.POST.get('risk', RiskLevel.NORMAL),
+            risk_description=request.POST.get('risk_description', ''),
+            mitigation=request.POST.get('mitigation', ''),
+            rollback_plan=request.POST.get('rollback_plan', ''),
+            communication_plan=request.POST.get('communication_plan', ''),
+            release=release,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='created',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Change "{change.title}" was created'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Change created successfully',
+            'change_id': change.id,
+            'redirect': f'/changes/{change.id}/'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+def change_edit(request, id):
+    """Change edit page view."""
+    change = get_object_or_404(Change, id=id)
+    
+    if request.method == 'GET':
+        # Show the edit form
+        projects = Project.objects.all().order_by('name')
+        statuses = ChangeStatus.choices
+        risk_levels = RiskLevel.choices
+        releases = Release.objects.filter(project=change.project).order_by('-update_date')
+        
+        context = {
+            'change': change,
+            'projects': projects,
+            'statuses': statuses,
+            'risk_levels': risk_levels,
+            'releases': releases,
+        }
+        return render(request, 'change_form.html', context)
+
+
+@require_http_methods(["POST"])
+def change_update(request, id):
+    """Update change details."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Update basic fields
+        change.title = request.POST.get('title', change.title)
+        change.description = request.POST.get('description', change.description)
+        change.status = request.POST.get('status', change.status)
+        change.risk = request.POST.get('risk', change.risk)
+        change.risk_description = request.POST.get('risk_description', change.risk_description)
+        change.mitigation = request.POST.get('mitigation', change.mitigation)
+        change.rollback_plan = request.POST.get('rollback_plan', change.rollback_plan)
+        change.communication_plan = request.POST.get('communication_plan', change.communication_plan)
+        
+        # Update project if changed
+        project_id = request.POST.get('project')
+        if project_id and int(project_id) != change.project.id:
+            change.project = get_object_or_404(Project, id=project_id)
+        
+        # Update release if provided
+        release_id = request.POST.get('release')
+        if release_id:
+            change.release = get_object_or_404(Release, id=release_id)
+        else:
+            change.release = None
+        
+        # Parse datetime fields
+        planned_start = request.POST.get('planned_start')
+        planned_end = request.POST.get('planned_end')
+        executed_at = request.POST.get('executed_at')
+        
+        change.planned_start = planned_start if planned_start else None
+        change.planned_end = planned_end if planned_end else None
+        change.executed_at = executed_at if executed_at else None
+        
+        change.save()
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='updated',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Change "{change.title}" was updated'
+        )
+        
+        return JsonResponse({'success': True, 'message': 'Change updated successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def change_delete(request, id):
+    """Delete a change."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        title = change.title
+        change.delete()
+        
+        # Log activity - note: can't log to deleted object, so we skip this
+        
+        return JsonResponse({'success': True, 'redirect': '/changes/'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def change_add_approver(request, id):
+    """Add an approver to a change."""
+    change = get_object_or_404(Change, id=id)
+    user_id = request.POST.get('user_id')
+    is_required = request.POST.get('is_required', 'true').lower() == 'true'
+    
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+    
+    try:
+        user = get_object_or_404(User, id=user_id)
+        
+        # Check if approver already exists
+        if ChangeApproval.objects.filter(change=change, approver=user).exists():
+            return JsonResponse({'success': False, 'error': 'Approver already exists'}, status=400)
+        
+        approval = ChangeApproval.objects.create(
+            change=change,
+            approver=user,
+            is_required=is_required,
+            status=ApprovalStatus.PENDING
+        )
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='added_approver',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'{user.name} was added as an approver'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Approver added successfully',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def change_remove_approver(request, id, approval_id):
+    """Remove an approver from a change."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    try:
+        approver_name = approval.approver.name
+        approval.delete()
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='removed_approver',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'{approver_name} was removed as an approver'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Approver removed successfully',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def change_approve(request, id, approval_id):
+    """Approve a change."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    try:
+        approval.status = ApprovalStatus.APPROVED
+        approval.decision_at = timezone.now()
+        approval.comment = request.POST.get('comment', '')
+        approval.save()
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='approved',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'{approval.approver.name} approved the change'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Change approved successfully',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["POST"])
+def change_reject(request, id, approval_id):
+    """Reject a change."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    try:
+        approval.status = ApprovalStatus.REJECTED
+        approval.decision_at = timezone.now()
+        approval.comment = request.POST.get('comment', '')
+        approval.save()
+        
+        # Log activity
+        ActivityService.log_activity(
+            target=change,
+            verb='rejected',
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'{approval.approver.name} rejected the change'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Change rejected',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
