@@ -144,7 +144,7 @@ class ItemDetailViewTest(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Upload File')
+        self.assertContains(response, 'Drag & drop files here')
     
     def test_item_change_status(self):
         """Test changing item status."""
