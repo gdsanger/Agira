@@ -23,7 +23,9 @@ from core.services.weaviate.service import (
     upsert_instance,
     exists_instance,
     fetch_object,
+    exists_object,
 )
+from core.services.weaviate import is_available
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +350,6 @@ class Command(BaseCommand):
         
         # Check if object exists in Weaviate
         try:
-            from core.services.weaviate.service import exists_object
             exists = exists_object('github_issue', str(mapping.id))
             # Push if it doesn't exist
             return not exists
@@ -373,8 +374,6 @@ class Command(BaseCommand):
             True if successfully pushed
         """
         try:
-            from core.services.weaviate import is_available
-            
             # Check if Weaviate is available
             if not is_available():
                 logger.debug("Weaviate is not available, skipping push")

@@ -120,7 +120,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service._get_client.return_value = mock_client
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             call_command('github_sync_worker', '--dry-run', stdout=out)
         
@@ -161,7 +161,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service._get_client.return_value = mock_client
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             call_command('github_sync_worker', stdout=out)
         
@@ -220,7 +220,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service.upsert_mapping_from_github.return_value = pr_mapping
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             call_command('github_sync_worker', stdout=out)
         
@@ -235,7 +235,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         self.assertIn('Linked PR #100', output)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
-    @patch('core.services.weaviate.is_available')
+    @patch('core.management.commands.github_sync_worker.is_available')
     @patch('core.management.commands.github_sync_worker.upsert_instance')
     def test_command_pushes_to_weaviate_on_status_change(
         self,
@@ -323,7 +323,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service._get_client.return_value = mock_client
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             # Process with small batch size
             call_command('github_sync_worker', '--batch-size', '2', stdout=out)
@@ -360,7 +360,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         original_status = self.item.status
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             call_command('github_sync_worker', '--dry-run', stdout=out)
         
@@ -412,7 +412,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service._get_client.return_value = mock_client
         
         # Mock Weaviate
-        with patch('core.services.weaviate.is_available', return_value=False):
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
             out = StringIO()
             call_command(
                 'github_sync_worker',
@@ -465,7 +465,7 @@ class GitHubSyncWorkerHelperMethodsTestCase(TestCase):
             html_url='https://github.com/testowner/testrepo/issues/42',
         )
     
-    @patch('core.services.weaviate.service.exists_object')
+    @patch('core.management.commands.github_sync_worker.exists_object')
     def test_should_push_to_weaviate_when_state_changed(self, mock_exists):
         """Test that _should_push_to_weaviate returns True when state changed."""
         mock_exists.return_value = True  # Object exists
@@ -474,7 +474,7 @@ class GitHubSyncWorkerHelperMethodsTestCase(TestCase):
         
         self.assertTrue(result)
     
-    @patch('core.services.weaviate.service.exists_object')
+    @patch('core.management.commands.github_sync_worker.exists_object')
     def test_should_push_to_weaviate_when_object_doesnt_exist(self, mock_exists):
         """Test that _should_push_to_weaviate returns True when object doesn't exist."""
         mock_exists.return_value = False  # Object doesn't exist
@@ -483,7 +483,7 @@ class GitHubSyncWorkerHelperMethodsTestCase(TestCase):
         
         self.assertTrue(result)
     
-    @patch('core.services.weaviate.service.exists_object')
+    @patch('core.management.commands.github_sync_worker.exists_object')
     def test_should_not_push_to_weaviate_when_no_change_and_exists(self, mock_exists):
         """Test that _should_push_to_weaviate returns False when no change and exists."""
         mock_exists.return_value = True  # Object exists
