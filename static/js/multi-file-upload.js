@@ -33,6 +33,7 @@ class MultiFileUpload {
         this.boundAddDragOver = () => this.dropZone.classList.add('drag-over');
         this.boundRemoveDragOver = () => this.dropZone.classList.remove('drag-over');
         this.boundHandleDrop = (e) => {
+            this.preventDefaults(e);  // Ensure browser doesn't open the file
             const dt = e.dataTransfer;
             const files = dt.files;
             this.handleFiles(files);
