@@ -67,6 +67,12 @@ class GitHubSyncWorkerTestCase(TestCase):
             html_url='https://github.com/testowner/testrepo/issues/42',
         )
     
+    def _mock_sync_mapping_close(self, mapping):
+        """Helper to mock sync_mapping changing state to closed."""
+        mapping.state = 'closed'
+        mapping.save()
+        return mapping
+    
     def test_command_fails_when_github_disabled(self):
         """Test that command fails when GitHub is disabled."""
         self.config.enable_github = False
@@ -438,14 +444,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service.is_enabled.return_value = True
         mock_service.is_configured.return_value = True
         mock_service._get_repo_info.return_value = ('testowner', 'testrepo')
-        
-        # Mock sync_mapping to change state to closed
-        def mock_sync_mapping(mapping):
-            mapping.state = 'closed'
-            mapping.save()
-            return mapping
-        
-        mock_service.sync_mapping.side_effect = mock_sync_mapping
+        mock_service.sync_mapping.side_effect = self._mock_sync_mapping_close
         mock_service_class.return_value = mock_service
         
         # Mock GitHub client
@@ -483,14 +482,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service.is_enabled.return_value = True
         mock_service.is_configured.return_value = True
         mock_service._get_repo_info.return_value = ('testowner', 'testrepo')
-        
-        # Mock sync_mapping to change state to closed
-        def mock_sync_mapping(mapping):
-            mapping.state = 'closed'
-            mapping.save()
-            return mapping
-        
-        mock_service.sync_mapping.side_effect = mock_sync_mapping
+        mock_service.sync_mapping.side_effect = self._mock_sync_mapping_close
         mock_service_class.return_value = mock_service
         
         # Mock GitHub client
