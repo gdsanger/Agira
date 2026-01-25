@@ -187,6 +187,20 @@ file_path: Path = service.get_file_path(attachment)
 **Raises:**
 - `AttachmentNotFound` - File doesn't exist or path is invalid
 
+### Read Attachment
+
+Read the content of an attachment file.
+
+```python
+file_content: bytes = service.read_attachment(attachment)
+# Use file_content for display, download, processing, etc.
+```
+
+**Returns:** File content as `bytes`
+
+**Raises:**
+- `AttachmentNotFound` - File doesn't exist or path is invalid
+
 ### Delete Attachment
 
 Delete an attachment (soft or hard delete).
@@ -245,13 +259,28 @@ from core.services.storage import AttachmentStorageService
 service = AttachmentStorageService()
 attachment = Attachment.objects.get(id=attachment_id)
 
-# Get file path for reading
-file_path = service.get_file_path(attachment)
+# Option 1: Read file content directly
+file_content = service.read_attachment(attachment)
+# Send via Graph Mail API or similar
 
-# Use with email/Graph API
+# Option 2: Get file path for reading
+file_path = service.get_file_path(attachment)
 with open(file_path, 'rb') as f:
     file_content = f.read()
     # Send via Graph Mail API or similar
+```
+
+### View/Download Attachment
+
+```python
+# View attachment in browser
+file_content = service.read_attachment(attachment)
+response = HttpResponse(file_content, content_type=attachment.content_type)
+
+# Download attachment
+file_content = service.read_attachment(attachment)
+response = HttpResponse(file_content, content_type='application/octet-stream')
+response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
 ```
 
 ### Share Attachment Between Targets

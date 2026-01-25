@@ -251,6 +251,27 @@ class AttachmentStorageService:
         
         return absolute_path
     
+    def read_attachment(self, attachment: Attachment) -> bytes:
+        """
+        Read the content of an attachment file.
+        
+        Args:
+            attachment: Attachment instance
+            
+        Returns:
+            File content as bytes
+            
+        Raises:
+            AttachmentNotFound: If file doesn't exist or cannot be read
+        """
+        file_path = self.get_file_path(attachment)
+        
+        try:
+            with open(file_path, 'rb') as f:
+                return f.read()
+        except (PermissionError, OSError) as e:
+            raise AttachmentNotFound(f"Cannot read attachment file: {str(e)}") from e
+    
     def delete_attachment(self, attachment: Attachment, hard: bool = False):
         """
         Delete an attachment (soft or hard delete).
