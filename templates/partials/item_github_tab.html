@@ -3,10 +3,60 @@
         <h5 class="mb-0">GitHub Integration</h5>
     </div>
     <div class="card-body">
-        <!-- Add GitHub Issue/PR Form -->
+        <!-- Create New GitHub Issue Form -->
+        <div class="card mb-4" style="background-color: var(--bg-success-subtle, #d1e7dd);">
+            <div class="card-body">
+                <h6 class="mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                    </svg>
+                    Create New GitHub Issue
+                </h6>
+                <p class="mb-3">
+                    <small class="text-muted">
+                        Create a new GitHub issue for this item. 
+                        {% if item.status == 'Backlog' or item.status == 'Working' or item.status == 'Testing' %}
+                            <span class="text-success">✓ Status is valid ({{ item.status }})</span>
+                        {% else %}
+                            <span class="text-danger">✗ Status must be Backlog, Working, or Testing (current: {{ item.status }})</span>
+                        {% endif %}
+                    </small>
+                </p>
+                {% if item.external_mappings.all %}
+                    <div class="alert alert-info mb-0">
+                        <small>This item already has a GitHub issue. You can only create one issue per item.</small>
+                    </div>
+                {% elif item.status == 'Backlog' or item.status == 'Working' or item.status == 'Testing' %}
+                    <form hx-post="{% url 'item-create-github-issue' item.id %}" hx-swap="innerHTML" hx-target="#github">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-success">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                            </svg>
+                            Create GitHub Issue
+                        </button>
+                        {% if item.project.github_owner and item.project.github_repo %}
+                            <small class="text-muted ms-2">Will create in: {{ item.project.github_owner|escape }}/{{ item.project.github_repo|escape }}</small>
+                        {% elif item.project.github_owner %}
+                            <small class="text-warning ms-2">⚠ GitHub Repo not configured in project settings</small>
+                        {% elif item.project.github_repo %}
+                            <small class="text-warning ms-2">⚠ GitHub Owner not configured in project settings</small>
+                        {% else %}
+                            <small class="text-warning ms-2">⚠ GitHub Owner and Repo not configured in project settings</small>
+                        {% endif %}
+                    </form>
+                {% else %}
+                    <div class="alert alert-warning mb-0">
+                        <small>Cannot create GitHub issue. Item status must be Backlog, Working, or Testing.</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Link Existing GitHub Issue/PR Form -->
         <div class="card mb-4" style="background-color: var(--bg-tertiary);">
             <div class="card-body">
-                <h6 class="mb-3">Link GitHub Issue or Pull Request</h6>
+                <h6 class="mb-3">Link Existing GitHub Issue or Pull Request</h6>
                 <form id="github-link-form" hx-post="{% url 'item-link-github' item.id %}" hx-swap="innerHTML" hx-target="#github">
                     {% csrf_token %}
                     <div class="row">
@@ -29,7 +79,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
                                     <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
                                 </svg>
-                                Link GitHub Item
+                                Link Existing GitHub Item
                             </button>
                             {% if item.project.github_owner and item.project.github_repo %}
                                 <small class="text-muted ms-2">Using repository: {{ item.project.github_owner|escape }}/{{ item.project.github_repo|escape }}</small>

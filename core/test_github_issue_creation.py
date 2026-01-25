@@ -386,3 +386,94 @@ class GitHubIssueCreationTestCase(TestCase):
         
         # Check that no mapping was created
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
+
+
+class GitHubIssueCreationViewTestCase(TestCase):
+    """Test GitHub issue creation from user UI view."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Configure GitHub
+        self.config = GitHubConfiguration.load()
+        self.config.enable_github = True
+        self.config.github_token = 'test_token_123'
+        self.config.github_api_base_url = 'https://api.github.com'
+        self.config.save()
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123',
+            name='Test User'
+        )
+        
+        # Create test project with GitHub repo
+        self.project = Project.objects.create(
+            name='Test Project',
+            github_owner='testowner',
+            github_repo='testrepo',
+        )
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='feature',
+            name='Feature'
+        )
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    def test_view_creates_issue_for_backlog_item(self, mock_create_issue):
+        """Test that view creates GitHub issue for Backlog item."""
+        from django.test import Client
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Backlog Feature',
+            description='A new feature in backlog',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        mock_create_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/42',
+            'title': 'Backlog Feature',
+        }
+        
+        client = Client()
+        client.force_login(self.user)
+        response = client.post(f'/items/{item.id}/create-github-issue/')
+        
+        # Check that issue was created
+        self.assertEqual(response.status_code, 200)
+        mock_create_issue.assert_called_once()
+        
+        # Check that mapping was created
+        mapping = ExternalIssueMapping.objects.filter(item=item).first()
+        self.assertIsNotNone(mapping)
+        self.assertEqual(mapping.github_id, 12345)
+        self.assertEqual(mapping.number, 42)
+    
+    def test_view_rejects_inbox_item(self):
+        """Test that view rejects Inbox items."""
+        from django.test import Client
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Inbox Item',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+        )
+        
+        client = Client()
+        client.force_login(self.user)
+        response = client.post(f'/items/{item.id}/create-github-issue/')
+        
+        # Check that request was rejected
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('status', response.content.decode().lower())
+        
+        # Check that no mapping was created
+        self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
