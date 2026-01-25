@@ -495,13 +495,18 @@ def item_link_github(request, item_id):
         number = request.POST.get('number', '').strip()
         
         # Get owner and repo from project configuration
-        owner = (item.project.github_owner or '').strip()
-        repo = (item.project.github_repo or '').strip()
+        owner = item.project.github_owner.strip()
+        repo = item.project.github_repo.strip()
         
         if not owner or not repo:
+            missing_fields = []
+            if not owner:
+                missing_fields.append("'GitHub Owner'")
+            if not repo:
+                missing_fields.append("'GitHub Repo'")
             return HttpResponse(
                 f"GitHub repository not configured for project '{item.project.name}'. "
-                f"Please configure the 'GitHub Owner' and 'GitHub Repo' fields in the project settings.",
+                f"Please configure {' and '.join(missing_fields)} in the project settings.",
                 status=400
             )
         

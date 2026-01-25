@@ -33,8 +33,12 @@
                             </button>
                             {% if item.project.github_owner and item.project.github_repo %}
                                 <small class="text-muted ms-2">Using repository: {{ item.project.github_owner }}/{{ item.project.github_repo }}</small>
+                            {% elif item.project.github_owner %}
+                                <small class="text-warning ms-2">⚠ GitHub Repo not configured in project settings</small>
+                            {% elif item.project.github_repo %}
+                                <small class="text-warning ms-2">⚠ GitHub Owner not configured in project settings</small>
                             {% else %}
-                                <small class="text-warning ms-2">⚠ Project GitHub repository not configured</small>
+                                <small class="text-warning ms-2">⚠ GitHub Owner and Repo not configured in project settings</small>
                             {% endif %}
                         </div>
                     </div>
