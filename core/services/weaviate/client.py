@@ -55,10 +55,24 @@ def get_client() -> weaviate.WeaviateClient:
     http_secure = parsed.scheme == "https"
     http_host = parsed.hostname or 'localhost'
     
-    # Use configured ports with fallback to defaults
-    # If port is in URL, it takes precedence for backward compatibility
-    http_port = parsed.port or getattr(config, 'http_port', None) or (443 if http_secure else 8080)
-    grpc_port = getattr(config, 'grpc_port', None) or 50051
+    # Determine HTTP port with precedence order:
+    # 1. Port in URL (for backward compatibility)
+    # 2. Configured http_port field
+    # 3. Default based on scheme (443 for HTTPS, 8080 for HTTP)
+    if parsed.port:
+        http_port = parsed.port
+    elif hasattr(config, 'http_port') and config.http_port:
+        http_port = config.http_port
+    else:
+        http_port = 443 if http_secure else 8080
+    
+    # Determine gRPC port with precedence order:
+    # 1. Configured grpc_port field
+    # 2. Default (50051)
+    if hasattr(config, 'grpc_port') and config.grpc_port:
+        grpc_port = config.grpc_port
+    else:
+        grpc_port = 50051
     
     logger.debug(f"Using http_host={http_host}, http_port={http_port}, grpc_port={grpc_port}, http_secure={http_secure}")
     
