@@ -2491,11 +2491,27 @@ def change_create(request):
         }
         return render(request, 'change_form.html', context)
     
-    # Handle POST request (HTMX form submission)
+    # Handle POST request
     try:
         project_id = request.POST.get('project')
         if not project_id:
-            return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
+            if request.headers.get('HX-Request'):
+                return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
+            else:
+                # Regular form submission - re-render form with error
+                projects = Project.objects.all().order_by('name')
+                statuses = ChangeStatus.choices
+                risk_levels = RiskLevel.choices
+                releases = Release.objects.all().select_related('project').order_by('-update_date')
+                context = {
+                    'change': None,
+                    'projects': projects,
+                    'statuses': statuses,
+                    'risk_levels': risk_levels,
+                    'releases': releases,
+                    'error': 'Project is required'
+                }
+                return render(request, 'change_form.html', context)
         
         project = get_object_or_404(Project, id=project_id)
         
@@ -2535,14 +2551,33 @@ def change_create(request):
             summary=f'Change "{change.title}" was created'
         )
         
-        return JsonResponse({
-            'success': True,
-            'message': 'Change created successfully',
-            'change_id': change.id,
-            'redirect': f'/changes/{change.id}/'
-        })
+        # Return JSON for HTMX requests, redirect for regular requests
+        if request.headers.get('HX-Request'):
+            return JsonResponse({
+                'success': True,
+                'message': 'Change created successfully',
+                'change_id': change.id,
+                'redirect': f'/changes/{change.id}/'
+            })
+        else:
+            return redirect('change-detail', id=change.id)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        if request.headers.get('HX-Request'):
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        else:
+            projects = Project.objects.all().order_by('name')
+            statuses = ChangeStatus.choices
+            risk_levels = RiskLevel.choices
+            releases = Release.objects.all().select_related('project').order_by('-update_date')
+            context = {
+                'change': None,
+                'projects': projects,
+                'statuses': statuses,
+                'risk_levels': risk_levels,
+                'releases': releases,
+                'error': str(e)
+            }
+            return render(request, 'change_form.html', context)
 
 
 def change_edit(request, id):

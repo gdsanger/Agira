@@ -26,6 +26,8 @@
 <div class="row">
     <div class="col-lg-8">
         <form id="changeForm" 
+              method="post"
+              action="{% if change %}{% url 'change-update' change.id %}{% else %}{% url 'change-create' %}{% endif %}"
               hx-post="{% if change %}{% url 'change-update' change.id %}{% else %}{% url 'change-create' %}{% endif %}"
               hx-swap="none"
               hx-on::after-request="handleFormResponse(event)">
