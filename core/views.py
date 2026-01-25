@@ -16,7 +16,8 @@ import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole)
+    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
+    ExternalIssueMapping, ExternalIssueKind)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -464,9 +465,11 @@ def item_link_github(request, item_id):
         if github_type == 'Issue':
             github_data = client.get_issue(owner, repo, number)
             kind = ExternalIssueKind.ISSUE
-        else:
+        elif github_type == 'PR':
             github_data = client.get_pr(owner, repo, number)
-            kind = ExternalIssueKind.PULL_REQUEST
+            kind = ExternalIssueKind.PR
+        else:
+            return HttpResponse("Invalid type. Must be 'Issue' or 'PR'", status=400)
         
         # Check if mapping already exists
         github_id = github_data['id']
@@ -494,7 +497,7 @@ def item_link_github(request, item_id):
             verb='github.linked',
             target=item,
             actor=request.user if request.user.is_authenticated else None,
-            summary=f"Linked GitHub {kind.label} #{number}",
+            summary=f"Linked GitHub {kind.value} #{number}",
         )
         
         # Return updated GitHub tab
@@ -748,8 +751,16 @@ def item_view_attachment(request, attachment_id):
             pdf_base64 = base64.b64encode(file_content).decode('utf-8')
             return JsonResponse({'success': True, 'content_base64': pdf_base64})
         elif extension in ['html', 'htm']:
-            # Return HTML content (will be displayed in iframe)
-            return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
+            # Return sanitized HTML content (will be displayed in iframe)
+            html_content = file_content.decode('utf-8')
+            # Sanitize HTML before returning
+            clean_html = bleach.clean(
+                html_content,
+                tags=ALLOWED_TAGS + ['html', 'head', 'body', 'meta', 'title', 'style'],
+                attributes=ALLOWED_ATTRIBUTES,
+                strip=True
+            )
+            return JsonResponse({'success': True, 'content': clean_html})
         else:
             # Plain text
             return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
