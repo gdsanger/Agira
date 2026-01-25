@@ -45,6 +45,7 @@ urlpatterns = [
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
     path('ai/optimize-text/', views.ai_optimize_text, name='ai-optimize-text'),
+    path('items/<int:item_id>/ai/optimize-description/', views.item_ai_optimize_description, name='item-ai-optimize-description'),
     
     # Change Management URLs
     path('changes/', views.changes, name='changes'),

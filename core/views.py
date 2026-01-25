@@ -1185,6 +1185,104 @@ def ai_optimize_text(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@require_POST
+def item_ai_optimize_description(request, item_id):
+    """Optimize item description using RAG + AI agent (GitHub Issue Creation Agent)."""
+    import json
+    from core.services.weaviate.service import query as weaviate_query
+    
+    try:
+        # Check authentication
+        if not request.user.is_authenticated:
+            return JsonResponse({'status': 'error', 'message': 'Authentication required'}, status=401)
+        
+        # Check if user has Agent role
+        if request.user.role != UserRole.AGENT:
+            return JsonResponse({'status': 'error', 'message': 'Only users with Agent role can use this feature'}, status=403)
+        
+        # Get the item
+        item = get_object_or_404(Item, id=item_id)
+        
+        # Check if item has a description
+        if not item.description:
+            return JsonResponse({'status': 'error', 'message': 'Item has no description to optimize'}, status=400)
+        
+        # Step 1: Query Weaviate for RAG context
+        try:
+            # Query Weaviate for relevant context from the project
+            rag_results = weaviate_query(
+                project_id=item.project.id,
+                query_text=item.description,
+                top_k=10
+            )
+            
+            # Build context string from RAG results
+            context_parts = []
+            if rag_results:
+                context_parts.append("=== Relevant Context from Project ===\n")
+                for idx, result in enumerate(rag_results, 1):
+                    context_parts.append(f"\n{idx}. {result.get('title', 'N/A')} ({result.get('source_type', 'unknown')})")
+                    context_parts.append(f"   {result.get('text_preview', '')}")
+                    if result.get('url'):
+                        context_parts.append(f"   URL: {result.get('url')}")
+                context_parts.append("\n=== End of Context ===\n\n")
+            
+            rag_context = "\n".join(context_parts)
+            
+        except Exception as e:
+            # If Weaviate fails, continue without RAG context
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Weaviate query failed for item {item_id}: {e}")
+            rag_context = ""
+        
+        # Step 2: Prepare input for AI agent
+        agent_input = f"{rag_context}=== Item Description to Optimize ===\n{item.description}"
+        
+        # Step 3: Execute github-issue-creation-agent
+        agent_service = AgentService()
+        optimized_description = agent_service.execute_agent(
+            filename='github-issue-creation-agent.yml',
+            input_text=agent_input,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Step 4: Update item description
+        item.description = optimized_description.strip()
+        item.save()
+        
+        # Step 5: Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.description.ai_optimized',
+            target=item,
+            actor=request.user,
+            summary=f'Item description optimized via AI (RAG + GitHub agent)'
+        )
+        
+        return JsonResponse({'status': 'ok'})
+        
+    except Exception as e:
+        # Log error activity
+        try:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='item.description.ai_error',
+                target=item if 'item' in locals() else None,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'AI description optimization failed: {str(e)}'
+            )
+        except:
+            pass
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error optimizing item description: {e}", exc_info=True)
+        
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
 # Project CRUD operations
 @require_http_methods(["POST"])
 def project_update(request, id):
