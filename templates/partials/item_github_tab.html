@@ -107,6 +107,7 @@
                             <th>State</th>
                             <th>URL</th>
                             <th>Last Synced</th>
+                            <th>Weaviate</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -132,6 +133,18 @@
                             </td>
                             <td>
                                 <small class="text-muted">{{ mapping.last_synced_at|date:"Y-m-d H:i" }}</small>
+                            </td>
+                            <td>
+                                <!-- Weaviate Status Button -->
+                                <div 
+                                    hx-get="{% if mapping.kind == 'PR' %}{% url 'weaviate-status' 'github_pr' mapping.id %}{% else %}{% url 'weaviate-status' 'github_issue' mapping.id %}{% endif %}"
+                                    hx-trigger="load"
+                                    hx-swap="innerHTML">
+                                    <!-- Button will be loaded via HTMX -->
+                                    <div class="spinner-border spinner-border-sm text-muted" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
