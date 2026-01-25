@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from .models import (
@@ -11,6 +11,8 @@ from .models import (
     AIProvider, AIModel, AIJobsHistory,
     ExternalIssueKind
 )
+from core.services.github.service import GitHubService
+from core.services.integrations.base import IntegrationError
 
 
 # Inline Admin Classes
@@ -186,9 +188,6 @@ class ItemAdmin(admin.ModelAdmin):
         
         Only creates issues for items with status: Backlog, Working, or Testing.
         """
-        from core.services.github.service import GitHubService
-        from core.services.integrations.base import IntegrationError
-        
         service = GitHubService()
         
         # Check if GitHub is enabled
@@ -196,7 +195,7 @@ class ItemAdmin(admin.ModelAdmin):
             self.message_user(
                 request,
                 "GitHub integration is not enabled. Please enable it in GitHub Configuration.",
-                level='error'
+                level=messages.ERROR
             )
             return
         
@@ -204,7 +203,7 @@ class ItemAdmin(admin.ModelAdmin):
             self.message_user(
                 request,
                 "GitHub integration is not configured. Please add a GitHub token in GitHub Configuration.",
-                level='error'
+                level=messages.ERROR
             )
             return
         
@@ -219,7 +218,7 @@ class ItemAdmin(admin.ModelAdmin):
                 self.message_user(
                     request,
                     f"Skipped '{item.title}': Item status must be Backlog, Working, or Testing (current: {item.status})",
-                    level='warning'
+                    level=messages.WARNING
                 )
                 continue
             
@@ -229,7 +228,7 @@ class ItemAdmin(admin.ModelAdmin):
                 self.message_user(
                     request,
                     f"Skipped '{item.title}': Item already has a GitHub issue mapped",
-                    level='warning'
+                    level=messages.WARNING
                 )
                 continue
             
@@ -244,28 +243,28 @@ class ItemAdmin(admin.ModelAdmin):
                 self.message_user(
                     request,
                     f"Successfully created GitHub issue #{mapping.number} for '{item.title}'",
-                    level='success'
+                    level=messages.SUCCESS
                 )
             except ValueError as e:
                 error_count += 1
                 self.message_user(
                     request,
                     f"Error creating issue for '{item.title}': {str(e)}",
-                    level='error'
+                    level=messages.ERROR
                 )
             except IntegrationError as e:
                 error_count += 1
                 self.message_user(
                     request,
                     f"GitHub error for '{item.title}': {str(e)}",
-                    level='error'
+                    level=messages.ERROR
                 )
             except Exception as e:
                 error_count += 1
                 self.message_user(
                     request,
                     f"Unexpected error for '{item.title}': {str(e)}",
-                    level='error'
+                    level=messages.ERROR
                 )
         
         # Summary message
@@ -281,7 +280,7 @@ class ItemAdmin(admin.ModelAdmin):
             self.message_user(
                 request,
                 f"GitHub issue creation complete: {', '.join(summary_parts)}",
-                level='info'
+                level=messages.INFO
             )
     
     create_github_issue.short_description = "Create GitHub issue for selected items"

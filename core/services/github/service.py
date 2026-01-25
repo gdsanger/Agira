@@ -12,6 +12,7 @@ from core.models import (
     GitHubConfiguration,
     Project,
     Item,
+    ItemStatus,
     ExternalIssueMapping,
     ExternalIssueKind,
     Activity,
@@ -167,8 +168,6 @@ class GitHubService(IntegrationBase):
         Returns:
             True if issue can be created, False otherwise
         """
-        from core.models import ItemStatus
-        
         allowed_statuses = [
             ItemStatus.BACKLOG,
             ItemStatus.WORKING,
