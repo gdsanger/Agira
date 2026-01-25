@@ -500,12 +500,21 @@ def item_activity_tab(request, item_id):
 
 def item_github_tab(request, item_id):
     """HTMX endpoint to load GitHub tab."""
+    from core.services.github.service import GitHubService
+    
     item = get_object_or_404(Item, id=item_id)
     external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+    
+    # Check if item can have a GitHub issue created
+    github_service = GitHubService()
+    can_create_issue = github_service.can_create_issue_for_item(item)
+    has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
     
     context = {
         'item': item,
         'external_mappings': external_mappings,
+        'can_create_issue': can_create_issue,
+        'has_existing_issue': has_existing_issue,
     }
     return render(request, 'partials/item_github_tab.html', context)
 
@@ -630,14 +639,14 @@ def item_create_github_issue(request, item_id):
             )
         
         # Check if item already has a GitHub issue
-        if item.external_mappings.filter(kind=ExternalIssueKind.ISSUE).exists():
+        if item.external_mappings.filter(kind='Issue').exists():
             return HttpResponse("This item already has a GitHub issue. You can only link existing issues or PRs.", status=400)
         
         # Create GitHub issue
         try:
             mapping = github_service.create_issue_for_item(
                 item=item,
-                actor=request.user if request.user.is_authenticated else None
+                actor=request.user
             )
             
             # Return updated GitHub tab
