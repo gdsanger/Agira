@@ -526,7 +526,9 @@ class GitHubConfiguration(SingletonModel):
 
 
 class WeaviateConfiguration(SingletonModel):
-    url = models.URLField(blank=True)
+    url = models.URLField(blank=True, help_text="Weaviate instance URL (e.g., http://localhost or http://192.168.1.100)")
+    http_port = models.IntegerField(default=8080, help_text="HTTP port for Weaviate (default: 8080, local install often uses 8081)")
+    grpc_port = models.IntegerField(default=50051, help_text="gRPC port for Weaviate (default: 50051)")
     api_key = EncryptedCharField(max_length=500, blank=True)
     enabled = models.BooleanField(default=False)
 
