@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from decimal import Decimal, InvalidOperation
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
@@ -1527,7 +1528,6 @@ def ai_model_update_field(request, provider_id, model_id):
             # Validate and convert to Decimal if value is provided
             if value:
                 try:
-                    from decimal import Decimal, InvalidOperation
                     decimal_value = Decimal(value)
                     if decimal_value < 0:
                         return HttpResponse("Price cannot be negative", status=400)
