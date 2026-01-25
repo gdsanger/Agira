@@ -105,12 +105,17 @@
 <!-- Initialize Upload Component -->
 <script src="{% static 'js/multi-file-upload.js' %}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() {
+    // Clean up any existing instance
+    if (window.projectUploadComponent) {
+        window.projectUploadComponent.destroy();
+    }
+    
     // Get CSRF token
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     
     // Initialize multi-file upload for projects
-    const uploadComponent = new MultiFileUpload({
+    window.projectUploadComponent = new MultiFileUpload({
         dropZoneId: 'project-upload-drop-zone',
         fileInputId: 'project-file-input',
         uploadUrl: "{% url 'project-upload-attachment' project.id %}",
@@ -131,14 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
-    
-    // Make drop zone clickable
-    document.getElementById('project-upload-drop-zone').addEventListener('click', function(e) {
-        if (e.target.tagName !== 'INPUT') {
-            document.getElementById('project-file-input').click();
-        }
-    });
-});
+})();
 
 // Function to delete project attachment
 function deleteProjectAttachment(attachmentId) {

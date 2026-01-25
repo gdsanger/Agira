@@ -103,12 +103,17 @@
 <!-- Initialize Upload Component -->
 <script src="{% static 'js/multi-file-upload.js' %}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() {
+    // Clean up any existing instance
+    if (window.itemUploadComponent) {
+        window.itemUploadComponent.destroy();
+    }
+    
     // Get CSRF token
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     
     // Initialize multi-file upload
-    const uploadComponent = new MultiFileUpload({
+    window.itemUploadComponent = new MultiFileUpload({
         dropZoneId: 'item-upload-drop-zone',
         fileInputId: 'item-file-input',
         uploadUrl: "{% url 'item-upload-attachment' item.id %}",
@@ -129,12 +134,5 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
-    
-    // Make drop zone clickable
-    document.getElementById('item-upload-drop-zone').addEventListener('click', function(e) {
-        if (e.target.tagName !== 'INPUT') {
-            document.getElementById('item-file-input').click();
-        }
-    });
-});
+})();
 </script>

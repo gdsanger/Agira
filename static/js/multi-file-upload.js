@@ -45,6 +45,17 @@ class MultiFileUpload {
             this.handleFiles(e.target.files);
         });
         
+        // Click handler for drop zone to trigger file input
+        this.boundClickHandler = (e) => {
+            // Don't trigger if clicking on the file input itself
+            if (e.target.tagName !== 'INPUT') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.fileInput.click();
+            }
+        };
+        this.dropZone.addEventListener('click', this.boundClickHandler, false);
+        
         // Drag and drop handlers for drop zone
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             this.dropZone.addEventListener(eventName, this.boundPreventDefaults, false);
@@ -348,6 +359,11 @@ class MultiFileUpload {
         ['dragenter', 'dragover', 'drop'].forEach(eventName => {
             document.removeEventListener(eventName, this.boundPreventDefaults, false);
         });
+        
+        // Remove click handler from drop zone
+        if (this.dropZone && this.boundClickHandler) {
+            this.dropZone.removeEventListener('click', this.boundClickHandler, false);
+        }
     }
 }
 
