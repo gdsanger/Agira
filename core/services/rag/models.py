@@ -3,7 +3,7 @@ Data models for RAG Pipeline responses.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -47,7 +47,7 @@ class RAGContext:
     query: str
     alpha: float
     summary: str
-    items: list[RAGContextObject]
+    items: List[RAGContextObject]
     stats: dict = field(default_factory=dict)
     debug: Optional[dict] = None
     

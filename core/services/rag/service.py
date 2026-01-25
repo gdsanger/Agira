@@ -4,7 +4,7 @@ RAG Pipeline Service implementation.
 
 import logging
 import re
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from weaviate.classes.query import Filter, HybridFusion
@@ -20,6 +20,7 @@ from .config import (
     DEFAULT_ALPHA_SEMANTIC,
     DEFAULT_ALPHA_BALANCED,
     MAX_CONTENT_LENGTH,
+    DEDUP_FETCH_MULTIPLIER,
     TYPE_PRIORITY,
     FIELD_MAPPING,
 )
@@ -58,9 +59,9 @@ class RAGPipelineService:
             r'[A-Z][a-z]+[A-Z]',  # PascalCase (at least 2 capitals)
             r'[a-z]+[A-Z][a-z]+',  # camelCase
             r'\b[a-z]+_[a-z]+\b',  # snake_case
-            r'(Exception|Error|Traceback|Stack)',  # Error keywords (not word boundary to catch NullPointerException)
+            r'(Exception|Error|Traceback|Stack)',  # Error keywords (matches anywhere, including NullPointerException)
             r'HTTP\s*[45]\d\d',  # HTTP error codes
-            r'(Null|Undefined|Reference)',  # Common error terms
+            r'(Null|Undefined|Reference)',  # Common error terms (matches anywhere)
         ]
         
         # Check for keyword patterns
@@ -116,7 +117,7 @@ class RAGPipelineService:
         return truncated.rstrip() + "..."
     
     @staticmethod
-    def _generate_summary(items: list[RAGContextObject]) -> str:
+    def _generate_summary(items: List[RAGContextObject]) -> str:
         """
         Generate a heuristic summary of the search results.
         
@@ -149,9 +150,9 @@ class RAGPipelineService:
     
     @staticmethod
     def _deduplicate_and_rank(
-        results: list[dict],
+        results: List[Dict[str, Any]],
         limit: int
-    ) -> list[dict]:
+    ) -> List[Dict[str, Any]]:
         """
         Deduplicate results by object_id and rank by relevance and type priority.
         
@@ -307,7 +308,7 @@ class RAGPipelineService:
                 # Perform hybrid search
                 response = collection.query.hybrid(
                     query=query,
-                    limit=limit * 2,  # Fetch more for deduplication
+                    limit=limit * DEDUP_FETCH_MULTIPLIER,  # Fetch more for deduplication
                     alpha=alpha,
                     where=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
