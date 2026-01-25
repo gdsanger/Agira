@@ -84,20 +84,6 @@
                 </form>
             </div>
         </div>
-        
-        <!-- Fetch Models -->
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Fetch Available Models</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted">Fetch available models from the provider API</p>
-                <button type="button" class="btn btn-outline-primary" onclick="fetchModels({{ provider.id }})">
-                    🔄 Fetch Models
-                </button>
-                <div id="fetch-models-result" class="mt-3"></div>
-            </div>
-        </div>
     </div>
     
     <!-- AI Models List -->
@@ -105,11 +91,26 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">AI Models</h5>
-                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addModelModal">
-                    + Add Model
-                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                            hx-post="{% url 'ai-provider-fetch-models' provider.id %}"
+                            hx-target="#models-list"
+                            hx-indicator="#fetch-indicator"
+                            hx-on::after-request="if(event.detail.successful) showToast('Models fetched successfully', 'success')">
+                        🔄 Fetch Models
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addModelModal">
+                        + Add Model
+                    </button>
+                </div>
             </div>
             <div class="card-body" id="models-list">
+                <div id="fetch-indicator" class="htmx-indicator">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Fetching models...
+                </div>
                 {% include "partials/ai_models_list.html" %}
             </div>
         </div>
@@ -163,57 +164,6 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add Model</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Model Modal -->
-<div class="modal fade" id="editModelModal" tabindex="-1" aria-labelledby="editModelModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title" id="editModelModalLabel">Edit AI Model</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="editModelForm" hx-target="#models-list"
-                  hx-on::after-request="if(event.detail.successful) bootstrap.Modal.getInstance(document.getElementById('editModelModal')).hide(); showToast('Model updated successfully', 'success');">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="edit_model_name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="edit_model_name" name="name" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="edit_model_id" class="form-label">Model ID</label>
-                        <input type="text" class="form-control" id="edit_model_id" name="model_id" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="edit_input_price" class="form-label">Input Price (per 1M tokens)</label>
-                        <input type="number" step="0.0001" class="form-control" id="edit_input_price" name="input_price_per_1m_tokens">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="edit_output_price" class="form-label">Output Price (per 1M tokens)</label>
-                        <input type="number" step="0.0001" class="form-control" id="edit_output_price" name="output_price_per_1m_tokens">
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="edit_model_active" name="active">
-                        <label class="form-check-label" for="edit_model_active">Active</label>
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="edit_is_default" name="is_default">
-                        <label class="form-check-label" for="edit_is_default">Set as default model</label>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Update Model</button>
                 </div>
             </form>
         </div>
@@ -274,63 +224,6 @@
         } catch (error) {
             showToast('Failed to copy API key: ' + error.message, 'error');
         }
-    }
-    
-    async function fetchModels(providerId) {
-        const resultDiv = document.getElementById('fetch-models-result');
-        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div> Fetching models...';
-        
-        try {
-            const response = await fetch(`/ai-providers/${providerId}/fetch-models/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                resultDiv.innerHTML = `
-                    <div class="alert alert-success">
-                        <strong>Found ${data.total_count} models:</strong>
-                        <ul class="mb-0 mt-2">
-                            ${data.models.map(m => `<li>${m.name} (${m.model_id})</li>`).join('')}
-                        </ul>
-                        <hr>
-                        <small>✅ Created: ${data.created_count} | ℹ️ Already existed: ${data.existing_count}</small>
-                    </div>
-                `;
-                showToast(`Saved ${data.created_count} new models, ${data.existing_count} already existed`, 'success');
-                
-                // Refresh the models list (element with id="models-list" in the template)
-                htmx.ajax('GET', window.location.href, {target: '#models-list', select: '#models-list'});
-            } else {
-                resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                showToast(data.error, 'error');
-            }
-        } catch (error) {
-            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            showToast('Failed to fetch models: ' + error.message, 'error');
-        }
-    }
-    
-    function editModel(modelId, name, model_id, inputPrice, outputPrice, active, isDefault) {
-        const form = document.getElementById('editModelForm');
-        form.setAttribute('hx-post', `/ai-providers/{{ provider.id }}/models/${modelId}/update/`);
-        
-        document.getElementById('edit_model_name').value = name;
-        document.getElementById('edit_model_id').value = model_id;
-        document.getElementById('edit_input_price').value = inputPrice || '';
-        document.getElementById('edit_output_price').value = outputPrice || '';
-        document.getElementById('edit_model_active').checked = active;
-        document.getElementById('edit_is_default').checked = isDefault;
-        
-        // Re-initialize HTMX on the form
-        htmx.process(form);
-        
-        const modal = new bootstrap.Modal(document.getElementById('editModelModal'));
-        modal.show();
     }
     
     // Listen for showToast events from HTMX
