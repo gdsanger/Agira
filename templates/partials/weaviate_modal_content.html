@@ -1,0 +1,85 @@
+<!-- Weaviate Modal Content -->
+{% if not available %}
+    <!-- Weaviate service not available -->
+    <div class="alert alert-warning" role="alert">
+        <strong>Weaviate Service Not Available</strong>
+        <p class="mb-0 mt-2">{{ error|default:"The Weaviate service is not configured or has been disabled." }}</p>
+    </div>
+{% elif error %}
+    <!-- Error occurred -->
+    <div class="alert alert-danger" role="alert">
+        <strong>Error</strong>
+        <p class="mb-0 mt-2">{{ error }}</p>
+    </div>
+{% elif success_message %}
+    <!-- Success message -->
+    <div class="alert alert-success" role="alert">
+        <strong>Success!</strong>
+        <p class="mb-0 mt-2">{{ success_message }}</p>
+    </div>
+    
+    {% if json_data %}
+        <!-- Show the synced object -->
+        <div class="mt-3">
+            <h6>Weaviate Object Data:</h6>
+            <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto;"><code>{{ json_data }}</code></pre>
+        </div>
+    {% endif %}
+{% elif exists %}
+    <!-- Object exists - show data -->
+    <div class="alert alert-success" role="alert">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-check-circle-fill me-2" viewBox="0 0 16 16">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+        </svg>
+        <strong>Object exists in Weaviate</strong>
+    </div>
+    
+    <div class="mt-3">
+        <h6>Weaviate Object Data:</h6>
+        <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto;"><code>{{ json_data }}</code></pre>
+    </div>
+    
+    <div class="mt-3">
+        <button 
+            type="button" 
+            class="btn btn-sm btn-outline-primary"
+            hx-post="{% url 'weaviate-push' object_type object_id %}"
+            hx-target="#weaviateModalBody"
+            hx-swap="innerHTML"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
+                <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+            </svg>
+            Re-sync to Weaviate
+        </button>
+    </div>
+{% else %}
+    <!-- Object does not exist - show push button -->
+    <div class="alert alert-warning" role="alert">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-exclamation-triangle-fill me-2" viewBox="0 0 16 16">
+            <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+        </svg>
+        <strong>Object not found in Weaviate</strong>
+    </div>
+    
+    <p class="text-muted">
+        This object has not been synchronized to Weaviate yet. Click the button below to push it now.
+    </p>
+    
+    <div class="mt-3">
+        <button 
+            type="button" 
+            class="btn btn-primary"
+            hx-post="{% url 'weaviate-push' object_type object_id %}"
+            hx-target="#weaviateModalBody"
+            hx-swap="innerHTML"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cloud-upload" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 0-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/>
+                <path fill-rule="evenodd" d="M7.646 4.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V14.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3z"/>
+            </svg>
+            Push to Weaviate
+        </button>
+    </div>
+{% endif %}

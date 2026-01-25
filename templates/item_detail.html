@@ -105,6 +105,13 @@
             <span id="status-badge" class="badge bg-primary" style="font-size: 1rem;">
                 {{ item.get_status_display }}
             </span>
+            <!-- Weaviate Status Button -->
+            <div 
+                hx-get="{% url 'weaviate-status' 'item' item.id %}"
+                hx-trigger="load"
+                hx-swap="innerHTML">
+                <!-- Button will be loaded via HTMX -->
+            </div>
             <a href="{% url 'item-edit' item.id %}" class="btn btn-outline-primary btn-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil" viewBox="0 0 16 16">
                     <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
@@ -240,9 +247,10 @@
             </div>
             
             <div class="col-lg-4">
-                <div class="card mb-4">
+                <!-- Additional Information Card -->
+                <div class="card mb-3">
                     <div class="card-header">
-                        <h5 class="mb-0">Properties</h5>
+                        <h5 class="mb-0">Additional Information</h5>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
@@ -271,14 +279,6 @@
                             </div>
                         </div>
                         <div class="mb-3">
-                            <strong>Type:</strong>
-                            <div>{{ item.type.name }}</div>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Project:</strong>
-                            <div>{{ item.project.name }}</div>
-                        </div>
-                        <div class="mb-3">
                             <strong>Organisation:</strong>
                             <div>{% if item.organisation %}{{ item.organisation.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>
@@ -291,6 +291,18 @@
                             <div>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>
                         <div class="mb-3">
+                            <strong>Project:</strong>
+                            <div>{{ item.project.name }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Type:</strong>
+                            <div>{{ item.type.name }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Parent Item:</strong>
+                            <div>{% if item.parent %}<a href="{% url 'item-detail' item.parent.id %}">{{ item.parent.title }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Solution Release:</strong>
                             <div>{% if item.solution_release %}{{ item.solution_release.version }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>
@@ -298,10 +310,24 @@
                             <strong>Created:</strong>
                             <div><small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small></div>
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-0">
                             <strong>Updated:</strong>
                             <div><small class="text-muted">{{ item.updated_at|date:"Y-m-d H:i" }}</small></div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Help Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Help</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled small text-muted mb-0">
+                            <li class="mb-2">• Use the tabs to navigate between different sections</li>
+                            <li class="mb-2">• Click Edit to modify item details</li>
+                            <li>• Status changes are tracked in Activity</li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -380,6 +406,28 @@
         </div>
     </div>
 </div>
+
+<!-- Include Weaviate Modal -->
+{% include 'partials/weaviate_modal.html' %}
+
+<!-- Attachment Viewer Modal -->
+<div class="modal fade" id="attachmentViewerModal" tabindex="-1" aria-labelledby="attachmentViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="attachmentViewerModalLabel">Attachment Viewer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="attachmentViewerContent">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -396,6 +444,175 @@
     document.body.addEventListener('attachmentUploaded', function(evt) {
         showToast('success', 'Attachment uploaded successfully!');
     });
+    
+    // Comment edit/delete event delegation
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.comment-edit-btn')) {
+            const btn = e.target.closest('.comment-edit-btn');
+            const commentId = btn.dataset.commentId;
+            const currentBody = btn.dataset.commentBody;
+            editComment(commentId, currentBody);
+        } else if (e.target.closest('.comment-delete-btn')) {
+            const btn = e.target.closest('.comment-delete-btn');
+            const commentId = btn.dataset.commentId;
+            deleteComment(commentId);
+        }
+    });
+    
+    // Comment edit/delete functions
+    function editComment(commentId, currentBody) {
+        document.getElementById('comment-body-' + commentId).style.display = 'none';
+        document.getElementById('comment-edit-' + commentId).style.display = 'block';
+    }
+    
+    function cancelEditComment(commentId) {
+        document.getElementById('comment-body-' + commentId).style.display = 'block';
+        document.getElementById('comment-edit-' + commentId).style.display = 'none';
+    }
+    
+    function saveComment(commentId) {
+        const newBody = document.getElementById('comment-edit-text-' + commentId).value;
+        
+        fetch(`/items/comments/${commentId}/update/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ body: newBody })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('comment-body-' + commentId).textContent = newBody;
+                cancelEditComment(commentId);
+                showToast('success', 'Comment updated successfully!');
+            } else {
+                showToast('error', data.error || 'Failed to update comment');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'An error occurred while updating the comment');
+        });
+    }
+    
+    function deleteComment(commentId) {
+        if (!confirm('Are you sure you want to delete this comment?')) {
+            return;
+        }
+        
+        fetch(`/items/comments/${commentId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Reload the comments tab
+                htmx.ajax('GET', '{% url 'item-comments-tab' item.id %}', {target: '#comments'});
+                showToast('success', 'Comment deleted successfully!');
+            } else {
+                showToast('error', data.error || 'Failed to delete comment');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'An error occurred while deleting the comment');
+        });
+    }
+    
+    // Attachment functions
+    function deleteAttachment(attachmentId) {
+        if (!confirm('Are you sure you want to delete this attachment?')) {
+            return;
+        }
+        
+        fetch(`/items/attachments/${attachmentId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Reload the attachments tab
+                htmx.ajax('GET', '{% url 'item-attachments-tab' item.id %}', {target: '#attachments'});
+                showToast('success', 'Attachment deleted successfully!');
+            } else {
+                showToast('error', data.error || 'Failed to delete attachment');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'An error occurred while deleting the attachment');
+        });
+    }
+    
+    function viewAttachment(attachmentId, filename, contentType) {
+        const modal = new bootstrap.Modal(document.getElementById('attachmentViewerModal'));
+        const modalTitle = document.getElementById('attachmentViewerModalLabel');
+        const modalContent = document.getElementById('attachmentViewerContent');
+        
+        modalTitle.textContent = filename;
+        modalContent.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+        
+        modal.show();
+        
+        // Determine if we can view this file type
+        const viewableTypes = ['.md', '.txt', '.pdf', '.html', '.htm'];
+        const extension = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+        const isViewable = viewableTypes.includes(extension);
+        
+        if (isViewable) {
+            // Fetch and display content
+            fetch(`/items/attachments/${attachmentId}/view/`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (extension === '.md') {
+                            // Render markdown
+                            modalContent.innerHTML = `<div class="markdown-viewer">${data.content_html}</div>`;
+                        } else if (extension === '.pdf') {
+                            // Show PDF in iframe
+                            modalContent.innerHTML = `<iframe src="data:application/pdf;base64,${data.content_base64}" style="width: 100%; height: 600px;" frameborder="0"></iframe>`;
+                        } else if (extension === '.html' || extension === '.htm') {
+                            // Show HTML in iframe for safety - using DOM manipulation with strict sandboxing
+                            const iframe = document.createElement('iframe');
+                            iframe.style.width = '100%';
+                            iframe.style.height = '600px';
+                            iframe.style.background = 'white';
+                            iframe.setAttribute('frameborder', '0');
+                            // Strict sandboxing - only allow same-origin, no scripts
+                            iframe.setAttribute('sandbox', 'allow-same-origin');
+                            // Create a blob URL for the content instead of using srcdoc
+                            const blob = new Blob([data.content], { type: 'text/html' });
+                            const blobUrl = URL.createObjectURL(blob);
+                            modalContent.innerHTML = '';
+                            modalContent.appendChild(iframe);
+                            iframe.src = blobUrl;
+                            // Clean up blob URL when modal is closed
+                            document.getElementById('attachmentViewerModal').addEventListener('hidden.bs.modal', function cleanup() {
+                                URL.revokeObjectURL(blobUrl);
+                                this.removeEventListener('hidden.bs.modal', cleanup);
+                            });
+                        } else {
+                            // Plain text
+                            modalContent.innerHTML = `<pre style="white-space: pre-wrap; background-color: #1a1a1a; padding: 20px; border-radius: 4px; max-height: 600px; overflow-y: auto;">${data.content}</pre>`;
+                        }
+                    } else {
+                        modalContent.innerHTML = `<div class="alert alert-danger">${data.error || 'Failed to load attachment'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    modalContent.innerHTML = `<div class="alert alert-danger">An error occurred while loading the attachment</div>`;
+                });
+        } else {
+            // Download the file
+            modal.hide();
+            window.location.href = `/items/attachments/${attachmentId}/download/`;
+        }
+    }
     
     function showToast(type, message) {
         const toastEl = document.getElementById(type === 'success' ? 'successToast' : 'errorToast');

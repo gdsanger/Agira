@@ -16,7 +16,8 @@ import bleach
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
-    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole)
+    AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
+    ExternalIssueMapping, ExternalIssueKind)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -429,6 +430,94 @@ def item_github_tab(request, item_id):
 
 
 @require_POST
+def item_link_github(request, item_id):
+    """Link a GitHub Issue or Pull Request to an item."""
+    from core.services.github.service import GitHubService
+    from core.services.github.client import GitHubClient
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get form data
+        github_type = request.POST.get('type', 'Issue')
+        owner = request.POST.get('owner', '').strip()
+        repo = request.POST.get('repo', '').strip()
+        number = request.POST.get('number', '').strip()
+        
+        if not owner or not repo or not number:
+            return HttpResponse("All fields are required", status=400)
+        
+        try:
+            number = int(number)
+        except ValueError:
+            return HttpResponse("Issue/PR number must be a valid integer", status=400)
+        
+        # Initialize GitHub service
+        github_service = GitHubService()
+        
+        if not github_service.is_enabled() or not github_service.is_configured():
+            return HttpResponse("GitHub integration is not configured", status=400)
+        
+        # Get GitHub client
+        client = github_service._get_client()
+        
+        # Fetch issue or PR data from GitHub
+        if github_type == 'Issue':
+            github_data = client.get_issue(owner, repo, number)
+            kind = ExternalIssueKind.ISSUE
+        elif github_type == 'PR':
+            github_data = client.get_pr(owner, repo, number)
+            kind = ExternalIssueKind.PR
+        else:
+            return HttpResponse("Invalid type. Must be 'Issue' or 'PR'", status=400)
+        
+        # Check if mapping already exists
+        github_id = github_data['id']
+        existing_mapping = ExternalIssueMapping.objects.filter(github_id=github_id).first()
+        
+        if existing_mapping:
+            if existing_mapping.item.id == item.id:
+                return HttpResponse("This GitHub item is already linked to this item", status=400)
+            else:
+                return HttpResponse(f"This GitHub item is already linked to another item: {existing_mapping.item.title}", status=400)
+        
+        # Create new mapping
+        mapping = ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=github_id,
+            number=number,
+            kind=kind,
+            state=github_data.get('state', 'open'),
+            html_url=github_data.get('html_url', f"https://github.com/{owner}/{repo}/issues/{number}"),
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='github.linked',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Linked GitHub {dict(ExternalIssueKind.choices)[kind]} #{number}",
+        )
+        
+        # Return updated GitHub tab
+        external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+        context = {
+            'item': item,
+            'external_mappings': external_mappings,
+        }
+        response = render(request, 'partials/item_github_tab.html', context)
+        response['HX-Trigger'] = 'githubLinked'
+        return response
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"GitHub linking failed for item {item_id}: {str(e)}")
+        return HttpResponse(f"Failed to link GitHub item: {str(e)}", status=500)
+
+
+@require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
     item = get_object_or_404(Item, id=item_id)
@@ -484,6 +573,58 @@ def item_add_comment(request, item_id):
     response = render(request, 'partials/item_comments_tab.html', context)
     response['HX-Trigger'] = 'commentAdded'
     return response
+
+
+@require_POST
+def item_update_comment(request, comment_id):
+    """Update a comment."""
+    import json
+    
+    try:
+        comment = get_object_or_404(ItemComment, id=comment_id)
+        data = json.loads(request.body)
+        new_body = data.get('body', '').strip()
+        
+        if not new_body:
+            return JsonResponse({'success': False, 'error': 'Comment body cannot be empty'}, status=400)
+        
+        comment.body = new_body
+        comment.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='comment.updated',
+            target=comment.item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Updated comment",
+        )
+        
+        return JsonResponse({'success': True, 'message': 'Comment updated successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@require_POST
+def item_delete_comment(request, comment_id):
+    """Delete a comment."""
+    try:
+        comment = get_object_or_404(ItemComment, id=comment_id)
+        item = comment.item
+        comment.delete()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='comment.deleted',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Deleted comment",
+        )
+        
+        return JsonResponse({'success': True, 'message': 'Comment deleted successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @require_POST
@@ -543,6 +684,112 @@ def item_upload_attachment(request, item_id):
         logger = logging.getLogger(__name__)
         logger.error(f"Attachment upload failed for item {item_id}: {str(e)}")
         return HttpResponse("Upload failed. Please try again.", status=500)
+
+
+@require_POST
+def item_delete_attachment(request, attachment_id):
+    """Delete an attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        # Get the item for activity logging
+        attachment_link = AttachmentLink.objects.filter(attachment=attachment).first()
+        if attachment_link and hasattr(attachment_link.target, 'id'):
+            item = attachment_link.target
+        else:
+            item = None
+        
+        # Mark as deleted
+        attachment.is_deleted = True
+        attachment.save()
+        
+        # Log activity
+        if item:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='attachment.deleted',
+                target=item,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f"Deleted file: {attachment.original_name}",
+            )
+        
+        return JsonResponse({'success': True, 'message': 'Attachment deleted successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def item_view_attachment(request, attachment_id):
+    """View an attachment (for viewable file types)."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            return JsonResponse({'success': False, 'error': 'Attachment not found'}, status=404)
+        
+        # Get file extension
+        extension = attachment.original_name.lower().split('.')[-1] if '.' in attachment.original_name else ''
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Process based on file type
+        if extension == 'md':
+            # Render markdown to HTML - create parser instance per request for thread safety
+            md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+            html_content = md_parser.convert(file_content.decode('utf-8'))
+            # Sanitize HTML
+            clean_html = bleach.clean(
+                html_content,
+                tags=ALLOWED_TAGS,
+                attributes=ALLOWED_ATTRIBUTES,
+                strip=True
+            )
+            return JsonResponse({'success': True, 'content_html': clean_html})
+        elif extension == 'pdf':
+            # Return base64 encoded PDF
+            import base64
+            pdf_base64 = base64.b64encode(file_content).decode('utf-8')
+            return JsonResponse({'success': True, 'content_base64': pdf_base64})
+        elif extension in ['html', 'htm']:
+            # Return sanitized HTML content (will be displayed in iframe)
+            html_content = file_content.decode('utf-8')
+            # Sanitize HTML before returning
+            clean_html = bleach.clean(
+                html_content,
+                tags=ALLOWED_TAGS + ['html', 'head', 'body', 'meta', 'title', 'style'],
+                attributes=ALLOWED_ATTRIBUTES,
+                strip=True
+            )
+            return JsonResponse({'success': True, 'content': clean_html})
+        else:
+            # Plain text
+            return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def item_download_attachment(request, attachment_id):
+    """Download an attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            return HttpResponse("Attachment not found", status=404)
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Create response with file
+        response = HttpResponse(file_content, content_type=attachment.content_type or 'application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+        response['Content-Length'] = len(file_content)
+        
+        return response
+    except Exception as e:
+        return HttpResponse(f"Download failed: {str(e)}", status=500)
 
 
 @require_POST
@@ -796,6 +1043,61 @@ def item_delete(request, item_id):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@require_POST
+def ai_generate_title(request):
+    """Generate a title from description using AI agent."""
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        text = data.get('text', '')
+        
+        if not text:
+            return JsonResponse({'success': False, 'error': 'No text provided'}, status=400)
+        
+        # Use AgentService to execute the text-to-title-generator agent
+        agent_service = AgentService()
+        title = agent_service.execute_agent(
+            filename='text-to-title-generator.yml',
+            input_text=text,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Clean up the title (remove quotes, newlines, etc.)
+        title = title.strip().strip('"').strip("'").replace('\n', ' ').replace('\r', '')
+        
+        return JsonResponse({'success': True, 'title': title})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@require_POST
+def ai_optimize_text(request):
+    """Optimize text using AI agent."""
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        text = data.get('text', '')
+        
+        if not text:
+            return JsonResponse({'success': False, 'error': 'No text provided'}, status=400)
+        
+        # Use AgentService to execute the text-optimization-agent
+        agent_service = AgentService()
+        optimized_text = agent_service.execute_agent(
+            filename='text-optimization-agent.yml',
+            input_text=text,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({'success': True, 'text': optimized_text})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 # Project CRUD operations
@@ -1900,3 +2202,159 @@ def ai_jobs_history(request):
         'selected_model': model_filter,
     }
     return render(request, 'ai_jobs_history.html', context)
+
+
+# ============================================================================
+# Weaviate Sync Views
+# ============================================================================
+
+def weaviate_status(request, object_type, object_id):
+    """
+    Check Weaviate sync status for an object.
+    
+    Returns HTML for the Weaviate status button (green if exists, red if not).
+    This is an HTMX endpoint that can be called to refresh the button state.
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import exists_object
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_button.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'exists': False,
+            'available': False,
+        })
+    
+    # Check if object exists in Weaviate
+    try:
+        exists = exists_object(object_type, object_id)
+    except Exception as e:
+        exists = False
+    
+    return render(request, 'partials/weaviate_button.html', {
+        'object_type': object_type,
+        'object_id': object_id,
+        'exists': exists,
+        'available': True,
+    })
+
+
+def weaviate_object(request, object_type, object_id):
+    """
+    Fetch Weaviate object data and display in modal content.
+    
+    Returns HTML for the modal body showing either:
+    - The Weaviate object as formatted JSON (if exists)
+    - A message with a "Push to Weaviate" button (if not exists)
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import fetch_object_by_type
+    import json
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': False,
+            'error': 'Weaviate service is not configured or disabled.',
+        })
+    
+    # Fetch object from Weaviate
+    try:
+        obj_data = fetch_object_by_type(object_type, object_id)
+        
+        if obj_data:
+            # Format as pretty JSON
+            json_str = json.dumps(obj_data, indent=2, default=str)
+            
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'exists': True,
+                'json_data': json_str,
+            })
+        else:
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'exists': False,
+            })
+            
+    except Exception as e:
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': True,
+            'error': str(e),
+        })
+
+
+@require_POST
+def weaviate_push(request, object_type, object_id):
+    """
+    Manually push an object to Weaviate.
+    
+    This endpoint performs a manual sync of the object to Weaviate.
+    Returns updated modal content showing the synced object.
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import upsert_object
+    import json
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': False,
+            'error': 'Weaviate service is not configured or disabled.',
+        })
+    
+    # Push object to Weaviate
+    try:
+        uuid_str = upsert_object(object_type, object_id)
+        
+        if uuid_str:
+            # Fetch the newly created object to show it
+            from core.services.weaviate.service import fetch_object_by_type
+            obj_data = fetch_object_by_type(object_type, object_id)
+            
+            if obj_data:
+                json_str = json.dumps(obj_data, indent=2, default=str)
+                
+                return render(request, 'partials/weaviate_modal_content.html', {
+                    'object_type': object_type,
+                    'object_id': object_id,
+                    'available': True,
+                    'exists': True,
+                    'json_data': json_str,
+                    'success_message': 'Successfully pushed to Weaviate!',
+                })
+            else:
+                return render(request, 'partials/weaviate_modal_content.html', {
+                    'object_type': object_type,
+                    'object_id': object_id,
+                    'available': True,
+                    'exists': True,
+                    'success_message': 'Successfully pushed to Weaviate!',
+                })
+        else:
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'error': 'Could not push object to Weaviate. Object type may not be supported.',
+            })
+            
+    except Exception as e:
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': True,
+            'error': f'Error pushing to Weaviate: {str(e)}',
+        })

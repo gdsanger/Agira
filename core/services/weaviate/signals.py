@@ -6,6 +6,7 @@ to Weaviate when they are saved or deleted.
 """
 
 import logging
+from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
@@ -21,17 +22,28 @@ def _safe_upsert(instance):
     Safely upsert an instance to Weaviate.
     
     Catches all exceptions to prevent signal from breaking save operations.
+    Uses transaction.on_commit() to ensure DB transaction completes first.
     """
     if not is_available():
         return
     
+    def sync_to_weaviate():
+        try:
+            upsert_instance(instance)
+        except Exception as e:
+            # Log error but don't break the save operation
+            logger.error(
+                f"Failed to sync {instance.__class__.__name__} (pk={instance.pk}) to Weaviate: {e}",
+                exc_info=True
+            )
+    
+    # Only sync after DB transaction commits successfully
     try:
-        upsert_instance(instance)
+        transaction.on_commit(sync_to_weaviate)
     except Exception as e:
-        # Log error but don't break the save operation
-        logger.error(
-            f"Failed to sync {instance.__class__.__name__} (pk={instance.pk}) to Weaviate: {e}",
-            exc_info=True
+        # If not in a transaction or other error, log and continue
+        logger.warning(
+            f"Could not schedule Weaviate sync for {instance.__class__.__name__} (pk={instance.pk}): {e}"
         )
 
 
