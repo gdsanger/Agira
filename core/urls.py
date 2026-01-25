@@ -44,7 +44,17 @@ urlpatterns = [
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
     path('ai/optimize-text/', views.ai_optimize_text, name='ai-optimize-text'),
     
+    # Change Management URLs
     path('changes/', views.changes, name='changes'),
+    path('changes/new/', views.change_create, name='change-create'),
+    path('changes/<int:id>/', views.change_detail, name='change-detail'),
+    path('changes/<int:id>/edit/', views.change_edit, name='change-edit'),
+    path('changes/<int:id>/update/', views.change_update, name='change-update'),
+    path('changes/<int:id>/delete/', views.change_delete, name='change-delete'),
+    path('changes/<int:id>/approvers/add/', views.change_add_approver, name='change-add-approver'),
+    path('changes/<int:id>/approvers/<int:approval_id>/remove/', views.change_remove_approver, name='change-remove-approver'),
+    path('changes/<int:id>/approvals/<int:approval_id>/approve/', views.change_approve, name='change-approve'),
+    path('changes/<int:id>/approvals/<int:approval_id>/reject/', views.change_reject, name='change-reject'),
     
     # Organisation URLs
     path('organisations/', views.organisations, name='organisations'),

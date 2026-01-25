@@ -4,7 +4,167 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Changes</h1>
-    <p class="text-muted">Track and manage changes</p>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>Changes</h1>
+            <p class="text-muted">Track and manage deployments and updates</p>
+        </div>
+        <a href="{% url 'change-create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Change
+        </a>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'changes' %}" class="row g-3">
+        <div class="col-md-3">
+            <input type="text" name="q" class="form-control" placeholder="Search changes..." value="{{ search_query }}">
+        </div>
+        <div class="col-md-2">
+            <select name="project" class="form-select">
+                <option value="">All Projects</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}" {% if selected_project == project.id|stringformat:"s" %}selected{% endif %}>
+                    {{ project.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select">
+                <option value="">All Statuses</option>
+                {% for status_value, status_label in statuses %}
+                <option value="{{ status_value }}" {% if selected_status == status_value %}selected{% endif %}>
+                    {{ status_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="risk" class="form-select">
+                <option value="">All Risk Levels</option>
+                {% for risk_value, risk_label in risk_levels %}
+                <option value="{{ risk_value }}" {% if selected_risk == risk_value %}selected{% endif %}>
+                    {{ risk_label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            {% if search_query or selected_project or selected_status or selected_risk %}
+            <a href="{% url 'changes' %}" class="btn btn-secondary">Clear</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Changes Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Project</th>
+                        <th>Status</th>
+                        <th>Risk</th>
+                        <th>Approvals</th>
+                        <th>Planned</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for change in changes %}
+                    <tr style="cursor: pointer;" onclick="window.location='{% url 'change-detail' change.id %}'">
+                        <td>
+                            <strong>{{ change.title }}</strong>
+                            {% if change.release %}
+                            <br><small class="text-muted">Release: {{ change.release.version }}</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ change.project.name }}</td>
+                        <td>
+                            {% if change.status == 'Draft' %}
+                            <span class="badge bg-secondary">{{ change.get_status_display }}</span>
+                            {% elif change.status == 'Planned' %}
+                            <span class="badge bg-info">{{ change.get_status_display }}</span>
+                            {% elif change.status == 'InProgress' %}
+                            <span class="badge bg-primary">{{ change.get_status_display }}</span>
+                            {% elif change.status == 'Deployed' %}
+                            <span class="badge bg-success">{{ change.get_status_display }}</span>
+                            {% elif change.status == 'RolledBack' %}
+                            <span class="badge bg-warning">{{ change.get_status_display }}</span>
+                            {% elif change.status == 'Canceled' %}
+                            <span class="badge bg-dark">{{ change.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if change.risk == 'VeryHigh' %}
+                            <span class="badge bg-danger">{{ change.get_risk_display }}</span>
+                            {% elif change.risk == 'High' %}
+                            <span class="badge bg-warning text-dark">{{ change.get_risk_display }}</span>
+                            {% elif change.risk == 'Normal' %}
+                            <span class="badge bg-info">{{ change.get_risk_display }}</span>
+                            {% elif change.risk == 'Low' %}
+                            <span class="badge bg-success">{{ change.get_risk_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if change.total_approvals > 0 %}
+                            <div class="d-flex gap-1">
+                                {% if change.approved_count > 0 %}
+                                <span class="badge bg-success" title="Approved">
+                                    <i class="bi bi-check-lg"></i> {{ change.approved_count }}
+                                </span>
+                                {% endif %}
+                                {% if change.pending_count > 0 %}
+                                <span class="badge bg-warning text-dark" title="Pending">
+                                    <i class="bi bi-clock"></i> {{ change.pending_count }}
+                                </span>
+                                {% endif %}
+                                {% if change.rejected_count > 0 %}
+                                <span class="badge bg-danger" title="Rejected">
+                                    <i class="bi bi-x-lg"></i> {{ change.rejected_count }}
+                                </span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">No approvers</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if change.planned_start %}
+                            {{ change.planned_start|date:"Y-m-d H:i" }}
+                            {% else %}
+                            <span class="text-muted">Not scheduled</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ change.created_at|date:"Y-m-d H:i" }}
+                            {% if change.created_by %}
+                            <br><small class="text-muted">by {{ change.created_by.name }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <div class="text-muted">
+                                {% if search_query or selected_project or selected_status or selected_risk %}
+                                No changes found matching the current filters.
+                                {% else %}
+                                No changes yet. <a href="{% url 'change-create' %}">Create your first change</a>.
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
