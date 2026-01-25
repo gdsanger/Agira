@@ -143,11 +143,10 @@ def ensure_schema(client: weaviate.WeaviateClient) -> None:
                 skip_vectorization=True
             ),
         ],
-        # Use text2vec-transformers for semantic search
-        # Note: Requires a vectorizer module to be configured in Weaviate
-        # If using local Weaviate, you can configure transformers, openai, cohere, etc.
-        # If no vectorizer is available, remove this parameter and Weaviate will use default
-        # vectorizer_config can be omitted to use Weaviate's default configuration
+        # Configure vectorizer to none to allow hybrid search without requiring
+        # external vectorization services (OpenAI, Transformers, etc.)
+        # This enables BM25-only hybrid search which is sufficient for keyword matching
+        vectorizer_config=Configure.Vectorizer.none(),
     )
     
     logger.info(f"Collection '{COLLECTION_NAME}' created successfully")
