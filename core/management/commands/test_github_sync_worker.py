@@ -471,6 +471,66 @@ class GitHubSyncWorkerTestCase(TestCase):
         self.assertEqual(self.item.status, ItemStatus.CLOSED)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
+    def test_command_skips_all_github_calls_for_closed_items(self, mock_service_class):
+        """Test that command skips ALL GitHub API calls for items with Closed status."""
+        # Set item to Closed status
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Mock GitHub service
+        mock_service = MagicMock()
+        mock_service.is_enabled.return_value = True
+        mock_service.is_configured.return_value = True
+        mock_service_class.return_value = mock_service
+        
+        # Mock Weaviate
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
+            out = StringIO()
+            call_command('github_sync_worker', stdout=out)
+        
+        output = out.getvalue()
+        
+        # Verify no GitHub API calls were made
+        mock_service.sync_mapping.assert_not_called()
+        mock_service._get_repo_info.assert_not_called()
+        mock_service._get_client.assert_not_called()
+        mock_service.upsert_mapping_from_github.assert_not_called()
+        
+        # Verify item status remains Closed
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.CLOSED)
+        
+        # Verify output shows item was skipped
+        self.assertIn('Skipped', output)
+        self.assertIn(f'Item #{self.item.id}', output)
+    
+    @patch('core.management.commands.github_sync_worker.GitHubService')
+    def test_command_logs_skipped_closed_items(self, mock_service_class):
+        """Test that command logs when items are skipped due to Closed status."""
+        # Set item to Closed status
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Mock GitHub service
+        mock_service = MagicMock()
+        mock_service.is_enabled.return_value = True
+        mock_service.is_configured.return_value = True
+        mock_service_class.return_value = mock_service
+        
+        # Mock Weaviate
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
+            with self.assertLogs('core.management.commands.github_sync_worker', level='INFO') as cm:
+                out = StringIO()
+                call_command('github_sync_worker', stdout=out)
+                
+                # Verify log message contains the right information
+                log_messages = '\n'.join(cm.output)
+                self.assertIn('Skipping sync', log_messages)
+                self.assertIn(f'Item #{self.item.id}', log_messages)
+                self.assertIn(f'Issue #{self.mapping.number}', log_messages)
+                self.assertIn('Closed', log_messages)
+    
+    @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_updates_status_for_non_closed_items(self, mock_service_class):
         """Test that command still updates status for items not in Closed status."""
         # Set item to Working status (not Closed)
