@@ -361,23 +361,28 @@ def _serialize_github_issue(mapping, fetch_from_github: bool = False) -> Dict[st
                 # Add labels if present
                 labels = github_data.get('labels', [])
                 if labels:
-                    label_names = [label.get('name', '') for label in labels if isinstance(label, dict)]
+                    # Filter out labels without names
+                    label_names = [label['name'] for label in labels if isinstance(label, dict) and label.get('name')]
                     if label_names:
                         text_parts.append(f"\n\nLabels: {', '.join(label_names)}")
                 
                 text = '\n'.join(text_parts) if text_parts else ''
                 
-                # Parse timestamps
+                # Parse timestamps - GitHub uses ISO format with 'Z' suffix
                 if github_data.get('created_at'):
                     try:
+                        # Replace 'Z' with '+00:00' for proper ISO 8601 parsing
                         created_at = datetime.fromisoformat(github_data['created_at'].replace('Z', '+00:00'))
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError) as e:
+                        logger.debug(f"Could not parse created_at timestamp: {e}")
                         pass
                 
                 if github_data.get('updated_at'):
                     try:
+                        # Replace 'Z' with '+00:00' for proper ISO 8601 parsing
                         updated_at = datetime.fromisoformat(github_data['updated_at'].replace('Z', '+00:00'))
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError) as e:
+                        logger.debug(f"Could not parse updated_at timestamp: {e}")
                         pass
                 
                 logger.info(f"Fetched GitHub {mapping.kind} data for #{mapping.number}: {title}")
