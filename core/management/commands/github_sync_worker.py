@@ -194,7 +194,7 @@ class Command(BaseCommand):
         # 2. Update Item status if issue was closed
         # Skip status update if:
         # - Item is already TESTING (no need to update)
-        # - Item is CLOSED (acceptance criterion 1: preserve closed state)
+        # - Item is CLOSED (preserve final state - closed items should not be reopened)
         should_update_status = (
             mapping.state == 'closed' and
             item.status not in (ItemStatus.TESTING, ItemStatus.CLOSED)

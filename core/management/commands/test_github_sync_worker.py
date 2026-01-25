@@ -68,7 +68,7 @@ class GitHubSyncWorkerTestCase(TestCase):
         )
     
     def _mock_sync_mapping_close(self, mapping):
-        """Helper to mock sync_mapping changing state to closed."""
+        """Helper to mock GitHubService.sync_mapping behavior by setting mapping state to closed."""
         mapping.state = 'closed'
         mapping.save()
         return mapping
