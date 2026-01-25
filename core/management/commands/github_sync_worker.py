@@ -9,7 +9,6 @@ import logging
 from typing import Optional, Dict, Any, List
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 
 from core.models import (
     ExternalIssueMapping,
@@ -21,8 +20,6 @@ from core.services.github.service import GitHubService
 from core.services.integrations.base import IntegrationError
 from core.services.weaviate.service import (
     upsert_instance,
-    exists_instance,
-    fetch_object,
     exists_object,
 )
 from core.services.weaviate import is_available
