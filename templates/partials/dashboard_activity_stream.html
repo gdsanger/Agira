@@ -1,0 +1,63 @@
+<div class="activity-stream">
+    {% for activity in activities %}
+    <div class="activity-item">
+        <div class="activity-icon">
+            {% if 'created' in activity.verb %}
+                <i class="bi bi-plus-circle text-success"></i>
+            {% elif 'status' in activity.verb or 'Status' in activity.verb %}
+                <i class="bi bi-arrow-left-right text-info"></i>
+            {% elif 'github' in activity.verb or 'GitHub' in activity.verb %}
+                <i class="bi bi-github text-muted"></i>
+            {% elif 'comment' in activity.verb or 'Comment' in activity.verb %}
+                <i class="bi bi-chat-left-text text-primary"></i>
+            {% elif 'approved' in activity.verb or 'Approved' in activity.verb %}
+                <i class="bi bi-check-circle text-success"></i>
+            {% elif 'rejected' in activity.verb or 'Rejected' in activity.verb %}
+                <i class="bi bi-x-circle text-danger"></i>
+            {% elif 'deleted' in activity.verb or 'Deleted' in activity.verb %}
+                <i class="bi bi-trash text-danger"></i>
+            {% else %}
+                <i class="bi bi-circle text-muted"></i>
+            {% endif %}
+        </div>
+        <div class="activity-content">
+            <div class="activity-header">
+                <span class="activity-verb">{{ activity.verb }}</span>
+                {% if activity.actor %}
+                <span class="activity-actor">by {{ activity.actor.name }}</span>
+                {% endif %}
+                <span class="activity-time">{{ activity.time_ago }} ago</span>
+            </div>
+            {% if activity.summary %}
+            <div class="activity-summary">{{ activity.summary }}</div>
+            {% endif %}
+            {% if activity.target_url %}
+            <div class="activity-target">
+                <a href="{{ activity.target_url }}" class="text-decoration-none">
+                    <i class="bi bi-box-arrow-up-right"></i> {{ activity.target_title }}
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-5">
+        <div class="mb-2">📭</div>
+        <div>No activities found</div>
+        <small>Start working on items to see activity here</small>
+    </div>
+    {% endfor %}
+    
+    {% if has_more %}
+    <div class="text-center mt-3">
+        <button 
+            class="btn btn-outline-primary"
+            hx-get="{% url 'dashboard-activity-stream' %}?filter={{ filter_type }}&offset={{ next_offset }}"
+            hx-target="#activity-stream"
+            hx-swap="beforeend"
+            hx-select=".activity-item, .text-center">
+            <i class="bi bi-arrow-down-circle"></i> Load More
+        </button>
+    </div>
+    {% endif %}
+</div>

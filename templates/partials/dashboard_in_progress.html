@@ -1,0 +1,61 @@
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th style="width: 100px;">Status</th>
+                <th>Title</th>
+                <th style="width: 150px;">Project</th>
+                <th style="width: 120px;">Assigned To</th>
+                <th style="width: 120px;">Updated</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {% if item.status == 'Working' %}
+                        <span class="badge bg-primary">Working</span>
+                    {% elif item.status == 'Testing' %}
+                        <span class="badge bg-info">Testing</span>
+                    {% elif item.status == 'ReadyForRelease' %}
+                        <span class="badge bg-success">Ready</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'item-detail' item.id %}" class="text-decoration-none">
+                        <strong>{{ item.title }}</strong>
+                    </a>
+                    {% if item.organisation %}
+                    <br><small class="text-muted"><i class="bi bi-building"></i> {{ item.organisation.name }}</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'project-detail' item.project.id %}" class="text-decoration-none text-muted">
+                        <small>{{ item.project.name }}</small>
+                    </a>
+                </td>
+                <td>
+                    {% if item.assigned_to %}
+                    <small>{{ item.assigned_to.name }}</small>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <small class="text-muted">{{ item.updated_at|timesince }} ago</small>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                    <div class="mb-2">✨</div>
+                    <div>No items currently in progress</div>
+                    <small>All caught up!</small>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -4,7 +4,171 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Dashboard</h1>
-    <p class="text-muted">Overview and statistics</p>
+    <h1><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
+    <p class="text-muted">Overview of your projects and activities</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+    <!-- Items Inbox -->
+    <div class="col-md-4 col-lg-2">
+        <a href="{% url 'items-inbox' %}" class="text-decoration-none">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-inbox"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ kpis.inbox_count }}</div>
+                    <div class="kpi-label">Inbox</div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Items Backlog -->
+    <div class="col-md-4 col-lg-2">
+        <a href="{% url 'items-backlog' %}" class="text-decoration-none">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-list-check"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ kpis.backlog_count }}</div>
+                    <div class="kpi-label">Backlog</div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Items In Progress -->
+    <div class="col-md-4 col-lg-2">
+        <a href="{% url 'items-working' %}" class="text-decoration-none">
+            <div class="kpi-card kpi-card-primary">
+                <div class="kpi-icon">
+                    <i class="bi bi-arrow-repeat"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ kpis.in_progress_count }}</div>
+                    <div class="kpi-label">In Progress</div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Items Closed (7d) -->
+    <div class="col-md-4 col-lg-2">
+        <div class="kpi-card kpi-card-success">
+            <div class="kpi-icon">
+                <i class="bi bi-check-circle"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ kpis.closed_7d_count }}</div>
+                <div class="kpi-label">Closed (7d)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Changes Open -->
+    <div class="col-md-4 col-lg-2">
+        <a href="{% url 'changes' %}" class="text-decoration-none">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-pencil-square"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ kpis.changes_open_count }}</div>
+                    <div class="kpi-label">Changes Open</div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- AI Jobs (24h) -->
+    <div class="col-md-4 col-lg-2">
+        <a href="{% url 'ai-jobs-history' %}" class="text-decoration-none">
+            <div class="kpi-card">
+                <div class="kpi-icon">
+                    <i class="bi bi-robot"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ kpis.ai_jobs_24h_count }}</div>
+                    <div class="kpi-label">AI Jobs (24h)</div>
+                    {% if kpis.ai_jobs_24h_costs > 0 %}
+                    <small class="text-muted">${{ kpis.ai_jobs_24h_costs|floatformat:4 }}</small>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Currently Worked On Section -->
+<div class="dashboard-section mb-4">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title">
+            <i class="bi bi-arrow-repeat me-2"></i>Currently Worked On
+        </h2>
+        <button 
+            class="btn btn-sm btn-outline-primary"
+            hx-get="{% url 'dashboard-in-progress-items' %}"
+            hx-target="#in-progress-items"
+            hx-indicator="#in-progress-spinner">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+            <span id="in-progress-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-1" role="status"></span>
+        </button>
+    </div>
+    <div id="in-progress-items" 
+         hx-get="{% url 'dashboard-in-progress-items' %}" 
+         hx-trigger="load"
+         hx-indicator="#in-progress-spinner">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Global Activity Stream Section -->
+<div class="dashboard-section">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title">
+            <i class="bi bi-activity me-2"></i>Global Activity Stream
+        </h2>
+        <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-funnel"></i> Filter
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=all" 
+                    hx-target="#activity-stream">All</a></li>
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=items" 
+                    hx-target="#activity-stream">Items</a></li>
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=projects" 
+                    hx-target="#activity-stream">Projects</a></li>
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=github" 
+                    hx-target="#activity-stream">GitHub</a></li>
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=changes" 
+                    hx-target="#activity-stream">Changes</a></li>
+                <li><a class="dropdown-item" href="#" 
+                    hx-get="{% url 'dashboard-activity-stream' %}?filter=ai" 
+                    hx-target="#activity-stream">AI</a></li>
+            </ul>
+        </div>
+    </div>
+    <div id="activity-stream" 
+         hx-get="{% url 'dashboard-activity-stream' %}" 
+         hx-trigger="load">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

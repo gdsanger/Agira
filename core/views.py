@@ -52,8 +52,37 @@ def home(request):
     return render(request, 'home.html')
 
 def dashboard(request):
-    """Dashboard page view."""
-    return render(request, 'dashboard.html')
+    """Dashboard page view with KPIs and activity overview."""
+    from datetime import timedelta
+    
+    # Calculate KPIs
+    kpis = {
+        'inbox_count': Item.objects.filter(status=ItemStatus.INBOX).count(),
+        'backlog_count': Item.objects.filter(status=ItemStatus.BACKLOG).count(),
+        'in_progress_count': Item.objects.filter(
+            status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+        ).count(),
+        'closed_7d_count': Item.objects.filter(
+            status=ItemStatus.CLOSED,
+            updated_at__gte=timezone.now() - timedelta(days=7)
+        ).count(),
+        'changes_open_count': Change.objects.exclude(status__in=[ChangeStatus.DEPLOYED, ChangeStatus.CANCELED]).count(),
+        'ai_jobs_24h_count': AIJobsHistory.objects.filter(
+            timestamp__gte=timezone.now() - timedelta(hours=24)
+        ).count(),
+    }
+    
+    # Calculate AI jobs cost (24h)
+    ai_jobs_24h = AIJobsHistory.objects.filter(
+        timestamp__gte=timezone.now() - timedelta(hours=24),
+        costs__isnull=False
+    ).aggregate(total_costs=models.Sum('costs'))
+    kpis['ai_jobs_24h_costs'] = ai_jobs_24h['total_costs'] or Decimal('0')
+    
+    context = {
+        'kpis': kpis,
+    }
+    return render(request, 'dashboard.html', context)
 
 def projects(request):
     """Projects page view."""
@@ -2797,3 +2826,152 @@ def change_reject(request, id, approval_id):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+def get_human_readable_verb(verb):
+    """Convert activity verb to human-readable text."""
+    verb_mapping = {
+        # Items
+        'item.created': 'Item created',
+        'item.status_changed': 'Status changed',
+        'item.assigned': 'Item assigned',
+        'item.updated': 'Item updated',
+        
+        # Projects
+        'project.created': 'Project created',
+        'project.status_changed': 'Project status changed',
+        'project.updated': 'Project updated',
+        
+        # GitHub
+        'github.issue_created': 'GitHub issue created',
+        'github.pr_created': 'GitHub PR created',
+        'github.mapping_synced': 'GitHub mapping synced',
+        'github.linked': 'GitHub linked',
+        
+        # Comments
+        'comment.added': 'Comment added',
+        'comment.updated': 'Comment updated',
+        'comment.deleted': 'Comment deleted',
+        
+        # Attachments
+        'attachment.uploaded': 'Attachment uploaded',
+        'attachment.deleted': 'Attachment deleted',
+        
+        # Changes
+        'change.created': 'Change created',
+        'change.status_changed': 'Change status changed',
+        'change.approved': 'Change approved',
+        'change.rejected': 'Change rejected',
+        
+        # AI
+        'ai.job_completed': 'AI job completed',
+        'ai.job_failed': 'AI job failed',
+        
+        # Graph API
+        'graph.mail_sent': 'Email sent',
+        
+        # Default fallback
+        'created': 'Created',
+        'updated': 'Updated',
+        'deleted': 'Deleted',
+        'approved': 'Approved',
+        'rejected': 'Rejected',
+    }
+    
+    return verb_mapping.get(verb, verb.replace('_', ' ').replace('.', ' ').title())
+
+
+def dashboard_in_progress_items(request):
+    """HTMX partial for in-progress items list."""
+    items = Item.objects.filter(
+        status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+    ).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')[:20]
+    
+    context = {
+        'items': items,
+    }
+    return render(request, 'partials/dashboard_in_progress.html', context)
+
+
+def dashboard_activity_stream(request):
+    """HTMX partial for global activity stream."""
+    from django.utils.timesince import timesince
+    
+    # Get filter parameter
+    filter_type = request.GET.get('filter', 'all')
+    offset = int(request.GET.get('offset', 0))
+    limit = 50
+    
+    # Base queryset
+    activity_service = ActivityService()
+    activities = Activity.objects.select_related('actor', 'target_content_type').order_by('-created_at')
+    
+    # Apply filter
+    if filter_type and filter_type != 'all':
+        if filter_type == 'items':
+            item_ct = ContentType.objects.get_for_model(Item)
+            activities = activities.filter(target_content_type=item_ct)
+        elif filter_type == 'projects':
+            project_ct = ContentType.objects.get_for_model(Project)
+            activities = activities.filter(target_content_type=project_ct)
+        elif filter_type == 'github':
+            activities = activities.filter(verb__startswith='github.')
+        elif filter_type == 'changes':
+            change_ct = ContentType.objects.get_for_model(Change)
+            activities = activities.filter(target_content_type=change_ct)
+        elif filter_type == 'ai':
+            activities = activities.filter(verb__startswith='ai.')
+    
+    # Paginate
+    activities = activities[offset:offset + limit]
+    
+    # Build activity list with human-readable verbs and relative times
+    activity_list = []
+    for activity in activities:
+        # Get target URL if possible
+        target_url = None
+        target_title = None
+        if activity.target_content_type.model == 'item' and activity.target_object_id:
+            try:
+                item = Item.objects.get(id=activity.target_object_id)
+                target_url = f'/items/{item.id}/'
+                target_title = item.title
+            except Item.DoesNotExist:
+                pass
+        elif activity.target_content_type.model == 'project' and activity.target_object_id:
+            try:
+                project = Project.objects.get(id=activity.target_object_id)
+                target_url = f'/projects/{project.id}/'
+                target_title = project.name
+            except Project.DoesNotExist:
+                pass
+        elif activity.target_content_type.model == 'change' and activity.target_object_id:
+            try:
+                change = Change.objects.get(id=activity.target_object_id)
+                target_url = f'/changes/{change.id}/'
+                target_title = change.title
+            except Change.DoesNotExist:
+                pass
+        
+        activity_list.append({
+            'id': activity.id,
+            'verb': get_human_readable_verb(activity.verb),
+            'actor': activity.actor,
+            'summary': activity.summary,
+            'created_at': activity.created_at,
+            'time_ago': timesince(activity.created_at),
+            'target_url': target_url,
+            'target_title': target_title,
+        })
+    
+    context = {
+        'activities': activity_list,
+        'filter_type': filter_type,
+        'offset': offset,
+        'limit': limit,
+        'has_more': len(activities) == limit,
+        'next_offset': offset + limit,
+    }
+    return render(request, 'partials/dashboard_activity_stream.html', context)
