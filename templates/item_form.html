@@ -109,126 +109,141 @@
     
     <!-- Right Column: Sidebar -->
     <div class="detail-sidebar">
-        <!-- Project -->
-        <div class="project-info-card">
-            <div class="project-info-label">Project <span class="text-danger">*</span></div>
-            <select class="form-select" id="project" name="project" form="itemForm" required>
-                <option value="">Select project...</option>
-                {% for proj in projects %}
-                <option value="{{ proj.id }}" 
-                        {% if item and item.project.id == proj.id %}selected{% endif %}>
-                    {{ proj.name }}
-                </option>
-                {% endfor %}
-            </select>
+        <!-- Additional Information Card -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Additional Information</h5>
+            </div>
+            <div class="card-body">
+                <!-- Status -->
+                <div class="mb-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" name="status" form="itemForm">
+                        {% for status_value, status_label in statuses %}
+                        <option value="{{ status_value }}" 
+                                {% if item and item.status == status_value %}selected{% endif %}
+                                {% if not item and status_value == 'Inbox' %}selected{% endif %}>
+                            {{ status_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Organisation -->
+                <div class="mb-3">
+                    <label for="organisation" class="form-label">Organisation</label>
+                    <select class="form-select" id="organisation" name="organisation" form="itemForm">
+                        <option value="">None</option>
+                        {% for org in organisations %}
+                        <option value="{{ org.id }}" 
+                                {% if item and item.organisation and item.organisation.id == org.id %}selected{% endif %}>
+                            {{ org.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Requester -->
+                <div class="mb-3">
+                    <label for="requester" class="form-label">Requester</label>
+                    <select class="form-select" id="requester" name="requester" form="itemForm">
+                        <option value="">None</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" 
+                                {% if item and item.requester and item.requester.id == user.id %}selected{% endif %}>
+                            {{ user.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Assigned To -->
+                <div class="mb-3">
+                    <label for="assigned_to" class="form-label">Assigned To</label>
+                    <select class="form-select" id="assigned_to" name="assigned_to" form="itemForm">
+                        <option value="">None</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" 
+                                {% if item and item.assigned_to and item.assigned_to.id == user.id %}selected{% endif %}>
+                            {{ user.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Project -->
+                <div class="mb-3">
+                    <label for="project" class="form-label">Project <span class="text-danger">*</span></label>
+                    <select class="form-select" id="project" name="project" form="itemForm" required>
+                        <option value="">Select project...</option>
+                        {% for proj in projects %}
+                        <option value="{{ proj.id }}" 
+                                {% if item and item.project.id == proj.id %}selected{% endif %}>
+                            {{ proj.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Type -->
+                <div class="mb-3">
+                    <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
+                    <select class="form-select" id="type" name="type" form="itemForm" required>
+                        <option value="">Select type...</option>
+                        {% for item_type in item_types %}
+                        <option value="{{ item_type.id }}" 
+                                {% if item and item.type.id == item_type.id %}selected{% endif %}>
+                            {{ item_type.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Parent Item -->
+                <div class="mb-3">
+                    <label for="parent" class="form-label">Parent Item</label>
+                    <select class="form-select" id="parent" name="parent" form="itemForm">
+                        <option value="">None</option>
+                        {% if item %}
+                            {% for parent_item in parent_items %}
+                            <option value="{{ parent_item.id }}" 
+                                    {% if item.parent and item.parent.id == parent_item.id %}selected{% endif %}>
+                                {{ parent_item.title }}
+                            </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                
+                <!-- Solution Release -->
+                <div class="mb-0">
+                    <label for="solution_release" class="form-label">Solution Release</label>
+                    {% if item %}
+                    <select class="form-select" id="solution_release" name="solution_release" form="itemForm">
+                        <option value="">None</option>
+                        {% for release in releases %}
+                        <option value="{{ release.id }}" 
+                                {% if item.solution_release and item.solution_release.id == release.id %}selected{% endif %}>
+                            {{ release.version }} - {{ release.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <select class="form-select" id="solution_release" name="solution_release" form="itemForm" disabled>
+                        <option value="">None</option>
+                    </select>
+                    <small class="text-muted d-block">Available after creating the item</small>
+                    {% endif %}
+                </div>
+            </div>
         </div>
         
-        <!-- Type -->
-        <div class="project-info-card">
-            <div class="project-info-label">Type <span class="text-danger">*</span></div>
-            <select class="form-select" id="type" name="type" form="itemForm" required>
-                <option value="">Select type...</option>
-                {% for item_type in item_types %}
-                <option value="{{ item_type.id }}" 
-                        {% if item and item.type.id == item_type.id %}selected{% endif %}>
-                    {{ item_type.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <!-- Parent Item -->
-        <div class="project-info-card">
-            <div class="project-info-label">Parent Item</div>
-            <select class="form-select" id="parent" name="parent" form="itemForm">
-                <option value="">None</option>
-                {% if item %}
-                    {% for parent_item in parent_items %}
-                    <option value="{{ parent_item.id }}" 
-                            {% if item.parent and item.parent.id == parent_item.id %}selected{% endif %}>
-                        {{ parent_item.title }}
-                    </option>
-                    {% endfor %}
-                {% endif %}
-            </select>
-        </div>
-        
-        <!-- Status -->
-        <div class="project-info-card">
-            <div class="project-info-label">Status</div>
-            <select class="form-select" id="status" name="status" form="itemForm">
-                {% for status_value, status_label in statuses %}
-                <option value="{{ status_value }}" 
-                        {% if item and item.status == status_value %}selected{% endif %}
-                        {% if not item and status_value == 'Inbox' %}selected{% endif %}>
-                    {{ status_label }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <!-- Organisation -->
-        <div class="project-info-card">
-            <div class="project-info-label">Organisation</div>
-            <select class="form-select" id="organisation" name="organisation" form="itemForm">
-                <option value="">None</option>
-                {% for org in organisations %}
-                <option value="{{ org.id }}" 
-                        {% if item and item.organisation and item.organisation.id == org.id %}selected{% endif %}>
-                    {{ org.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <!-- Requester -->
-        <div class="project-info-card">
-            <div class="project-info-label">Requester</div>
-            <select class="form-select" id="requester" name="requester" form="itemForm">
-                <option value="">None</option>
-                {% for user in users %}
-                <option value="{{ user.id }}" 
-                        {% if item and item.requester and item.requester.id == user.id %}selected{% endif %}>
-                    {{ user.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <!-- Assigned To -->
-        <div class="project-info-card">
-            <div class="project-info-label">Assigned To</div>
-            <select class="form-select" id="assigned_to" name="assigned_to" form="itemForm">
-                <option value="">None</option>
-                {% for user in users %}
-                <option value="{{ user.id }}" 
-                        {% if item and item.assigned_to and item.assigned_to.id == user.id %}selected{% endif %}>
-                    {{ user.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <!-- Solution Release -->
-        {% if item %}
-        <div class="project-info-card">
-            <div class="project-info-label">Solution Release</div>
-            <select class="form-select" id="solution_release" name="solution_release" form="itemForm">
-                <option value="">None</option>
-                {% for release in releases %}
-                <option value="{{ release.id }}" 
-                        {% if item.solution_release and item.solution_release.id == release.id %}selected{% endif %}>
-                    {{ release.version }} - {{ release.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        {% endif %}
-        
-        <!-- Help Text -->
-        <div class="project-info-card">
-            <div class="project-info-label">Help</div>
-            <div class="project-info-value">
+        <!-- Help Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Help</h5>
+            </div>
+            <div class="card-body">
                 <ul class="list-unstyled small text-muted mb-0">
                     <li class="mb-2">• Use Markdown for rich formatting in descriptions</li>
                     <li class="mb-2">• Required fields are marked with *</li>
