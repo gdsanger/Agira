@@ -575,6 +575,173 @@ def _load_django_object(type: str, object_id: str):
         return None
 
 
+def get_weaviate_type(instance) -> Optional[str]:
+    """
+    Get the Weaviate type string for a Django model instance.
+    
+    This is the public API version that uses the serializer's type mapping.
+    
+    Args:
+        instance: Django model instance
+        
+    Returns:
+        Type string (e.g., "item", "comment") or None if unsupported
+        
+    Example:
+        >>> from core.models import Item
+        >>> item = Item.objects.get(pk=1)
+        >>> type_str = get_weaviate_type(item)
+        >>> # Returns "item"
+    """
+    from core.services.weaviate.serializers import _get_model_type
+    return _get_model_type(instance)
+
+
+def exists_instance(instance) -> bool:
+    """
+    Check if a Django model instance exists in Weaviate.
+    
+    Args:
+        instance: Django model instance (Item, Comment, Project, etc.)
+        
+    Returns:
+        True if object exists in Weaviate, False otherwise
+        
+    Example:
+        >>> from core.models import Item
+        >>> item = Item.objects.get(pk=1)
+        >>> if exists_instance(item):
+        ...     print("Item is synced to Weaviate")
+    """
+    obj_type = get_weaviate_type(instance)
+    if obj_type is None:
+        return False
+    
+    return exists_object(obj_type, str(instance.pk))
+
+
+def exists_object(type: str, object_id: str) -> bool:
+    """
+    Check if an object exists in Weaviate using deterministic UUID.
+    
+    Args:
+        type: Type of object (e.g., "item", "comment")
+        object_id: Django object ID (as string)
+        
+    Returns:
+        True if object exists in Weaviate, False otherwise
+        
+    Example:
+        >>> exists = exists_object("item", "123")
+        >>> if exists:
+        ...     print("Object exists in Weaviate")
+    """
+    # Convert to string and use deterministic UUID
+    object_id_str = str(object_id)
+    obj_uuid = _get_deterministic_uuid(type, object_id_str)
+    
+    # Get client
+    client = get_client()
+    try:
+        # Get collection
+        collection = client.collections.get(COLLECTION_NAME)
+        
+        # Try to fetch object by UUID
+        try:
+            obj = collection.query.fetch_object_by_id(obj_uuid)
+            return obj is not None
+        except Exception:
+            # Object doesn't exist or other error
+            return False
+            
+    except Exception as e:
+        # Weaviate might not be configured or available
+        logger.debug(f"Error checking existence of {type}:{object_id_str}: {e}")
+        return False
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def fetch_object(instance) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the Weaviate object data for a Django model instance.
+    
+    Args:
+        instance: Django model instance (Item, Comment, Project, etc.)
+        
+    Returns:
+        Dictionary with object properties and UUID, or None if not found
+        
+    Example:
+        >>> from core.models import Item
+        >>> item = Item.objects.get(pk=1)
+        >>> obj_data = fetch_object(item)
+        >>> if obj_data:
+        ...     print(obj_data['title'], obj_data['uuid'])
+    """
+    obj_type = get_weaviate_type(instance)
+    if obj_type is None:
+        return None
+    
+    return fetch_object_by_type(obj_type, str(instance.pk))
+
+
+def fetch_object_by_type(type: str, object_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch an object from Weaviate using type and ID.
+    
+    Args:
+        type: Type of object (e.g., "item", "comment")
+        object_id: Django object ID (as string)
+        
+    Returns:
+        Dictionary with object properties and UUID, or None if not found
+        
+    Example:
+        >>> obj_data = fetch_object_by_type("item", "123")
+        >>> if obj_data:
+        ...     print(obj_data)
+    """
+    # Convert to string and use deterministic UUID
+    object_id_str = str(object_id)
+    obj_uuid = _get_deterministic_uuid(type, object_id_str)
+    
+    # Get client
+    client = get_client()
+    try:
+        _ensure_schema_once(client)
+        
+        # Get collection
+        collection = client.collections.get(COLLECTION_NAME)
+        
+        # Try to fetch object by UUID
+        try:
+            obj = collection.query.fetch_object_by_id(obj_uuid)
+            if obj is None:
+                return None
+            
+            # Convert to dict with UUID
+            result = dict(obj.properties)
+            result['uuid'] = str(obj.uuid)
+            return result
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch {type}:{object_id_str}: {e}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error fetching object {type}:{object_id_str}: {e}")
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
 def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
     """
     Upsert an AgiraObject dictionary into Weaviate.

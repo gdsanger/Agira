@@ -40,6 +40,7 @@
                                 <th>Size</th>
                                 <th>Uploaded</th>
                                 <th>Uploaded By</th>
+                                <th>Weaviate</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -68,6 +69,12 @@
                                     {% endif %}
                                 </td>
                                 <td>
+                                    <!-- Weaviate Status Button for Attachment -->
+                                    <div 
+                                        hx-get="{% url 'weaviate-status' 'attachment' attachment.id %}"
+                                        hx-trigger="load"
+                                        hx-swap="innerHTML">
+                                    </div>
                                     <button type="button" class="btn btn-sm btn-outline-danger" 
                                             onclick="deleteAttachment({{ attachment.id }})"
                                             title="Delete attachment">

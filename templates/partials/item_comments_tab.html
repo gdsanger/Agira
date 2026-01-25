@@ -44,6 +44,13 @@
                                 <span class="badge bg-info ms-2">{{ comment.get_kind_display }}</span>
                             {% endif %}
                         </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <small class="text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</small>
+                            <!-- Weaviate Status Button for Comment -->
+                            <div 
+                                hx-get="{% url 'weaviate-status' 'comment' comment.id %}"
+                                hx-trigger="load"
+                                hx-swap="innerHTML">
                         <div class="d-flex align-items-center gap-2">
                             <small class="text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</small>
                             <div class="btn-group btn-group-sm">

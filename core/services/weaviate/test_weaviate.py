@@ -508,3 +508,200 @@ class ServiceTestCase(TestCase):
         # Verify text was truncated
         self.assertEqual(len(results[0]['text_preview']), 203)  # 200 + "..."
         self.assertTrue(results[0]['text_preview'].endswith("..."))
+
+
+class GetWeaviateTypeTestCase(TestCase):
+    """Test get_weaviate_type function."""
+    
+    def test_get_weaviate_type_returns_item_for_item(self):
+        """Test that get_weaviate_type returns 'item' for Item model."""
+        from core.models import Item, Project, ItemType
+        
+        project = Project.objects.create(name="Test Project")
+        item_type = ItemType.objects.create(key="bug", name="Bug")
+        item = Item.objects.create(
+            title="Test Item",
+            project=project,
+            type=item_type
+        )
+        
+        result = service.get_weaviate_type(item)
+        self.assertEqual(result, "item")
+    
+    def test_get_weaviate_type_returns_comment_for_comment(self):
+        """Test that get_weaviate_type returns 'comment' for ItemComment model."""
+        from core.models import Item, ItemComment, Project, ItemType, User
+        
+        project = Project.objects.create(name="Test Project")
+        item_type = ItemType.objects.create(key="bug", name="Bug")
+        item = Item.objects.create(
+            title="Test Item",
+            project=project,
+            type=item_type
+        )
+        user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123"
+        )
+        comment = ItemComment.objects.create(
+            item=item,
+            author=user,
+            body="Test comment"
+        )
+        
+        result = service.get_weaviate_type(comment)
+        self.assertEqual(result, "comment")
+    
+    def test_get_weaviate_type_returns_project_for_project(self):
+        """Test that get_weaviate_type returns 'project' for Project model."""
+        from core.models import Project
+        
+        project = Project.objects.create(name="Test Project")
+        
+        result = service.get_weaviate_type(project)
+        self.assertEqual(result, "project")
+
+
+class ExistsObjectTestCase(TestCase):
+    """Test exists_object and exists_instance functions."""
+    
+    @patch('core.services.weaviate.service.get_client')
+    def test_exists_object_returns_true_when_object_exists(self, mock_get_client):
+        """Test that exists_object returns True when object exists."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_obj = MagicMock()
+        mock_collection.query.fetch_object_by_id.return_value = mock_obj
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        result = service.exists_object("item", "123")
+        
+        # Verify fetch was called with deterministic UUID
+        expected_uuid = service._get_deterministic_uuid("item", "123")
+        mock_collection.query.fetch_object_by_id.assert_called_once_with(expected_uuid)
+        
+        self.assertTrue(result)
+        mock_client.close.assert_called_once()
+    
+    @patch('core.services.weaviate.service.get_client')
+    def test_exists_object_returns_false_when_object_not_found(self, mock_get_client):
+        """Test that exists_object returns False when object doesn't exist."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.query.fetch_object_by_id.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        result = service.exists_object("item", "123")
+        
+        self.assertFalse(result)
+        mock_client.close.assert_called_once()
+    
+    @patch('core.services.weaviate.service.get_client')
+    def test_exists_object_returns_false_on_exception(self, mock_get_client):
+        """Test that exists_object returns False when an exception occurs."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.query.fetch_object_by_id.side_effect = Exception("Connection error")
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        result = service.exists_object("item", "123")
+        
+        self.assertFalse(result)
+    
+    @patch('core.services.weaviate.service.exists_object')
+    def test_exists_instance_calls_exists_object_with_correct_params(self, mock_exists_object):
+        """Test that exists_instance calls exists_object with correct parameters."""
+        from core.models import Item, Project, ItemType
+        
+        project = Project.objects.create(name="Test Project")
+        item_type = ItemType.objects.create(key="bug", name="Bug")
+        item = Item.objects.create(
+            title="Test Item",
+            project=project,
+            type=item_type
+        )
+        
+        mock_exists_object.return_value = True
+        
+        result = service.exists_instance(item)
+        
+        # Verify exists_object was called with correct type and ID
+        mock_exists_object.assert_called_once_with("item", str(item.pk))
+        self.assertTrue(result)
+
+
+class FetchObjectTestCase(TestCase):
+    """Test fetch_object and fetch_object_by_type functions."""
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_fetch_object_by_type_returns_object_data(self, mock_ensure_schema, mock_get_client):
+        """Test that fetch_object_by_type returns object data when found."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        
+        # Mock the returned object
+        mock_obj = MagicMock()
+        mock_obj.properties = {
+            "type": "item",
+            "object_id": "123",
+            "title": "Test Item",
+            "text": "Test text"
+        }
+        mock_obj.uuid = uuid.uuid4()
+        
+        mock_collection.query.fetch_object_by_id.return_value = mock_obj
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        result = service.fetch_object_by_type("item", "123")
+        
+        # Verify result contains properties and UUID
+        self.assertIsNotNone(result)
+        self.assertEqual(result['type'], "item")
+        self.assertEqual(result['object_id'], "123")
+        self.assertEqual(result['title'], "Test Item")
+        self.assertEqual(result['text'], "Test text")
+        self.assertIn('uuid', result)
+        
+        mock_client.close.assert_called_once()
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_fetch_object_by_type_returns_none_when_not_found(self, mock_ensure_schema, mock_get_client):
+        """Test that fetch_object_by_type returns None when object not found."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.query.fetch_object_by_id.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        result = service.fetch_object_by_type("item", "123")
+        
+        self.assertIsNone(result)
+        mock_client.close.assert_called_once()
+    
+    @patch('core.services.weaviate.service.fetch_object_by_type')
+    def test_fetch_object_calls_fetch_object_by_type(self, mock_fetch_by_type):
+        """Test that fetch_object calls fetch_object_by_type with correct parameters."""
+        from core.models import Item, Project, ItemType
+        
+        project = Project.objects.create(name="Test Project")
+        item_type = ItemType.objects.create(key="bug", name="Bug")
+        item = Item.objects.create(
+            title="Test Item",
+            project=project,
+            type=item_type
+        )
+        
+        mock_fetch_by_type.return_value = {"type": "item", "object_id": str(item.pk)}
+        
+        result = service.fetch_object(item)
+        
+        # Verify fetch_object_by_type was called with correct type and ID
+        mock_fetch_by_type.assert_called_once_with("item", str(item.pk))
+        self.assertIsNotNone(result)
