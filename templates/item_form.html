@@ -44,65 +44,38 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
-                        <input type="text" 
-                               class="form-control" 
-                               id="title" 
-                               name="title" 
-                               value="{% if item %}{{ item.title }}{% endif %}"
-                               required
-                               maxlength="500">
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="project" class="form-label">Project <span class="text-danger">*</span></label>
-                            <select class="form-select" id="project" name="project" required>
-                                <option value="">Select project...</option>
-                                {% for proj in projects %}
-                                <option value="{{ proj.id }}" 
-                                        {% if item and item.project.id == proj.id %}selected{% endif %}>
-                                    {{ proj.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
-                            <select class="form-select" id="type" name="type" required>
-                                <option value="">Select type...</option>
-                                {% for item_type in item_types %}
-                                <option value="{{ item_type.id }}" 
-                                        {% if item and item.type.id == item_type.id %}selected{% endif %}>
-                                    {{ item_type.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
+                        <div class="input-group">
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="title" 
+                                   name="title" 
+                                   value="{% if item %}{{ item.title }}{% endif %}"
+                                   required
+                                   maxlength="500">
+                            <button type="button" class="btn btn-outline-secondary" id="ai-title-btn" title="Generate title from description using AI">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5 2V0H3v2H1v2h2v2h2V4h2V2H5zm6 9V9H9v2H7v2h2v2h2v-2h2v-2h-2zm1.5-6.5v-2h-3v2h-2v3h2v2h3v-2h2v-3h-2z"/>
+                                    <path d="M4.5 11.5v-1h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5zm-1-4v-1a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                     
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="parent" class="form-label">Parent Item</label>
-                            <select class="form-select" id="parent" name="parent">
-                                <option value="">None</option>
-                                {% if item %}
-                                    {% for parent_item in parent_items %}
-                                    <option value="{{ parent_item.id }}" 
-                                            {% if item.parent and item.parent.id == parent_item.id %}selected{% endif %}>
-                                        {{ parent_item.title }}
-                                    </option>
-                                    {% endfor %}
-                                {% endif %}
-                            </select>
-                        </div>
-                    </div>
+
                 </div>
             </div>
             
             <!-- Description with Markdown Editor -->
             <div class="card mb-3">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Description</h5>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ai-optimize-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                            <path d="M5 2V0H3v2H1v2h2v2h2V4h2V2H5zm6 9V9H9v2H7v2h2v2h2v-2h2v-2h-2zm1.5-6.5v-2h-3v2h-2v3h2v2h3v-2h2v-3h-2z"/>
+                            <path d="M4.5 11.5v-1h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5zm-1-4v-1a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+                        </svg>
+                        Optimize Text
+                    </button>
                 </div>
                 <div class="card-body">
                     <div id="description-editor"></div>
@@ -136,6 +109,50 @@
     
     <!-- Right Column: Sidebar -->
     <div class="detail-sidebar">
+        <!-- Project -->
+        <div class="project-info-card">
+            <div class="project-info-label">Project <span class="text-danger">*</span></div>
+            <select class="form-select" id="project" name="project" form="itemForm" required>
+                <option value="">Select project...</option>
+                {% for proj in projects %}
+                <option value="{{ proj.id }}" 
+                        {% if item and item.project.id == proj.id %}selected{% endif %}>
+                    {{ proj.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Type -->
+        <div class="project-info-card">
+            <div class="project-info-label">Type <span class="text-danger">*</span></div>
+            <select class="form-select" id="type" name="type" form="itemForm" required>
+                <option value="">Select type...</option>
+                {% for item_type in item_types %}
+                <option value="{{ item_type.id }}" 
+                        {% if item and item.type.id == item_type.id %}selected{% endif %}>
+                    {{ item_type.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <!-- Parent Item -->
+        <div class="project-info-card">
+            <div class="project-info-label">Parent Item</div>
+            <select class="form-select" id="parent" name="parent" form="itemForm">
+                <option value="">None</option>
+                {% if item %}
+                    {% for parent_item in parent_items %}
+                    <option value="{{ parent_item.id }}" 
+                            {% if item.parent and item.parent.id == parent_item.id %}selected{% endif %}>
+                        {{ parent_item.title }}
+                    </option>
+                    {% endfor %}
+                {% endif %}
+            </select>
+        </div>
+        
         <!-- Status -->
         <div class="project-info-card">
             <div class="project-info-label">Status</div>
@@ -260,6 +277,88 @@ const solutionEditor = new toastui.Editor({
 document.getElementById('itemForm').addEventListener('submit', function() {
     document.getElementById('description').value = descriptionEditor.getMarkdown();
     document.getElementById('solution_description').value = solutionEditor.getMarkdown();
+});
+
+// AI Title Generation Button
+document.getElementById('ai-title-btn').addEventListener('click', async function() {
+    const btn = this;
+    const descriptionText = descriptionEditor.getMarkdown();
+    
+    if (!descriptionText || descriptionText.trim() === '') {
+        showToast('error', 'Error', 'Please enter a description first');
+        return;
+    }
+    
+    // Disable button and show loading state
+    btn.disabled = true;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    try {
+        const response = await fetch('{% url "ai-generate-title" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ text: descriptionText })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            document.getElementById('title').value = data.title;
+            showToast('success', 'Success', 'Title generated successfully');
+        } else {
+            showToast('error', 'Error', data.error || 'Failed to generate title');
+        }
+    } catch (error) {
+        showToast('error', 'Error', 'Failed to generate title');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+});
+
+// AI Text Optimization Button
+document.getElementById('ai-optimize-btn').addEventListener('click', async function() {
+    const btn = this;
+    const descriptionText = descriptionEditor.getMarkdown();
+    
+    if (!descriptionText || descriptionText.trim() === '') {
+        showToast('error', 'Error', 'Please enter a description first');
+        return;
+    }
+    
+    // Disable button and show loading state
+    btn.disabled = true;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Optimizing...';
+    
+    try {
+        const response = await fetch('{% url "ai-optimize-text" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ text: descriptionText })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            descriptionEditor.setMarkdown(data.text);
+            showToast('success', 'Success', 'Text optimized successfully');
+        } else {
+            showToast('error', 'Error', data.error || 'Failed to optimize text');
+        }
+    } catch (error) {
+        showToast('error', 'Error', 'Failed to optimize text');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
 });
 
 // Handle form response
