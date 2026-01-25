@@ -175,6 +175,110 @@ class ClientTestCase(TestCase):
         )
         
         self.assertTrue(client.is_available())
+    
+    @patch('core.services.weaviate.client.weaviate.connect_to_custom')
+    def test_get_client_uses_custom_ports(self, mock_connect):
+        """Test that get_client uses custom http_port and grpc_port when configured."""
+        WeaviateConfiguration.objects.create(
+            url="http://192.168.1.100",  # URL without port
+            http_port=8081,
+            grpc_port=50051,
+            api_key="",
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_connect.return_value = mock_client
+        
+        result = client.get_client()
+        
+        self.assertEqual(result, mock_client)
+        mock_connect.assert_called_once()
+        
+        # Verify the ports are correctly used
+        call_kwargs = mock_connect.call_args[1]
+        self.assertEqual(call_kwargs['http_port'], 8081)
+        self.assertEqual(call_kwargs['grpc_port'], 50051)
+        self.assertEqual(call_kwargs['http_host'], '192.168.1.100')
+    
+    @patch('core.services.weaviate.client.weaviate.connect_to_custom')
+    def test_get_client_url_port_takes_precedence(self, mock_connect):
+        """Test that port in URL takes precedence over http_port field."""
+        WeaviateConfiguration.objects.create(
+            url="http://localhost:9999",  # URL with port
+            http_port=8081,  # This should be ignored
+            grpc_port=50051,
+            api_key="",
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_connect.return_value = mock_client
+        
+        result = client.get_client()
+        
+        self.assertEqual(result, mock_client)
+        mock_connect.assert_called_once()
+        
+        # Verify URL port takes precedence
+        call_kwargs = mock_connect.call_args[1]
+        self.assertEqual(call_kwargs['http_port'], 9999)
+        self.assertEqual(call_kwargs['grpc_port'], 50051)
+    
+    def test_port_validation_rejects_invalid_http_port(self):
+        """Test that invalid HTTP port values are rejected."""
+        from django.core.exceptions import ValidationError
+        
+        # Test port too low
+        config = WeaviateConfiguration(
+            url="http://localhost",
+            http_port=0,
+            enabled=True
+        )
+        with self.assertRaises(ValidationError):
+            config.full_clean()
+        
+        # Test port too high
+        config = WeaviateConfiguration(
+            url="http://localhost",
+            http_port=65536,
+            enabled=True
+        )
+        with self.assertRaises(ValidationError):
+            config.full_clean()
+    
+    def test_port_validation_rejects_invalid_grpc_port(self):
+        """Test that invalid gRPC port values are rejected."""
+        from django.core.exceptions import ValidationError
+        
+        # Test port too low
+        config = WeaviateConfiguration(
+            url="http://localhost",
+            grpc_port=0,
+            enabled=True
+        )
+        with self.assertRaises(ValidationError):
+            config.full_clean()
+        
+        # Test port too high
+        config = WeaviateConfiguration(
+            url="http://localhost",
+            grpc_port=65536,
+            enabled=True
+        )
+        with self.assertRaises(ValidationError):
+            config.full_clean()
+    
+    def test_port_validation_accepts_valid_ports(self):
+        """Test that valid port values are accepted."""
+        config = WeaviateConfiguration(
+            url="http://localhost",
+            http_port=8081,
+            grpc_port=50051,
+            enabled=True
+        )
+        # Should not raise ValidationError
+        config.full_clean()
 
 
 class SchemaTestCase(TestCase):

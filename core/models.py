@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
@@ -526,7 +527,17 @@ class GitHubConfiguration(SingletonModel):
 
 
 class WeaviateConfiguration(SingletonModel):
-    url = models.URLField(blank=True)
+    url = models.URLField(blank=True, help_text="Weaviate instance URL (e.g., http://localhost or http://192.168.1.100)")
+    http_port = models.IntegerField(
+        default=8080,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="HTTP port for Weaviate (default: 8080, local install often uses 8081)"
+    )
+    grpc_port = models.IntegerField(
+        default=50051,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="gRPC port for Weaviate (default: 50051)"
+    )
     api_key = EncryptedCharField(max_length=500, blank=True)
     enabled = models.BooleanField(default=False)
 

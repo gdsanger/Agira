@@ -51,10 +51,30 @@ def get_client() -> weaviate.WeaviateClient:
     from urllib.parse import urlparse
     parsed = urlparse(config.url)
     
-    # Extract host and port
+    # Extract host and determine security
     http_secure = parsed.scheme == "https"
     http_host = parsed.hostname or 'localhost'
-    http_port = parsed.port or (443 if http_secure else 80)
+    
+    # Determine HTTP port with precedence order:
+    # 1. Port in URL (for backward compatibility)
+    # 2. Configured http_port field
+    # 3. Default based on scheme (443 for HTTPS, 8080 for HTTP)
+    if parsed.port:
+        http_port = parsed.port
+    elif hasattr(config, 'http_port') and config.http_port:
+        http_port = config.http_port
+    else:
+        http_port = 443 if http_secure else 8080
+    
+    # Determine gRPC port with precedence order:
+    # 1. Configured grpc_port field
+    # 2. Default (50051)
+    if hasattr(config, 'grpc_port') and config.grpc_port:
+        grpc_port = config.grpc_port
+    else:
+        grpc_port = 50051
+    
+    logger.debug(f"Using http_host={http_host}, http_port={http_port}, grpc_port={grpc_port}, http_secure={http_secure}")
     
     # Build client with optional authentication
     if config.api_key:
@@ -63,7 +83,7 @@ def get_client() -> weaviate.WeaviateClient:
             http_port=http_port,
             http_secure=http_secure,
             grpc_host=http_host,
-            grpc_port=50051,  # Default gRPC port
+            grpc_port=grpc_port,
             grpc_secure=http_secure,
             auth_credentials=Auth.api_key(config.api_key),
         )
@@ -73,7 +93,7 @@ def get_client() -> weaviate.WeaviateClient:
             http_port=http_port,
             http_secure=http_secure,
             grpc_host=http_host,
-            grpc_port=50051,  # Default gRPC port
+            grpc_port=grpc_port,
             grpc_secure=http_secure,
         )
     
