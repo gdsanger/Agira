@@ -163,7 +163,7 @@ class GitHubService(IntegrationBase):
         - Testing
         
         Args:
-            item: Agira item to check
+            item: Item to check
             
         Returns:
             True if issue can be created, False otherwise

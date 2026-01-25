@@ -386,14 +386,3 @@ class GitHubIssueCreationTestCase(TestCase):
         
         # Check that no mapping was created
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
-
-
-if __name__ == '__main__':
-    import django
-    django.setup()
-    from django.test.utils import get_runner
-    from django.conf import settings
-    
-    TestRunner = get_runner(settings)
-    test_runner = TestRunner()
-    failures = test_runner.run_tests(['core.test_github_issue_creation'])
