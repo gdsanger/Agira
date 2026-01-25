@@ -473,6 +473,19 @@ a:hover {
     background-color: var(--bg-primary);
 }
 
+/* Dark mode specific: Set editor backgrounds to white for better readability */
+[data-bs-theme="dark"] .toastui-editor-contents,
+[data-bs-theme="dark"] .toastui-editor-md-container,
+[data-bs-theme="dark"] .toastui-editor-ww-container,
+[data-bs-theme="dark"] .toastui-editor-main,
+[data-bs-theme="dark"] .toastui-editor-md-preview,
+[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror,
+[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror-scroll,
+[data-bs-theme="dark"] .toastui-editor-ww-container .tui-editor-contents {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+}
+
 /* Project Info Card */
 .project-info-card {
     background-color: var(--bg-secondary);
