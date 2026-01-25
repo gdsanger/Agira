@@ -313,7 +313,7 @@ class WeaviateConfigurationAdmin(ConfigurationAdmin):
     encrypted_fields = ['api_key']
     
     fieldsets = (
-        (None, {'fields': ('enabled',)}),
+        (None, {'fields': ('enabled','http_port', 'grpc_port')}),
         ('Weaviate Settings', {'fields': ('url', 'api_key')}),
     )
 

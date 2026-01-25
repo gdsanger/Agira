@@ -529,7 +529,7 @@ class GitHubConfiguration(SingletonModel):
 class WeaviateConfiguration(SingletonModel):
     url = models.URLField(blank=True, help_text="Weaviate instance URL (e.g., http://localhost or http://192.168.1.100)")
     http_port = models.IntegerField(
-        default=8080,
+        default=8081,
         validators=[MinValueValidator(1), MaxValueValidator(65535)],
         help_text="HTTP port for Weaviate (default: 8080, local install often uses 8081)"
     )
