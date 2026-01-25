@@ -4,9 +4,11 @@ Markdown Sync Service
 Synchronizes markdown files from GitHub repositories to Agira project attachments.
 """
 
+import hashlib
 import io
 import logging
 from typing import List, Dict, Any, Optional, Tuple
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
 
@@ -258,7 +260,6 @@ class MarkdownSyncService:
         github_repo_path = f"{repo_identifier}:{file_path}"
         
         # Find attachments linked to this project with matching github_repo_path
-        from django.contrib.contenttypes.models import ContentType
         project_ct = ContentType.objects.get_for_model(Project)
         
         # Find attachment links to this project
@@ -365,7 +366,6 @@ class MarkdownSyncService:
         file_path_abs = self.storage_service.get_file_path(attachment)
         
         # Write new content
-        import hashlib
         with open(file_path_abs, 'wb') as f:
             f.write(content)
         

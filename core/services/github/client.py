@@ -4,6 +4,7 @@ GitHub API Client
 Low-level client for interacting with the GitHub REST API v3.
 """
 
+import base64
 import logging
 from typing import Optional, Dict, Any, List, Union
 
@@ -281,8 +282,6 @@ class GitHubClient:
         Returns:
             Raw file content as bytes
         """
-        import base64
-        
         # Get file metadata which includes base64-encoded content
         file_data = self.get_repository_contents(owner, repo, path, ref)
         
