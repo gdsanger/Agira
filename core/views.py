@@ -1523,10 +1523,27 @@ def ai_model_update_field(request, provider_id, model_id):
         field = request.POST.get('field')
         value = request.POST.get('value', '').strip()
         
-        if field == 'input_price_per_1m_tokens':
-            model.input_price_per_1m_tokens = value if value else None
-        elif field == 'output_price_per_1m_tokens':
-            model.output_price_per_1m_tokens = value if value else None
+        if field in ['input_price_per_1m_tokens', 'output_price_per_1m_tokens']:
+            # Validate and convert to Decimal if value is provided
+            if value:
+                try:
+                    from decimal import Decimal, InvalidOperation
+                    decimal_value = Decimal(value)
+                    if decimal_value < 0:
+                        return HttpResponse("Price cannot be negative", status=400)
+                except (InvalidOperation, ValueError):
+                    return HttpResponse("Invalid price value", status=400)
+                
+                if field == 'input_price_per_1m_tokens':
+                    model.input_price_per_1m_tokens = decimal_value
+                else:
+                    model.output_price_per_1m_tokens = decimal_value
+            else:
+                # Empty value sets to None
+                if field == 'input_price_per_1m_tokens':
+                    model.input_price_per_1m_tokens = None
+                else:
+                    model.output_price_per_1m_tokens = None
         else:
             return HttpResponse("Invalid field", status=400)
         

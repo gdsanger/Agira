@@ -357,6 +357,38 @@ class AIModelInlineEditingTestCase(TestCase):
         
         self.assertEqual(response.status_code, 400)
     
+    def test_update_field_with_invalid_decimal(self):
+        """Test that updating field with invalid decimal returns error"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'input_price_per_1m_tokens',
+                'value': 'not-a-number'
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Invalid price value', response.content)
+    
+    def test_update_field_with_negative_price(self):
+        """Test that updating field with negative price returns error"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'input_price_per_1m_tokens',
+                'value': '-1.00'
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'cannot be negative', response.content)
+    
     def test_toggle_active_status(self):
         """Test toggling active status"""
         # Model is initially active
