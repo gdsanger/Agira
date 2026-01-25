@@ -38,6 +38,9 @@
     --border-default: #2a3140;
     --border-color: #2a3140;
     
+    /* Utility Colors */
+    --color-white: #ffffff;
+    
     /* Layout Constants */
     --topbar-height: 60px;
     --sidebar-width: 260px;
@@ -767,22 +770,22 @@ a:hover {
 
 .badge.bg-success {
     background-color: var(--status-success) !important;
-    color: #ffffff !important;
+    color: var(--color-white) !important;
 }
 
 .badge.bg-warning {
     background-color: var(--status-warning) !important;
-    color: #0b0f14 !important;
+    color: var(--bg-main) !important;
 }
 
 .badge.bg-danger {
     background-color: var(--status-error) !important;
-    color: #ffffff !important;
+    color: var(--color-white) !important;
 }
 
 .badge.bg-info {
     background-color: var(--status-info) !important;
-    color: #ffffff !important;
+    color: var(--color-white) !important;
 }
 
 /* Buttons */
@@ -800,7 +803,7 @@ a:hover {
 .btn-outline-primary:hover {
     background-color: var(--accent-primary);
     border-color: var(--accent-primary);
-    color: #ffffff;
+    color: var(--color-white);
 }
 
 .btn-outline-secondary {
@@ -822,7 +825,7 @@ a:hover {
 .btn-warning {
     background-color: var(--status-warning);
     border-color: var(--status-warning);
-    color: #0b0f14;
+    color: var(--bg-main);
 }
 
 .btn-danger {
@@ -954,5 +957,5 @@ a:hover {
 }
 
 .page-item.active .page-link {
-    color: #ffffff;
+    color: var(--color-white);
 }
