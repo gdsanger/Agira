@@ -463,49 +463,6 @@ a:hover {
     border-bottom: 1px solid var(--border-color);
 }
 
-/* Dark mode specific: Set editor backgrounds to white for better readability */
-[data-bs-theme="dark"] .toastui-editor-contents {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-}
-
-[data-bs-theme="dark"] .toastui-editor-md-container,
-[data-bs-theme="dark"] .toastui-editor-ww-container {
-    background-color: #FFFFFF !important;
-}
-
-/* Ensure all child elements in the editor also have white background */
-[data-bs-theme="dark"] .toastui-editor-md-container .toastui-editor-contents,
-[data-bs-theme="dark"] .toastui-editor-ww-container .toastui-editor-contents {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-}
-
-/* Markdown mode text area */
-[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror,
-[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror-scroll {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-}
-
-/* WYSIWYG mode content area */
-[data-bs-theme="dark"] .toastui-editor-ww-container .tui-editor-contents {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-}
-
-/* Preview pane in vertical split mode */
-[data-bs-theme="dark"] .toastui-editor-md-preview {
-    background-color: #FFFFFF !important;
-    color: #000000 !important;
-}
-
-/* Ensure the main wrapper also has white background */
-[data-bs-theme="dark"] .toastui-editor-main {
-    background-color: #FFFFFF !important;
-}
-
-/* Keep default styling for non-dark mode (if ever needed in the future) */
 .toastui-editor-contents {
     background-color: var(--bg-primary);
     color: var(--text-primary);
@@ -514,6 +471,19 @@ a:hover {
 .toastui-editor-md-container,
 .toastui-editor-ww-container {
     background-color: var(--bg-primary);
+}
+
+/* Dark mode specific: Set editor backgrounds to white for better readability */
+[data-bs-theme="dark"] .toastui-editor-contents,
+[data-bs-theme="dark"] .toastui-editor-md-container,
+[data-bs-theme="dark"] .toastui-editor-ww-container,
+[data-bs-theme="dark"] .toastui-editor-main,
+[data-bs-theme="dark"] .toastui-editor-md-preview,
+[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror,
+[data-bs-theme="dark"] .toastui-editor-md-container .CodeMirror-scroll,
+[data-bs-theme="dark"] .toastui-editor-ww-container .tui-editor-contents {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
 }
 
 /* Project Info Card */
