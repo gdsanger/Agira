@@ -10,40 +10,36 @@
                 <form id="github-link-form" hx-post="{% url 'item-link-github' item.id %}" hx-swap="innerHTML" hx-target="#github">
                     {% csrf_token %}
                     <div class="row">
-                        <div class="col-md-4 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label for="github-type" class="form-label">Type</label>
                             <select class="form-select form-select-sm" id="github-type" name="type" required>
                                 <option value="Issue">Issue</option>
                                 <option value="PR">Pull Request</option>
                             </select>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="github-owner" class="form-label">Owner</label>
-                            <input type="text" class="form-control form-control-sm" id="github-owner" name="owner" 
-                                   placeholder="e.g., octocat" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="github-repo" class="form-label">Repository</label>
-                            <input type="text" class="form-control form-control-sm" id="github-repo" name="repo" 
-                                   placeholder="e.g., hello-world" required>
-                        </div>
-                    </div>
-                    <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="github-number" class="form-label">Issue/PR Number</label>
                             <input type="number" class="form-control form-control-sm" id="github-number" name="number" 
                                    placeholder="e.g., 123" required min="1">
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">&nbsp;</label>
-                            <div>
-                                <button type="submit" class="btn btn-sm btn-primary">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
-                                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-                                    </svg>
-                                    Link GitHub Item
-                                </button>
-                            </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12 mb-3">
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                                </svg>
+                                Link GitHub Item
+                            </button>
+                            {% if item.project.github_owner and item.project.github_repo %}
+                                <small class="text-muted ms-2">Using repository: {{ item.project.github_owner|escape }}/{{ item.project.github_repo|escape }}</small>
+                            {% elif item.project.github_owner %}
+                                <small class="text-warning ms-2">⚠ GitHub Repo not configured in project settings</small>
+                            {% elif item.project.github_repo %}
+                                <small class="text-warning ms-2">⚠ GitHub Owner not configured in project settings</small>
+                            {% else %}
+                                <small class="text-warning ms-2">⚠ GitHub Owner and Repo not configured in project settings</small>
+                            {% endif %}
                         </div>
                     </div>
                 </form>
