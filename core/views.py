@@ -500,12 +500,21 @@ def item_activity_tab(request, item_id):
 
 def item_github_tab(request, item_id):
     """HTMX endpoint to load GitHub tab."""
+    from core.services.github.service import GitHubService
+    
     item = get_object_or_404(Item, id=item_id)
     external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+    
+    # Check if item can have a GitHub issue created
+    github_service = GitHubService()
+    can_create_issue = github_service.can_create_issue_for_item(item)
+    has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
     
     context = {
         'item': item,
         'external_mappings': external_mappings,
+        'can_create_issue': can_create_issue,
+        'has_existing_issue': has_existing_issue,
     }
     return render(request, 'partials/item_github_tab.html', context)
 
@@ -600,6 +609,66 @@ def item_link_github(request, item_id):
         logger = logging.getLogger(__name__)
         logger.error(f"GitHub linking failed for item {item_id}: {str(e)}")
         return HttpResponse(f"Failed to link GitHub item: {str(e)}", status=500)
+
+
+@require_POST
+def item_create_github_issue(request, item_id):
+    """Create a new GitHub issue for an item."""
+    from core.services.github.service import GitHubService
+    from core.services.integrations.base import IntegrationError
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Initialize GitHub service
+        github_service = GitHubService()
+        
+        # Check if GitHub is enabled and configured
+        if not github_service.is_enabled():
+            return HttpResponse("GitHub integration is not enabled. Please enable it in GitHub Configuration.", status=400)
+        
+        if not github_service.is_configured():
+            return HttpResponse("GitHub integration is not configured. Please add a GitHub token in GitHub Configuration.", status=400)
+        
+        # Check if item has valid status
+        if not github_service.can_create_issue_for_item(item):
+            return HttpResponse(
+                f"Cannot create GitHub issue for item with status '{item.status}'. "
+                f"Item must have status 'Backlog', 'Working', or 'Testing'.",
+                status=400
+            )
+        
+        # Check if item already has a GitHub issue
+        if item.external_mappings.filter(kind='Issue').exists():
+            return HttpResponse("This item already has a GitHub issue. You can only link existing issues or PRs.", status=400)
+        
+        # Create GitHub issue
+        try:
+            mapping = github_service.create_issue_for_item(
+                item=item,
+                actor=request.user
+            )
+            
+            # Return updated GitHub tab
+            external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+            context = {
+                'item': item,
+                'external_mappings': external_mappings,
+            }
+            response = render(request, 'partials/item_github_tab.html', context)
+            response['HX-Trigger'] = 'githubIssueCreated'
+            return response
+            
+        except ValueError as e:
+            return HttpResponse(f"Error creating GitHub issue: {str(e)}", status=400)
+        except IntegrationError as e:
+            return HttpResponse(f"GitHub API error: {str(e)}", status=500)
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"GitHub issue creation failed for item {item_id}: {str(e)}")
+        return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
 
 
 @require_POST
