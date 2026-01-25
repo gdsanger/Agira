@@ -389,3 +389,39 @@ class AttachmentStorageServiceTestCase(TestCase):
         
         link = AttachmentLink.objects.get(attachment=attachment)
         self.assertEqual(link.role, AttachmentRole.COMMENT_ATTACHMENT)
+    
+    def test_read_attachment(self):
+        """Test reading attachment content."""
+        file_content = b'Test file content for reading'
+        file = SimpleUploadedFile('read_test.txt', file_content, content_type='text/plain')
+        
+        attachment = self.service.store_attachment(
+            file=file,
+            target=self.project,
+            created_by=self.user,
+        )
+        
+        # Read the attachment
+        read_content = self.service.read_attachment(attachment)
+        
+        # Verify content matches
+        self.assertEqual(read_content, file_content)
+    
+    def test_read_attachment_not_found(self):
+        """Test that reading a missing attachment raises AttachmentNotFound."""
+        file_content = b'Delete me for read test'
+        file = SimpleUploadedFile('delete_read.txt', file_content)
+        
+        attachment = self.service.store_attachment(
+            file=file,
+            target=self.project,
+            created_by=self.user,
+        )
+        
+        # Delete the physical file
+        file_path = self.service.get_file_path(attachment)
+        file_path.unlink()
+        
+        # Now reading should raise exception
+        with self.assertRaises(AttachmentNotFound):
+            self.service.read_attachment(attachment)
