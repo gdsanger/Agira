@@ -917,7 +917,7 @@ def item_upload_attachment(request, item_id):
         
         # Return success response (for AJAX uploads)
         # If this is an AJAX request (multi-file upload), return simple success
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or not request.headers.get('HX-Request'):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and not request.headers.get('HX-Request'):
             return HttpResponse("Upload successful", status=200)
         
         # Return updated attachments list for HTMX requests
@@ -1563,7 +1563,7 @@ def project_upload_attachment(request, id):
         
         # Return success response (for AJAX uploads)
         # If this is an AJAX request (multi-file upload), return simple success
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or not request.headers.get('HX-Request'):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and not request.headers.get('HX-Request'):
             return HttpResponse("Upload successful", status=200)
         
         # Return updated attachments list for HTMX requests
