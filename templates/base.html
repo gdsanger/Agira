@@ -23,8 +23,17 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             document.body.addEventListener('htmx:configRequest', function(evt) {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                evt.detail.headers['X-CSRFToken'] = csrfToken;
+                // Only add CSRF token for same-origin requests
+                const requestUrl = new URL(evt.detail.path, window.location.origin);
+                if (requestUrl.origin === window.location.origin) {
+                    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    if (csrfMeta) {
+                        const csrfToken = csrfMeta.getAttribute('content');
+                        if (csrfToken) {
+                            evt.detail.headers['X-CSRFToken'] = csrfToken;
+                        }
+                    }
+                }
             });
         });
     </script>
