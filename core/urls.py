@@ -28,11 +28,22 @@ urlpatterns = [
     path('items/<int:item_id>/classify/', views.item_classify, name='item-classify'),
     path('items/<int:item_id>/change-status/', views.item_change_status, name='item-change-status'),
     path('items/<int:item_id>/add-comment/', views.item_add_comment, name='item-add-comment'),
+    path('items/comments/<int:comment_id>/update/', views.item_update_comment, name='item-update-comment'),
+    path('items/comments/<int:comment_id>/delete/', views.item_delete_comment, name='item-delete-comment'),
     path('items/<int:item_id>/upload-attachment/', views.item_upload_attachment, name='item-upload-attachment'),
+    path('items/attachments/<int:attachment_id>/delete/', views.item_delete_attachment, name='item-delete-attachment'),
+    path('items/attachments/<int:attachment_id>/view/', views.item_view_attachment, name='item-view-attachment'),
+    path('items/attachments/<int:attachment_id>/download/', views.item_download_attachment, name='item-download-attachment'),
     path('items/<int:item_id>/tabs/comments/', views.item_comments_tab, name='item-comments-tab'),
     path('items/<int:item_id>/tabs/attachments/', views.item_attachments_tab, name='item-attachments-tab'),
     path('items/<int:item_id>/tabs/activity/', views.item_activity_tab, name='item-activity-tab'),
     path('items/<int:item_id>/tabs/github/', views.item_github_tab, name='item-github-tab'),
+    path('items/<int:item_id>/link-github/', views.item_link_github, name='item-link-github'),
+    
+    # AI endpoints
+    path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
+    path('ai/optimize-text/', views.ai_optimize_text, name='ai-optimize-text'),
+    
     path('changes/', views.changes, name='changes'),
     
     # Organisation URLs

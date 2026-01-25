@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}Agira{% endblock %}</title>
     
     <!-- Bootstrap 5.3 CSS -->
@@ -17,6 +18,25 @@
     
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    
+    <!-- Configure HTMX to include CSRF token in requests -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.addEventListener('htmx:configRequest', function(evt) {
+                // Only add CSRF token for same-origin requests
+                const requestUrl = new URL(evt.detail.path, window.location.origin);
+                if (requestUrl.origin === window.location.origin) {
+                    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    if (csrfMeta) {
+                        const csrfToken = csrfMeta.getAttribute('content');
+                        if (csrfToken) {
+                            evt.detail.headers['X-CSRFToken'] = csrfToken;
+                        }
+                    }
+                }
+            });
+        });
+    </script>
     
     {% block extra_head %}{% endblock %}
 </head>
