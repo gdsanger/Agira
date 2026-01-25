@@ -70,12 +70,19 @@ def _get_deterministic_uuid(source_type: str, source_id: str) -> uuid.UUID:
 The service loads configuration from the `WeaviateConfiguration` singleton model in the database.
 
 **Configuration Fields:**
-- `url` (URLField): Weaviate server URL (e.g., `http://localhost:8080`)
+- `url` (URLField): Weaviate server URL (e.g., `http://localhost:8080` or `http://192.168.1.100`)
+- `http_port` (IntegerField): HTTP port for Weaviate (default: 8080, local installs often use 8081)
+- `grpc_port` (IntegerField): gRPC port for Weaviate (default: 50051)
 - `api_key` (EncryptedCharField): Optional API key for authentication
 - `enabled` (BooleanField): Whether the service is enabled
 
 **Django Admin:**
 Configure Weaviate settings in Django Admin under "Weaviate Configuration".
+
+**Port Configuration Notes:**
+- If the URL includes a port (e.g., `http://localhost:9999`), it takes precedence over the `http_port` field
+- For local installations, you typically need to configure the URL without a port and set the ports separately
+- Example local setup: URL=`http://192.168.1.100`, HTTP Port=8081, gRPC Port=50051
 
 ## Public API
 
@@ -299,10 +306,19 @@ def index_item(item):
 1. Go to Django Admin
 2. Navigate to "Weaviate Configuration"
 3. Set required fields:
-   - **URL**: Weaviate server URL (e.g., `http://localhost:8080`)
-   - **API Key**: Optional, only if your Weaviate instance requires authentication
+   - **URL**: Weaviate server URL (e.g., `http://localhost:8080` or `http://192.168.1.100` for local installations)
+   - **HTTP Port**: Port for HTTP connections (default: 8080, local installs often use 8081)
+   - **gRPC Port**: Port for gRPC connections (default: 50051)
+   - **API Key**: Optional, only if your Weaviate instance requires authentication (leave empty for local installations)
    - **Enabled**: Set to `True`
 4. Save
+
+**Example Configuration for Local Weaviate:**
+- URL: `http://192.168.1.100`
+- HTTP Port: `8081`
+- gRPC Port: `50051`
+- API Key: (empty)
+- Enabled: ✓
 
 ### Test Connection
 

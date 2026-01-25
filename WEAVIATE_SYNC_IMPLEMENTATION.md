@@ -269,9 +269,18 @@ Weaviate must be configured in Django admin:
 
 1. Navigate to **Admin → Weaviate Configuration**
 2. Set the following:
-   - **URL:** Weaviate instance URL (e.g., `http://localhost:8080`)
-   - **API Key:** Optional authentication key
+   - **URL:** Weaviate instance URL (e.g., `http://localhost:8080` or `http://192.168.1.100`)
+   - **HTTP Port:** Port for HTTP connections (default: 8080, local installs often use 8081)
+   - **gRPC Port:** Port for gRPC connections (default: 50051)
+   - **API Key:** Optional authentication key (leave empty for local installations without auth)
    - **Enabled:** Check to enable Weaviate integration
+
+**Example for Local Installation:**
+- URL: `http://192.168.1.100`
+- HTTP Port: `8081`
+- gRPC Port: `50051`
+- API Key: (empty)
+- Enabled: ✓
 
 ### Feature Toggle
 
