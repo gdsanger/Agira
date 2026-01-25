@@ -7,7 +7,6 @@ from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-from django.utils.html import escape
 from decimal import Decimal, InvalidOperation
 import openai
 from google import genai
@@ -495,22 +494,6 @@ def item_link_github(request, item_id):
         github_type = request.POST.get('type', 'Issue')
         number = request.POST.get('number', '').strip()
         
-        # Get owner and repo from project configuration
-        owner = (item.project.github_owner or '').strip()
-        repo = (item.project.github_repo or '').strip()
-        
-        if not owner or not repo:
-            missing_fields = []
-            if not owner:
-                missing_fields.append("'GitHub Owner'")
-            if not repo:
-                missing_fields.append("'GitHub Repo'")
-            return HttpResponse(
-                f"GitHub repository not configured for project '{escape(item.project.name)}'. "
-                f"Please configure {' and '.join(missing_fields)} in the project settings.",
-                status=400
-            )
-        
         if not number:
             return HttpResponse("Issue/PR number is required", status=400)
         
@@ -524,6 +507,12 @@ def item_link_github(request, item_id):
         
         if not github_service.is_enabled() or not github_service.is_configured():
             return HttpResponse("GitHub integration is not configured", status=400)
+        
+        # Get owner and repo from project configuration using service method
+        try:
+            owner, repo = github_service._get_repo_info(item)
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
         
         # Get GitHub client
         client = github_service._get_client()

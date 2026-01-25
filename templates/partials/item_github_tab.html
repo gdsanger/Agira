@@ -32,7 +32,7 @@
                                 Link GitHub Item
                             </button>
                             {% if item.project.github_owner and item.project.github_repo %}
-                                <small class="text-muted ms-2">Using repository: {{ item.project.github_owner }}/{{ item.project.github_repo }}</small>
+                                <small class="text-muted ms-2">Using repository: {{ item.project.github_owner|escape }}/{{ item.project.github_repo|escape }}</small>
                             {% elif item.project.github_owner %}
                                 <small class="text-warning ms-2">⚠ GitHub Repo not configured in project settings</small>
                             {% elif item.project.github_repo %}
