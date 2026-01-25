@@ -495,11 +495,15 @@ def item_link_github(request, item_id):
         number = request.POST.get('number', '').strip()
         
         # Get owner and repo from project configuration
-        owner = item.project.github_owner.strip() if item.project.github_owner else ''
-        repo = item.project.github_repo.strip() if item.project.github_repo else ''
+        owner = (item.project.github_owner or '').strip()
+        repo = (item.project.github_repo or '').strip()
         
         if not owner or not repo:
-            return HttpResponse("GitHub repository not configured for this project. Please configure github_owner and github_repo in the project settings.", status=400)
+            return HttpResponse(
+                f"GitHub repository not configured for project '{item.project.name}'. "
+                f"Please configure the 'GitHub Owner' and 'GitHub Repo' fields in the project settings.",
+                status=400
+            )
         
         if not number:
             return HttpResponse("Issue/PR number is required", status=400)
