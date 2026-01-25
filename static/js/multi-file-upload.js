@@ -28,8 +28,24 @@ class MultiFileUpload {
         this.activeUploads = 0;
         this.maxConcurrentUploads = 3;
         
-        // Bind preventDefaults to preserve 'this' context
+        // Bind event handlers to preserve 'this' context and allow cleanup
         this.boundPreventDefaults = (e) => this.preventDefaults(e);
+        this.boundAddDragOver = () => this.dropZone.classList.add('drag-over');
+        this.boundRemoveDragOver = () => this.dropZone.classList.remove('drag-over');
+        this.boundHandleDrop = (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            this.handleFiles(files);
+        };
+        this.boundHandleFileInputChange = (e) => this.handleFiles(e.target.files);
+        this.boundClickHandler = (e) => {
+            // Don't trigger if clicking on the file input itself
+            if (e.target.tagName !== 'INPUT') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.fileInput.click();
+            }
+        };
         
         this.init();
     }
@@ -41,19 +57,9 @@ class MultiFileUpload {
         }
         
         // File input change handler
-        this.fileInput.addEventListener('change', (e) => {
-            this.handleFiles(e.target.files);
-        });
+        this.fileInput.addEventListener('change', this.boundHandleFileInputChange);
         
         // Click handler for drop zone to trigger file input
-        this.boundClickHandler = (e) => {
-            // Don't trigger if clicking on the file input itself
-            if (e.target.tagName !== 'INPUT') {
-                e.preventDefault();
-                e.stopPropagation();
-                this.fileInput.click();
-            }
-        };
         this.dropZone.addEventListener('click', this.boundClickHandler, false);
         
         // Drag and drop handlers for drop zone
@@ -62,22 +68,14 @@ class MultiFileUpload {
         });
         
         ['dragenter', 'dragover'].forEach(eventName => {
-            this.dropZone.addEventListener(eventName, () => {
-                this.dropZone.classList.add('drag-over');
-            }, false);
+            this.dropZone.addEventListener(eventName, this.boundAddDragOver, false);
         });
         
         ['dragleave', 'drop'].forEach(eventName => {
-            this.dropZone.addEventListener(eventName, () => {
-                this.dropZone.classList.remove('drag-over');
-            }, false);
+            this.dropZone.addEventListener(eventName, this.boundRemoveDragOver, false);
         });
         
-        this.dropZone.addEventListener('drop', (e) => {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            this.handleFiles(files);
-        }, false);
+        this.dropZone.addEventListener('drop', this.boundHandleDrop, false);
         
         // Prevent default drag and drop behavior on the entire document
         // This prevents the browser from opening files when dropped outside the drop zone
@@ -360,9 +358,32 @@ class MultiFileUpload {
             document.removeEventListener(eventName, this.boundPreventDefaults, false);
         });
         
-        // Remove click handler from drop zone
-        if (this.dropZone && this.boundClickHandler) {
+        // Remove all drop zone event listeners
+        if (this.dropZone) {
+            // Remove drag and drop preventDefault handlers
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                this.dropZone.removeEventListener(eventName, this.boundPreventDefaults, false);
+            });
+            
+            // Remove drag over styling handlers
+            ['dragenter', 'dragover'].forEach(eventName => {
+                this.dropZone.removeEventListener(eventName, this.boundAddDragOver, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                this.dropZone.removeEventListener(eventName, this.boundRemoveDragOver, false);
+            });
+            
+            // Remove drop handler
+            this.dropZone.removeEventListener('drop', this.boundHandleDrop, false);
+            
+            // Remove click handler
             this.dropZone.removeEventListener('click', this.boundClickHandler, false);
+        }
+        
+        // Remove file input change handler
+        if (this.fileInput) {
+            this.fileInput.removeEventListener('change', this.boundHandleFileInputChange);
         }
     }
 }
