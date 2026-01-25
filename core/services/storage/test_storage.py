@@ -425,3 +425,43 @@ class AttachmentStorageServiceTestCase(TestCase):
         # Now reading should raise exception
         with self.assertRaises(AttachmentNotFound):
             self.service.read_attachment(attachment)
+    
+    def test_read_attachment_text_decoding(self):
+        """Test reading and decoding text attachment (like views do)."""
+        file_content = b'Hello, World! This is a text file.'
+        file = SimpleUploadedFile('text.txt', file_content, content_type='text/plain')
+        
+        attachment = self.service.store_attachment(
+            file=file,
+            target=self.project,
+            created_by=self.user,
+        )
+        
+        # Read and decode like the view does
+        read_content = self.service.read_attachment(attachment)
+        decoded_content = read_content.decode('utf-8')
+        
+        # Verify
+        self.assertEqual(decoded_content, 'Hello, World! This is a text file.')
+    
+    def test_read_attachment_binary_encoding(self):
+        """Test reading and base64 encoding binary attachment (like views do for PDFs)."""
+        import base64
+        
+        # Simulate binary PDF content
+        file_content = b'\x25\x50\x44\x46\x2d\x31\x2e\x34'  # PDF header
+        file = SimpleUploadedFile('document.pdf', file_content, content_type='application/pdf')
+        
+        attachment = self.service.store_attachment(
+            file=file,
+            target=self.item,
+            created_by=self.user,
+        )
+        
+        # Read and encode like the view does
+        read_content = self.service.read_attachment(attachment)
+        encoded = base64.b64encode(read_content).decode('utf-8')
+        
+        # Verify
+        expected = base64.b64encode(file_content).decode('utf-8')
+        self.assertEqual(encoded, expected)
