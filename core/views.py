@@ -612,7 +612,6 @@ def item_optimize_description_ai(request, item_id):
     
     Only available to users with Agent role.
     """
-    import json
     from core.services.rag import build_context
     
     # Check user role
