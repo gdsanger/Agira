@@ -50,14 +50,14 @@
                             <label for="provider" class="form-label">Provider <span class="text-danger">*</span></label>
                             <select class="form-select" id="provider" name="provider" required>
                                 {% for value, label in provider_types %}
-                                <option value="{{ value }}" {% if agent.provider|lower == value|lower %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}" {% if agent.provider == value or agent.provider|lower == value|lower %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label for="model" class="form-label">Model <span class="text-danger">*</span></label>
                             <select class="form-select" id="model" name="model" required>
-                                <option value="">-- Select a model --</option>
+                                <option value="" class="placeholder-option">-- Select a model --</option>
                                 {% for provider in providers %}
                                     {% for model in provider.models.all %}
                                         {% if model.active %}
@@ -255,15 +255,19 @@
         const providerSelect = document.getElementById('provider');
         const modelSelect = document.getElementById('model');
         
-        // Store all model options on page load
-        const allModelOptions = Array.from(modelSelect.options).slice(1); // Skip the first "-- Select a model --" option
+        // Store all model options on page load (exclude the placeholder)
+        const allModelOptions = Array.from(modelSelect.querySelectorAll('option:not(.placeholder-option)'));
         
         // Function to filter models based on selected provider
         function filterModels() {
             const selectedProviderType = providerSelect.value;
             
-            // Clear all options except the first one
-            modelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+            // Clear all options except the placeholder
+            const placeholder = modelSelect.querySelector('.placeholder-option');
+            modelSelect.innerHTML = '';
+            if (placeholder) {
+                modelSelect.appendChild(placeholder.cloneNode(true));
+            }
             
             // Add back only models matching the selected provider type
             allModelOptions.forEach(option => {

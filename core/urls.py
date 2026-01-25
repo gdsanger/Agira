@@ -60,9 +60,6 @@ urlpatterns = [
     path('ai-providers/<int:provider_id>/models/<int:model_id>/update/', views.ai_model_update, name='ai-model-update'),
     path('ai-providers/<int:provider_id>/models/<int:model_id>/delete/', views.ai_model_delete, name='ai-model-delete'),
     
-    # API endpoint for getting models by provider type
-    path('api/models-by-provider-type/', views.get_models_by_provider_type, name='api-models-by-provider-type'),
-    
     # Agent URLs
     path('agents/', views.agents, name='agents'),
     path('agents/new/', views.agent_create, name='agent-create'),

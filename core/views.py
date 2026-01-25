@@ -1513,40 +1513,6 @@ def ai_model_delete(request, provider_id, model_id):
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
 
 
-@require_http_methods(["GET"])
-def get_models_by_provider_type(request):
-    """
-    API endpoint to get active models filtered by provider type.
-    Used by agent forms to populate the model dropdown dynamically.
-    """
-    provider_type = request.GET.get('provider_type', '')
-    
-    if not provider_type:
-        return JsonResponse({'models': []})
-    
-    # Get active providers of the specified type
-    providers = AIProvider.objects.filter(
-        active=True,
-        provider_type=provider_type
-    ).prefetch_related('models')
-    
-    # Collect all active models from these providers
-    models_list = []
-    for provider in providers:
-        for model in provider.models.filter(active=True):
-            models_list.append({
-                'id': model.id,
-                'name': model.name,
-                'model_id': model.model_id,
-                'provider_name': provider.name,
-            })
-    
-    # Sort by model name
-    models_list.sort(key=lambda x: x['name'])
-    
-    return JsonResponse({'models': models_list})
-
-
 # ==================== Agent Views ====================
 
 def agents(request):
