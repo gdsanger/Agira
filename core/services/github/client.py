@@ -194,3 +194,41 @@ class GitHubClient:
         # We would need to filter client-side if needed
         
         return self.http.get(path, params=params)
+    
+    # Timeline/Events methods
+    
+    def get_issue_timeline(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        per_page: int = 100,
+        page: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get timeline events for an issue.
+        
+        This includes references to PRs, commits, and other events.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            number: Issue number
+            per_page: Results per page (max 100)
+            page: Page number
+            
+        Returns:
+            List of timeline event dictionaries
+        """
+        path = f'/repos/{owner}/{repo}/issues/{number}/timeline'
+        params = {
+            'per_page': min(per_page, 100),
+            'page': page,
+        }
+        
+        # Need to use preview API for timeline
+        headers = {
+            'Accept': 'application/vnd.github.mockingbird-preview+json',
+        }
+        
+        return self.http.get(path, params=params, headers=headers)
