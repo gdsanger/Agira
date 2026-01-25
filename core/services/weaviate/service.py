@@ -25,6 +25,29 @@ _schema_ensured = False
 UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
 
 
+def make_weaviate_uuid(type: str, object_id: str) -> str:
+    """
+    Generate a deterministic UUID5 based on type and object_id.
+    
+    This ensures idempotent upserts - the same object always maps to the
+    same Weaviate UUID. This is the public API version of the helper.
+    
+    Args:
+        type: Type of the object (e.g., "item", "comment")
+        object_id: Unique identifier of the object
+        
+    Returns:
+        Deterministic UUID as string
+        
+    Example:
+        >>> uuid_str = make_weaviate_uuid("item", "123")
+        >>> # Same input always returns same UUID
+        >>> assert uuid_str == make_weaviate_uuid("item", "123")
+    """
+    stable_key = f"{type}:{object_id}"
+    return str(uuid.uuid5(UUID_NAMESPACE, stable_key))
+
+
 def _get_deterministic_uuid(source_type: str, source_id: str) -> uuid.UUID:
     """
     Generate a deterministic UUID5 based on source_type and source_id.
@@ -300,3 +323,311 @@ def query(
         
     finally:
         client.close()
+
+
+def ensure_schema() -> None:
+    """
+    Ensure the Weaviate schema exists, creating it if necessary.
+    
+    This is a convenience wrapper that gets a client, ensures the schema,
+    and closes the client.
+    
+    Raises:
+        ServiceDisabled: If Weaviate is not enabled
+        ServiceNotConfigured: If Weaviate configuration is incomplete
+        
+    Example:
+        >>> from core.services.weaviate.service import ensure_schema
+        >>> ensure_schema()  # Creates AgiraObject collection if needed
+    """
+    client = get_client()
+    try:
+        from core.services.weaviate.schema import ensure_schema as _ensure_schema
+        _ensure_schema(client)
+    finally:
+        client.close()
+
+
+def upsert_object(type: str, object_id: str) -> Optional[str]:
+    """
+    Upsert an object into Weaviate by loading it from Django and serializing.
+    
+    This method loads the Django object by type and ID, serializes it using
+    the appropriate serializer, and upserts it into Weaviate.
+    
+    Args:
+        type: Type of object (e.g., "item", "comment", "project")
+        object_id: Django object ID (as string)
+        
+    Returns:
+        Weaviate object UUID as string, or None if object not found or unsupported
+        
+    Raises:
+        ServiceDisabled: If Weaviate is not enabled
+        ServiceNotConfigured: If Weaviate configuration is incomplete
+        
+    Example:
+        >>> uuid_str = upsert_object("item", "123")
+        >>> if uuid_str:
+        ...     print(f"Upserted with UUID: {uuid_str}")
+    """
+    from core.services.weaviate.serializers import to_agira_object
+    
+    # Load the Django object
+    instance = _load_django_object(type, object_id)
+    if instance is None:
+        logger.warning(f"Object not found: {type}:{object_id}")
+        return None
+    
+    # Serialize to AgiraObject dict
+    obj_dict = to_agira_object(instance)
+    if obj_dict is None:
+        logger.warning(f"Could not serialize object: {type}:{object_id}")
+        return None
+    
+    # Upsert using the new schema
+    return _upsert_agira_object(obj_dict)
+
+
+def delete_object(type: str, object_id: str) -> bool:
+    """
+    Delete an object from Weaviate using deterministic UUID.
+    
+    Args:
+        type: Type of object (e.g., "item", "comment")
+        object_id: Django object ID (as string)
+        
+    Returns:
+        True if object was deleted, False if it didn't exist
+        
+    Raises:
+        ServiceDisabled: If Weaviate is not enabled
+        ServiceNotConfigured: If Weaviate configuration is incomplete
+        
+    Example:
+        >>> deleted = delete_object("item", "123")
+        >>> if deleted:
+        ...     print("Object deleted from Weaviate")
+    """
+    # Convert to string and use deterministic UUID
+    object_id_str = str(object_id)
+    obj_uuid = _get_deterministic_uuid(type, object_id_str)
+    
+    # Get client
+    client = get_client()
+    try:
+        # Get collection
+        collection = client.collections.get(COLLECTION_NAME)
+        
+        # Try to delete
+        try:
+            collection.data.delete_by_id(obj_uuid)
+            logger.debug(f"Deleted object: {type}:{object_id_str}")
+            return True
+        except Exception as e:
+            # Object might not exist
+            logger.debug(
+                f"Could not delete {type}:{object_id_str} (might not exist): {e}"
+            )
+            return False
+            
+    finally:
+        client.close()
+
+
+def upsert_instance(instance) -> Optional[str]:
+    """
+    Upsert a Django model instance into Weaviate.
+    
+    This method automatically detects the type from the instance's model class,
+    serializes it, and upserts it into Weaviate.
+    
+    Args:
+        instance: Django model instance (Item, Comment, Project, etc.)
+        
+    Returns:
+        Weaviate object UUID as string, or None if unsupported type
+        
+    Raises:
+        ServiceDisabled: If Weaviate is not enabled
+        ServiceNotConfigured: If Weaviate configuration is incomplete
+        
+    Example:
+        >>> from core.models import Item
+        >>> item = Item.objects.get(pk=1)
+        >>> uuid_str = upsert_instance(item)
+    """
+    from core.services.weaviate.serializers import to_agira_object
+    
+    # Serialize to AgiraObject dict
+    obj_dict = to_agira_object(instance)
+    if obj_dict is None:
+        logger.warning(f"Could not serialize instance: {instance.__class__.__name__} (pk={instance.pk})")
+        return None
+    
+    # Upsert using the new schema
+    return _upsert_agira_object(obj_dict)
+
+
+def sync_project(project_id: str | int) -> Dict[str, int]:
+    """
+    Synchronize all objects for a project to Weaviate.
+    
+    This method loads all items, comments, changes, etc. for a project
+    and upserts them into Weaviate.
+    
+    Args:
+        project_id: Project ID to sync
+        
+    Returns:
+        Dictionary with counts of synced objects by type
+        
+    Raises:
+        ServiceDisabled: If Weaviate is not enabled
+        ServiceNotConfigured: If Weaviate configuration is incomplete
+        
+    Example:
+        >>> stats = sync_project("1")
+        >>> print(f"Synced {stats['item']} items, {stats['comment']} comments")
+    """
+    from core.models import Item, ItemComment, Change, Node, Release
+    from core.services.weaviate.serializers import to_agira_object
+    
+    project_id_str = str(project_id)
+    stats = {
+        'item': 0,
+        'comment': 0,
+        'change': 0,
+        'node': 0,
+        'release': 0,
+    }
+    
+    logger.info(f"Starting sync for project {project_id_str}")
+    
+    # Sync items
+    for item in Item.objects.filter(project_id=project_id_str):
+        if upsert_instance(item):
+            stats['item'] += 1
+    
+    # Sync comments (via items)
+    for comment in ItemComment.objects.filter(item__project_id=project_id_str):
+        if upsert_instance(comment):
+            stats['comment'] += 1
+    
+    # Sync changes
+    for change in Change.objects.filter(project_id=project_id_str):
+        if upsert_instance(change):
+            stats['change'] += 1
+    
+    # Sync nodes
+    for node in Node.objects.filter(project_id=project_id_str):
+        if upsert_instance(node):
+            stats['node'] += 1
+    
+    # Sync releases
+    for release in Release.objects.filter(project_id=project_id_str):
+        if upsert_instance(release):
+            stats['release'] += 1
+    
+    logger.info(f"Completed sync for project {project_id_str}: {stats}")
+    return stats
+
+
+def _load_django_object(type: str, object_id: str):
+    """
+    Load a Django object by type and ID.
+    
+    Args:
+        type: Type string (e.g., "item", "comment")
+        object_id: Object ID as string
+        
+    Returns:
+        Django model instance or None if not found
+    """
+    from core.models import (
+        Item, ItemComment, Attachment, Project, Change,
+        Node, Release, ExternalIssueMapping
+    )
+    
+    type_model_map = {
+        'item': Item,
+        'comment': ItemComment,
+        'attachment': Attachment,
+        'project': Project,
+        'change': Change,
+        'node': Node,
+        'release': Release,
+        'github_issue': ExternalIssueMapping,
+        'github_pr': ExternalIssueMapping,
+    }
+    
+    model_class = type_model_map.get(type)
+    if model_class is None:
+        logger.warning(f"Unknown type: {type}")
+        return None
+    
+    try:
+        return model_class.objects.get(pk=object_id)
+    except model_class.DoesNotExist:
+        return None
+    except Exception as e:
+        logger.error(f"Error loading {type}:{object_id}: {e}")
+        return None
+
+
+def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
+    """
+    Upsert an AgiraObject dictionary into Weaviate.
+    
+    Args:
+        obj_dict: Dictionary with AgiraObject properties
+        
+    Returns:
+        Weaviate object UUID as string
+    """
+    # Extract required fields
+    obj_type = obj_dict['type']
+    object_id = str(obj_dict['object_id'])
+    
+    # Generate deterministic UUID
+    obj_uuid = _get_deterministic_uuid(obj_type, object_id)
+    
+    # Get client and ensure schema
+    client = get_client()
+    try:
+        _ensure_schema_once(client)
+        
+        # Get collection
+        collection = client.collections.get(COLLECTION_NAME)
+        
+        # Prepare properties (filter out None values for optional fields)
+        properties = {k: v for k, v in obj_dict.items() if v is not None}
+        
+        # Ensure datetime objects are present
+        if 'created_at' not in properties or properties['created_at'] is None:
+            properties['created_at'] = datetime.now()
+        if 'updated_at' not in properties or properties['updated_at'] is None:
+            properties['updated_at'] = datetime.now()
+        
+        # Upsert using deterministic UUID
+        try:
+            collection.data.replace(
+                properties=properties,
+                uuid=obj_uuid,
+            )
+        except Exception:
+            # If replace fails (object doesn't exist), insert it
+            collection.data.insert(
+                properties=properties,
+                uuid=obj_uuid,
+            )
+        
+        logger.debug(
+            f"Upserted AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
+        )
+        
+        return str(obj_uuid)
+        
+    finally:
+        client.close()
+

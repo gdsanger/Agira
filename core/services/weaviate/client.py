@@ -62,6 +62,9 @@ def get_client() -> weaviate.WeaviateClient:
             http_host=http_host,
             http_port=http_port,
             http_secure=http_secure,
+            grpc_host=http_host,
+            grpc_port=50051,  # Default gRPC port
+            grpc_secure=http_secure,
             auth_credentials=Auth.api_key(config.api_key),
         )
     else:
@@ -69,6 +72,9 @@ def get_client() -> weaviate.WeaviateClient:
             http_host=http_host,
             http_port=http_port,
             http_secure=http_secure,
+            grpc_host=http_host,
+            grpc_port=50051,  # Default gRPC port
+            grpc_secure=http_secure,
         )
     
     return client

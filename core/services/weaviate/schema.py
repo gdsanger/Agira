@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 SCHEMA_VERSION = "v1"
 
 # Collection name (fixed for v1)
-COLLECTION_NAME = "AgiraContext"
+COLLECTION_NAME = "AgiraObject"
 
 
 def ensure_schema(client: weaviate.WeaviateClient) -> None:
     """
     Ensure the Weaviate schema exists, creating it if necessary.
     
-    This function checks if the AgiraContext collection exists and creates it
+    This function checks if the AgiraObject collection exists and creates it
     with the v1 schema if it doesn't exist.
     
     Args:
@@ -46,51 +46,101 @@ def ensure_schema(client: weaviate.WeaviateClient) -> None:
     
     logger.info(f"Creating collection '{COLLECTION_NAME}' with schema {SCHEMA_VERSION}")
     
-    # Create the AgiraContext collection with v1 schema
+    # Create the AgiraObject collection with v1 schema
     client.collections.create(
         name=COLLECTION_NAME,
         properties=[
+            # Required fields
             Property(
-                name="source_type",
+                name="type",
                 data_type=DataType.TEXT,
-                description="Type of source (e.g., item, item_comment, node, project, change)"
+                description="Type of object (e.g., item, comment, attachment, project, change, github_issue, github_pr)"
             ),
             Property(
-                name="source_id",
+                name="object_id",
                 data_type=DataType.TEXT,
-                description="Unique identifier from Postgres (UUID or int as string)"
+                description="ID of the Django object (PK/UUID as string)"
             ),
             Property(
                 name="project_id",
                 data_type=DataType.TEXT,
-                description="Project foreign key as string for filtering"
+                description="Project ID for filtering (optional for org-only objects)",
+                skip_vectorization=True
             ),
             Property(
                 name="title",
                 data_type=DataType.TEXT,
-                description="Short title or subject"
+                description="Title or subject of the object"
             ),
             Property(
                 name="text",
                 data_type=DataType.TEXT,
-                description="Main context text (Markdown allowed)"
+                description="Semantic body content (RAG Content)"
             ),
             Property(
-                name="tags",
-                data_type=DataType.TEXT_ARRAY,
-                description="Optional tags (e.g., bug, backend, security)",
-                skip_vectorization=True  # Tags are for filtering, not semantic search
-            ),
-            Property(
-                name="url",
-                data_type=DataType.TEXT,
-                description="Link to detail view in Agira",
-                skip_vectorization=True  # URLs don't need vectorization
+                name="created_at",
+                data_type=DataType.DATE,
+                description="Creation timestamp"
             ),
             Property(
                 name="updated_at",
                 data_type=DataType.DATE,
-                description="Last update timestamp for sync/refresh"
+                description="Last update timestamp"
+            ),
+            # Optional/Recommended fields
+            Property(
+                name="org_id",
+                data_type=DataType.TEXT,
+                description="Organization ID (nullable)",
+                skip_vectorization=True
+            ),
+            Property(
+                name="status",
+                data_type=DataType.TEXT,
+                description="Status (e.g., item.status, change.status, github state)",
+                skip_vectorization=True
+            ),
+            Property(
+                name="url",
+                data_type=DataType.TEXT,
+                description="Internal UI route (e.g., /items/123/)",
+                skip_vectorization=True
+            ),
+            Property(
+                name="source_system",
+                data_type=DataType.TEXT,
+                description="Source system: agira|github|mail|zammad (default agira)",
+                skip_vectorization=True
+            ),
+            Property(
+                name="external_key",
+                data_type=DataType.TEXT,
+                description="External key (e.g., owner/repo#123 for GitHub)",
+                skip_vectorization=True
+            ),
+            Property(
+                name="parent_object_id",
+                data_type=DataType.TEXT,
+                description="Parent object ID (e.g., comment belongs to item)",
+                skip_vectorization=True
+            ),
+            # Attachment metadata (optional)
+            Property(
+                name="mime_type",
+                data_type=DataType.TEXT,
+                description="MIME type for attachments",
+                skip_vectorization=True
+            ),
+            Property(
+                name="size_bytes",
+                data_type=DataType.INT,
+                description="File size in bytes for attachments"
+            ),
+            Property(
+                name="sha256",
+                data_type=DataType.TEXT,
+                description="SHA256 hash for attachments",
+                skip_vectorization=True
             ),
         ],
         # Use text2vec-transformers for semantic search
@@ -105,7 +155,7 @@ def ensure_schema(client: weaviate.WeaviateClient) -> None:
 
 def get_collection_name() -> str:
     """
-    Get the name of the AgiraContext collection.
+    Get the name of the AgiraObject collection.
     
     Returns:
         Collection name string
