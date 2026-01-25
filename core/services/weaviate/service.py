@@ -14,7 +14,7 @@ import weaviate
 from weaviate.classes.query import Filter
 
 from core.services.weaviate.client import get_client
-from core.services.weaviate.schema import ensure_schema, COLLECTION_NAME
+from core.services.weaviate.schema import ensure_schema as _ensure_schema_internal, COLLECTION_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def _ensure_schema_once(client: weaviate.WeaviateClient) -> None:
     """
     global _schema_ensured
     if not _schema_ensured:
-        ensure_schema(client)
+        _ensure_schema_internal(client)
         _schema_ensured = True
 
 
@@ -342,8 +342,7 @@ def ensure_schema() -> None:
     """
     client = get_client()
     try:
-        from core.services.weaviate.schema import ensure_schema as _ensure_schema
-        _ensure_schema(client)
+        _ensure_schema_internal(client)
     finally:
         client.close()
 
