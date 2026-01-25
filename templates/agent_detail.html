@@ -49,15 +49,28 @@
                         <div class="col-md-6">
                             <label for="provider" class="form-label">Provider <span class="text-danger">*</span></label>
                             <select class="form-select" id="provider" name="provider" required>
-                                <option value="openai" {% if agent.provider == 'openai' %}selected{% endif %}>OpenAI</option>
-                                <option value="gemini" {% if agent.provider == 'gemini' %}selected{% endif %}>Gemini</option>
-                                <option value="claude" {% if agent.provider == 'claude' %}selected{% endif %}>Claude</option>
+                                {% for value, label in provider_types %}
+                                <option value="{{ value }}" {% if agent.provider|lower == value|lower %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label for="model" class="form-label">Model <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="model" name="model" value="{{ agent.model }}" required>
-                            <small class="text-muted">e.g., gpt-3.5-turbo, gpt-4, gemini-pro</small>
+                            <select class="form-select" id="model" name="model" required>
+                                <option value="">-- Select a model --</option>
+                                {% for provider in providers %}
+                                    {% for model in provider.models.all %}
+                                        {% if model.active %}
+                                        <option value="{{ model.model_id }}" 
+                                                data-provider-type="{{ provider.provider_type }}"
+                                                {% if agent.model == model.model_id %}selected{% endif %}>
+                                            {{ model.name }} ({{ provider.name }})
+                                        </option>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Select a model from the active AI providers</small>
                         </div>
                     </div>
                     
@@ -237,6 +250,45 @@
 
 {% block extra_js %}
 <script>
+    // Provider/Model dynamic filtering
+    document.addEventListener('DOMContentLoaded', function() {
+        const providerSelect = document.getElementById('provider');
+        const modelSelect = document.getElementById('model');
+        
+        // Store all model options on page load
+        const allModelOptions = Array.from(modelSelect.options).slice(1); // Skip the first "-- Select a model --" option
+        
+        // Function to filter models based on selected provider
+        function filterModels() {
+            const selectedProviderType = providerSelect.value;
+            
+            // Clear all options except the first one
+            modelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+            
+            // Add back only models matching the selected provider type
+            allModelOptions.forEach(option => {
+                if (option.dataset.providerType === selectedProviderType) {
+                    modelSelect.appendChild(option.cloneNode(true));
+                }
+            });
+            
+            // If no models available for this provider, show a message
+            if (modelSelect.options.length === 1) {
+                const noModelsOption = document.createElement('option');
+                noModelsOption.value = '';
+                noModelsOption.textContent = 'No active models available for this provider';
+                noModelsOption.disabled = true;
+                modelSelect.appendChild(noModelsOption);
+            }
+        }
+        
+        // Filter models on provider change
+        providerSelect.addEventListener('change', filterModels);
+        
+        // Filter models on page load to show only relevant models
+        filterModels();
+    });
+    
     // Add parameter functionality
     document.getElementById('addParameterBtn').addEventListener('click', function() {
         const container = document.getElementById('parametersContainer');

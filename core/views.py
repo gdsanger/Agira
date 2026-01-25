@@ -1513,6 +1513,40 @@ def ai_model_delete(request, provider_id, model_id):
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
 
 
+@require_http_methods(["GET"])
+def get_models_by_provider_type(request):
+    """
+    API endpoint to get active models filtered by provider type.
+    Used by agent forms to populate the model dropdown dynamically.
+    """
+    provider_type = request.GET.get('provider_type', '')
+    
+    if not provider_type:
+        return JsonResponse({'models': []})
+    
+    # Get active providers of the specified type
+    providers = AIProvider.objects.filter(
+        active=True,
+        provider_type=provider_type
+    ).prefetch_related('models')
+    
+    # Collect all active models from these providers
+    models_list = []
+    for provider in providers:
+        for model in provider.models.filter(active=True):
+            models_list.append({
+                'id': model.id,
+                'name': model.name,
+                'model_id': model.model_id,
+                'provider_name': provider.name,
+            })
+    
+    # Sort by model name
+    models_list.sort(key=lambda x: x['name'])
+    
+    return JsonResponse({'models': models_list})
+
+
 # ==================== Agent Views ====================
 
 def agents(request):
@@ -1550,15 +1584,25 @@ def agent_detail(request, filename):
     if not agent:
         return HttpResponse("Agent not found", status=404)
     
+    # Get all active providers and their models
+    providers = AIProvider.objects.filter(active=True).prefetch_related('models')
+    provider_types = AIProviderType.choices
+    
     context = {
         'agent': agent,
         'is_new': False,
+        'providers': providers,
+        'provider_types': provider_types,
     }
     return render(request, 'agent_detail.html', context)
 
 
 def agent_create(request):
     """Agent create page view."""
+    # Get all active providers and their models
+    providers = AIProvider.objects.filter(active=True).prefetch_related('models')
+    provider_types = AIProviderType.choices
+    
     context = {
         'agent': {
             'name': '',
@@ -1570,6 +1614,8 @@ def agent_create(request):
             'parameters': {},
         },
         'is_new': True,
+        'providers': providers,
+        'provider_types': provider_types,
     }
     return render(request, 'agent_detail.html', context)
 
