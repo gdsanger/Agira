@@ -216,9 +216,9 @@
                 </div>
                 
                 <!-- Solution Release -->
-                {% if item %}
                 <div class="mb-0">
                     <label for="solution_release" class="form-label">Solution Release</label>
+                    {% if item %}
                     <select class="form-select" id="solution_release" name="solution_release" form="itemForm">
                         <option value="">None</option>
                         {% for release in releases %}
@@ -228,16 +228,13 @@
                         </option>
                         {% endfor %}
                     </select>
-                </div>
-                {% else %}
-                <div class="mb-0">
-                    <label for="parent" class="form-label">Parent Item</label>
-                    <select class="form-select" id="parent" name="parent" form="itemForm" disabled>
+                    {% else %}
+                    <select class="form-select" id="solution_release" name="solution_release" form="itemForm" disabled>
                         <option value="">None</option>
                     </select>
-                    <small class="text-muted">Available after creating the item</small>
+                    <small class="text-muted d-block">Available after creating the item</small>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
         
