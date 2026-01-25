@@ -73,11 +73,6 @@ class AIProviderFetchModelsTestCase(TestCase):
         
         # Check response
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 4)  # Only 4 GPT/o1 models
-        self.assertEqual(data['created_count'], 4)
-        self.assertEqual(data['existing_count'], 0)
         
         # Check models were created in database
         models = AIModel.objects.filter(provider=self.openai_provider)
@@ -91,9 +86,9 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Embedding model should be filtered out
         self.assertNotIn('text-embedding-ada-002', model_ids)
         
-        # Check default values
+        # Check default values - NEW MODELS SHOULD BE INACTIVE
         for model in models:
-            self.assertTrue(model.active)
+            self.assertFalse(model.active)  # Changed from True to False
             self.assertFalse(model.is_default)
             self.assertIsNone(model.input_price_per_1m_tokens)
             self.assertIsNone(model.output_price_per_1m_tokens)
@@ -126,12 +121,8 @@ class AIProviderFetchModelsTestCase(TestCase):
             reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
         )
         
-        # Check response
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 1)
-        self.assertEqual(data['created_count'], 0)
-        self.assertEqual(data['existing_count'], 1)
+        # Check response - now returns HTML not JSON
+        self.assertEqual(response.status_code, 200)
         
         # Check that only one model exists
         models = AIModel.objects.filter(provider=self.openai_provider)
@@ -171,13 +162,8 @@ class AIProviderFetchModelsTestCase(TestCase):
             reverse('ai-provider-fetch-models', kwargs={'id': self.gemini_provider.id})
         )
         
-        # Check response
+        # Check response - now returns HTML not JSON
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 3)  # Only 3 generative models
-        self.assertEqual(data['created_count'], 3)
-        self.assertEqual(data['existing_count'], 0)
         
         # Check models were created
         models = AIModel.objects.filter(provider=self.gemini_provider)
@@ -196,12 +182,8 @@ class AIProviderFetchModelsTestCase(TestCase):
             reverse('ai-provider-fetch-models', kwargs={'id': self.claude_provider.id})
         )
         
-        # Check response
+        # Check response - now returns HTML not JSON
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 4)
-        self.assertEqual(data['created_count'], 4)
         
         # Check models were created
         models = AIModel.objects.filter(provider=self.claude_provider)
@@ -225,11 +207,8 @@ class AIProviderFetchModelsTestCase(TestCase):
             reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
         )
         
-        # Check error response
+        # Check error response - now returns HTTP error with text, not JSON
         self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertFalse(data['success'])
-        self.assertIn('Failed to fetch models', data['error'])
         
         # Check no models were created
         models = AIModel.objects.filter(provider=self.openai_provider)
@@ -272,16 +251,143 @@ class AIProviderFetchModelsTestCase(TestCase):
             reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
         )
         
-        # Check response
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['total_count'], 2)
-        self.assertEqual(data['created_count'], 1)  # Only gpt-3.5-turbo
-        self.assertEqual(data['existing_count'], 1)  # gpt-4 already existed
+        # Check response - now returns HTML not JSON
+        self.assertEqual(response.status_code, 200)
         
         # Check total models count
         models = AIModel.objects.filter(provider=self.openai_provider)
         self.assertEqual(models.count(), 2)
+
+
+class AIModelInlineEditingTestCase(TestCase):
+    """Test cases for inline editing of AI models"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.client = Client()
+        
+        # Create test provider
+        self.provider = AIProvider.objects.create(
+            name='Test Provider',
+            provider_type='OpenAI',
+            api_key='test-key',
+            active=True
+        )
+        
+        # Create test model
+        self.model = AIModel.objects.create(
+            provider=self.provider,
+            name='Test Model',
+            model_id='test-model',
+            input_price_per_1m_tokens=1.50,
+            output_price_per_1m_tokens=2.00,
+            active=True,
+            is_default=False
+        )
+    
+    def test_update_input_price_field(self):
+        """Test updating input price via HTMX"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'input_price_per_1m_tokens',
+                'value': '2.50'
+            }
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check model was updated
+        self.model.refresh_from_db()
+        self.assertEqual(float(self.model.input_price_per_1m_tokens), 2.50)
+    
+    def test_update_output_price_field(self):
+        """Test updating output price via HTMX"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'output_price_per_1m_tokens',
+                'value': '3.00'
+            }
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check model was updated
+        self.model.refresh_from_db()
+        self.assertEqual(float(self.model.output_price_per_1m_tokens), 3.00)
+    
+    def test_update_field_with_empty_value(self):
+        """Test updating field with empty value sets it to None"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'input_price_per_1m_tokens',
+                'value': ''
+            }
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check model was updated
+        self.model.refresh_from_db()
+        self.assertIsNone(self.model.input_price_per_1m_tokens)
+    
+    def test_update_invalid_field(self):
+        """Test that updating invalid field returns error"""
+        response = self.client.post(
+            reverse('ai-model-update-field', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            }),
+            {
+                'field': 'invalid_field',
+                'value': '1.00'
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+    
+    def test_toggle_active_status(self):
+        """Test toggling active status"""
+        # Model is initially active
+        self.assertTrue(self.model.active)
+        
+        response = self.client.post(
+            reverse('ai-model-toggle-active', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            })
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check model was toggled
+        self.model.refresh_from_db()
+        self.assertFalse(self.model.active)
+        
+        # Toggle again
+        response = self.client.post(
+            reverse('ai-model-toggle-active', kwargs={
+                'provider_id': self.provider.id,
+                'model_id': self.model.id
+            })
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check model was toggled back
+        self.model.refresh_from_db()
+        self.assertTrue(self.model.active)
 
 
 class AIJobsHistoryViewTestCase(TestCase):
