@@ -8,7 +8,8 @@ from .models import (
     Attachment, AttachmentLink, Activity,
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
     GraphAPIConfiguration, ZammadConfiguration,
-    AIProvider, AIModel, AIJobsHistory
+    AIProvider, AIModel, AIJobsHistory,
+    ExternalIssueKind
 )
 
 
@@ -167,6 +168,7 @@ class ItemAdmin(admin.ModelAdmin):
     autocomplete_fields = ['project', 'parent', 'type', 'organisation', 'requester', 'assigned_to', 'solution_release']
     readonly_fields = ['created_at', 'updated_at']
     inlines = [ExternalIssueMappingInline, ItemCommentInline]
+    actions = ['create_github_issue']
     
     fieldsets = (
         (None, {'fields': ('project', 'title', 'status', 'type')}),
@@ -177,6 +179,112 @@ class ItemAdmin(admin.ModelAdmin):
     )
     
     filter_horizontal = ['nodes', 'changes']
+    
+    def create_github_issue(self, request, queryset):
+        """
+        Admin action to create GitHub issues for selected items.
+        
+        Only creates issues for items with status: Backlog, Working, or Testing.
+        """
+        from core.services.github.service import GitHubService
+        from core.services.integrations.base import IntegrationError
+        
+        service = GitHubService()
+        
+        # Check if GitHub is enabled
+        if not service.is_enabled():
+            self.message_user(
+                request,
+                "GitHub integration is not enabled. Please enable it in GitHub Configuration.",
+                level='error'
+            )
+            return
+        
+        if not service.is_configured():
+            self.message_user(
+                request,
+                "GitHub integration is not configured. Please add a GitHub token in GitHub Configuration.",
+                level='error'
+            )
+            return
+        
+        success_count = 0
+        skipped_count = 0
+        error_count = 0
+        
+        for item in queryset:
+            # Check if item has valid status
+            if not service.can_create_issue_for_item(item):
+                skipped_count += 1
+                self.message_user(
+                    request,
+                    f"Skipped '{item.title}': Item status must be Backlog, Working, or Testing (current: {item.status})",
+                    level='warning'
+                )
+                continue
+            
+            # Check if item already has a GitHub issue
+            if item.external_mappings.filter(kind=ExternalIssueKind.ISSUE).exists():
+                skipped_count += 1
+                self.message_user(
+                    request,
+                    f"Skipped '{item.title}': Item already has a GitHub issue mapped",
+                    level='warning'
+                )
+                continue
+            
+            try:
+                # Create GitHub issue
+                mapping = service.create_issue_for_item(
+                    item=item,
+                    actor=request.user
+                )
+                
+                success_count += 1
+                self.message_user(
+                    request,
+                    f"Successfully created GitHub issue #{mapping.number} for '{item.title}'",
+                    level='success'
+                )
+            except ValueError as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f"Error creating issue for '{item.title}': {str(e)}",
+                    level='error'
+                )
+            except IntegrationError as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f"GitHub error for '{item.title}': {str(e)}",
+                    level='error'
+                )
+            except Exception as e:
+                error_count += 1
+                self.message_user(
+                    request,
+                    f"Unexpected error for '{item.title}': {str(e)}",
+                    level='error'
+                )
+        
+        # Summary message
+        summary_parts = []
+        if success_count > 0:
+            summary_parts.append(f"{success_count} issue(s) created")
+        if skipped_count > 0:
+            summary_parts.append(f"{skipped_count} item(s) skipped")
+        if error_count > 0:
+            summary_parts.append(f"{error_count} error(s)")
+        
+        if summary_parts:
+            self.message_user(
+                request,
+                f"GitHub issue creation complete: {', '.join(summary_parts)}",
+                level='info'
+            )
+    
+    create_github_issue.short_description = "Create GitHub issue for selected items"
 
 
 @admin.register(ItemRelation)
