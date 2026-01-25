@@ -1900,3 +1900,159 @@ def ai_jobs_history(request):
         'selected_model': model_filter,
     }
     return render(request, 'ai_jobs_history.html', context)
+
+
+# ============================================================================
+# Weaviate Sync Views
+# ============================================================================
+
+def weaviate_status(request, object_type, object_id):
+    """
+    Check Weaviate sync status for an object.
+    
+    Returns HTML for the Weaviate status button (green if exists, red if not).
+    This is an HTMX endpoint that can be called to refresh the button state.
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import exists_object
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_button.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'exists': False,
+            'available': False,
+        })
+    
+    # Check if object exists in Weaviate
+    try:
+        exists = exists_object(object_type, object_id)
+    except Exception as e:
+        exists = False
+    
+    return render(request, 'partials/weaviate_button.html', {
+        'object_type': object_type,
+        'object_id': object_id,
+        'exists': exists,
+        'available': True,
+    })
+
+
+def weaviate_object(request, object_type, object_id):
+    """
+    Fetch Weaviate object data and display in modal content.
+    
+    Returns HTML for the modal body showing either:
+    - The Weaviate object as formatted JSON (if exists)
+    - A message with a "Push to Weaviate" button (if not exists)
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import fetch_object_by_type
+    import json
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': False,
+            'error': 'Weaviate service is not configured or disabled.',
+        })
+    
+    # Fetch object from Weaviate
+    try:
+        obj_data = fetch_object_by_type(object_type, object_id)
+        
+        if obj_data:
+            # Format as pretty JSON
+            json_str = json.dumps(obj_data, indent=2, default=str)
+            
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'exists': True,
+                'json_data': json_str,
+            })
+        else:
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'exists': False,
+            })
+            
+    except Exception as e:
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': True,
+            'error': str(e),
+        })
+
+
+@require_POST
+def weaviate_push(request, object_type, object_id):
+    """
+    Manually push an object to Weaviate.
+    
+    This endpoint performs a manual sync of the object to Weaviate.
+    Returns updated modal content showing the synced object.
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import upsert_object
+    import json
+    
+    # Check if Weaviate is available
+    if not is_available():
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': False,
+            'error': 'Weaviate service is not configured or disabled.',
+        })
+    
+    # Push object to Weaviate
+    try:
+        uuid_str = upsert_object(object_type, object_id)
+        
+        if uuid_str:
+            # Fetch the newly created object to show it
+            from core.services.weaviate.service import fetch_object_by_type
+            obj_data = fetch_object_by_type(object_type, object_id)
+            
+            if obj_data:
+                json_str = json.dumps(obj_data, indent=2, default=str)
+                
+                return render(request, 'partials/weaviate_modal_content.html', {
+                    'object_type': object_type,
+                    'object_id': object_id,
+                    'available': True,
+                    'exists': True,
+                    'json_data': json_str,
+                    'success_message': 'Successfully pushed to Weaviate!',
+                })
+            else:
+                return render(request, 'partials/weaviate_modal_content.html', {
+                    'object_type': object_type,
+                    'object_id': object_id,
+                    'available': True,
+                    'exists': True,
+                    'success_message': 'Successfully pushed to Weaviate!',
+                })
+        else:
+            return render(request, 'partials/weaviate_modal_content.html', {
+                'object_type': object_type,
+                'object_id': object_id,
+                'available': True,
+                'error': 'Could not push object to Weaviate. Object type may not be supported.',
+            })
+            
+    except Exception as e:
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': True,
+            'error': f'Error pushing to Weaviate: {str(e)}',
+        })

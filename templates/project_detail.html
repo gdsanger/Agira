@@ -98,6 +98,13 @@
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <h1 class="mb-0">{{ project.name }}</h1>
                 <div class="d-flex gap-2">
+                    <!-- Weaviate Status Button -->
+                    <div 
+                        hx-get="{% url 'weaviate-status' 'project' project.id %}"
+                        hx-trigger="load"
+                        hx-swap="innerHTML">
+                        <!-- Button will be loaded via HTMX -->
+                    </div>
                     <a href="{% url 'project-edit' project.id %}" class="btn btn-sm btn-primary">
                         Edit
                     </a>
@@ -402,6 +409,9 @@
 
 <!-- Modals for Adding Resources (kept for backward compatibility) -->
 {% include "partials/project_modals.html" %}
+
+<!-- Include Weaviate Modal -->
+{% include 'partials/weaviate_modal.html' %}
 
 <!-- Toast Container -->
 <div class="toast-container"></div>

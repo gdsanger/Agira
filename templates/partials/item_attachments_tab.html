@@ -40,6 +40,7 @@
                                 <th>Size</th>
                                 <th>Uploaded</th>
                                 <th>Uploaded By</th>
+                                <th>Weaviate</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -63,6 +64,14 @@
                                     {% else %}
                                         <span class="text-muted">—</span>
                                     {% endif %}
+                                </td>
+                                <td>
+                                    <!-- Weaviate Status Button for Attachment -->
+                                    <div 
+                                        hx-get="{% url 'weaviate-status' 'attachment' attachment.id %}"
+                                        hx-trigger="load"
+                                        hx-swap="innerHTML">
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}

@@ -72,4 +72,9 @@ urlpatterns = [
     path('agents/<str:filename>/test/', views.agent_test, name='agent-test'),
     # AI Jobs History URLs
     path('ai-jobs-history/', views.ai_jobs_history, name='ai-jobs-history'),
+    
+    # Weaviate Sync URLs
+    path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
+    path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),
+    path('weaviate/push/<str:object_type>/<str:object_id>/', views.weaviate_push, name='weaviate-push'),
 ]
