@@ -1,20 +1,47 @@
 /* Agira v1 - Custom Styles */
-/* Dark mode optimized color palette */
+/* Dark mode optimized color palette - Graphite + Indigo Theme */
 
 :root {
-    --bg-primary: #1a1d23;
-    --bg-secondary: #252930;
-    --bg-tertiary: #2f3439;
-    --text-primary: #e4e6eb;
-    --text-secondary: #b0b3b8;
-    --text-muted: #8a8d91;
-    --accent-primary: #5c7cfa;
-    --accent-secondary: #748ffc;
-    --border-color: #3a3f47;
-    --success: #51cf66;
-    --warning: #ffd43b;
-    --danger: #ff6b6b;
-    --info: #4dabf7;
+    /* Backgrounds */
+    --bg-main: #0b0f14;
+    --bg-surface: #121720;
+    --bg-surface-2: #1a2030;
+    
+    /* Legacy naming for compatibility - mapped to new palette */
+    --bg-primary: #0b0f14;
+    --bg-secondary: #121720;
+    --bg-tertiary: #1a2030;
+    
+    /* Text */
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+    
+    /* Primary Accent */
+    --accent-primary: #6366f1;
+    --accent-primary-soft: #4338ca;
+    --accent-secondary: #8b5cf6;
+    
+    /* Status Colors */
+    --status-success: #22c55e;
+    --status-warning: #eab308;
+    --status-error: #ef4444;
+    --status-info: #818cf8;
+    
+    /* Legacy naming for compatibility */
+    --success: #22c55e;
+    --warning: #eab308;
+    --danger: #ef4444;
+    --info: #818cf8;
+    
+    /* Borders / Dividers */
+    --border-default: #2a3140;
+    --border-color: #2a3140;
+    
+    /* Utility Colors */
+    --color-white: #ffffff;
+    
+    /* Layout Constants */
     --topbar-height: 60px;
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 70px;
@@ -152,7 +179,7 @@ body {
 }
 
 .sidebar-link.active {
-    background-color: rgba(92, 124, 250, 0.1);
+    background-color: rgba(99, 102, 241, 0.12);
     color: var(--accent-primary);
     border-left-color: var(--accent-primary);
     font-weight: 500;
@@ -410,19 +437,19 @@ a:hover {
 }
 
 .toast.toast-success {
-    border-left: 4px solid var(--success);
+    border-left: 4px solid var(--status-success);
 }
 
 .toast.toast-error {
-    border-left: 4px solid var(--danger);
+    border-left: 4px solid var(--status-error);
 }
 
 .toast.toast-info {
-    border-left: 4px solid var(--info);
+    border-left: 4px solid var(--status-info);
 }
 
 .toast.toast-warning {
-    border-left: 4px solid var(--warning);
+    border-left: 4px solid var(--status-warning);
 }
 
 /* Markdown Editor Styling */
@@ -526,12 +553,12 @@ a:hover {
 
 .kpi-card-primary {
     border-color: var(--accent-primary);
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(92, 124, 250, 0.1) 100%);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.1) 100%);
 }
 
 .kpi-card-success {
-    border-color: var(--success);
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(81, 207, 102, 0.1) 100%);
+    border-color: var(--status-success);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(34, 197, 94, 0.1) 100%);
 }
 
 .kpi-icon {
@@ -545,7 +572,7 @@ a:hover {
 }
 
 .kpi-card-success .kpi-icon {
-    color: var(--success);
+    color: var(--status-success);
 }
 
 .kpi-content {
@@ -695,4 +722,240 @@ a:hover {
         align-items: flex-start;
         gap: 1rem;
     }
+}
+
+/* Bootstrap Component Overrides */
+
+/* Tables */
+.table {
+    --bs-table-bg: var(--bg-surface);
+    --bs-table-striped-bg: var(--bg-surface-2);
+    --bs-table-hover-bg: var(--bg-surface-2);
+    --bs-table-border-color: var(--border-default);
+    color: var(--text-primary);
+}
+
+.table thead {
+    background-color: var(--bg-surface-2);
+    border-bottom: 2px solid var(--border-default);
+}
+
+.table th {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.875rem;
+    letter-spacing: 0.05em;
+}
+
+.table td {
+    color: var(--text-secondary);
+}
+
+/* Badges */
+.badge {
+    font-weight: 500;
+    padding: 0.35rem 0.65rem;
+}
+
+.badge.bg-primary {
+    background-color: var(--accent-primary) !important;
+}
+
+.badge.bg-secondary {
+    background-color: var(--bg-surface-2) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-default);
+}
+
+.badge.bg-success {
+    background-color: var(--status-success) !important;
+    color: var(--color-white) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--status-warning) !important;
+    color: var(--bg-main) !important;
+}
+
+.badge.bg-danger {
+    background-color: var(--status-error) !important;
+    color: var(--color-white) !important;
+}
+
+.badge.bg-info {
+    background-color: var(--status-info) !important;
+    color: var(--color-white) !important;
+}
+
+/* Buttons */
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: var(--accent-primary-soft);
+    border-color: var(--accent-primary-soft);
+}
+
+.btn-outline-primary {
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--color-white);
+}
+
+.btn-outline-secondary {
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+}
+
+.btn-outline-secondary:hover {
+    background-color: var(--bg-surface-2);
+    border-color: var(--border-default);
+    color: var(--text-primary);
+}
+
+.btn-success {
+    background-color: var(--status-success);
+    border-color: var(--status-success);
+}
+
+.btn-warning {
+    background-color: var(--status-warning);
+    border-color: var(--status-warning);
+    color: var(--bg-main);
+}
+
+.btn-danger {
+    background-color: var(--status-error);
+    border-color: var(--status-error);
+}
+
+.btn-info {
+    background-color: var(--status-info);
+    border-color: var(--status-info);
+}
+
+/* Dropdown menus */
+.dropdown-menu {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dropdown-item {
+    color: var(--text-secondary);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--bg-surface-2);
+    color: var(--text-primary);
+}
+
+.dropdown-divider {
+    border-top: 1px solid var(--border-default);
+}
+
+/* Alerts */
+.alert {
+    border: 1px solid var(--border-default);
+}
+
+.alert-info {
+    background-color: rgba(129, 140, 248, 0.1);
+    border-color: var(--status-info);
+    color: var(--text-primary);
+}
+
+.alert-success {
+    background-color: rgba(34, 197, 94, 0.1);
+    border-color: var(--status-success);
+    color: var(--text-primary);
+}
+
+.alert-warning {
+    background-color: rgba(234, 179, 8, 0.1);
+    border-color: var(--status-warning);
+    color: var(--text-primary);
+}
+
+.alert-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: var(--status-error);
+    color: var(--text-primary);
+}
+
+/* Spinners */
+.spinner-border {
+    --bs-spinner-border-width: 0.2rem;
+}
+
+.spinner-border.text-primary {
+    color: var(--accent-primary) !important;
+}
+
+/* Modals */
+.modal-content {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-default);
+}
+
+.modal-header {
+    background-color: var(--bg-surface-2);
+    border-bottom: 1px solid var(--border-default);
+}
+
+.modal-footer {
+    background-color: var(--bg-surface-2);
+    border-top: 1px solid var(--border-default);
+}
+
+/* Nav tabs */
+.nav-tabs {
+    border-bottom: 1px solid var(--border-default);
+}
+
+.nav-tabs .nav-link {
+    color: var(--text-secondary);
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--text-primary);
+    border-bottom-color: var(--border-default);
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--accent-primary);
+    background-color: transparent;
+    border-bottom-color: var(--accent-primary);
+}
+
+/* Pagination */
+.pagination {
+    --bs-pagination-bg: var(--bg-surface);
+    --bs-pagination-border-color: var(--border-default);
+    --bs-pagination-hover-bg: var(--bg-surface-2);
+    --bs-pagination-hover-border-color: var(--border-default);
+    --bs-pagination-focus-bg: var(--bg-surface-2);
+    --bs-pagination-active-bg: var(--accent-primary);
+    --bs-pagination-active-border-color: var(--accent-primary);
+    --bs-pagination-disabled-bg: var(--bg-surface);
+    --bs-pagination-disabled-border-color: var(--border-default);
+}
+
+.page-link {
+    color: var(--text-secondary);
+}
+
+.page-link:hover {
+    color: var(--text-primary);
+}
+
+.page-item.active .page-link {
+    color: var(--color-white);
 }
