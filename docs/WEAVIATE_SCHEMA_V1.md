@@ -205,12 +205,23 @@ All 29 tests should pass.
 - Run `python manage.py weaviate_init`
 - Check Weaviate connection and credentials
 
+## Vectorizer Configuration
+
+The AgiraObject collection is configured with `vectorizer_config=Configure.Vectorizer.none()`. This configuration:
+
+- Allows hybrid search to work without requiring external vectorization services (OpenAI, Transformers, etc.)
+- Enables BM25-only search mode, which provides excellent keyword matching
+- Works out-of-the-box with any Weaviate installation without additional dependencies
+- Can be upgraded to semantic search in the future by changing the vectorizer configuration
+
+**Note**: With the `none` vectorizer, hybrid search in the RAG service operates in BM25-only mode. This is sufficient for keyword-based searches and exact matches. For semantic search capabilities, consider configuring a vectorizer like `text2vec-transformers`, `text2vec-openai`, or `text2vec-cohere`.
+
 ## Future Enhancements (v2)
 
 The current implementation (v1) focuses on schema and synchronization. Future versions may add:
 
-- Advanced RAG (Retrieval-Augmented Generation) features
+- Advanced RAG (Retrieval-Augmented Generation) features with semantic search
 - AI-powered triage and suggestions
 - Project-wide Q&A capabilities
 - Cross-project semantic search
-- Custom vectorizers and embeddings
+- Custom vectorizers and embeddings (text2vec-transformers, text2vec-openai, etc.)
