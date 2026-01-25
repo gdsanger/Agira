@@ -12,6 +12,7 @@ from core.models import (
     GitHubConfiguration,
     Project,
     Item,
+    ItemStatus,
     ExternalIssueMapping,
     ExternalIssueKind,
     Activity,
@@ -151,6 +152,29 @@ class GitHubService(IntegrationBase):
         except (ObjectDoesNotExist, ValueError, TypeError) as e:
             # Activity logging is non-critical, log and continue
             logger.warning(f"Failed to log activity: {e}")
+    
+    def can_create_issue_for_item(self, item: Item) -> bool:
+        """
+        Check if a GitHub issue can be created for the given item.
+        
+        An issue can be created if the item's status is one of:
+        - Backlog
+        - Working
+        - Testing
+        
+        Args:
+            item: Item to check
+            
+        Returns:
+            True if issue can be created, False otherwise
+        """
+        allowed_statuses = [
+            ItemStatus.BACKLOG,
+            ItemStatus.WORKING,
+            ItemStatus.TESTING,
+        ]
+        
+        return item.status in allowed_statuses
     
     def create_issue_for_item(
         self,
