@@ -326,9 +326,9 @@ class BuildContextTestCase(TestCase):
             project_id="123"
         )
         
-        # Verify hybrid was called with where filter
+        # Verify hybrid was called with filters
         call_args = mock_collection.query.hybrid.call_args
-        self.assertIsNotNone(call_args.kwargs.get('where'))
+        self.assertIsNotNone(call_args.kwargs.get('filters'))
     
     @patch('core.services.rag.service.is_available')
     @patch('core.services.rag.service.get_client')
@@ -351,9 +351,9 @@ class BuildContextTestCase(TestCase):
             object_types=["item", "comment"]
         )
         
-        # Verify hybrid was called with where filter
+        # Verify hybrid was called with filters
         call_args = mock_collection.query.hybrid.call_args
-        self.assertIsNotNone(call_args.kwargs.get('where'))
+        self.assertIsNotNone(call_args.kwargs.get('filters'))
     
     @patch('core.services.rag.service.is_available')
     @patch('core.services.rag.service.get_client')
