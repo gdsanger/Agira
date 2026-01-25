@@ -603,6 +603,101 @@ def item_link_github(request, item_id):
 
 
 @require_POST
+def item_optimize_description_ai(request, item_id):
+    """
+    Optimize item description using AI and RAG.
+    
+    Uses RAG to gather context and then calls the github-issue-creation-agent
+    to generate an optimized, machine-readable GitHub issue description.
+    
+    Only available to users with Agent role.
+    """
+    from core.services.rag import build_context
+    
+    # Check user role
+    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get current description
+        current_description = item.description or ""
+        
+        if not current_description.strip():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Item has no description to optimize'
+            }, status=400)
+        
+        # Build RAG context
+        rag_context = build_context(
+            query=current_description,
+            project_id=str(item.project.id),
+            limit=10
+        )
+        
+        # Build input text for agent: description + RAG context
+        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        
+        agent_input = f"""Original Description:
+{current_description}
+
+---
+Context from similar items and related information:
+{context_text}
+"""
+        
+        # Execute the github-issue-creation-agent
+        agent_service = AgentService()
+        optimized_description = agent_service.execute_agent(
+            filename='github-issue-creation-agent.yml',
+            input_text=agent_input,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update item description
+        item.description = optimized_description.strip()
+        item.save()
+        
+        # Log activity - success
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.description.ai_optimized',
+            target=item,
+            actor=request.user,
+            summary='Item description optimized via AI (RAG + GitHub agent)',
+        )
+        
+        return JsonResponse({
+            'status': 'ok'
+        })
+        
+    except Exception as e:
+        # Log activity - error
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.description.ai_error',
+            target=item,
+            actor=request.user,
+            summary=f'AI description optimization failed: {str(e)}',
+        )
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"AI description optimization failed for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+@require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
     item = get_object_or_404(Item, id=item_id)
