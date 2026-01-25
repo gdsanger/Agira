@@ -41,6 +41,7 @@ urlpatterns = [
     path('items/<int:item_id>/tabs/activity/', views.item_activity_tab, name='item-activity-tab'),
     path('items/<int:item_id>/tabs/github/', views.item_github_tab, name='item-github-tab'),
     path('items/<int:item_id>/link-github/', views.item_link_github, name='item-link-github'),
+    path('items/<int:item_id>/ai/optimize-description/', views.item_optimize_description_ai, name='item-optimize-description-ai'),
     
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
