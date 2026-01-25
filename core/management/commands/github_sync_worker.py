@@ -192,7 +192,8 @@ class Command(BaseCommand):
         )
 
         # 2. Update Item status if issue was closed
-        if mapping.state == 'closed' and item.status != ItemStatus.TESTING:
+        # Don't update status if item is already Closed (acceptance criterion 1)
+        if mapping.state == 'closed' and item.status != ItemStatus.TESTING and item.status != ItemStatus.CLOSED:
             if not dry_run:
                 with transaction.atomic():
                     item.status = ItemStatus.TESTING
