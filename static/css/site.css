@@ -492,3 +492,14 @@ a:hover {
 .breadcrumb-item a:hover {
     color: var(--accent-secondary);
 }
+
+/* HTMX Indicator */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
