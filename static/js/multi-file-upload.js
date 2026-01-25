@@ -28,6 +28,9 @@ class MultiFileUpload {
         this.activeUploads = 0;
         this.maxConcurrentUploads = 3;
         
+        // Bind preventDefaults to preserve 'this' context
+        this.boundPreventDefaults = (e) => this.preventDefaults(e);
+        
         this.init();
     }
     
@@ -42,9 +45,9 @@ class MultiFileUpload {
             this.handleFiles(e.target.files);
         });
         
-        // Drag and drop handlers
+        // Drag and drop handlers for drop zone
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            this.dropZone.addEventListener(eventName, this.preventDefaults, false);
+            this.dropZone.addEventListener(eventName, this.boundPreventDefaults, false);
         });
         
         ['dragenter', 'dragover'].forEach(eventName => {
@@ -64,6 +67,12 @@ class MultiFileUpload {
             const files = dt.files;
             this.handleFiles(files);
         }, false);
+        
+        // Prevent default drag and drop behavior on the entire document
+        // This prevents the browser from opening files when dropped outside the drop zone
+        ['dragenter', 'dragover', 'drop'].forEach(eventName => {
+            document.addEventListener(eventName, this.boundPreventDefaults, false);
+        });
     }
     
     preventDefaults(e) {
@@ -328,6 +337,17 @@ class MultiFileUpload {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    /**
+     * Cleanup method to remove event listeners
+     * Call this when the component is no longer needed
+     */
+    destroy() {
+        // Remove document-level event listeners
+        ['dragenter', 'dragover', 'drop'].forEach(eventName => {
+            document.removeEventListener(eventName, this.boundPreventDefaults, false);
+        });
     }
 }
 
