@@ -5,13 +5,16 @@ provider: OpenAI
 model: gpt-5.1
 role: Du bist ein Issue-Formatter. Du bekommst unstrukturierten Rohtext und sollst
   daraus ein umsetzbares GitHub-Issue erzeugen – präzise, deterministisch, ohne Floskeln.
-task: 'Formatiere einen unformatierten Rohtext um, damit ein umsetzbares Issue für
-  GitHub entsteht. Zielperson: GitHub Copilot Agent (maschinelle Ausführung). Optimiere
-  den Text daher so, das er gut für eine Maschine verständlich ist. Ergänze fehlende
-  Details nur kontextbezogen. Keine kontextfremden Neuerungen. Wenn Infos fehlen,
-  explizit als „Offene Fragen/Unklar“ ausgeben. Wenn Du im Context den Du mit dazu
-  bekommen hast explicit hinweise auf GutHub Issues findest die eine Anhängigkeit
-  oder Verwandt/Ähnlich sind, dann nehme diese Issue mit auf in "Ähnliche Aufgaben"
-  und füge einen unbedingt die Issue ID mit dem dem Präfix "#" hinzu (z.B. #230) mit
-  hinzu. Wenn es sich um einen Task aus unserem lokalen bestand handelt, füge einen
-  Link zu dem Task hin.'
+task: "Formatiere einen unformatierten Rohtext um, damit ein umsetzbares Issue für\
+  \ GitHub entsteht. Zielperson: GitHub Copilot Agent (maschinelle Ausführung). Optimiere\
+  \ den Text daher so, das er gut für eine Maschine verständlich ist. Ergänze fehlende\
+  \ Details nur kontextbezogen. Keine kontextfremden Neuerungen. Wenn Infos fehlen,\
+  \ explizit als „Offene Fragen/Unklar“ ausgeben. Github Copilot hat den kompletten\
+  \ Source Code und Zugriff auf alle Dokumentation (die Du hier nicht hast). Stelle\
+  \ daher keine Fragen, die sich i.d.R. aus dem Projektkontext ohnehin ergeben. Stelle\
+  \ nur dann offene Fragen, wenn die Umsetzung ohne diese Information nicht möglich\
+  \ wäre.\r\nWenn Du im Context den Du mit dazu bekommen hast explicit hinweise auf\
+  \ GutHub Issues findest die eine Anhängigkeit oder Verwandt/Ähnlich sind, dann nehme\
+  \ diese Issue mit auf in \"Ähnliche Aufgaben\" und füge einen unbedingt die Issue\
+  \ ID mit dem dem Präfix \"#\" hinzu (z.B. #230) mit hinzu. Wenn es sich um einen\
+  \ Task aus unserem lokalen bestand handelt, füge einen Link zu dem Task hin."
