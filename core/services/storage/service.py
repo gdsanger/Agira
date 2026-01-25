@@ -262,12 +262,15 @@ class AttachmentStorageService:
             File content as bytes
             
         Raises:
-            AttachmentNotFound: If file doesn't exist
+            AttachmentNotFound: If file doesn't exist or cannot be read
         """
         file_path = self.get_file_path(attachment)
         
-        with open(file_path, 'rb') as f:
-            return f.read()
+        try:
+            with open(file_path, 'rb') as f:
+                return f.read()
+        except (PermissionError, OSError) as e:
+            raise AttachmentNotFound(f"Cannot read attachment file: {str(e)}") from e
     
     def delete_attachment(self, attachment: Attachment, hard: bool = False):
         """
