@@ -1550,15 +1550,25 @@ def agent_detail(request, filename):
     if not agent:
         return HttpResponse("Agent not found", status=404)
     
+    # Get all active providers and their models
+    providers = AIProvider.objects.filter(active=True).prefetch_related('models')
+    provider_types = AIProviderType.choices
+    
     context = {
         'agent': agent,
         'is_new': False,
+        'providers': providers,
+        'provider_types': provider_types,
     }
     return render(request, 'agent_detail.html', context)
 
 
 def agent_create(request):
     """Agent create page view."""
+    # Get all active providers and their models
+    providers = AIProvider.objects.filter(active=True).prefetch_related('models')
+    provider_types = AIProviderType.choices
+    
     context = {
         'agent': {
             'name': '',
@@ -1570,6 +1580,8 @@ def agent_create(request):
             'parameters': {},
         },
         'is_new': True,
+        'providers': providers,
+        'provider_types': provider_types,
     }
     return render(request, 'agent_detail.html', context)
 
