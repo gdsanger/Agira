@@ -273,7 +273,7 @@ class Command(BaseCommand):
                     if source.get('type') == 'issue':
                         # In GitHub, PRs are also issues
                         issue_data = source.get('issue', {})
-                        if issue_data.get('pull_request'):
+                        if 'pull_request' in issue_data:
                             # This is a PR
                             pr_number = issue_data.get('number')
                             if pr_number:
