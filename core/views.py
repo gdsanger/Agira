@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from django.utils.html import escape
 from decimal import Decimal, InvalidOperation
 import openai
 from google import genai
@@ -505,7 +506,7 @@ def item_link_github(request, item_id):
             if not repo:
                 missing_fields.append("'GitHub Repo'")
             return HttpResponse(
-                f"GitHub repository not configured for project '{item.project.name}'. "
+                f"GitHub repository not configured for project '{escape(item.project.name)}'. "
                 f"Please configure {' and '.join(missing_fields)} in the project settings.",
                 status=400
             )
