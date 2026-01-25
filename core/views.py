@@ -492,12 +492,17 @@ def item_link_github(request, item_id):
     try:
         # Get form data
         github_type = request.POST.get('type', 'Issue')
-        owner = request.POST.get('owner', '').strip()
-        repo = request.POST.get('repo', '').strip()
         number = request.POST.get('number', '').strip()
         
-        if not owner or not repo or not number:
-            return HttpResponse("All fields are required", status=400)
+        # Get owner and repo from project configuration
+        owner = item.project.github_owner.strip() if item.project.github_owner else ''
+        repo = item.project.github_repo.strip() if item.project.github_repo else ''
+        
+        if not owner or not repo:
+            return HttpResponse("GitHub repository not configured for this project. Please configure github_owner and github_repo in the project settings.", status=400)
+        
+        if not number:
+            return HttpResponse("Issue/PR number is required", status=400)
         
         try:
             number = int(number)
