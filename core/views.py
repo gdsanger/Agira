@@ -1055,8 +1055,10 @@ def item_view_attachment(request, attachment_id):
         if attachment.is_deleted:
             return JsonResponse({'success': False, 'error': 'Attachment not found'}, status=404)
         
-        # Get file extension
-        extension = attachment.original_name.lower().split('.')[-1] if '.' in attachment.original_name else ''
+        # Get file extension using os.path.splitext for reliability
+        import os
+        _, extension = os.path.splitext(attachment.original_name.lower())
+        extension = extension.lstrip('.')  # Remove leading dot
         
         # Read file content
         storage_service = AttachmentStorageService()
@@ -1066,7 +1068,7 @@ def item_view_attachment(request, attachment_id):
         if extension == 'md':
             # Render markdown to HTML - create parser instance per request for thread safety
             md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
-            html_content = md_parser.convert(file_content.decode('utf-8'))
+            html_content = md_parser.convert(file_content.decode('utf-8', errors='replace'))
             # Sanitize HTML
             clean_html = bleach.clean(
                 html_content,
@@ -1082,7 +1084,7 @@ def item_view_attachment(request, attachment_id):
             return JsonResponse({'success': True, 'content_base64': pdf_base64})
         elif extension in ['html', 'htm']:
             # Return sanitized HTML content (will be displayed in iframe)
-            html_content = file_content.decode('utf-8')
+            html_content = file_content.decode('utf-8', errors='replace')
             # Sanitize HTML before returning
             clean_html = bleach.clean(
                 html_content,
@@ -1093,7 +1095,7 @@ def item_view_attachment(request, attachment_id):
             return JsonResponse({'success': True, 'content': clean_html})
         else:
             # Plain text
-            return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
+            return JsonResponse({'success': True, 'content': file_content.decode('utf-8', errors='replace')})
             
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -1712,8 +1714,10 @@ def project_view_attachment(request, attachment_id):
         if attachment.is_deleted:
             return JsonResponse({'success': False, 'error': 'Attachment not found'}, status=404)
         
-        # Get file extension
-        extension = attachment.original_name.lower().split('.')[-1] if '.' in attachment.original_name else ''
+        # Get file extension using os.path.splitext for reliability
+        import os
+        _, extension = os.path.splitext(attachment.original_name.lower())
+        extension = extension.lstrip('.')  # Remove leading dot
         
         # Read file content
         storage_service = AttachmentStorageService()
@@ -1723,7 +1727,7 @@ def project_view_attachment(request, attachment_id):
         if extension == 'md':
             # Render markdown to HTML - create parser instance per request for thread safety
             md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
-            html_content = md_parser.convert(file_content.decode('utf-8'))
+            html_content = md_parser.convert(file_content.decode('utf-8', errors='replace'))
             # Sanitize HTML
             clean_html = bleach.clean(
                 html_content,
@@ -1739,7 +1743,7 @@ def project_view_attachment(request, attachment_id):
             return JsonResponse({'success': True, 'content_base64': pdf_base64})
         elif extension in ['html', 'htm']:
             # Return sanitized HTML content (will be displayed in iframe)
-            html_content = file_content.decode('utf-8')
+            html_content = file_content.decode('utf-8', errors='replace')
             # Sanitize HTML before returning
             clean_html = bleach.clean(
                 html_content,
@@ -1750,7 +1754,7 @@ def project_view_attachment(request, attachment_id):
             return JsonResponse({'success': True, 'content': clean_html})
         else:
             # Plain text
-            return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
+            return JsonResponse({'success': True, 'content': file_content.decode('utf-8', errors='replace')})
             
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
