@@ -314,12 +314,9 @@ def project_items_tab(request, id):
             Q(title__icontains=search_query) | Q(description__icontains=search_query)
         )
     
-    # Apply status filter - default: exclude Closed items
+    # Apply status filter
     if status_filter:
         items = items.filter(status__in=status_filter)
-    else:
-        # Default: show all statuses except Closed
-        items = items.exclude(status=ItemStatus.CLOSED)
     
     # Apply type filter
     if type_filter_ints:
