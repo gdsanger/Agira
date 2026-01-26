@@ -95,6 +95,7 @@ class CommentKind(models.TextChoices):
     COMMENT = 'Comment', _('Comment')
     EMAIL_IN = 'EmailIn', _('Email In')
     EMAIL_OUT = 'EmailOut', _('Email Out')
+    AI_GENERATED = 'AIGenerated', _('🤖 AI Generated')
 
 
 class EmailDeliveryStatus(models.TextChoices):

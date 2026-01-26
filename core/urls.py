@@ -54,6 +54,8 @@ urlpatterns = [
     path('items/<int:item_id>/link-github/', views.item_link_github, name='item-link-github'),
     path('items/<int:item_id>/create-github-issue/', views.item_create_github_issue, name='item-create-github-issue'),
     path('items/<int:item_id>/ai/optimize-description/', views.item_optimize_description_ai, name='item-optimize-description-ai'),
+    path('items/<int:item_id>/ai/pre-review/', views.item_pre_review, name='item-pre-review'),
+    path('items/<int:item_id>/ai/save-pre-review/', views.item_save_pre_review, name='item-save-pre-review'),
     
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
