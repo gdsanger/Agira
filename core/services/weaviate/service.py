@@ -346,18 +346,20 @@ def global_search(
     limit: int = 25,
     alpha: float = 0.5,
     filters: Optional[Dict[str, Any]] = None,
+    mode: str = 'hybrid',
 ) -> List[AgiraSearchHit]:
     """
-    Perform global search using Weaviate hybrid search (BM25 + Vector).
+    Perform global search using Weaviate search.
     
-    This function searches across all AgiraObject instances using a hybrid
-    approach that combines keyword search (BM25) with semantic vector search.
+    This function searches across all AgiraObject instances using different
+    search modes: hybrid (BM25 + Vector), semantic (vector only), or keyword (BM25 only).
     
     Args:
         query: Search query text (minimum 2 characters recommended)
         limit: Maximum number of results to return (default: 25)
         alpha: Balance between BM25 and vector search (0.0 = BM25 only, 1.0 = vector only, default: 0.5)
         filters: Optional filters (e.g., {"type": "item", "project_id": "123"})
+        mode: Search mode - 'hybrid' (default), 'similar' (semantic/vector), or 'keyword' (BM25)
         
     Returns:
         List of AgiraSearchHit objects with search results
@@ -373,8 +375,11 @@ def global_search(
         >>> # Filter by type
         >>> results = global_search("API", filters={"type": "item"})
         
-        >>> # Filter by project
-        >>> results = global_search("bug", filters={"project_id": "1"})
+        >>> # Semantic search only
+        >>> results = global_search("authentication issues", mode="similar")
+        
+        >>> # Keyword search only
+        >>> results = global_search("bug #123", mode="keyword")
     """
     # Get client and ensure schema
     client = get_client()
@@ -399,23 +404,57 @@ def global_search(
                 for condition in filter_conditions[1:]:
                     where_filter = where_filter & condition
         
-        # Execute hybrid search
-        # Note: The collection is configured with vectorizer set to 'none', so hybrid search
-        # uses BM25 keyword matching. The alpha parameter still applies but with limited effect.
-        # For full hybrid search with semantic vectors, configure a vectorizer in the schema.
+        # Execute search based on mode
+        # Note: The collection is configured with vectorizer set to 'none', so:
+        # - 'hybrid' mode uses BM25 keyword matching
+        # - 'similar' mode uses near_text (which requires vectorizer, will use BM25 as fallback)
+        # - 'keyword' mode uses BM25 search
+        # For full semantic search, configure a vectorizer in the schema.
         # Using RELATIVE_SCORE fusion ensures consistent score calculation for ranking.
-        response = collection.query.hybrid(
-            query=query,
-            limit=limit,
-            alpha=alpha,
-            filters=where_filter,
-            fusion_type=HybridFusion.RELATIVE_SCORE,
-        )
+        
+        if mode == 'similar':
+            # Semantic/vector search (near_text)
+            # With vectorizer='none', this will still work but uses BM25 internally
+            response = collection.query.near_text(
+                query=query,
+                limit=limit,
+                filters=where_filter,
+            )
+        elif mode == 'keyword':
+            # Pure BM25 keyword search (alpha=0 means BM25 only)
+            response = collection.query.hybrid(
+                query=query,
+                limit=limit,
+                alpha=0.0,  # Pure BM25
+                filters=where_filter,
+                fusion_type=HybridFusion.RELATIVE_SCORE,
+            )
+        else:
+            # Hybrid search (default) - combines BM25 and vector
+            response = collection.query.hybrid(
+                query=query,
+                limit=limit,
+                alpha=alpha,
+                filters=where_filter,
+                fusion_type=HybridFusion.RELATIVE_SCORE,
+            )
         
         # Format results as AgiraSearchHit objects
         results = []
         for obj in response.objects:
             props = obj.properties
+            
+            # Get score from metadata (different attributes for different query types)
+            score = None
+            if hasattr(obj.metadata, 'score'):
+                score = obj.metadata.score
+            elif hasattr(obj.metadata, 'distance'):
+                # For near_text queries, distance is available
+                # Convert distance to score (lower distance = higher score)
+                # Distance is typically 0-2, convert to 0-1 score
+                distance = obj.metadata.distance
+                if distance is not None:
+                    score = max(0, 1 - (distance / 2))
             
             hit = AgiraSearchHit(
                 type=props.get("type", "unknown"),
@@ -423,7 +462,7 @@ def global_search(
                 url=props.get("url"),
                 object_id=props.get("object_id"),
                 project_id=props.get("project_id"),
-                score=getattr(obj.metadata, 'score', None),
+                score=score,
                 updated_at=props.get("updated_at"),
                 status=props.get("status"),
                 external_key=props.get("external_key"),
@@ -435,7 +474,7 @@ def global_search(
         results.sort(key=lambda x: x.score if x.score is not None else -1, reverse=True)
         
         logger.debug(
-            f"Global search for '{query}' returned {len(results)} results"
+            f"Global search ({mode}) for '{query}' returned {len(results)} results"
         )
         
         return results

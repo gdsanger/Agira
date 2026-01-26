@@ -1238,5 +1238,48 @@ class GlobalSearchTestCase(TestCase):
         self.assertEqual(results[1].title, 'Medium Score')
         self.assertEqual(results[2].score, 0.3)  # Lowest last
         self.assertEqual(results[2].title, 'Low Score')
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_mode_keyword(self, mock_ensure_schema, mock_get_client):
+        """Test that keyword mode uses alpha=0.0 for pure BM25."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with keyword mode
+        from core.services.weaviate.service import global_search
+        results = global_search("test", mode="keyword")
+        
+        # Verify hybrid was called with alpha=0.0
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        self.assertEqual(call_kwargs['alpha'], 0.0)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_mode_similar(self, mock_ensure_schema, mock_get_client):
+        """Test that similar mode uses near_text query."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.near_text.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with similar mode
+        from core.services.weaviate.service import global_search
+        results = global_search("test", mode="similar")
+        
+        # Verify near_text was called
+        mock_collection.query.near_text.assert_called_once()
+        call_kwargs = mock_collection.query.near_text.call_args[1]
+        self.assertEqual(call_kwargs['query'], 'test')
 
 

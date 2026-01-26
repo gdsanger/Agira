@@ -3814,6 +3814,7 @@ def search(request):
     
     Query parameters:
     - q: Search query (required, minimum 2 characters)
+    - mode: Search mode ('hybrid', 'similar', 'keyword'; default: 'hybrid')
     - type: Optional filter by object type (e.g., 'item', 'project', 'comment')
     - project_id: Optional filter by project ID
     """
@@ -3821,8 +3822,14 @@ def search(request):
     from core.services.weaviate.service import global_search
     
     query = request.GET.get('q', '').strip()
+    search_mode = request.GET.get('mode', 'hybrid').strip()
     object_type = request.GET.get('type', '').strip()
     project_id = request.GET.get('project_id', '').strip()
+    
+    # Validate search mode
+    valid_modes = ['hybrid', 'similar', 'keyword']
+    if search_mode not in valid_modes:
+        search_mode = 'hybrid'
     
     # Get configuration from settings
     min_query_length = getattr(settings, 'WEAVIATE_SEARCH_MIN_QUERY_LENGTH', 2)
@@ -3832,6 +3839,7 @@ def search(request):
     # Initialize context
     context = {
         'query': query,
+        'search_mode': search_mode,
         'object_type': object_type,
         'project_id': project_id,
         'results': [],
@@ -3852,12 +3860,13 @@ def search(request):
                 if project_id:
                     filters['project_id'] = project_id
                 
-                # Execute search
+                # Execute search with mode
                 results = global_search(
                     query=query,
                     limit=search_limit,
                     alpha=search_alpha,
                     filters=filters if filters else None,
+                    mode=search_mode,
                 )
                 
                 context['results'] = results
