@@ -2,6 +2,7 @@
 Service for managing and executing AI agents from YAML configuration files.
 """
 
+import logging
 import os
 import yaml
 from typing import Dict, List, Optional, Any
@@ -87,7 +88,6 @@ class AgentService:
         Raises:
             ValueError: If there's an error saving the agent file
         """
-        import logging
         logger = logging.getLogger(__name__)
         
         file_path = self.agents_dir / filename

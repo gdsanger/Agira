@@ -5,6 +5,7 @@ Tests for the AgentService class.
 import os
 import tempfile
 import shutil
+import yaml
 from pathlib import Path
 from django.test import TestCase
 from django.conf import settings
@@ -228,7 +229,6 @@ class AgentServiceTestCase(TestCase):
         # Read the raw file to verify 'filename' was not saved
         file_path = self.test_agents_dir / filename
         with open(file_path, 'r', encoding='utf-8') as f:
-            import yaml
             raw_data = yaml.safe_load(f)
         
         # Raw data should not contain 'filename'
