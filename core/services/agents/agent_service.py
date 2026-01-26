@@ -78,15 +78,26 @@ class AgentService:
     def save_agent(self, filename: str, agent_data: Dict[str, Any]) -> None:
         """
         Save an agent configuration to a YAML file.
+        Creates the agents directory and file if they don't exist.
         
         Args:
             filename: Agent YAML filename
             agent_data: Agent configuration dictionary
+            
+        Raises:
+            ValueError: If there's an error saving the agent file
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         file_path = self.agents_dir / filename
         
-        # Ensure agents directory exists
-        self.agents_dir.mkdir(exist_ok=True)
+        # Ensure agents directory exists, creating parent directories if needed
+        try:
+            self.agents_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Ensured agents directory exists: {self.agents_dir}")
+        except OSError as e:
+            raise ValueError(f"Failed to create agents directory {self.agents_dir}: {e}")
         
         # Remove filename from data if present
         save_data = {k: v for k, v in agent_data.items() if k != 'filename'}
@@ -94,6 +105,9 @@ class AgentService:
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            logger.info(f"Successfully saved agent to {file_path}")
+        except OSError as e:
+            raise ValueError(f"Error writing agent file {filename}: {e}")
         except Exception as e:
             raise ValueError(f"Error saving agent {filename}: {e}")
     
