@@ -400,8 +400,9 @@ def global_search(
                     where_filter = where_filter & condition
         
         # Execute hybrid search
-        # Note: Since vectorizer is set to 'none', this will primarily use BM25
-        # The alpha parameter controls the balance, but without vectors, it's BM25-focused
+        # Note: The collection is configured with vectorizer set to 'none', so hybrid search
+        # uses BM25 keyword matching. The alpha parameter still applies but with limited effect.
+        # For full hybrid search with semantic vectors, configure a vectorizer in the schema.
         response = collection.query.hybrid(
             query=query,
             limit=limit,

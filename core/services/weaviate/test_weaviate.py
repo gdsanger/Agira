@@ -1092,7 +1092,8 @@ class GlobalSearchTestCase(TestCase):
         mock_collection = MagicMock()
         mock_response = MagicMock()
         
-        # Create mock search result
+        # Create mock search result with fixed datetime for consistency
+        fixed_datetime = datetime(2024, 1, 15, 10, 30, 0)
         mock_obj = MagicMock()
         mock_obj.properties = {
             'type': 'item',
@@ -1101,7 +1102,7 @@ class GlobalSearchTestCase(TestCase):
             'object_id': '123',
             'project_id': '1',
             'status': 'working',
-            'updated_at': datetime.now(),
+            'updated_at': fixed_datetime,
         }
         mock_obj.metadata.score = 0.85
         

@@ -3863,7 +3863,8 @@ def search(request):
                 context['results'] = results
                 
             except Exception as e:
-                logger.exception(f"Search error for query '{query}': {e}")
+                # Log error without including user query for security
+                logger.exception("Search error occurred")
                 context['error'] = 'Suchfehler: Weaviate ist möglicherweise nicht verfügbar. Bitte versuchen Sie es später erneut.'
     
     return render(request, 'search.html', context)
