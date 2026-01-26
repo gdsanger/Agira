@@ -1221,6 +1221,27 @@ def item_classify(request, item_id):
         return HttpResponse(str(e), status=400)
 
 
+def _get_user_primary_organisation(user):
+    """
+    Helper function to get the primary organisation of a user.
+    
+    Args:
+        user: User object
+        
+    Returns:
+        Organisation object if user has a primary organisation, None otherwise
+    """
+    if not user or not user.is_authenticated:
+        return None
+    
+    primary_org = UserOrganisation.objects.filter(
+        user=user, 
+        is_primary=True
+    ).select_related('organisation').first()
+    
+    return primary_org.organisation if primary_org else None
+
+
 def item_create(request):
     """Item create page view."""
     if request.method == 'GET':
@@ -1231,6 +1252,13 @@ def item_create(request):
         users = User.objects.all().order_by('name')
         statuses = ItemStatus.choices
         
+        # Auto-populate default values for requester and organisation
+        default_requester = None
+        default_organisation = None
+        if request.user.is_authenticated:
+            default_requester = request.user
+            default_organisation = _get_user_primary_organisation(request.user)
+        
         context = {
             'item': None,
             'projects': projects,
@@ -1238,6 +1266,8 @@ def item_create(request):
             'organisations': organisations,
             'users': users,
             'statuses': statuses,
+            'default_requester': default_requester,
+            'default_organisation': default_organisation,
         }
         return render(request, 'item_form.html', context)
     
@@ -1259,14 +1289,21 @@ def item_create(request):
             status=request.POST.get('status', ItemStatus.INBOX),
         )
         
-        # Set optional fields
-        org_id = request.POST.get('organisation')
-        if org_id:
-            item.organisation = get_object_or_404(Organisation, id=org_id)
-        
+        # Set optional fields with automatic pre-population
+        # Auto-populate requester with current user if not explicitly provided
         requester_id = request.POST.get('requester')
         if requester_id:
             item.requester = get_object_or_404(User, id=requester_id)
+        elif request.user.is_authenticated:
+            # Auto-set requester to current user if not provided
+            item.requester = request.user
+        
+        # Auto-populate organisation with user's primary organisation if not explicitly provided
+        org_id = request.POST.get('organisation')
+        if org_id:
+            item.organisation = get_object_or_404(Organisation, id=org_id)
+        elif request.user.is_authenticated:
+            item.organisation = _get_user_primary_organisation(request.user)
         
         assigned_to_id = request.POST.get('assigned_to')
         if assigned_to_id:

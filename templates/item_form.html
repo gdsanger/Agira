@@ -136,7 +136,7 @@
                         <option value="">None</option>
                         {% for org in organisations %}
                         <option value="{{ org.id }}" 
-                                {% if item and item.organisation and item.organisation.id == org.id %}selected{% endif %}>
+                                {% if item and item.organisation and item.organisation.id == org.id or not item and default_organisation and default_organisation.id == org.id %}selected{% endif %}>
                             {{ org.name }}
                         </option>
                         {% endfor %}
@@ -150,7 +150,7 @@
                         <option value="">None</option>
                         {% for user in users %}
                         <option value="{{ user.id }}" 
-                                {% if item and item.requester and item.requester.id == user.id %}selected{% endif %}>
+                                {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
                             {{ user.name }}
                         </option>
                         {% endfor %}
