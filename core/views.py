@@ -1521,7 +1521,6 @@ def attachment_view(request, attachment_id):
 
 
 @login_required
-
 @require_POST
 def item_classify(request, item_id):
     """
