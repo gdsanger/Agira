@@ -17,6 +17,7 @@ urlpatterns = [
     path('projects/<int:id>/items/add/', views.project_add_item, name='project-add-item'),
     path('projects/<int:id>/nodes/add/', views.project_add_node, name='project-add-node'),
     path('projects/<int:id>/releases/add/', views.project_add_release, name='project-add-release'),
+    path('projects/<int:id>/items/tab/', views.project_items_tab, name='project-items-tab'),
     path('projects/<int:id>/attachments/tab/', views.project_attachments_tab, name='project-attachments-tab'),
     path('projects/<int:id>/upload-attachment/', views.project_upload_attachment, name='project-upload-attachment'),
     path('projects/attachments/<int:attachment_id>/delete/', views.project_delete_attachment, name='project-delete-attachment'),

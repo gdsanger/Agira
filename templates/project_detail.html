@@ -160,59 +160,16 @@
         <!-- Tab Content -->
         <div class="tab-content" id="projectTabContent">
             <!-- Items Tab -->
-            <div class="tab-pane fade show active" id="items" role="tabpanel" aria-labelledby="items-tab">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5>Items</h5>
-                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
-                        + Add Item
-                    </button>
+            <div class="tab-pane fade show active" id="items" role="tabpanel" aria-labelledby="items-tab"
+                 hx-get="{% url 'project-items-tab' project.id %}"
+                 hx-trigger="load once"
+                 hx-swap="innerHTML">
+                <!-- Content will be loaded via HTMX -->
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                 </div>
-                {% if project.items.count > 0 %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Type</th>
-                                <th>Status</th>
-                                <th>Assigned To</th>
-                                <th>Updated</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in project.items.all %}
-                            <tr style="cursor: pointer;" onclick="window.location='{% url 'item-detail' item.id %}'">
-                                <td><strong>{{ item.title }}</strong></td>
-                                <td>{{ item.type.name }}</td>
-                                <td>
-                                    {% if item.status == 'Inbox' %}
-                                    <span class="badge bg-info">{{ item.status }}</span>
-                                    {% elif item.status == 'Backlog' %}
-                                    <span class="badge bg-secondary">{{ item.status }}</span>
-                                    {% elif item.status == 'Working' %}
-                                    <span class="badge bg-primary">{{ item.status }}</span>
-                                    {% elif item.status == 'Testing' %}
-                                    <span class="badge bg-warning">{{ item.status }}</span>
-                                    {% elif item.status == 'ReadyForRelease' %}
-                                    <span class="badge bg-success">Ready for Release</span>
-                                    {% elif item.status == 'Closed' %}
-                                    <span class="badge bg-success">{{ item.status }}</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">{{ item.status }}</span>
-                                    {% endif %}
-                                </td>
-                                <td>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}—{% endif %}</td>
-                                <td>{{ item.updated_at|date:"Y-m-d H:i" }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="alert alert-info">
-                    No items in this project yet.
-                </div>
-                {% endif %}
             </div>
 
             <!-- Nodes Tab -->

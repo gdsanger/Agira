@@ -431,12 +431,18 @@ class Attachment(models.Model):
     sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     storage_path = models.CharField(max_length=1000)
     is_deleted = models.BooleanField(default=False)
+    
+    # GitHub metadata fields for synced markdown files
+    github_repo_path = models.CharField(max_length=1000, blank=True, help_text="Path in GitHub repository (e.g., docs/README.md)")
+    github_sha = models.CharField(max_length=40, blank=True, help_text="GitHub blob SHA for version tracking")
+    github_last_synced = models.DateTimeField(null=True, blank=True, help_text="Last sync time from GitHub")
 
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['created_at']),
             models.Index(fields=['sha256']),
+            models.Index(fields=['github_repo_path']),
         ]
 
     def __str__(self):

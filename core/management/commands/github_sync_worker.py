@@ -2,7 +2,8 @@
 Django management command for GitHub sync worker.
 
 This command synchronizes ExternalIssueMapping entries with GitHub,
-updates Item statuses, links PRs, and pushes content to Weaviate.
+updates Item statuses, links PRs, pushes content to Weaviate,
+and syncs markdown files from GitHub repositories as project attachments.
 """
 
 import logging
@@ -15,8 +16,10 @@ from core.models import (
     ExternalIssueKind,
     Item,
     ItemStatus,
+    Project,
 )
 from core.services.github.service import GitHubService
+from core.services.github_sync.markdown_sync import MarkdownSyncService
 from core.services.integrations.base import IntegrationError
 from core.services.weaviate.service import (
     upsert_instance,
@@ -76,6 +79,22 @@ class Command(BaseCommand):
                 "Please configure GitHub token in Django admin."
             )
 
+        # --- PART 1: Sync markdown files from GitHub repositories ---
+        self.stdout.write("\n" + "=" * 60)
+        self.stdout.write("PART 1: Syncing Markdown Files from GitHub Repositories")
+        self.stdout.write("=" * 60)
+        
+        markdown_stats = self._sync_markdown_files(
+            github_service=github_service,
+            project_id=project_id,
+            dry_run=dry_run,
+        )
+        
+        # --- PART 2: Sync GitHub issues/PRs ---
+        self.stdout.write("\n" + "=" * 60)
+        self.stdout.write("PART 2: Syncing GitHub Issues and Pull Requests")
+        self.stdout.write("=" * 60)
+
         # Build queryset
         queryset = ExternalIssueMapping.objects.select_related('item', 'item__project')
         
@@ -91,57 +110,68 @@ class Command(BaseCommand):
 
         if total == 0:
             self.stdout.write(self.style.SUCCESS("No mappings to sync"))
-            return
+        else:
+            # Process in batches
+            synced_count = 0
+            status_updated_count = 0
+            prs_linked_count = 0
+            weaviate_pushed_count = 0
+            error_count = 0
 
-        # Process in batches
-        synced_count = 0
-        status_updated_count = 0
-        prs_linked_count = 0
-        weaviate_pushed_count = 0
-        error_count = 0
+            for batch_start in range(0, total, batch_size):
+                batch_end = min(batch_start + batch_size, total)
+                self.stdout.write(f"\nProcessing batch {batch_start + 1}-{batch_end} of {total}...")
 
-        for batch_start in range(0, total, batch_size):
-            batch_end = min(batch_start + batch_size, total)
-            self.stdout.write(f"\nProcessing batch {batch_start + 1}-{batch_end} of {total}...")
+                batch = queryset[batch_start:batch_end]
 
-            batch = queryset[batch_start:batch_end]
-
-            for mapping in batch:
-                try:
-                    result = self._sync_mapping(
-                        mapping,
-                        github_service,
-                        dry_run=dry_run,
-                    )
-                    
-                    synced_count += 1
-                    if result['status_updated']:
-                        status_updated_count += 1
-                    prs_linked_count += result['prs_linked']
-                    if result['weaviate_pushed']:
-                        weaviate_pushed_count += 1
-
-                except Exception as e:
-                    error_count += 1
-                    logger.error(
-                        f"Error syncing mapping {mapping.id} (Issue #{mapping.number}): {e}",
-                        exc_info=True,
-                    )
-                    self.stdout.write(
-                        self.style.ERROR(
-                            f"  ✗ Error syncing Issue #{mapping.number}: {e}"
+                for mapping in batch:
+                    try:
+                        result = self._sync_mapping(
+                            mapping,
+                            github_service,
+                            dry_run=dry_run,
                         )
-                    )
+                        
+                        synced_count += 1
+                        if result['status_updated']:
+                            status_updated_count += 1
+                        prs_linked_count += result['prs_linked']
+                        if result['weaviate_pushed']:
+                            weaviate_pushed_count += 1
+
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(
+                            f"Error syncing mapping {mapping.id} (Issue #{mapping.number}): {e}",
+                            exc_info=True,
+                        )
+                        self.stdout.write(
+                            self.style.ERROR(
+                                f"  ✗ Error syncing Issue #{mapping.number}: {e}"
+                            )
+                        )
 
         # Print summary
         self.stdout.write("\n" + "=" * 60)
-        self.stdout.write(self.style.SUCCESS("Sync Summary:"))
-        self.stdout.write(f"  Total mappings processed: {synced_count}/{total}")
-        self.stdout.write(f"  Item statuses updated: {status_updated_count}")
-        self.stdout.write(f"  PRs linked: {prs_linked_count}")
-        self.stdout.write(f"  Objects pushed to Weaviate: {weaviate_pushed_count}")
-        if error_count > 0:
-            self.stdout.write(self.style.ERROR(f"  Errors: {error_count}"))
+        self.stdout.write(self.style.SUCCESS("Overall Sync Summary:"))
+        self.stdout.write("\n--- Markdown Files ---")
+        self.stdout.write(f"  Projects processed: {markdown_stats['projects_processed']}")
+        self.stdout.write(f"  Files found: {markdown_stats['total_files_found']}")
+        self.stdout.write(f"  Files created: {markdown_stats['total_files_created']}")
+        self.stdout.write(f"  Files updated: {markdown_stats['total_files_updated']}")
+        self.stdout.write(f"  Files skipped: {markdown_stats['total_files_skipped']}")
+        if markdown_stats['total_errors'] > 0:
+            self.stdout.write(self.style.ERROR(f"  Errors: {markdown_stats['total_errors']}"))
+        
+        if total > 0:
+            self.stdout.write("\n--- GitHub Issues/PRs ---")
+            self.stdout.write(f"  Total mappings processed: {synced_count}/{total}")
+            self.stdout.write(f"  Item statuses updated: {status_updated_count}")
+            self.stdout.write(f"  PRs linked: {prs_linked_count}")
+            self.stdout.write(f"  Objects pushed to Weaviate: {weaviate_pushed_count}")
+            if error_count > 0:
+                self.stdout.write(self.style.ERROR(f"  Errors: {error_count}"))
+        
         self.stdout.write("=" * 60)
 
         if dry_run:
@@ -443,3 +473,92 @@ class Command(BaseCommand):
         except Exception as e:
             logger.error(f"Failed to push to Weaviate: {e}", exc_info=True)
             return False
+    
+    def _sync_markdown_files(
+        self,
+        github_service: GitHubService,
+        project_id: Optional[int] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Sync markdown files from GitHub repositories for all projects.
+        
+        Args:
+            github_service: GitHub service instance
+            project_id: Optional project ID to filter to
+            dry_run: If True, don't make actual changes
+            
+        Returns:
+            Dictionary with sync statistics
+        """
+        stats = {
+            'projects_processed': 0,
+            'total_files_found': 0,
+            'total_files_created': 0,
+            'total_files_updated': 0,
+            'total_files_skipped': 0,
+            'total_errors': 0,
+        }
+        
+        # Get projects with GitHub repo configured
+        projects = Project.objects.exclude(github_owner='').exclude(github_repo='')
+        
+        if project_id:
+            projects = projects.filter(id=project_id)
+        
+        total_projects = projects.count()
+        
+        if total_projects == 0:
+            self.stdout.write("No projects with GitHub repositories found")
+            return stats
+        
+        self.stdout.write(f"Found {total_projects} projects with GitHub repositories")
+        
+        # Initialize markdown sync service
+        client = github_service._get_client()
+        markdown_service = MarkdownSyncService(github_client=client)
+        
+        # Process each project
+        for project in projects:
+            try:
+                self.stdout.write(f"\n  Project: {project.name} ({project.github_owner}/{project.github_repo})")
+                
+                if dry_run:
+                    self.stdout.write(self.style.WARNING("    [DRY RUN] Would sync markdown files"))
+                    stats['projects_processed'] += 1
+                    continue
+                
+                # Sync markdown files for this project
+                project_stats = markdown_service.sync_project_markdown_files(project)
+                
+                # Update overall stats
+                stats['projects_processed'] += 1
+                stats['total_files_found'] += project_stats['files_found']
+                stats['total_files_created'] += project_stats['files_created']
+                stats['total_files_updated'] += project_stats['files_updated']
+                stats['total_files_skipped'] += project_stats['files_skipped']
+                stats['total_errors'] += len(project_stats['errors'])
+                
+                # Log results
+                self.stdout.write(
+                    f"    ✓ Found {project_stats['files_found']} .md files: "
+                    f"{project_stats['files_created']} created, "
+                    f"{project_stats['files_updated']} updated, "
+                    f"{project_stats['files_skipped']} skipped"
+                )
+                
+                # Log errors if any
+                for error in project_stats['errors']:
+                    self.stdout.write(self.style.ERROR(f"    ✗ {error}"))
+                    
+            except Exception as e:
+                stats['total_errors'] += 1
+                logger.error(
+                    f"Error syncing markdown files for project {project.id}: {e}",
+                    exc_info=True,
+                )
+                self.stdout.write(
+                    self.style.ERROR(f"    ✗ Error: {e}")
+                )
+        
+        return stats
