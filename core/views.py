@@ -1698,6 +1698,85 @@ def project_delete_attachment(request, attachment_id):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Attachment deletion failed: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+@require_POST
+def project_import_github_issues(request, id):
+    """Import closed GitHub issues for a project."""
+    from core.services.github.service import GitHubService
+    from core.services.integrations.base import IntegrationDisabled, IntegrationNotConfigured
+    
+    project = get_object_or_404(Project, id=id)
+    
+    # Check if project has GitHub repo configured
+    if not project.github_owner or not project.github_repo:
+        return JsonResponse({
+            'success': False,
+            'error': 'Project does not have a GitHub repository configured'
+        }, status=400)
+    
+    try:
+        # Initialize GitHub service
+        github_service = GitHubService()
+        
+        # Import closed issues
+        stats = github_service.import_closed_issues_for_project(
+            project=project,
+            actor=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Prepare response message
+        if stats['issues_imported'] > 0:
+            message = (
+                f"Successfully imported {stats['issues_imported']} closed issue(s). "
+                f"Found {stats['issues_found']} total closed issues. "
+                f"Linked {stats['prs_linked']} PR(s)."
+            )
+        elif stats['issues_found'] > 0:
+            message = (
+                f"Found {stats['issues_found']} closed issue(s), but all were already imported. "
+                f"Linked {stats['prs_linked']} PR(s)."
+            )
+        else:
+            message = "No closed issues found in the repository."
+        
+        # Add error info if there were errors
+        if stats['errors']:
+            message += f" Note: {len(stats['errors'])} error(s) occurred during import."
+        
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'stats': stats,
+        })
+    
+    except IntegrationDisabled:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub integration is not enabled'
+        }, status=400)
+    
+    except IntegrationNotConfigured:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub integration is not configured. Please configure GitHub token in admin.'
+        }, status=400)
+    
+    except ValueError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error importing GitHub issues: {e}", exc_info=True)
+        
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred while importing issues'
+        }, status=500)
         return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
 
 
