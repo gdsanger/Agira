@@ -10,6 +10,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
+import logging
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
@@ -25,6 +26,9 @@ from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Create markdown parser once at module level for better performance
 MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])

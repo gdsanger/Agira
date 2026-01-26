@@ -1079,3 +1079,100 @@ Here is some text in section 2.
         self.assertIn('# Quick Test', result['text'])
         self.assertIn('Just a quick test.', result['text'])
 
+
+class GlobalSearchTestCase(TestCase):
+    """Test global_search function."""
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_returns_list(self, mock_ensure_schema, mock_get_client):
+        """Test that global_search returns a list of AgiraSearchHit objects."""
+        # Mock Weaviate client and collection
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        
+        # Create mock search result
+        mock_obj = MagicMock()
+        mock_obj.properties = {
+            'type': 'item',
+            'title': 'Test Item',
+            'url': '/items/123/',
+            'object_id': '123',
+            'project_id': '1',
+            'status': 'working',
+            'updated_at': datetime.now(),
+        }
+        mock_obj.metadata.score = 0.85
+        
+        mock_response.objects = [mock_obj]
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search
+        from core.services.weaviate.service import global_search
+        results = global_search("test query", limit=10)
+        
+        # Verify results
+        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), 1)
+        
+        # Verify first result
+        hit = results[0]
+        from core.services.weaviate.service import AgiraSearchHit
+        self.assertIsInstance(hit, AgiraSearchHit)
+        self.assertEqual(hit.type, 'item')
+        self.assertEqual(hit.title, 'Test Item')
+        self.assertEqual(hit.url, '/items/123/')
+        self.assertEqual(hit.object_id, '123')
+        self.assertEqual(hit.score, 0.85)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_with_filters(self, mock_ensure_schema, mock_get_client):
+        """Test that global_search applies filters correctly."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with filters
+        from core.services.weaviate.service import global_search
+        filters = {'type': 'item', 'project_id': '1'}
+        results = global_search("test", filters=filters)
+        
+        # Verify hybrid was called
+        mock_collection.query.hybrid.assert_called_once()
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        
+        # Verify query parameters
+        self.assertEqual(call_kwargs['query'], 'test')
+        self.assertIsNotNone(call_kwargs['where'])
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_alpha_parameter(self, mock_ensure_schema, mock_get_client):
+        """Test that global_search passes alpha parameter correctly."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with custom alpha
+        from core.services.weaviate.service import global_search
+        results = global_search("test", alpha=0.75, limit=50)
+        
+        # Verify hybrid was called with correct parameters
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        self.assertEqual(call_kwargs['alpha'], 0.75)
+        self.assertEqual(call_kwargs['limit'], 50)
+
