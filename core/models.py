@@ -64,12 +64,14 @@ class ApprovalStatus(models.TextChoices):
 
 
 class ItemStatus(models.TextChoices):
-    INBOX = 'Inbox', _('Inbox')
-    BACKLOG = 'Backlog', _('Backlog')
-    WORKING = 'Working', _('Working')
-    TESTING = 'Testing', _('Testing')
-    READY_FOR_RELEASE = 'ReadyForRelease', _('Ready for Release')
-    CLOSED = 'Closed', _('Closed')
+    INBOX = 'Inbox', _('📥 Inbox')
+    BACKLOG = 'Backlog', _('📋 Backlog')
+    WORKING = 'Working', _('🚧 Working')
+    TESTING = 'Testing', _('🧪 Testing')
+    READY_FOR_RELEASE = 'ReadyForRelease', _('✅ Ready for Release')
+    PLANING = 'Planing', _('📅 Planing')
+    SPECIFICATION = 'Specification', _('📝 Specification')
+    CLOSED = 'Closed', _('✔ Closed')
 
 
 class RelationType(models.TextChoices):
