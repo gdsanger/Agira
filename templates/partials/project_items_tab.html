@@ -161,23 +161,12 @@
         const urlParams = new URLSearchParams(window.location.search);
         const hasUrlFilters = urlParams.has('status') || urlParams.has('type');
         
-        if (!hasUrlFilters) {
-            // Apply default filter: exclude Closed status
-            if (!savedStatuses) {
-                statusCheckboxes.forEach(checkbox => {
-                    if (checkbox.value !== closedStatusValue) {
-                        checkbox.checked = true;
-                    }
-                });
-                // Save default filter
-                saveFiltersToStorage();
-            } else {
-                // Apply saved filters
-                const statusArray = JSON.parse(savedStatuses);
-                statusCheckboxes.forEach(checkbox => {
-                    checkbox.checked = statusArray.includes(checkbox.value);
-                });
-            }
+        if (!hasUrlFilters && savedStatuses) {
+            // Apply saved filters
+            const statusArray = JSON.parse(savedStatuses);
+            statusCheckboxes.forEach(checkbox => {
+                checkbox.checked = statusArray.includes(checkbox.value);
+            });
             
             if (savedTypes) {
                 const typeArray = JSON.parse(savedTypes);
