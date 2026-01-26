@@ -83,6 +83,18 @@
                             <i class="bi bi-lightning sidebar-icon"></i>
                             <span class="sidebar-text">Working</span>
                         </a>
+                        <a href="{% url 'items-testing' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-testing' %}active{% endif %}">
+                            <i class="bi bi-bug sidebar-icon"></i>
+                            <span class="sidebar-text">Testing</span>
+                        </a>
+                        <a href="{% url 'items-planning' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-planning' %}active{% endif %}">
+                            <i class="bi bi-calendar-check sidebar-icon"></i>
+                            <span class="sidebar-text">Planning</span>
+                        </a>
+                        <a href="{% url 'items-specification' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-specification' %}active{% endif %}">
+                            <i class="bi bi-file-text sidebar-icon"></i>
+                            <span class="sidebar-text">Specification</span>
+                        </a>
                     </div>
                 </div>
                 
