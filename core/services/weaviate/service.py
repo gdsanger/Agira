@@ -25,6 +25,11 @@ _schema_ensured = False
 # Namespace for deterministic UUID5 generation
 UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
 
+# Maximum distance value for near_text queries (Weaviate cosine distance typically 0-2)
+# Used for converting distance to normalized score (0-1 range)
+MAX_DISTANCE = 2.0
+UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
+
 
 @dataclass
 class AgiraSearchHit:
@@ -406,38 +411,58 @@ def global_search(
         
         # Execute search based on mode
         # Note: The collection is configured with vectorizer set to 'none', so:
-        # - 'hybrid' mode uses BM25 keyword matching
-        # - 'similar' mode uses near_text (which requires vectorizer, will use BM25 as fallback)
-        # - 'keyword' mode uses BM25 search
-        # For full semantic search, configure a vectorizer in the schema.
+        # - 'hybrid' mode: Uses BM25 keyword matching (vectorizer='none' means no vector component)
+        # - 'similar' mode: Attempts near_text but falls back to BM25 if no vectorizer configured
+        # - 'keyword' mode: Pure BM25 keyword search
+        # For full semantic/vector search, configure a vectorizer (e.g., text2vec-transformers) in the schema.
         # Using RELATIVE_SCORE fusion ensures consistent score calculation for ranking.
         
-        if mode == 'similar':
-            # Semantic/vector search (near_text)
-            # With vectorizer='none', this will still work but uses BM25 internally
-            response = collection.query.near_text(
-                query=query,
-                limit=limit,
-                filters=where_filter,
-            )
-        elif mode == 'keyword':
-            # Pure BM25 keyword search (alpha=0 means BM25 only)
-            response = collection.query.hybrid(
-                query=query,
-                limit=limit,
-                alpha=0.0,  # Pure BM25
-                filters=where_filter,
-                fusion_type=HybridFusion.RELATIVE_SCORE,
-            )
-        else:
-            # Hybrid search (default) - combines BM25 and vector
-            response = collection.query.hybrid(
-                query=query,
-                limit=limit,
-                alpha=alpha,
-                filters=where_filter,
-                fusion_type=HybridFusion.RELATIVE_SCORE,
-            )
+        try:
+            if mode == 'similar':
+                # Semantic/vector search (near_text)
+                # Note: This requires a configured vectorizer. With vectorizer='none',
+                # Weaviate may return an error or fall back to keyword search.
+                # We handle this gracefully by catching errors and falling back to hybrid search.
+                try:
+                    response = collection.query.near_text(
+                        query=query,
+                        limit=limit,
+                        filters=where_filter,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"near_text query failed (vectorizer may not be configured), "
+                        f"falling back to hybrid search: {e}"
+                    )
+                    # Fall back to hybrid search if near_text fails
+                    response = collection.query.hybrid(
+                        query=query,
+                        limit=limit,
+                        alpha=alpha,
+                        filters=where_filter,
+                        fusion_type=HybridFusion.RELATIVE_SCORE,
+                    )
+            elif mode == 'keyword':
+                # Pure BM25 keyword search (alpha=0 means BM25 only)
+                response = collection.query.hybrid(
+                    query=query,
+                    limit=limit,
+                    alpha=0.0,  # Pure BM25
+                    filters=where_filter,
+                    fusion_type=HybridFusion.RELATIVE_SCORE,
+                )
+            else:
+                # Hybrid search (default) - combines BM25 and vector
+                response = collection.query.hybrid(
+                    query=query,
+                    limit=limit,
+                    alpha=alpha,
+                    filters=where_filter,
+                    fusion_type=HybridFusion.RELATIVE_SCORE,
+                )
+        except Exception as e:
+            logger.error(f"Search query failed: {e}")
+            raise
         
         # Format results as AgiraSearchHit objects
         results = []
@@ -449,12 +474,12 @@ def global_search(
             if hasattr(obj.metadata, 'score'):
                 score = obj.metadata.score
             elif hasattr(obj.metadata, 'distance'):
-                # For near_text queries, distance is available
-                # Convert distance to score (lower distance = higher score)
-                # Distance is typically 0-2, convert to 0-1 score
+                # For near_text queries, distance is available (cosine distance)
+                # Convert distance to normalized score (0-1 range)
+                # Lower distance = higher similarity = higher score
                 distance = obj.metadata.distance
                 if distance is not None:
-                    score = max(0, 1 - (distance / 2))
+                    score = max(0, 1 - (distance / MAX_DISTANCE))
             
             hit = AgiraSearchHit(
                 type=props.get("type", "unknown"),
@@ -470,8 +495,8 @@ def global_search(
             results.append(hit)
         
         # Sort results by score descending (highest relevance first)
-        # Weaviate should return sorted results, but we ensure it here for consistency
-        results.sort(key=lambda x: x.score if x.score is not None else -1, reverse=True)
+        # Use 0 as fallback for None scores (represents no relevance)
+        results.sort(key=lambda x: x.score if x.score is not None else 0, reverse=True)
         
         logger.debug(
             f"Global search ({mode}) for '{query}' returned {len(results)} results"
