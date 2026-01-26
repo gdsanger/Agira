@@ -1442,6 +1442,84 @@ def item_download_attachment(request, attachment_id):
 
 
 @login_required
+def attachment_view(request, attachment_id):
+    """
+    Generic attachment view handler.
+    This view determines the parent of an attachment and redirects to the appropriate
+    item or project attachment view, or serves the attachment directly.
+    """
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            return HttpResponse("Attachment not found", status=404)
+        
+        # Try to determine parent via AttachmentLink
+        from django.contrib.contenttypes.models import ContentType
+        
+        first_link = attachment.links.first()
+        if first_link:
+            # Check if parent is an Item
+            item_content_type = ContentType.objects.get_for_model(Item)
+            project_content_type = ContentType.objects.get_for_model(Project)
+            
+            if first_link.target_content_type == item_content_type:
+                # Redirect to item attachment view
+                return redirect('item-detail', item_id=first_link.target_object_id)
+            elif first_link.target_content_type == project_content_type:
+                # Redirect to project detail
+                return redirect('project-detail', id=first_link.target_object_id)
+        
+        # If no parent found or parent is not item/project, serve attachment directly
+        # Get file extension
+        import os
+        _, extension = os.path.splitext(attachment.original_name.lower())
+        extension = extension.lstrip('.')
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Determine content type and response
+        if extension in ['md', 'txt', 'html', 'htm', 'pdf']:
+            # For viewable types, return content for display
+            if extension == 'md':
+                md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+                html_content = md_parser.convert(file_content.decode('utf-8', errors='replace'))
+                clean_html = bleach.clean(
+                    html_content,
+                    tags=ALLOWED_TAGS,
+                    attributes=ALLOWED_ATTRIBUTES,
+                    strip=True
+                )
+                # Return as HTML page
+                return HttpResponse(clean_html, content_type='text/html')
+            elif extension == 'pdf':
+                return HttpResponse(file_content, content_type='application/pdf')
+            elif extension in ['html', 'htm']:
+                html_content = file_content.decode('utf-8', errors='replace')
+                clean_html = bleach.clean(
+                    html_content,
+                    tags=ALLOWED_TAGS + ['html', 'head', 'body', 'meta', 'title', 'style'],
+                    attributes=ALLOWED_ATTRIBUTES,
+                    strip=True
+                )
+                return HttpResponse(clean_html, content_type='text/html')
+            else:  # txt
+                return HttpResponse(file_content.decode('utf-8', errors='replace'), content_type='text/plain')
+        else:
+            # For other file types, trigger download
+            response = HttpResponse(file_content, content_type=attachment.content_type or 'application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+            response['Content-Length'] = len(file_content)
+            return response
+            
+    except Exception as e:
+        logger.error(f"Error viewing attachment {attachment_id}: {str(e)}")
+        return HttpResponse(f"Error viewing attachment: {str(e)}", status=500)
+
+
+@login_required
 
 @require_POST
 def item_classify(request, item_id):
