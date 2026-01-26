@@ -1032,8 +1032,9 @@ Context from similar items and related information:
             client_ip=request.META.get('REMOTE_ADDR')
         )
         
-        # Convert markdown to HTML for display
-        review_html = MARKDOWN_PARSER.reset().convert(review)
+        # Convert markdown to HTML for display (create new parser instance to avoid race conditions)
+        md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+        review_html = md_parser.convert(review)
         review_html = bleach.clean(review_html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES)
         
         # Log activity
