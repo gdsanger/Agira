@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 from django.db import models
+from core.services.storage.service import AttachmentStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,6 @@ def _get_attachment_text_content(attachment) -> str:
     if is_markdown:
         # Try to read the markdown file content
         try:
-            from core.services.storage.service import AttachmentStorageService
             storage_service = AttachmentStorageService()
             file_path = storage_service.get_file_path(attachment)
             
@@ -181,8 +181,11 @@ def _get_attachment_text_content(attachment) -> str:
             # Return the full markdown content
             return content
             
-        except FileNotFoundError:
-            logger.warning(f"Markdown file not found for attachment {attachment.id}: {attachment.storage_path}")
+        except FileNotFoundError as e:
+            logger.warning(
+                f"Markdown file not found for attachment {attachment.id} "
+                f"(path: {attachment.storage_path}): {e}"
+            )
             # Fall back to filename-based text
             return f"Markdown file: {attachment.original_name} (content not available)"
         except UnicodeDecodeError:
