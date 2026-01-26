@@ -37,7 +37,7 @@
                 <div class="dropdown-menu p-3" aria-labelledby="typeDropdown" style="min-width: 200px;">
                     {% for item_type in item_types %}
                     <div class="form-check">
-                        <input class="form-check-input type-checkbox" type="checkbox" name="type" value="{{ item_type.id }}" id="type_{{ item_type.id }}" {% if item_type.id|stringformat:"s" in selected_types %}checked{% endif %}>
+                        <input class="form-check-input type-checkbox" type="checkbox" name="type" value="{{ item_type.id }}" id="type_{{ item_type.id }}" {% if item_type.id in selected_types %}checked{% endif %}>
                         <label class="form-check-label" for="type_{{ item_type.id }}">
                             {{ item_type.name }}
                         </label>
@@ -144,6 +144,7 @@
 <script>
 (function() {
     const projectId = {{ project.id }};
+    const closedStatusValue = '{{ closed_status_value }}';
     const storageKeyStatus = `project_${projectId}_items_status_filter`;
     const storageKeyType = `project_${projectId}_items_type_filter`;
     
@@ -164,7 +165,7 @@
             // Apply default filter: exclude Closed status
             if (!savedStatuses) {
                 statusCheckboxes.forEach(checkbox => {
-                    if (checkbox.value !== 'Closed') {
+                    if (checkbox.value !== closedStatusValue) {
                         checkbox.checked = true;
                     }
                 });

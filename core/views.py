@@ -254,6 +254,14 @@ def project_items_tab(request, id):
     status_filter = request.GET.getlist('status')
     type_filter = request.GET.getlist('type')
     
+    # Convert type_filter to integers for proper comparison
+    type_filter_ints = []
+    for t in type_filter:
+        try:
+            type_filter_ints.append(int(t))
+        except (ValueError, TypeError):
+            pass
+    
     # Apply search filter (title and description)
     if search_query:
         items = items.filter(
@@ -268,8 +276,8 @@ def project_items_tab(request, id):
         items = items.exclude(status=ItemStatus.CLOSED)
     
     # Apply type filter
-    if type_filter:
-        items = items.filter(type_id__in=type_filter)
+    if type_filter_ints:
+        items = items.filter(type_id__in=type_filter_ints)
     
     # Pagination - 25 items per page
     paginator = Paginator(items, 25)
@@ -287,9 +295,10 @@ def project_items_tab(request, id):
         'page_obj': page_obj,
         'search_query': search_query,
         'selected_statuses': status_filter,
-        'selected_types': type_filter,
+        'selected_types': type_filter_ints,
         'item_types': item_types,
         'status_choices': status_choices,
+        'closed_status_value': ItemStatus.CLOSED,  # Pass the constant to template
     }
     return render(request, 'partials/project_items_tab.html', context)
 
