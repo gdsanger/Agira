@@ -30,8 +30,12 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-zd-q-2@-+#(8wu#t=hsy2q236!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,agira.angermeier.net').split(',')
+CSRF_TRUSTED_ORIGINS = [
+    "https://agira.angermeier.net:8443",
+    "http://localhost:8005",
+    "http://127.0.0.1"
+]
 
 # Application definition
 
@@ -123,9 +127,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'de-DE'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Berlin'
 
 USE_I18N = True
 
