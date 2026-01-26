@@ -1176,4 +1176,110 @@ class GlobalSearchTestCase(TestCase):
         call_kwargs = mock_collection.query.hybrid.call_args[1]
         self.assertEqual(call_kwargs['alpha'], 0.75)
         self.assertEqual(call_kwargs['limit'], 50)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_uses_relative_score_fusion(self, mock_ensure_schema, mock_get_client):
+        """Test that global_search uses RELATIVE_SCORE fusion for consistent scoring."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search
+        from core.services.weaviate.service import global_search
+        from weaviate.classes.query import HybridFusion
+        results = global_search("test")
+        
+        # Verify fusion_type is set to RELATIVE_SCORE
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        self.assertEqual(call_kwargs['fusion_type'], HybridFusion.RELATIVE_SCORE)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_sorts_by_score_descending(self, mock_ensure_schema, mock_get_client):
+        """Test that global_search sorts results by score in descending order."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        
+        # Create multiple mock results with different scores
+        mock_obj1 = MagicMock()
+        mock_obj1.properties = {'type': 'item', 'title': 'Low Score', 'object_id': '1'}
+        mock_obj1.metadata.score = 0.3
+        
+        mock_obj2 = MagicMock()
+        mock_obj2.properties = {'type': 'item', 'title': 'High Score', 'object_id': '2'}
+        mock_obj2.metadata.score = 0.9
+        
+        mock_obj3 = MagicMock()
+        mock_obj3.properties = {'type': 'item', 'title': 'Medium Score', 'object_id': '3'}
+        mock_obj3.metadata.score = 0.6
+        
+        # Return in unsorted order
+        mock_response.objects = [mock_obj1, mock_obj2, mock_obj3]
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search
+        from core.services.weaviate.service import global_search
+        results = global_search("test")
+        
+        # Verify results are sorted by score descending
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[0].score, 0.9)  # Highest first
+        self.assertEqual(results[0].title, 'High Score')
+        self.assertEqual(results[1].score, 0.6)  # Medium second
+        self.assertEqual(results[1].title, 'Medium Score')
+        self.assertEqual(results[2].score, 0.3)  # Lowest last
+        self.assertEqual(results[2].title, 'Low Score')
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_mode_keyword(self, mock_ensure_schema, mock_get_client):
+        """Test that keyword mode uses alpha=0.0 for pure BM25."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.hybrid.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with keyword mode
+        from core.services.weaviate.service import global_search
+        results = global_search("test", mode="keyword")
+        
+        # Verify hybrid was called with alpha=0.0
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        self.assertEqual(call_kwargs['alpha'], 0.0)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_global_search_mode_similar(self, mock_ensure_schema, mock_get_client):
+        """Test that similar mode uses near_text query."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_response = MagicMock()
+        mock_response.objects = []
+        
+        mock_collection.query.near_text.return_value = mock_response
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Execute search with similar mode
+        from core.services.weaviate.service import global_search
+        results = global_search("test", mode="similar")
+        
+        # Verify near_text was called
+        mock_collection.query.near_text.assert_called_once()
+        call_kwargs = mock_collection.query.near_text.call_args[1]
+        self.assertEqual(call_kwargs['query'], 'test')
+
 
