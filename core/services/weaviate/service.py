@@ -28,7 +28,6 @@ UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
 # Maximum distance value for near_text queries (Weaviate cosine distance typically 0-2)
 # Used for converting distance to normalized score (0-1 range)
 MAX_DISTANCE = 2.0
-UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
 
 
 @dataclass
