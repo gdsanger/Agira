@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import logging
+import os
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
@@ -1448,9 +1449,6 @@ def attachment_view(request, attachment_id):
     This view determines the parent of an attachment and redirects to the appropriate
     item or project attachment view, or serves the attachment directly.
     """
-    from django.contrib.contenttypes.models import ContentType
-    from django.http import Http404
-    
     try:
         attachment = get_object_or_404(Attachment, id=attachment_id)
         
@@ -1473,7 +1471,6 @@ def attachment_view(request, attachment_id):
         
         # If no parent found or parent is not item/project, serve attachment directly
         # Get file extension
-        import os
         _, extension = os.path.splitext(attachment.original_name.lower())
         extension = extension.lstrip('.')
         
