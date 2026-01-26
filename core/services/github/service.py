@@ -244,9 +244,20 @@ class GitHubService(IntegrationBase):
         
         # Assign item locally to Copilot user in Agira
         try:
+            from django.db import transaction
+            
             copilot_user = User.objects.get(username='Copilot')
+            
+            # Use transaction and select_for_update to prevent race conditions
+            with transaction.atomic():
+                # Re-fetch the item with a lock to ensure consistency
+                locked_item = Item.objects.select_for_update().get(pk=item.pk)
+                locked_item.assigned_to = copilot_user
+                locked_item.save()
+                
+            # Update the passed item object to reflect the change
             item.assigned_to = copilot_user
-            item.save()
+            
             logger.info(
                 f"Assigned item {item.id} to Copilot user locally in Agira"
             )

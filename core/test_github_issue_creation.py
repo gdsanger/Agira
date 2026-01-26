@@ -74,6 +74,15 @@ class GitHubIssueCreationTestCase(TestCase):
         # Set up request
         self.request = MockRequest(self.user)
     
+    def _create_copilot_user(self):
+        """Helper method to create Copilot user for tests."""
+        return User.objects.create_user(
+            username='Copilot',
+            email='copilot@example.com',
+            password='copilot123',
+            name='GitHub Copilot Agent'
+        )
+    
     def test_can_create_issue_for_backlog_item(self):
         """Test that service allows issue creation for Backlog status."""
         item = Item.objects.create(
@@ -151,12 +160,7 @@ class GitHubIssueCreationTestCase(TestCase):
     def test_admin_action_creates_issue_for_backlog_item(self, mock_message_user, mock_create_issue):
         """Test that admin action creates GitHub issue for Backlog item."""
         # Create Copilot user for local assignment
-        copilot_user = User.objects.create_user(
-            username='Copilot',
-            email='copilot@example.com',
-            password='copilot123',
-            name='GitHub Copilot Agent'
-        )
+        copilot_user = self._create_copilot_user()
         
         item = Item.objects.create(
             project=self.project,
@@ -250,12 +254,7 @@ class GitHubIssueCreationTestCase(TestCase):
     def test_admin_action_creates_multiple_issues(self, mock_message_user, mock_create_issue):
         """Test that admin action can create multiple issues."""
         # Create Copilot user for local assignment
-        copilot_user = User.objects.create_user(
-            username='Copilot',
-            email='copilot@example.com',
-            password='copilot123',
-            name='GitHub Copilot Agent'
-        )
+        copilot_user = self._create_copilot_user()
         
         item1 = Item.objects.create(
             project=self.project,
@@ -328,12 +327,7 @@ class GitHubIssueCreationTestCase(TestCase):
     def test_admin_action_handles_mixed_statuses(self, mock_message_user, mock_create_issue):
         """Test that admin action creates issues for valid statuses and skips others."""
         # Create Copilot user for local assignment
-        copilot_user = User.objects.create_user(
-            username='Copilot',
-            email='copilot@example.com',
-            password='copilot123',
-            name='GitHub Copilot Agent'
-        )
+        copilot_user = self._create_copilot_user()
         
         valid_item = Item.objects.create(
             project=self.project,
@@ -508,18 +502,22 @@ class GitHubIssueCreationViewTestCase(TestCase):
             name='Feature'
         )
     
+    def _create_copilot_user(self):
+        """Helper method to create Copilot user for tests."""
+        return User.objects.create_user(
+            username='Copilot',
+            email='copilot@example.com',
+            password='copilot123',
+            name='GitHub Copilot Agent'
+        )
+    
     @patch('core.services.github.client.GitHubClient.create_issue')
     def test_view_creates_issue_for_backlog_item(self, mock_create_issue):
         """Test that view creates GitHub issue for Backlog item."""
         from django.test import Client
         
         # Create Copilot user for local assignment
-        copilot_user = User.objects.create_user(
-            username='Copilot',
-            email='copilot@example.com',
-            password='copilot123',
-            name='GitHub Copilot Agent'
-        )
+        copilot_user = self._create_copilot_user()
         
         item = Item.objects.create(
             project=self.project,
