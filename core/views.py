@@ -716,9 +716,9 @@ def item_github_tab(request, item_id):
     return render(request, 'partials/item_github_tab.html', context)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_link_github(request, item_id):
     """Link a GitHub Issue or Pull Request to an item."""
     from core.services.github.service import GitHubService
@@ -810,9 +810,9 @@ def item_link_github(request, item_id):
         return HttpResponse(f"Failed to link GitHub item: {str(e)}", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_create_github_issue(request, item_id):
     """Create a new GitHub issue for an item."""
     from core.services.github.service import GitHubService
@@ -872,9 +872,9 @@ def item_create_github_issue(request, item_id):
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_optimize_description_ai(request, item_id):
     """
     Optimize item description using AI and RAG.
@@ -969,9 +969,9 @@ Context from similar items and related information:
         }, status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
     item = get_object_or_404(Item, id=item_id)
@@ -993,9 +993,9 @@ def item_change_status(request, item_id):
         return HttpResponse(str(e), status=400)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_add_comment(request, item_id):
     """HTMX endpoint to add a comment to an item."""
     item = get_object_or_404(Item, id=item_id)
@@ -1031,9 +1031,9 @@ def item_add_comment(request, item_id):
     return response
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_update_comment(request, comment_id):
     """Update a comment."""
     import json
@@ -1063,9 +1063,9 @@ def item_update_comment(request, comment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_delete_comment(request, comment_id):
     """Delete a comment."""
     try:
@@ -1087,9 +1087,9 @@ def item_delete_comment(request, comment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_upload_attachment(request, item_id):
     """HTMX endpoint to upload an attachment to an item."""
     item = get_object_or_404(Item, id=item_id)
@@ -1153,9 +1153,9 @@ def item_upload_attachment(request, item_id):
         return HttpResponse("Upload failed. Please try again.", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_delete_attachment(request, attachment_id):
     """Delete an attachment."""
     try:
@@ -1268,9 +1268,9 @@ def item_download_attachment(request, attachment_id):
         return HttpResponse(f"Download failed: {str(e)}", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def item_classify(request, item_id):
     """
     HTMX endpoint to classify an inbox item.
@@ -1480,9 +1480,9 @@ def item_edit(request, item_id):
     return redirect('item-update', item_id=item_id)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def item_update(request, item_id):
     """Update item details."""
     item = get_object_or_404(Item, id=item_id)
@@ -1560,9 +1560,9 @@ def item_update(request, item_id):
         return JsonResponse({'success': False, 'error': 'Failed to update item. Please check your input.'}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def item_delete(request, item_id):
     """Delete an item."""
     item = get_object_or_404(Item, id=item_id)
@@ -1579,9 +1579,9 @@ def item_delete(request, item_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def ai_generate_title(request):
     """Generate a title from description using AI agent."""
     import json
@@ -1610,9 +1610,9 @@ def ai_generate_title(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def ai_optimize_text(request):
     """Optimize text using AI agent."""
     import json
@@ -1639,9 +1639,9 @@ def ai_optimize_text(request):
 
 
 # Project CRUD operations
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_update(request, id):
     """Update project details."""
     project = get_object_or_404(Project, id=id)
@@ -1658,9 +1658,9 @@ def project_update(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_delete(request, id):
     """Delete a project."""
     project = get_object_or_404(Project, id=id)
@@ -1672,9 +1672,9 @@ def project_delete(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_add_client(request, id):
     """Add a client (organisation) to a project."""
     project = get_object_or_404(Project, id=id)
@@ -1691,9 +1691,9 @@ def project_add_client(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_remove_client(request, id):
     """Remove a client (organisation) from a project."""
     project = get_object_or_404(Project, id=id)
@@ -1710,9 +1710,9 @@ def project_remove_client(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_add_item(request, id):
     """Add a new item to a project."""
     project = get_object_or_404(Project, id=id)
@@ -1742,9 +1742,9 @@ def project_add_item(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_add_node(request, id):
     """Add a new node to a project."""
     project = get_object_or_404(Project, id=id)
@@ -1771,9 +1771,9 @@ def project_add_node(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def project_add_release(request, id):
     """Add a new release to a project."""
     project = get_object_or_404(Project, id=id)
@@ -1821,9 +1821,9 @@ def project_attachments_tab(request, id):
     return render(request, 'partials/project_attachments_tab.html', context)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def project_upload_attachment(request, id):
     """Upload an attachment to a project."""
     project = get_object_or_404(Project, id=id)
@@ -1887,9 +1887,9 @@ def project_upload_attachment(request, id):
         return HttpResponse("Upload failed. Please try again.", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def project_delete_attachment(request, attachment_id):
     """Delete a project attachment."""
     try:
@@ -2010,9 +2010,9 @@ def project_download_attachment(request, attachment_id):
         return HttpResponse(f"Download failed: {str(e)}", status=500)
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def project_import_github_issues(request, id):
     """Import closed GitHub issues for a project."""
     from core.services.github.service import GitHubService
@@ -2222,9 +2222,9 @@ def organisation_delete(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def organisation_add_user(request, id):
     """Add a user to an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2255,9 +2255,9 @@ def organisation_add_user(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def organisation_remove_user(request, id):
     """Remove a user from an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2274,9 +2274,9 @@ def organisation_remove_user(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def organisation_update_user(request, id):
     """Update a user's role and primary status in an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2304,9 +2304,9 @@ def organisation_update_user(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def organisation_link_project(request, id):
     """Link a project to an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2323,9 +2323,9 @@ def organisation_link_project(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def organisation_unlink_project(request, id):
     """Unlink a project from an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2435,9 +2435,9 @@ def ai_provider_create(request):
         return HttpResponse(f"Error creating provider: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_provider_update(request, id):
     """Update AI Provider."""
     provider = get_object_or_404(AIProvider, id=id)
@@ -2464,9 +2464,9 @@ def ai_provider_update(request, id):
         return HttpResponse(f"Error updating provider: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_provider_delete(request, id):
     """Delete AI Provider."""
     provider = get_object_or_404(AIProvider, id=id)
@@ -2500,9 +2500,9 @@ def ai_provider_get_api_key(request, id):
     })
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_provider_fetch_models(request, id):
     """Fetch available models from the provider API and save them to the database."""
     provider = get_object_or_404(AIProvider, id=id)
@@ -2593,9 +2593,9 @@ def ai_provider_fetch_models(request, id):
         }, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_model_create(request, provider_id):
     """Create a new AI Model for a provider."""
     provider = get_object_or_404(AIProvider, id=provider_id)
@@ -2631,9 +2631,9 @@ def ai_model_create(request, provider_id):
         return HttpResponse(f"Error creating model: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_model_update(request, provider_id, model_id):
     """Update an AI Model."""
     provider = get_object_or_404(AIProvider, id=provider_id)
@@ -2669,9 +2669,9 @@ def ai_model_update(request, provider_id, model_id):
         return HttpResponse(f"Error updating model: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_model_delete(request, provider_id, model_id):
     """Delete an AI Model."""
     provider = get_object_or_404(AIProvider, id=provider_id)
@@ -2692,9 +2692,9 @@ def ai_model_delete(request, provider_id, model_id):
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_model_update_field(request, provider_id, model_id):
     """Update a single field of an AI Model via HTMX."""
     provider = get_object_or_404(AIProvider, id=provider_id)
@@ -2734,9 +2734,9 @@ def ai_model_update_field(request, provider_id, model_id):
         return HttpResponse(f"Error updating field: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def ai_model_toggle_active(request, provider_id, model_id):
     """Toggle the active status of an AI Model via HTMX."""
     provider = get_object_or_404(AIProvider, id=provider_id)
@@ -2833,9 +2833,9 @@ def agent_create(request):
     return render(request, 'agent_detail.html', context)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def agent_save(request, filename):
     """Save agent (update existing)."""
     agent_service = AgentService()
@@ -2897,9 +2897,9 @@ def agent_save(request, filename):
         return HttpResponse(f"Error saving agent: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def agent_create_save(request):
     """Save agent (create new)."""
     agent_service = AgentService()
@@ -2975,9 +2975,9 @@ def agent_create_save(request):
         return HttpResponse(f"Error saving agent: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def agent_delete(request, filename):
     """Delete an agent."""
     agent_service = AgentService()
@@ -2994,9 +2994,9 @@ def agent_delete(request, filename):
         return HttpResponse(f"Error deleting agent: {str(e)}", status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def agent_test(request, filename):
     """Test an agent with input text."""
     agent_service = AgentService()
@@ -3189,9 +3189,9 @@ def weaviate_object(request, object_type, object_id):
         })
 
 
-@require_POST
-
 @login_required
+
+@require_POST
 def weaviate_push(request, object_type, object_id):
     """
     Manually push an object to Weaviate.
@@ -3449,9 +3449,9 @@ def change_edit(request, id):
         return render(request, 'change_form.html', context)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_update(request, id):
     """Update change details."""
     change = get_object_or_404(Change, id=id)
@@ -3503,9 +3503,9 @@ def change_update(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_delete(request, id):
     """Delete a change."""
     change = get_object_or_404(Change, id=id)
@@ -3521,9 +3521,9 @@ def change_delete(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_add_approver(request, id):
     """Add an approver to a change."""
     change = get_object_or_404(Change, id=id)
@@ -3564,9 +3564,9 @@ def change_add_approver(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_remove_approver(request, id, approval_id):
     """Remove an approver from a change."""
     change = get_object_or_404(Change, id=id)
@@ -3593,9 +3593,9 @@ def change_remove_approver(request, id, approval_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_approve(request, id, approval_id):
     """Approve a change."""
     change = get_object_or_404(Change, id=id)
@@ -3624,9 +3624,9 @@ def change_approve(request, id, approval_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
-@require_http_methods(["POST"])
-
 @login_required
+
+@require_http_methods(["POST"])
 def change_reject(request, id, approval_id):
     """Reject a change."""
     change = get_object_or_404(Change, id=id)
