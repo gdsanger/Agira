@@ -93,12 +93,6 @@ class MultiFileUpload {
         // Handle the actual drop event
         // boundHandleDrop includes preventDefault and removes drag-over class
         this.dropZone.addEventListener('drop', this.boundHandleDrop, false);
-        
-        // Prevent default drag and drop behavior on the entire document
-        // This prevents the browser from opening files when dropped outside the drop zone
-        ['dragenter', 'dragover', 'drop'].forEach(eventName => {
-            document.addEventListener(eventName, this.boundPreventDefaults, false);
-        });
     }
     
     preventDefaults(e) {
@@ -370,11 +364,6 @@ class MultiFileUpload {
      * Call this when the component is no longer needed
      */
     destroy() {
-        // Remove document-level event listeners
-        ['dragenter', 'dragover', 'drop'].forEach(eventName => {
-            document.removeEventListener(eventName, this.boundPreventDefaults, false);
-        });
-        
         // Remove all drop zone event listeners
         if (this.dropZone) {
             // Remove drag and drop preventDefault handlers
@@ -454,17 +443,46 @@ function initializeUploadZone(zone) {
 }
 
 function initializeUploadZones(root = document) {
+    // Check if root itself is an upload zone
+    if (root !== document && root.dataset && root.dataset.uploadZone === 'true') {
+        initializeUploadZone(root);
+    }
+    
+    // Find all upload zones within root
     const zones = root.querySelectorAll('[data-upload-zone="true"]');
     zones.forEach(zone => initializeUploadZone(zone));
 }
 
+// Prevent default drag and drop behavior on the entire document globally
+// This prevents the browser from opening files when dropped anywhere on the page
+// Note: We only preventDefault, not stopPropagation, so dropzone handlers still work
+['dragenter', 'dragover', 'drop', 'dragleave'].forEach(eventName => {
+    document.addEventListener(eventName, (e) => {
+        // Prevent the default behavior (browser opening files)
+        e.preventDefault();
+        // Do NOT stopPropagation - let the event bubble to dropzone handlers
+    }, false);
+});
+
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     initializeUploadZones();
 });
 
+// Re-initialize after HTMX swaps content
 document.body.addEventListener('htmx:afterSwap', (event) => {
     const target = event.detail?.target || event.target;
-    initializeUploadZones(target);
+    if (target) {
+        initializeUploadZones(target);
+    }
+});
+
+// Also listen to htmx:load event which fires when new content is added
+document.body.addEventListener('htmx:load', (event) => {
+    const target = event.detail?.elt || event.target;
+    if (target) {
+        initializeUploadZones(target);
+    }
 });
 
 // Export for use in other scripts
