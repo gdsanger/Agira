@@ -6,7 +6,15 @@
     </div>
     <div class="card-body">
         <!-- Drag & Drop Upload Zone -->
-        <div id="item-upload-drop-zone" class="upload-drop-zone mb-3">
+        <div
+            id="item-upload-drop-zone"
+            class="upload-drop-zone mb-3"
+            data-upload-zone="true"
+            data-component-key="item-attachments"
+            data-upload-url="{% url 'item-upload-attachment' item.id %}"
+            data-refresh-url="{% url 'item-attachments-tab' item.id %}"
+            data-refresh-target="#attachments"
+            data-max-file-size="26214400">
             <div class="upload-drop-zone-icon">
                 <i class="bi bi-cloud-upload"></i>
             </div>
@@ -99,40 +107,3 @@
         </div>
     </div>
 </div>
-
-<!-- Initialize Upload Component -->
-<script src="{% static 'js/multi-file-upload.js' %}"></script>
-<script>
-(function() {
-    // Clean up any existing instance
-    if (window.itemUploadComponent) {
-        window.itemUploadComponent.destroy();
-    }
-    
-    // Get CSRF token
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    
-    // Initialize multi-file upload
-    window.itemUploadComponent = new MultiFileUpload({
-        dropZoneId: 'item-upload-drop-zone',
-        fileInputId: 'item-file-input',
-        uploadUrl: "{% url 'item-upload-attachment' item.id %}",
-        csrfToken: csrfToken,
-        maxFileSize: 25 * 1024 * 1024, // 25 MB
-        onSuccess: function(response, file) {
-            console.log('File uploaded successfully:', file.name);
-        },
-        onError: function(error, file) {
-            console.error('Upload error for file:', file.name, error);
-        },
-        onAllComplete: function() {
-            console.log('All uploads complete, reloading attachments list...');
-            // Reload the attachments tab to show newly uploaded files
-            htmx.ajax('GET', "{% url 'item-attachments-tab' item.id %}", {
-                target: '#attachments',
-                swap: 'innerHTML'
-            });
-        }
-    });
-})();
-</script>

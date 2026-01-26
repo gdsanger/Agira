@@ -404,6 +404,69 @@ class MultiFileUpload {
     }
 }
 
+function initializeUploadZone(zone) {
+    if (!zone || zone.dataset.uploadInitialized === 'true') {
+        return;
+    }
+
+    const dropZoneId = zone.id;
+    const fileInput = zone.querySelector('input[type="file"]');
+    const uploadUrl = zone.dataset.uploadUrl;
+    const refreshUrl = zone.dataset.refreshUrl;
+    const refreshTarget = zone.dataset.refreshTarget;
+    const componentKey = zone.dataset.componentKey || dropZoneId;
+    const maxFileSize = parseInt(zone.dataset.maxFileSize, 10) || 25 * 1024 * 1024;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!dropZoneId || !fileInput || !uploadUrl || !csrfToken) {
+        console.error('Upload zone missing required configuration', {
+            dropZoneId,
+            fileInput: !!fileInput,
+            uploadUrl,
+            csrfToken: !!csrfToken
+        });
+        return;
+    }
+
+    window.multiFileUploadInstances = window.multiFileUploadInstances || {};
+    const existingInstance = window.multiFileUploadInstances[componentKey];
+    if (existingInstance) {
+        existingInstance.destroy();
+    }
+
+    window.multiFileUploadInstances[componentKey] = new MultiFileUpload({
+        dropZoneId: dropZoneId,
+        fileInputId: fileInput.id,
+        uploadUrl: uploadUrl,
+        csrfToken: csrfToken,
+        maxFileSize: maxFileSize,
+        onAllComplete: function() {
+            if (refreshUrl && refreshTarget && window.htmx) {
+                htmx.ajax('GET', refreshUrl, {
+                    target: refreshTarget,
+                    swap: 'innerHTML'
+                });
+            }
+        }
+    });
+
+    zone.dataset.uploadInitialized = 'true';
+}
+
+function initializeUploadZones(root = document) {
+    const zones = root.querySelectorAll('[data-upload-zone="true"]');
+    zones.forEach(zone => initializeUploadZone(zone));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initializeUploadZones();
+});
+
+document.body.addEventListener('htmx:afterSwap', (event) => {
+    const target = event.detail?.target || event.target;
+    initializeUploadZones(target);
+});
+
 // Export for use in other scripts
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = MultiFileUpload;

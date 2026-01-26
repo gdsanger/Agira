@@ -455,6 +455,30 @@ function handleClientResponse(event) {
     }
 }
 
+function deleteProjectAttachment(attachmentId) {
+    if (!confirm('Are you sure you want to delete this attachment?')) {
+        return;
+    }
+
+    fetch(`/projects/attachments/${attachmentId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            htmx.ajax('GET', "{% url 'project-attachments-tab' project.id %}", {
+                target: '#project-attachments',
+                swap: 'innerHTML'
+            });
+        } else {
+            showToast('error', 'Error', 'Failed to delete attachment');
+        }
+    })
+    .catch(() => {
+        showToast('error', 'Error', 'An error occurred while deleting the attachment');
+    });
 // Handle import GitHub issues response
 function handleImportResponse(event) {
     const xhr = event.detail.xhr;
