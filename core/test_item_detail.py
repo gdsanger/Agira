@@ -455,6 +455,12 @@ class ItemAutoPopulateTest(TestCase):
             password='testpass',
             name='Other User'
         )
+        # Make other_user a member of org2
+        UserOrganisation.objects.create(
+            user=other_user,
+            organisation=self.org2,
+            is_primary=True
+        )
         
         url = reverse('item-create')
         data = {
