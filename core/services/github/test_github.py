@@ -442,6 +442,194 @@ class GitHubServiceItemTestCase(TestCase):
         self.assertIn('Invalid kind', str(context.exception))
 
 
+class GitHubImportClosedIssuesTestCase(TestCase):
+    """Test importing closed GitHub issues for a project."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Configure GitHub
+        self.config = GitHubConfiguration.load()
+        self.config.enable_github = True
+        self.config.github_token = 'test_token_123'
+        self.config.github_api_base_url = 'https://api.github.com'
+        self.config.save()
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123',
+            name='Test User'
+        )
+        
+        # Create test project with GitHub repo
+        self.project = Project.objects.create(
+            name='Test Project',
+            github_owner='testowner',
+            github_repo='testrepo',
+        )
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='feature',
+            name='Feature',
+            is_active=True,
+        )
+        
+        self.service = GitHubService()
+    
+    @patch('core.services.github.client.GitHubClient.list_issues')
+    @patch('core.services.github.client.GitHubClient.get_issue_timeline')
+    def test_import_closed_issues_creates_items(self, mock_timeline, mock_list_issues):
+        """Test that import creates items for closed issues."""
+        # Mock GitHub API response with closed issues
+        mock_list_issues.return_value = [
+            {
+                'id': 111111,
+                'number': 1,
+                'state': 'closed',
+                'title': 'Bug Fix',
+                'body': 'Fixed a critical bug',
+                'html_url': 'https://github.com/testowner/testrepo/issues/1',
+            },
+            {
+                'id': 222222,
+                'number': 2,
+                'state': 'closed',
+                'title': 'Feature Request',
+                'body': 'Added new feature',
+                'html_url': 'https://github.com/testowner/testrepo/issues/2',
+            },
+        ]
+        
+        # Mock timeline (no PRs)
+        mock_timeline.return_value = []
+        
+        # Import closed issues
+        stats = self.service.import_closed_issues_for_project(
+            project=self.project,
+            actor=self.user,
+        )
+        
+        # Check stats
+        self.assertEqual(stats['issues_found'], 2)
+        self.assertEqual(stats['issues_imported'], 2)
+        self.assertEqual(stats['prs_linked'], 0)
+        self.assertEqual(len(stats['errors']), 0)
+        
+        # Verify items were created
+        items = Item.objects.filter(project=self.project)
+        self.assertEqual(items.count(), 2)
+        
+        # Verify item status is CLOSED
+        from core.models import ItemStatus
+        for item in items:
+            self.assertEqual(item.status, ItemStatus.CLOSED)
+        
+        # Verify mappings were created
+        mappings = ExternalIssueMapping.objects.filter(item__project=self.project)
+        self.assertEqual(mappings.count(), 2)
+        
+        # Verify mapping details
+        mapping1 = mappings.get(number=1)
+        self.assertEqual(mapping1.github_id, 111111)
+        self.assertEqual(mapping1.state, 'closed')
+        self.assertEqual(mapping1.kind, ExternalIssueKind.ISSUE)
+    
+    @patch('core.services.github.client.GitHubClient.list_issues')
+    def test_import_skips_pull_requests(self, mock_list_issues):
+        """Test that import skips items that are pull requests."""
+        # Mock response with a mix of issues and PRs
+        mock_list_issues.return_value = [
+            {
+                'id': 111111,
+                'number': 1,
+                'state': 'closed',
+                'title': 'Bug Fix',
+                'body': 'Fixed a critical bug',
+                'html_url': 'https://github.com/testowner/testrepo/issues/1',
+            },
+            {
+                'id': 222222,
+                'number': 2,
+                'state': 'closed',
+                'title': 'PR for Feature',
+                'body': 'Added new feature',
+                'html_url': 'https://github.com/testowner/testrepo/pull/2',
+                'pull_request': {},  # This marks it as a PR
+            },
+        ]
+        
+        stats = self.service.import_closed_issues_for_project(
+            project=self.project,
+            actor=self.user,
+        )
+        
+        # Only the issue should be counted, not the PR
+        self.assertEqual(stats['issues_found'], 1)
+        self.assertEqual(stats['issues_imported'], 1)
+    
+    @patch('core.services.github.client.GitHubClient.list_issues')
+    @patch('core.services.github.client.GitHubClient.get_issue_timeline')
+    def test_import_skips_existing_issues(self, mock_timeline, mock_list_issues):
+        """Test that import skips issues that already have mappings."""
+        # Create existing item and mapping
+        from core.models import ItemStatus
+        existing_item = Item.objects.create(
+            project=self.project,
+            title='Existing Issue',
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+        )
+        ExternalIssueMapping.objects.create(
+            item=existing_item,
+            github_id=111111,
+            number=1,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/1',
+        )
+        
+        # Mock GitHub API response
+        mock_list_issues.return_value = [
+            {
+                'id': 111111,  # Same ID as existing mapping
+                'number': 1,
+                'state': 'closed',
+                'title': 'Existing Issue',
+                'body': 'This already exists',
+                'html_url': 'https://github.com/testowner/testrepo/issues/1',
+            },
+        ]
+        mock_timeline.return_value = []
+        
+        stats = self.service.import_closed_issues_for_project(
+            project=self.project,
+            actor=self.user,
+        )
+        
+        # Should find 1 issue but import 0 (already exists)
+        self.assertEqual(stats['issues_found'], 1)
+        self.assertEqual(stats['issues_imported'], 0)
+        
+        # Should still only have 1 item
+        self.assertEqual(Item.objects.filter(project=self.project).count(), 1)
+    
+    def test_import_raises_without_github_config(self):
+        """Test that import raises ValueError without GitHub config."""
+        project_no_config = Project.objects.create(
+            name='No GitHub Project',
+        )
+        
+        with self.assertRaises(ValueError) as context:
+            self.service.import_closed_issues_for_project(
+                project=project_no_config,
+                actor=self.user,
+            )
+        
+        self.assertIn('does not have GitHub repository configured', str(context.exception))
+
+
 class GitHubClientTestCase(TestCase):
     """Test GitHub client HTTP interactions."""
     

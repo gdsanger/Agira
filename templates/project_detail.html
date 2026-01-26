@@ -352,6 +352,20 @@
                     </svg>
                 </a>
             </div>
+            <div class="mt-3">
+                <button 
+                    id="importGitHubIssuesBtn"
+                    class="btn btn-sm btn-outline-primary w-100"
+                    hx-post="{% url 'project-import-github-issues' project.id %}"
+                    hx-swap="none"
+                    hx-indicator="#importSpinner"
+                    hx-on::after-request="handleImportResponse(event)">
+                    <span id="importBtnText">📥 Import Closed Issues</span>
+                    <span id="importSpinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </span>
+                </button>
+            </div>
         </div>
         {% endif %}
 
@@ -438,6 +452,36 @@ function handleClientResponse(event) {
         }
     } else {
         showToast('error', 'Error', 'Operation failed');
+    }
+}
+
+// Handle import GitHub issues response
+function handleImportResponse(event) {
+    const xhr = event.detail.xhr;
+    const btn = document.getElementById('importGitHubIssuesBtn');
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Import Complete', response.message);
+                // Reload page to show newly imported items
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', 'Import Failed', response.error || 'Failed to import issues');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Import Failed', response.error || 'Failed to import issues');
+        } catch (e) {
+            showToast('error', 'Error', 'Failed to import issues');
+        }
     }
 }
 
