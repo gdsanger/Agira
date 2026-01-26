@@ -426,7 +426,7 @@ def global_search(
                     response = collection.query.near_text(
                         query=query,
                         limit=limit,
-                        filters=where_filter,
+                        where=where_filter,
                     )
                 except Exception as e:
                     logger.warning(
