@@ -6,6 +6,8 @@ from django.core.paginator import Paginator
 from django.db import models
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import openai
@@ -51,6 +53,45 @@ def home(request):
     """Home page view."""
     return render(request, 'home.html')
 
+def login_view(request):
+    """Login page view."""
+    # If user is already authenticated, redirect to dashboard
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        next_url = request.POST.get('next', 'dashboard')
+        
+        # Authenticate user
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            if user.active:
+                # Login the user
+                auth_login(request, user)
+                # Redirect to next page or dashboard
+                return redirect(next_url if next_url else 'dashboard')
+            else:
+                # User account is inactive
+                error = 'Ihr Konto ist deaktiviert.'
+                return render(request, 'login.html', {'error': error, 'next': next_url})
+        else:
+            # Invalid credentials
+            error = 'Benutzername oder Passwort ist falsch.'
+            return render(request, 'login.html', {'error': error, 'next': next_url})
+    
+    # GET request - show login form
+    next_url = request.GET.get('next', '')
+    return render(request, 'login.html', {'next': next_url})
+
+def logout_view(request):
+    """Logout view."""
+    auth_logout(request)
+    return render(request, 'logged_out.html')
+
+@login_required
 def dashboard(request):
     """Dashboard page view with KPIs and activity overview."""
     from datetime import timedelta
@@ -84,6 +125,7 @@ def dashboard(request):
     }
     return render(request, 'dashboard.html', context)
 
+@login_required
 def projects(request):
     """Projects page view."""
     projects_list = Project.objects.all()
@@ -126,6 +168,7 @@ def projects(request):
     }
     return render(request, 'projects.html', context)
 
+@login_required
 def project_create(request):
     """Project create page view."""
     if request.method == 'GET':
@@ -155,6 +198,7 @@ def project_create(request):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+@login_required
 def project_edit(request, id):
     """Project edit page view."""
     project = get_object_or_404(Project, id=id)
@@ -185,6 +229,7 @@ def project_edit(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+@login_required
 def project_detail(request, id):
     """Project detail page view."""
     project = get_object_or_404(
@@ -240,6 +285,7 @@ def project_detail(request, id):
     }
     return render(request, 'project_detail.html', context)
 
+@login_required
 def project_items_tab(request, id):
     """Project Items tab with pagination, filtering, and sorting."""
     project = get_object_or_404(Project, id=id)
@@ -302,6 +348,7 @@ def project_items_tab(request, id):
     }
     return render(request, 'partials/project_items_tab.html', context)
 
+@login_required
 def items_inbox(request):
     """Items Inbox page view."""
     items = Item.objects.filter(status=ItemStatus.INBOX).select_related(
@@ -313,6 +360,7 @@ def items_inbox(request):
     }
     return render(request, 'items_inbox.html', context)
 
+@login_required
 def items_backlog(request):
     """Items Backlog page view."""
     items = Item.objects.filter(status=ItemStatus.BACKLOG).select_related(
@@ -346,6 +394,7 @@ def items_backlog(request):
     }
     return render(request, 'items_backlog.html', context)
 
+@login_required
 def items_working(request):
     """Items Working page view."""
     items = Item.objects.filter(status=ItemStatus.WORKING).select_related(
@@ -379,6 +428,7 @@ def items_working(request):
     }
     return render(request, 'items_working.html', context)
 
+@login_required
 def items_testing(request):
     """Items Testing page view."""
     items = Item.objects.filter(status=ItemStatus.TESTING).select_related(
@@ -412,6 +462,7 @@ def items_testing(request):
     }
     return render(request, 'items_testing.html', context)
 
+@login_required
 def items_ready(request):
     """Items Ready for Release page view."""
     items = Item.objects.filter(status=ItemStatus.READY_FOR_RELEASE).select_related(
@@ -445,6 +496,7 @@ def items_ready(request):
     }
     return render(request, 'items_ready.html', context)
 
+@login_required
 def items_planning(request):
     """Items Planning page view."""
     items = Item.objects.filter(status=ItemStatus.PLANING).select_related(
@@ -478,6 +530,7 @@ def items_planning(request):
     }
     return render(request, 'items_planning.html', context)
 
+@login_required
 def items_specification(request):
     """Items Specification page view."""
     items = Item.objects.filter(status=ItemStatus.SPECIFICATION).select_related(
@@ -511,6 +564,7 @@ def items_specification(request):
     }
     return render(request, 'items_specification.html', context)
 
+@login_required
 def changes(request):
     """Changes list page view."""
     changes_list = Change.objects.all().select_related(
@@ -567,6 +621,7 @@ def changes(request):
     }
     return render(request, 'changes.html', context)
 
+@login_required
 def item_detail(request, item_id):
     """Item detail page with tabs."""
     item = get_object_or_404(
@@ -588,6 +643,7 @@ def item_detail(request, item_id):
     return render(request, 'item_detail.html', context)
 
 
+@login_required
 def item_comments_tab(request, item_id):
     """HTMX endpoint to load comments tab."""
     item = get_object_or_404(Item, id=item_id)
@@ -600,6 +656,7 @@ def item_comments_tab(request, item_id):
     return render(request, 'partials/item_comments_tab.html', context)
 
 
+@login_required
 def item_attachments_tab(request, item_id):
     """HTMX endpoint to load attachments tab."""
     item = get_object_or_404(Item, id=item_id)
@@ -621,6 +678,7 @@ def item_attachments_tab(request, item_id):
     return render(request, 'partials/item_attachments_tab.html', context)
 
 
+@login_required
 def item_activity_tab(request, item_id):
     """HTMX endpoint to load activity tab."""
     item = get_object_or_404(Item, id=item_id)
@@ -636,6 +694,7 @@ def item_activity_tab(request, item_id):
     return render(request, 'partials/item_activity_tab.html', context)
 
 
+@login_required
 def item_github_tab(request, item_id):
     """HTMX endpoint to load GitHub tab."""
     from core.services.github.service import GitHubService
@@ -656,6 +715,8 @@ def item_github_tab(request, item_id):
     }
     return render(request, 'partials/item_github_tab.html', context)
 
+
+@login_required
 
 @require_POST
 def item_link_github(request, item_id):
@@ -749,6 +810,8 @@ def item_link_github(request, item_id):
         return HttpResponse(f"Failed to link GitHub item: {str(e)}", status=500)
 
 
+@login_required
+
 @require_POST
 def item_create_github_issue(request, item_id):
     """Create a new GitHub issue for an item."""
@@ -808,6 +871,8 @@ def item_create_github_issue(request, item_id):
         logger.error(f"GitHub issue creation failed for item {item_id}: {str(e)}")
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
 
+
+@login_required
 
 @require_POST
 def item_optimize_description_ai(request, item_id):
@@ -904,6 +969,8 @@ Context from similar items and related information:
         }, status=500)
 
 
+@login_required
+
 @require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
@@ -925,6 +992,8 @@ def item_change_status(request, item_id):
     except ValidationError as e:
         return HttpResponse(str(e), status=400)
 
+
+@login_required
 
 @require_POST
 def item_add_comment(request, item_id):
@@ -962,6 +1031,8 @@ def item_add_comment(request, item_id):
     return response
 
 
+@login_required
+
 @require_POST
 def item_update_comment(request, comment_id):
     """Update a comment."""
@@ -992,6 +1063,8 @@ def item_update_comment(request, comment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
+
 @require_POST
 def item_delete_comment(request, comment_id):
     """Delete a comment."""
@@ -1013,6 +1086,8 @@ def item_delete_comment(request, comment_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
+
+@login_required
 
 @require_POST
 def item_upload_attachment(request, item_id):
@@ -1078,6 +1153,8 @@ def item_upload_attachment(request, item_id):
         return HttpResponse("Upload failed. Please try again.", status=500)
 
 
+@login_required
+
 @require_POST
 def item_delete_attachment(request, attachment_id):
     """Delete an attachment."""
@@ -1113,6 +1190,7 @@ def item_delete_attachment(request, attachment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
 def item_view_attachment(request, attachment_id):
     """View an attachment (for viewable file types)."""
     try:
@@ -1167,6 +1245,7 @@ def item_view_attachment(request, attachment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
 def item_download_attachment(request, attachment_id):
     """Download an attachment."""
     try:
@@ -1188,6 +1267,8 @@ def item_download_attachment(request, attachment_id):
     except Exception as e:
         return HttpResponse(f"Download failed: {str(e)}", status=500)
 
+
+@login_required
 
 @require_POST
 def item_classify(request, item_id):
@@ -1242,6 +1323,7 @@ def _get_user_primary_organisation(user):
     return primary_org.organisation if primary_org else None
 
 
+@login_required
 def item_create(request):
     """Item create page view."""
     if request.method == 'GET':
@@ -1357,6 +1439,7 @@ def item_create(request):
         return JsonResponse({'success': False, 'error': 'Failed to create item. Please check your input.'}, status=400)
 
 
+@login_required
 def item_edit(request, item_id):
     """Item edit page view."""
     item = get_object_or_404(
@@ -1396,6 +1479,8 @@ def item_edit(request, item_id):
     # Handle POST request (HTMX form submission) - handled by item_update
     return redirect('item-update', item_id=item_id)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def item_update(request, item_id):
@@ -1475,6 +1560,8 @@ def item_update(request, item_id):
         return JsonResponse({'success': False, 'error': 'Failed to update item. Please check your input.'}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def item_delete(request, item_id):
     """Delete an item."""
@@ -1491,6 +1578,8 @@ def item_delete(request, item_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_POST
 def ai_generate_title(request):
@@ -1521,6 +1610,8 @@ def ai_generate_title(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
+
 @require_POST
 def ai_optimize_text(request):
     """Optimize text using AI agent."""
@@ -1548,6 +1639,8 @@ def ai_optimize_text(request):
 
 
 # Project CRUD operations
+@login_required
+
 @require_http_methods(["POST"])
 def project_update(request, id):
     """Update project details."""
@@ -1565,6 +1658,8 @@ def project_update(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def project_delete(request, id):
     """Delete a project."""
@@ -1576,6 +1671,8 @@ def project_delete(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def project_add_client(request, id):
@@ -1594,6 +1691,8 @@ def project_add_client(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def project_remove_client(request, id):
     """Remove a client (organisation) from a project."""
@@ -1610,6 +1709,8 @@ def project_remove_client(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def project_add_item(request, id):
@@ -1641,6 +1742,8 @@ def project_add_item(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def project_add_node(request, id):
     """Add a new node to a project."""
@@ -1668,6 +1771,8 @@ def project_add_node(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def project_add_release(request, id):
     """Add a new release to a project."""
@@ -1694,6 +1799,7 @@ def project_add_release(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
 def project_attachments_tab(request, id):
     """Return the project attachments tab content."""
     project = get_object_or_404(Project, id=id)
@@ -1714,6 +1820,8 @@ def project_attachments_tab(request, id):
     }
     return render(request, 'partials/project_attachments_tab.html', context)
 
+
+@login_required
 
 @require_POST
 def project_upload_attachment(request, id):
@@ -1779,6 +1887,8 @@ def project_upload_attachment(request, id):
         return HttpResponse("Upload failed. Please try again.", status=500)
 
 
+@login_required
+
 @require_POST
 def project_delete_attachment(request, attachment_id):
     """Delete a project attachment."""
@@ -1822,6 +1932,7 @@ def project_delete_attachment(request, attachment_id):
         return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
 
 
+@login_required
 def project_view_attachment(request, attachment_id):
     """View a project attachment (for viewable file types)."""
     try:
@@ -1876,6 +1987,7 @@ def project_view_attachment(request, attachment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
 def project_download_attachment(request, attachment_id):
     """Download a project attachment."""
     try:
@@ -1897,6 +2009,8 @@ def project_download_attachment(request, attachment_id):
     except Exception as e:
         return HttpResponse(f"Download failed: {str(e)}", status=500)
 
+
+@login_required
 
 @require_POST
 def project_import_github_issues(request, id):
@@ -1981,6 +2095,7 @@ def project_import_github_issues(request, id):
 # Organisation CRUD Views
 # ============================================================================
 
+@login_required
 def organisations(request):
     """Organisations list view with filtering."""
     orgs = Organisation.objects.all()
@@ -2003,6 +2118,7 @@ def organisations(request):
     return render(request, 'organisations.html', context)
 
 
+@login_required
 def organisation_create(request):
     """Organisation create page view."""
     if request.method == 'GET':
@@ -2027,6 +2143,7 @@ def organisation_create(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
 def organisation_edit(request, id):
     """Organisation edit page view."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2039,6 +2156,7 @@ def organisation_edit(request, id):
         return render(request, 'organisation_form.html', context)
 
 
+@login_required
 def organisation_update(request, id):
     """Organisation update endpoint."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2057,6 +2175,7 @@ def organisation_update(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
 def organisation_detail(request, id):
     """Organisation detail page view."""
     organisation = get_object_or_404(
@@ -2091,6 +2210,7 @@ def organisation_detail(request, id):
     return render(request, 'organisation_detail.html', context)
 
 
+@login_required
 def organisation_delete(request, id):
     """Delete an organisation."""
     organisation = get_object_or_404(Organisation, id=id)
@@ -2101,6 +2221,8 @@ def organisation_delete(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def organisation_add_user(request, id):
@@ -2133,6 +2255,8 @@ def organisation_add_user(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def organisation_remove_user(request, id):
     """Remove a user from an organisation."""
@@ -2149,6 +2273,8 @@ def organisation_remove_user(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def organisation_update_user(request, id):
@@ -2178,6 +2304,8 @@ def organisation_update_user(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def organisation_link_project(request, id):
     """Link a project to an organisation."""
@@ -2194,6 +2322,8 @@ def organisation_link_project(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def organisation_unlink_project(request, id):
@@ -2216,6 +2346,7 @@ def organisation_unlink_project(request, id):
 # AI Provider CRUD Views
 # ============================================================================
 
+@login_required
 def ai_providers(request):
     """AI Providers list view with filtering."""
     providers = AIProvider.objects.all()
@@ -2255,6 +2386,7 @@ def ai_providers(request):
     return render(request, 'ai_providers.html', context)
 
 
+@login_required
 def ai_provider_detail(request, id):
     """AI Provider detail view with models."""
     provider = get_object_or_404(AIProvider, id=id)
@@ -2273,6 +2405,7 @@ def ai_provider_detail(request, id):
     return render(request, 'ai_provider_detail.html', context)
 
 
+@login_required
 def ai_provider_create(request):
     """Create a new AI Provider."""
     if request.method == 'GET':
@@ -2302,6 +2435,8 @@ def ai_provider_create(request):
         return HttpResponse(f"Error creating provider: {str(e)}", status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def ai_provider_update(request, id):
     """Update AI Provider."""
@@ -2329,6 +2464,8 @@ def ai_provider_update(request, id):
         return HttpResponse(f"Error updating provider: {str(e)}", status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def ai_provider_delete(request, id):
     """Delete AI Provider."""
@@ -2347,6 +2484,8 @@ def ai_provider_delete(request, id):
 
 
 @require_http_methods(["GET"])
+
+@login_required
 def ai_provider_get_api_key(request, id):
     """Get decrypted API key for copying. Requires authentication."""
     # Check if user is authenticated
@@ -2360,6 +2499,8 @@ def ai_provider_get_api_key(request, id):
         'api_key': provider.api_key
     })
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def ai_provider_fetch_models(request, id):
@@ -2452,6 +2593,8 @@ def ai_provider_fetch_models(request, id):
         }, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def ai_model_create(request, provider_id):
     """Create a new AI Model for a provider."""
@@ -2487,6 +2630,8 @@ def ai_model_create(request, provider_id):
     except Exception as e:
         return HttpResponse(f"Error creating model: {str(e)}", status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def ai_model_update(request, provider_id, model_id):
@@ -2524,6 +2669,8 @@ def ai_model_update(request, provider_id, model_id):
         return HttpResponse(f"Error updating model: {str(e)}", status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def ai_model_delete(request, provider_id, model_id):
     """Delete an AI Model."""
@@ -2544,6 +2691,8 @@ def ai_model_delete(request, provider_id, model_id):
     except Exception as e:
         return HttpResponse(f"Error deleting model: {str(e)}", status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def ai_model_update_field(request, provider_id, model_id):
@@ -2585,6 +2734,8 @@ def ai_model_update_field(request, provider_id, model_id):
         return HttpResponse(f"Error updating field: {str(e)}", status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def ai_model_toggle_active(request, provider_id, model_id):
     """Toggle the active status of an AI Model via HTMX."""
@@ -2608,6 +2759,7 @@ def ai_model_toggle_active(request, provider_id, model_id):
 
 # ==================== Agent Views ====================
 
+@login_required
 def agents(request):
     """Agent list page view."""
     agent_service = AgentService()
@@ -2635,6 +2787,7 @@ def agents(request):
     return render(request, 'agents.html', context)
 
 
+@login_required
 def agent_detail(request, filename):
     """Agent detail/edit page view."""
     agent_service = AgentService()
@@ -2656,6 +2809,7 @@ def agent_detail(request, filename):
     return render(request, 'agent_detail.html', context)
 
 
+@login_required
 def agent_create(request):
     """Agent create page view."""
     # Get all active providers and their models
@@ -2678,6 +2832,8 @@ def agent_create(request):
     }
     return render(request, 'agent_detail.html', context)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def agent_save(request, filename):
@@ -2740,6 +2896,8 @@ def agent_save(request, filename):
     except Exception as e:
         return HttpResponse(f"Error saving agent: {str(e)}", status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def agent_create_save(request):
@@ -2817,6 +2975,8 @@ def agent_create_save(request):
         return HttpResponse(f"Error saving agent: {str(e)}", status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def agent_delete(request, filename):
     """Delete an agent."""
@@ -2833,6 +2993,8 @@ def agent_delete(request, filename):
     except Exception as e:
         return HttpResponse(f"Error deleting agent: {str(e)}", status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def agent_test(request, filename):
@@ -2872,6 +3034,8 @@ def agent_test(request, filename):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+@login_required
 def ai_jobs_history(request):
     """AI Jobs History list view with filtering and pagination."""
     jobs = AIJobsHistory.objects.select_related('user', 'provider', 'model').all()
@@ -2937,6 +3101,7 @@ def ai_jobs_history(request):
 # Weaviate Sync Views
 # ============================================================================
 
+@login_required
 def weaviate_status(request, object_type, object_id):
     """
     Check Weaviate sync status for an object.
@@ -2970,6 +3135,7 @@ def weaviate_status(request, object_type, object_id):
     })
 
 
+@login_required
 def weaviate_object(request, object_type, object_id):
     """
     Fetch Weaviate object data and display in modal content.
@@ -3022,6 +3188,8 @@ def weaviate_object(request, object_type, object_id):
             'error': str(e),
         })
 
+
+@login_required
 
 @require_POST
 def weaviate_push(request, object_type, object_id):
@@ -3091,6 +3259,7 @@ def weaviate_push(request, object_type, object_id):
 
 # Change Management Views
 
+@login_required
 def change_detail(request, id):
     """Change detail page view."""
     change = get_object_or_404(
@@ -3150,6 +3319,7 @@ def change_detail(request, id):
     return render(request, 'change_detail.html', context)
 
 
+@login_required
 def change_create(request):
     """Change create page view."""
     if request.method == 'GET':
@@ -3257,6 +3427,7 @@ def change_create(request):
             return render(request, 'change_form.html', context)
 
 
+@login_required
 def change_edit(request, id):
     """Change edit page view."""
     change = get_object_or_404(Change, id=id)
@@ -3277,6 +3448,8 @@ def change_edit(request, id):
         }
         return render(request, 'change_form.html', context)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def change_update(request, id):
@@ -3330,6 +3503,8 @@ def change_update(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def change_delete(request, id):
     """Delete a change."""
@@ -3345,6 +3520,8 @@ def change_delete(request, id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def change_add_approver(request, id):
@@ -3387,6 +3564,8 @@ def change_add_approver(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+
 @require_http_methods(["POST"])
 def change_remove_approver(request, id, approval_id):
     """Remove an approver from a change."""
@@ -3413,6 +3592,8 @@ def change_remove_approver(request, id, approval_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def change_approve(request, id, approval_id):
@@ -3442,6 +3623,8 @@ def change_approve(request, id, approval_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
+
+@login_required
 
 @require_http_methods(["POST"])
 def change_reject(request, id, approval_id):
@@ -3525,6 +3708,7 @@ def get_human_readable_verb(verb):
     return verb_mapping.get(verb, verb.replace('_', ' ').replace('.', ' ').title())
 
 
+@login_required
 def dashboard_in_progress_items(request):
     """HTMX partial for in-progress items list."""
     items = Item.objects.filter(
@@ -3539,6 +3723,7 @@ def dashboard_in_progress_items(request):
     return render(request, 'partials/dashboard_in_progress.html', context)
 
 
+@login_required
 def dashboard_activity_stream(request):
     """HTMX partial for global activity stream."""
     from django.utils.timesince import timesince
