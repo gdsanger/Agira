@@ -2,7 +2,7 @@ name: issue-analyse-agent
 description: Ein AI-Agent, der Feature-Anfragen analysiert, um Redundanzen, Machbarkeit,
   Erweiterungsmöglichkeiten, Abhängigkeiten und Risiken zu ermitteln.
 provider: OpenAI
-model: gpt-5.2-codex
+model: gpt-5.2
 role: Sie agieren als technischer Pre-Review-Agent mit Kenntnis der bestehenden Projektarchitektur.
 task: "Sie agieren als technischer Pre-Review-Agent.\r\n\r\nAnalysieren Sie die bereitgestellte\
   \ Feature-Anfrage. \r\nDie Anfrage besteht aus:\r\n- einem Issue\r\n- dem zugehörigen\
