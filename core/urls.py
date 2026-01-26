@@ -118,4 +118,7 @@ urlpatterns = [
     
     # Global Search
     path('search/', views.search, name='search'),
+    
+    # Generic Attachment URLs (for global search results and direct links)
+    path('attachments/<int:attachment_id>/', views.attachment_view, name='attachment-view'),
 ]
