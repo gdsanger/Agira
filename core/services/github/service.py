@@ -434,3 +434,306 @@ class GitHubService(IntegrationBase):
         )
         
         return mapping
+    
+    def import_closed_issues_for_project(
+        self,
+        project: Project,
+        *,
+        actor=None,
+    ) -> dict:
+        """
+        Import all closed GitHub issues for a project.
+        
+        Creates Items with status Closed for each GitHub issue that doesn't
+        already have a mapping, links related PRs, and indexes in Weaviate.
+        
+        Args:
+            project: Project to import issues for
+            actor: User performing the import (optional)
+            
+        Returns:
+            Dictionary with import statistics:
+                - issues_found: Total closed issues found
+                - issues_imported: New issues imported
+                - prs_linked: PRs linked to issues
+                - errors: List of error messages
+                
+        Raises:
+            IntegrationDisabled: If GitHub is disabled
+            IntegrationNotConfigured: If GitHub is not configured
+            ValueError: If project doesn't have GitHub repo configured
+        """
+        if not project.github_owner or not project.github_repo:
+            raise ValueError(
+                f"Project '{project.name}' does not have GitHub repository configured"
+            )
+        
+        client = self._get_client()
+        owner = project.github_owner
+        repo = project.github_repo
+        
+        stats = {
+            'issues_found': 0,
+            'issues_imported': 0,
+            'prs_linked': 0,
+            'errors': [],
+        }
+        
+        try:
+            # Fetch all closed issues with pagination
+            page = 1
+            per_page = 100
+            
+            while True:
+                issues = client.list_issues(
+                    owner=owner,
+                    repo=repo,
+                    state='closed',
+                    per_page=per_page,
+                    page=page,
+                )
+                
+                if not issues:
+                    break
+                
+                for github_issue in issues:
+                    # Skip pull requests (they have 'pull_request' key)
+                    if 'pull_request' in github_issue:
+                        continue
+                    
+                    stats['issues_found'] += 1
+                    
+                    try:
+                        # Check if mapping already exists
+                        github_id = github_issue['id']
+                        number = github_issue['number']
+                        
+                        existing_mapping = ExternalIssueMapping.objects.filter(
+                            github_id=github_id
+                        ).first()
+                        
+                        if existing_mapping:
+                            # Issue already imported, just link PRs
+                            logger.info(
+                                f"Issue #{number} already exists for item {existing_mapping.item.id}"
+                            )
+                            # Link PRs for this issue
+                            prs_linked = self._link_prs_to_issue(
+                                existing_mapping,
+                                client,
+                                owner,
+                                repo,
+                            )
+                            stats['prs_linked'] += prs_linked
+                            continue
+                        
+                        # Create new item for this issue
+                        item = self._create_item_from_github_issue(
+                            project=project,
+                            github_issue=github_issue,
+                            actor=actor,
+                        )
+                        
+                        # Create mapping
+                        state = self._map_state(github_issue, 'issue')
+                        mapping = ExternalIssueMapping.objects.create(
+                            item=item,
+                            github_id=github_id,
+                            number=number,
+                            kind=ExternalIssueKind.ISSUE,
+                            state=state,
+                            html_url=github_issue['html_url'],
+                        )
+                        
+                        stats['issues_imported'] += 1
+                        
+                        # Log activity
+                        self._log_activity(
+                            item=item,
+                            verb='github.issue_imported',
+                            summary=f"Imported closed GitHub issue #{number}",
+                            actor=actor,
+                        )
+                        
+                        logger.info(
+                            f"Imported closed issue #{number} as item {item.id}"
+                        )
+                        
+                        # Link PRs for this issue
+                        prs_linked = self._link_prs_to_issue(
+                            mapping,
+                            client,
+                            owner,
+                            repo,
+                        )
+                        stats['prs_linked'] += prs_linked
+                        
+                        # Index in Weaviate
+                        try:
+                            from core.services.weaviate.service import upsert_instance
+                            from core.services.weaviate import is_available
+                            
+                            if is_available():
+                                upsert_instance(item)
+                                upsert_instance(mapping)
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to index item {item.id} in Weaviate: {e}"
+                            )
+                    
+                    except Exception as e:
+                        error_msg = f"Error importing issue #{github_issue.get('number', 'unknown')}: {str(e)}"
+                        stats['errors'].append(error_msg)
+                        logger.error(error_msg, exc_info=True)
+                
+                # Check if there are more pages
+                if len(issues) < per_page:
+                    break
+                
+                page += 1
+        
+        except Exception as e:
+            error_msg = f"Error fetching issues from GitHub: {str(e)}"
+            stats['errors'].append(error_msg)
+            logger.error(error_msg, exc_info=True)
+        
+        return stats
+    
+    def _create_item_from_github_issue(
+        self,
+        project: Project,
+        github_issue: dict,
+        actor=None,
+    ) -> Item:
+        """
+        Create an Agira Item from a GitHub issue.
+        
+        Args:
+            project: Project to create item in
+            github_issue: GitHub issue data
+            actor: User creating the item (optional)
+            
+        Returns:
+            Created Item
+        """
+        # Extract data from GitHub issue
+        title = github_issue.get('title', 'Untitled Issue')
+        body = github_issue.get('body', '')
+        
+        # Build description with metadata
+        description_parts = []
+        
+        if body:
+            description_parts.append(body)
+        
+        # Add GitHub metadata
+        description_parts.append(f"\n---\n**GitHub Issue:** #{github_issue.get('number')}")
+        description_parts.append(f"**Repository:** {project.github_owner}/{project.github_repo}")
+        description_parts.append(f"**URL:** {github_issue.get('html_url')}")
+        
+        description = '\n\n'.join(description_parts)
+        
+        # Get default item type
+        # Try to find appropriate type based on common naming conventions
+        from core.models import ItemType
+        
+        # Try different common item type names in order of preference
+        type_preferences = ['Feature', 'Bug', 'Task', 'Story']
+        item_type = None
+        
+        for type_name in type_preferences:
+            item_type = ItemType.objects.filter(is_active=True, name=type_name).first()
+            if item_type:
+                break
+        
+        # If none of the preferred types exist, use any active type
+        if not item_type:
+            item_type = ItemType.objects.filter(is_active=True).first()
+        
+        if not item_type:
+            raise ValueError("No active ItemType found. Please create one first.")
+        
+        # Create the item
+        item = Item.objects.create(
+            project=project,
+            title=title,
+            description=description,
+            type=item_type,
+            status=ItemStatus.CLOSED,
+            assigned_to=actor if actor else None,
+        )
+        
+        return item
+    
+    def _link_prs_to_issue(
+        self,
+        mapping: ExternalIssueMapping,
+        client: GitHubClient,
+        owner: str,
+        repo: str,
+    ) -> int:
+        """
+        Link PRs to an issue via timeline events.
+        
+        Args:
+            mapping: Issue mapping
+            client: GitHub client
+            owner: Repository owner
+            repo: Repository name
+            
+        Returns:
+            Number of PRs linked
+        """
+        try:
+            timeline = client.get_issue_timeline(owner, repo, mapping.number)
+            
+            pr_numbers = set()
+            
+            # Look for cross-referenced PRs in timeline
+            for event in timeline:
+                event_type = event.get('event')
+                
+                # Check for cross-reference events
+                if event_type == 'cross-referenced':
+                    source = event.get('source', {})
+                    if source.get('type') == 'issue':
+                        # In GitHub, PRs are also issues
+                        issue_data = source.get('issue', {})
+                        if 'pull_request' in issue_data:
+                            # This is a PR
+                            pr_number = issue_data.get('number')
+                            if pr_number:
+                                pr_numbers.add(pr_number)
+            
+            # Create mappings for each found PR
+            linked_count = 0
+            for pr_number in pr_numbers:
+                try:
+                    # Check if PR mapping already exists
+                    existing = ExternalIssueMapping.objects.filter(
+                        item=mapping.item,
+                        number=pr_number,
+                        kind=ExternalIssueKind.PR,
+                    ).first()
+                    
+                    if existing:
+                        continue
+                    
+                    # Use upsert_mapping_from_github to create/update PR mapping
+                    self.upsert_mapping_from_github(
+                        item=mapping.item,
+                        number=pr_number,
+                        kind='pr',
+                    )
+                    linked_count += 1
+                    
+                    logger.info(f"Linked PR #{pr_number} to item {mapping.item.id}")
+                
+                except Exception as e:
+                    logger.warning(f"Failed to link PR #{pr_number}: {e}")
+            
+            return linked_count
+        
+        except Exception as e:
+            logger.warning(f"Failed to fetch timeline for issue #{mapping.number}: {e}")
+            return 0

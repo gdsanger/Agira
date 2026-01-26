@@ -21,6 +21,7 @@ urlpatterns = [
     path('projects/<int:id>/attachments/tab/', views.project_attachments_tab, name='project-attachments-tab'),
     path('projects/<int:id>/upload-attachment/', views.project_upload_attachment, name='project-upload-attachment'),
     path('projects/attachments/<int:attachment_id>/delete/', views.project_delete_attachment, name='project-delete-attachment'),
+    path('projects/<int:id>/import-github-issues/', views.project_import_github_issues, name='project-import-github-issues'),
     path('items/inbox/', views.items_inbox, name='items-inbox'),
     path('items/backlog/', views.items_backlog, name='items-backlog'),
     path('items/working/', views.items_working, name='items-working'),
