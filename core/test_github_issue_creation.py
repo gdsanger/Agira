@@ -276,6 +276,10 @@ class GitHubIssueCreationTestCase(TestCase):
         )
         
         def create_issue_side_effect(owner, repo, title, body, labels=None):
+            """
+            Mock GitHub API create_issue response.
+            Note: assignees parameter was removed as we no longer assign GitHub users.
+            """
             # Simulate different issue numbers
             if 'Item 1' in title:
                 number = 101

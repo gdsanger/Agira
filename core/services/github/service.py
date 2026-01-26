@@ -6,6 +6,7 @@ Main service for GitHub integration with Agira Items.
 
 import logging
 from typing import Optional
+from django.db import transaction
 from django.utils import timezone
 
 from core.models import (
@@ -26,6 +27,7 @@ from core.services.integrations.base import (
 from .client import GitHubClient
 
 logger = logging.getLogger(__name__)
+
 
 
 class GitHubService(IntegrationBase):
@@ -244,8 +246,6 @@ class GitHubService(IntegrationBase):
         
         # Assign item locally to Copilot user in Agira
         try:
-            from django.db import transaction
-            
             copilot_user = User.objects.get(username='Copilot')
             
             # Use transaction and select_for_update to prevent race conditions
@@ -254,9 +254,10 @@ class GitHubService(IntegrationBase):
                 locked_item = Item.objects.select_for_update().get(pk=item.pk)
                 locked_item.assigned_to = copilot_user
                 locked_item.save()
-                
-            # Update the passed item object to reflect the change
-            item.assigned_to = copilot_user
+            
+            # Refresh the item object from database to get the updated assigned_to value
+            # This ensures the returned item object reflects the database state
+            item.refresh_from_db()
             
             logger.info(
                 f"Assigned item {item.id} to Copilot user locally in Agira"
