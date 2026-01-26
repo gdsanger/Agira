@@ -178,7 +178,7 @@
                         <option value="">Select project...</option>
                         {% for proj in projects %}
                         <option value="{{ proj.id }}" 
-                                {% if item and item.project.id == proj.id %}selected{% endif %}>
+                                {% if item and item.project.id == proj.id or not item and default_project and default_project.id == proj.id %}selected{% endif %}>
                             {{ proj.name }}
                         </option>
                         {% endfor %}

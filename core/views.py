@@ -1259,6 +1259,16 @@ def item_create(request):
             default_requester = request.user
             default_organisation = _get_user_primary_organisation(request.user)
         
+        # Support pre-selecting project via query parameter
+        default_project = None
+        project_id = request.GET.get('project')
+        if project_id:
+            try:
+                default_project = Project.objects.get(id=int(project_id))
+            except (ValueError, Project.DoesNotExist):
+                # Invalid project ID, ignore it
+                pass
+        
         context = {
             'item': None,
             'projects': projects,
@@ -1268,6 +1278,7 @@ def item_create(request):
             'statuses': statuses,
             'default_requester': default_requester,
             'default_organisation': default_organisation,
+            'default_project': default_project,
         }
         return render(request, 'item_form.html', context)
     
