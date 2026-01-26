@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Suche{% if query %} - {{ query }}{% endif %} - Agira{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Search Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-2">
+                        <i class="bi bi-search"></i> Globale Suche
+                    </h2>
+                    {% if query %}
+                    <p class="text-muted mb-0">
+                        Suchergebnisse für: <strong>{{ query }}</strong>
+                        {% if results %}
+                            <span class="badge bg-secondary ms-2">{{ results|length }} Treffer</span>
+                        {% endif %}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Search Form (expanded version) -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form action="{% url 'search' %}" method="get" role="search">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-8">
+                                <label for="searchQuery" class="form-label">Suchbegriff</label>
+                                <input type="text" 
+                                       id="searchQuery"
+                                       name="q" 
+                                       class="form-control" 
+                                       placeholder="Item-Titel, Text, externe Referenz..." 
+                                       value="{{ query }}"
+                                       required
+                                       minlength="{{ min_query_length }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label for="searchType" class="form-label">Typ (optional)</label>
+                                <select name="type" id="searchType" class="form-select">
+                                    <option value="">Alle</option>
+                                    <option value="item" {% if object_type == 'item' %}selected{% endif %}>Items</option>
+                                    <option value="project" {% if object_type == 'project' %}selected{% endif %}>Projects</option>
+                                    <option value="comment" {% if object_type == 'comment' %}selected{% endif %}>Comments</option>
+                                    <option value="change" {% if object_type == 'change' %}selected{% endif %}>Changes</option>
+                                    <option value="github_issue" {% if object_type == 'github_issue' %}selected{% endif %}>GitHub Issues</option>
+                                    <option value="github_pr" {% if object_type == 'github_pr' %}selected{% endif %}>GitHub PRs</option>
+                                    <option value="attachment" {% if object_type == 'attachment' %}selected{% endif %}>Attachments</option>
+                                    <option value="node" {% if object_type == 'node' %}selected{% endif %}>Nodes</option>
+                                    <option value="release" {% if object_type == 'release' %}selected{% endif %}>Releases</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-search"></i> Suchen
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Error Message -->
+            {% if error %}
+            <div class="alert alert-danger" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+            </div>
+            {% endif %}
+
+            <!-- Search Results -->
+            {% if query and not error %}
+                {% if results %}
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 120px;">Typ</th>
+                                        <th>Titel</th>
+                                        <th style="width: 120px;">Relevanz</th>
+                                        <th style="width: 150px;">Aktualisiert</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for hit in results %}
+                                    <tr>
+                                        <td>
+                                            {% if hit.type == 'item' %}
+                                                <span class="badge bg-primary"><i class="bi bi-card-text"></i> Item</span>
+                                            {% elif hit.type == 'project' %}
+                                                <span class="badge bg-success"><i class="bi bi-folder"></i> Project</span>
+                                            {% elif hit.type == 'comment' %}
+                                                <span class="badge bg-info"><i class="bi bi-chat-left-text"></i> Comment</span>
+                                            {% elif hit.type == 'change' %}
+                                                <span class="badge bg-warning"><i class="bi bi-arrow-repeat"></i> Change</span>
+                                            {% elif hit.type == 'github_issue' %}
+                                                <span class="badge bg-secondary"><i class="bi bi-github"></i> Issue</span>
+                                            {% elif hit.type == 'github_pr' %}
+                                                <span class="badge bg-secondary"><i class="bi bi-git"></i> PR</span>
+                                            {% elif hit.type == 'attachment' %}
+                                                <span class="badge bg-dark"><i class="bi bi-paperclip"></i> Attach</span>
+                                            {% elif hit.type == 'node' %}
+                                                <span class="badge bg-primary"><i class="bi bi-diagram-3"></i> Node</span>
+                                            {% elif hit.type == 'release' %}
+                                                <span class="badge bg-success"><i class="bi bi-box-seam"></i> Release</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ hit.type }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if hit.url %}
+                                                <a href="{{ hit.url }}" class="text-decoration-none">
+                                                    {{ hit.title }}
+                                                </a>
+                                            {% else %}
+                                                {{ hit.title }}
+                                            {% endif %}
+                                            
+                                            {% if hit.external_key %}
+                                                <small class="text-muted d-block">
+                                                    <i class="bi bi-link-45deg"></i> {{ hit.external_key }}
+                                                </small>
+                                            {% endif %}
+                                            
+                                            {% if hit.status %}
+                                                <small class="text-muted">
+                                                    <span class="badge badge-sm bg-secondary">{{ hit.status }}</span>
+                                                </small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if hit.score %}
+                                                <div class="progress" style="height: 20px;" title="Score: {{ hit.score|floatformat:3 }}">
+                                                    {% widthratio hit.score 1 100 as percentage %}
+                                                    <div class="progress-bar bg-primary" 
+                                                         role="progressbar" 
+                                                         style="width: {{ percentage }}%;" 
+                                                         aria-valuenow="{{ percentage }}" 
+                                                         aria-valuemin="0" 
+                                                         aria-valuemax="100">
+                                                        {{ percentage }}%
+                                                    </div>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if hit.updated_at %}
+                                                <small class="text-muted">
+                                                    {{ hit.updated_at|date:"d.m.Y H:i" }}
+                                                </small>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <!-- Empty State -->
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-search display-1 text-muted"></i>
+                        <h3 class="mt-3">Keine Treffer gefunden</h3>
+                        <p class="text-muted">
+                            Ihre Suche nach <strong>{{ query }}</strong> ergab keine Ergebnisse.
+                        </p>
+                        <p class="text-muted">
+                            Tipps:
+                        </p>
+                        <ul class="list-unstyled text-muted">
+                            <li>Überprüfen Sie die Schreibweise</li>
+                            <li>Verwenden Sie allgemeinere Suchbegriffe</li>
+                            <li>Versuchen Sie es mit weniger oder anderen Wörtern</li>
+                            <li>Entfernen Sie Filter (Typ, Projekt)</li>
+                        </ul>
+                    </div>
+                </div>
+                {% endif %}
+            {% elif not error %}
+            <!-- Initial State (no search yet) -->
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-search display-1 text-primary"></i>
+                    <h3 class="mt-3">Globale Suche</h3>
+                    <p class="text-muted">
+                        Durchsuchen Sie alle Objekte in Agira (Items, Projects, Comments, Changes, GitHub Issues/PRs, etc.).
+                    </p>
+                    <p class="text-muted">
+                        Geben Sie mindestens {{ min_query_length }} Zeichen in das Suchfeld ein.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
