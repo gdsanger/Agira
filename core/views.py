@@ -1458,16 +1458,16 @@ def attachment_view(request, attachment_id):
         # Try to determine parent via AttachmentLink
         first_link = attachment.links.first()
         if first_link:
-            # Check if parent is an Item
-            item_content_type = ContentType.objects.get_for_model(Item)
-            project_content_type = ContentType.objects.get_for_model(Project)
-            
-            if first_link.target_content_type == item_content_type:
-                # Redirect to item attachment view
-                return redirect('item-detail', item_id=first_link.target_object_id)
-            elif first_link.target_content_type == project_content_type:
-                # Redirect to project detail
-                return redirect('project-detail', id=first_link.target_object_id)
+            # Check the parent type by model name to avoid ContentType lookups
+            target = first_link.target
+            if target:
+                model_name = target.__class__.__name__
+                if model_name == 'Item':
+                    # Redirect to item detail
+                    return redirect('item-detail', item_id=first_link.target_object_id)
+                elif model_name == 'Project':
+                    # Redirect to project detail
+                    return redirect('project-detail', id=first_link.target_object_id)
         
         # If no parent found or parent is not item/project, serve attachment directly
         # Get file extension
