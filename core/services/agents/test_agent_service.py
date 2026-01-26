@@ -21,9 +21,6 @@ class AgentServiceTestCase(TestCase):
         # Create a temporary directory for test agents
         self.test_agents_dir = Path(tempfile.mkdtemp())
         
-        # Store original agents directory
-        self.original_agents_dir = settings.BASE_DIR / 'agents'
-        
         # Create agent service instance
         self.agent_service = AgentService()
         # Override the agents directory for testing

@@ -13,6 +13,9 @@ from core.models import User
 from core.services.ai.router import AIRouter
 from core.services.exceptions import ServiceNotConfigured
 
+# Module-level logger for efficiency
+logger = logging.getLogger(__name__)
+
 
 class AgentService:
     """
@@ -88,14 +91,14 @@ class AgentService:
         Raises:
             ValueError: If there's an error saving the agent file
         """
-        logger = logging.getLogger(__name__)
-        
         file_path = self.agents_dir / filename
         
         # Ensure agents directory exists, creating parent directories if needed
         try:
             self.agents_dir.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Ensured agents directory exists: {self.agents_dir}")
+        except PermissionError as e:
+            raise ValueError(f"Permission denied creating agents directory {self.agents_dir}: {e}")
         except OSError as e:
             raise ValueError(f"Failed to create agents directory {self.agents_dir}: {e}")
         
@@ -106,10 +109,14 @@ class AgentService:
             with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(save_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
             logger.info(f"Successfully saved agent to {file_path}")
+        except PermissionError as e:
+            raise ValueError(f"Permission denied writing agent file {filename}: {e}")
         except OSError as e:
-            raise ValueError(f"Error writing agent file {filename}: {e}")
+            raise ValueError(f"I/O error writing agent file {filename}: {e}")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error serializing agent data to YAML for {filename}: {e}")
         except Exception as e:
-            raise ValueError(f"Error saving agent {filename}: {e}")
+            raise ValueError(f"Unexpected error saving agent {filename}: {e}")
     
     def delete_agent(self, filename: str) -> bool:
         """
