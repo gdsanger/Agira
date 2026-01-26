@@ -428,10 +428,11 @@ def global_search(
                         limit=limit,
                         where=where_filter,
                     )
-                except Exception as e:
+                except (AttributeError, ValueError, RuntimeError) as e:
+                    # Catch specific errors related to missing vectorizer or invalid query
                     logger.warning(
                         f"near_text query failed (vectorizer may not be configured), "
-                        f"falling back to hybrid search: {e}"
+                        f"falling back to hybrid search: {type(e).__name__}: {e}"
                     )
                     # Fall back to hybrid search if near_text fails
                     response = collection.query.hybrid(
@@ -460,7 +461,8 @@ def global_search(
                     fusion_type=HybridFusion.RELATIVE_SCORE,
                 )
         except Exception as e:
-            logger.error(f"Search query failed: {e}")
+            # Log and re-raise unexpected errors
+            logger.error(f"Search query failed with unexpected error: {type(e).__name__}: {e}")
             raise
         
         # Format results as AgiraSearchHit objects
@@ -476,9 +478,12 @@ def global_search(
                 # For near_text queries, distance is available (cosine distance)
                 # Convert distance to normalized score (0-1 range)
                 # Lower distance = higher similarity = higher score
+                # Ensure distance stays within valid range even in edge cases
                 distance = obj.metadata.distance
                 if distance is not None:
-                    score = max(0, 1 - (distance / MAX_DISTANCE))
+                    # Clamp distance to [0, MAX_DISTANCE] before conversion
+                    normalized_distance = min(distance / MAX_DISTANCE, 1.0)
+                    score = max(0.0, 1.0 - normalized_distance)
             
             hit = AgiraSearchHit(
                 type=props.get("type", "unknown"),

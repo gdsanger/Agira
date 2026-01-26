@@ -28,7 +28,7 @@
                 <div class="card-body">
                     <form action="{% url 'search' %}" method="get" role="search">
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-6 col-lg-7">
+                            <div class="col-md-5 col-lg-6">
                                 <label for="searchQuery" class="form-label">Suchbegriff</label>
                                 <input type="text" 
                                        id="searchQuery"
@@ -39,7 +39,7 @@
                                        required
                                        minlength="{{ min_query_length }}">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-3 col-lg-2">
                                 <label for="searchMode" class="form-label">Suchart</label>
                                 <select name="mode" id="searchMode" class="form-select">
                                     <option value="hybrid" {% if search_mode == 'hybrid' or not search_mode %}selected{% endif %}>Hybrid</option>
