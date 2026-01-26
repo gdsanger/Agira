@@ -29,6 +29,12 @@ UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
 # Used for converting distance to normalized score (0-1 range)
 MAX_DISTANCE = 2.0
 
+# Metadata query configurations for Weaviate queries
+# For vector/semantic searches, request both score and distance
+VECTOR_METADATA_QUERY = MetadataQuery(score=True, distance=True)
+# For hybrid/keyword searches, only score is available
+HYBRID_METADATA_QUERY = MetadataQuery(score=True)
+
 
 @dataclass
 class AgiraSearchHit:
@@ -312,7 +318,7 @@ def query(
             query=query_text,
             limit=top_k,
             where=where_filter,
-            return_metadata=MetadataQuery(score=True, distance=True),
+            return_metadata=VECTOR_METADATA_QUERY,
         )
         
         # Format results
@@ -330,8 +336,8 @@ def query(
                 "title": props.get("title"),
                 "text_preview": text_preview,
                 "url": props.get("url"),
-                # In Weaviate v4, distance is available in metadata for vector searches
-                "score": getattr(obj.metadata, 'distance', None),
+                # Get score from metadata (Weaviate v4 returns score or distance)
+                "score": getattr(obj.metadata, 'score', None) or getattr(obj.metadata, 'distance', None),
             }
             results.append(result)
         
@@ -428,7 +434,7 @@ def global_search(
                         query=query,
                         limit=limit,
                         where=where_filter,
-                        return_metadata=MetadataQuery(score=True, distance=True),
+                        return_metadata=VECTOR_METADATA_QUERY,
                     )
                 except (AttributeError, ValueError, RuntimeError) as e:
                     # Catch specific errors related to missing vectorizer or invalid query
@@ -443,7 +449,7 @@ def global_search(
                         alpha=alpha,
                         filters=where_filter,
                         fusion_type=HybridFusion.RELATIVE_SCORE,
-                        return_metadata=MetadataQuery(score=True),
+                        return_metadata=HYBRID_METADATA_QUERY,
                     )
             elif mode == 'keyword':
                 # Pure BM25 keyword search (alpha=0 means BM25 only)
@@ -453,7 +459,7 @@ def global_search(
                     alpha=0.0,  # Pure BM25
                     filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
-                    return_metadata=MetadataQuery(score=True),
+                    return_metadata=HYBRID_METADATA_QUERY,
                 )
             else:
                 # Hybrid search (default) - combines BM25 and vector
@@ -463,7 +469,7 @@ def global_search(
                     alpha=alpha,
                     filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
-                    return_metadata=MetadataQuery(score=True),
+                    return_metadata=HYBRID_METADATA_QUERY,
                 )
         except Exception as e:
             # Log and re-raise unexpected errors
