@@ -164,13 +164,17 @@ class GitHubIssueCreationTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Backlog Feature',
+            'assignees': [{'login': 'Copilot'}],
         }
         
         queryset = Item.objects.filter(id=item.id)
         self.admin.create_github_issue(self.request, queryset)
         
-        # Check that issue was created
+        # Check that issue was created with Copilot assignee
         mock_create_issue.assert_called_once()
+        call_kwargs = mock_create_issue.call_args[1]
+        self.assertIn('assignees', call_kwargs)
+        self.assertEqual(call_kwargs['assignees'], ['Copilot'])
         
         # Check that mapping was created
         mapping = ExternalIssueMapping.objects.filter(item=item).first()
@@ -253,7 +257,7 @@ class GitHubIssueCreationTestCase(TestCase):
             status=ItemStatus.TESTING,
         )
         
-        def create_issue_side_effect(owner, repo, title, body, labels=None):
+        def create_issue_side_effect(owner, repo, title, body, labels=None, assignees=None):
             # Simulate different issue numbers
             if 'Item 1' in title:
                 number = 101
@@ -268,6 +272,7 @@ class GitHubIssueCreationTestCase(TestCase):
                 'state': 'open',
                 'html_url': f'https://github.com/{owner}/{repo}/issues/{number}',
                 'title': title,
+                'assignees': [{'login': 'Copilot'}] if assignees else [],
             }
         
         mock_create_issue.side_effect = create_issue_side_effect
@@ -314,6 +319,7 @@ class GitHubIssueCreationTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Valid Item',
+            'assignees': [{'login': 'Copilot'}],
         }
         
         queryset = Item.objects.filter(id__in=[valid_item.id, invalid_item.id])
@@ -386,6 +392,48 @@ class GitHubIssueCreationTestCase(TestCase):
         
         # Check that no mapping was created
         self.assertEqual(ExternalIssueMapping.objects.filter(item=item).count(), 0)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_creates_issue_even_when_assignee_fails(self, mock_message_user, mock_create_issue):
+        """Test that issue is created even when assignee 'Copilot' cannot be set."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Simulate GitHub API response where assignee was not set (user not found/no access)
+        mock_create_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/42',
+            'title': 'Test Item',
+            'assignees': [],  # Empty assignees - Copilot was not set
+        }
+        
+        queryset = Item.objects.filter(id=item.id)
+        
+        # Should create issue successfully despite assignee failure
+        with self.assertLogs('core.services.github.service', level='WARNING') as log:
+            self.admin.create_github_issue(self.request, queryset)
+            
+            # Check that warning was logged about assignee
+            self.assertTrue(
+                any("Failed to set assignee 'Copilot'" in message for message in log.output),
+                "Expected warning about failed assignee not found in logs"
+            )
+        
+        # Check that issue was still created
+        mock_create_issue.assert_called_once()
+        
+        # Check that mapping was created despite assignee failure
+        mapping = ExternalIssueMapping.objects.filter(item=item).first()
+        self.assertIsNotNone(mapping)
+        self.assertEqual(mapping.github_id, 12345)
+        self.assertEqual(mapping.number, 42)
 
 
 class GitHubIssueCreationViewTestCase(TestCase):
@@ -440,6 +488,7 @@ class GitHubIssueCreationViewTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Backlog Feature',
+            'assignees': [{'login': 'Copilot'}],
         }
         
         client = Client()
