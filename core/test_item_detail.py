@@ -360,3 +360,188 @@ class ItemCRUDTest(TestCase):
         
         # Verify item was deleted
         self.assertFalse(Item.objects.filter(id=item_id).exists())
+
+
+class ItemAutoPopulateTest(TestCase):
+    """Test automatic pre-population of requester and organisation when creating items."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Create organisations
+        self.org1 = Organisation.objects.create(name='Primary Org')
+        self.org2 = Organisation.objects.create(name='Secondary Org')
+        
+        # Create user with primary organisation
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User',
+            role='User'
+        )
+        
+        # Set primary organisation
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org1,
+            is_primary=True
+        )
+        
+        # Add secondary organisation (not primary)
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org2,
+            is_primary=False
+        )
+        
+        # Create user without primary organisation
+        self.user_no_org = User.objects.create_user(
+            username='usernoorg',
+            email='noorg@example.com',
+            password='testpass',
+            name='User No Org',
+            role='User'
+        )
+        
+        # Create project
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test description'
+        )
+        self.project.clients.add(self.org1)
+        self.project.clients.add(self.org2)
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='feature',
+            name='Feature',
+            is_active=True
+        )
+        
+        self.client = Client()
+    
+    def test_item_create_auto_populates_requester_and_organisation(self):
+        """Test that item creation auto-populates requester and organisation for logged-in user."""
+        # Login as user
+        self.client.login(username='testuser', password='testpass')
+        
+        url = reverse('item-create')
+        data = {
+            'title': 'Auto-populated Item',
+            'description': 'Test description',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.INBOX,
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was created with auto-populated fields
+        item = Item.objects.filter(title='Auto-populated Item').first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.requester, self.user)
+        self.assertEqual(item.organisation, self.org1)  # Primary org
+    
+    def test_item_create_respects_explicit_requester_and_organisation(self):
+        """Test that explicitly set requester and organisation are preserved."""
+        # Login as user
+        self.client.login(username='testuser', password='testpass')
+        
+        # Create another user to use as explicit requester
+        other_user = User.objects.create_user(
+            username='otheruser',
+            email='other@example.com',
+            password='testpass',
+            name='Other User'
+        )
+        
+        url = reverse('item-create')
+        data = {
+            'title': 'Explicit Values Item',
+            'description': 'Test description',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.INBOX,
+            'requester': other_user.id,
+            'organisation': self.org2.id,  # Explicitly set to secondary org
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was created with explicit values
+        item = Item.objects.filter(title='Explicit Values Item').first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.requester, other_user)  # Not auto-populated
+        self.assertEqual(item.organisation, self.org2)  # Not primary org
+    
+    def test_item_create_without_primary_organisation(self):
+        """Test that item creation works when user has no primary organisation."""
+        # Login as user without primary org
+        self.client.login(username='usernoorg', password='testpass')
+        
+        url = reverse('item-create')
+        data = {
+            'title': 'No Primary Org Item',
+            'description': 'Test description',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.INBOX,
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was created
+        item = Item.objects.filter(title='No Primary Org Item').first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.requester, self.user_no_org)  # Requester still auto-populated
+        self.assertIsNone(item.organisation)  # Organisation not set
+    
+    def test_item_create_without_authenticated_user(self):
+        """Test that item creation without authenticated user doesn't auto-populate."""
+        # Don't login
+        url = reverse('item-create')
+        data = {
+            'title': 'No Auth Item',
+            'description': 'Test description',
+            'project': self.project.id,
+            'type': self.item_type.id,
+            'status': ItemStatus.INBOX,
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item was created without auto-populated fields
+        item = Item.objects.filter(title='No Auth Item').first()
+        self.assertIsNotNone(item)
+        self.assertIsNone(item.requester)
+        self.assertIsNone(item.organisation)
+    
+    def test_item_create_view_defaults_in_form(self):
+        """Test that the create form shows default values for requester and organisation."""
+        # Login as user
+        self.client.login(username='testuser', password='testpass')
+        
+        url = reverse('item-create')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that context contains default values
+        self.assertEqual(response.context['default_requester'], self.user)
+        self.assertEqual(response.context['default_organisation'], self.org1)
+    
+    def test_item_create_view_no_defaults_without_auth(self):
+        """Test that the create form doesn't have defaults without authentication."""
+        # Don't login
+        url = reverse('item-create')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that context has no default values
+        self.assertIsNone(response.context['default_requester'])
+        self.assertIsNone(response.context['default_organisation'])

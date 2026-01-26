@@ -1231,6 +1231,19 @@ def item_create(request):
         users = User.objects.all().order_by('name')
         statuses = ItemStatus.choices
         
+        # Auto-populate default values for requester and organisation
+        default_requester = None
+        default_organisation = None
+        if request.user.is_authenticated:
+            default_requester = request.user
+            # Try to get user's primary organisation
+            primary_org = UserOrganisation.objects.filter(
+                user=request.user, 
+                is_primary=True
+            ).select_related('organisation').first()
+            if primary_org:
+                default_organisation = primary_org.organisation
+        
         context = {
             'item': None,
             'projects': projects,
@@ -1238,6 +1251,8 @@ def item_create(request):
             'organisations': organisations,
             'users': users,
             'statuses': statuses,
+            'default_requester': default_requester,
+            'default_organisation': default_organisation,
         }
         return render(request, 'item_form.html', context)
     
@@ -1259,14 +1274,27 @@ def item_create(request):
             status=request.POST.get('status', ItemStatus.INBOX),
         )
         
-        # Set optional fields
-        org_id = request.POST.get('organisation')
-        if org_id:
-            item.organisation = get_object_or_404(Organisation, id=org_id)
-        
+        # Set optional fields with automatic pre-population
+        # Auto-populate requester with current user if not explicitly provided
         requester_id = request.POST.get('requester')
         if requester_id:
             item.requester = get_object_or_404(User, id=requester_id)
+        elif request.user.is_authenticated:
+            # Auto-set requester to current user if not provided
+            item.requester = request.user
+        
+        # Auto-populate organisation with user's primary organisation if not explicitly provided
+        org_id = request.POST.get('organisation')
+        if org_id:
+            item.organisation = get_object_or_404(Organisation, id=org_id)
+        elif request.user.is_authenticated and not org_id:
+            # Try to get user's primary organisation
+            primary_org = UserOrganisation.objects.filter(
+                user=request.user, 
+                is_primary=True
+            ).select_related('organisation').first()
+            if primary_org:
+                item.organisation = primary_org.organisation
         
         assigned_to_id = request.POST.get('assigned_to')
         if assigned_to_id:
