@@ -16,6 +16,7 @@ from core.models import (
     ExternalIssueMapping,
     ExternalIssueKind,
     Activity,
+    User,
 )
 from core.services.integrations.base import (
     IntegrationBase,
@@ -224,8 +225,8 @@ class GitHubService(IntegrationBase):
             
             issue_body = '\n\n'.join(parts)
         
-        # Create issue in GitHub with assignee "Copilot"
-        # GitHub API will still create the issue even if assignee is invalid (silently ignored)
+        # Create issue in GitHub without assignee
+        # The item will be assigned locally in Agira to track that Copilot is working on it
         try:
             github_issue = client.create_issue(
                 owner=owner,
@@ -233,25 +234,27 @@ class GitHubService(IntegrationBase):
                 title=issue_title,
                 body=issue_body,
                 labels=labels,
-                assignees=['Copilot'],
             )
-            
-            # Check if assignee was successfully set
-            assignees = github_issue.get('assignees', [])
-            assignee_logins = [a.get('login') for a in assignees if isinstance(a, dict)]
-            
-            if 'Copilot' not in assignee_logins:
-                logger.warning(
-                    f"Failed to set assignee 'Copilot' for GitHub issue #{github_issue['number']} "
-                    f"(Item {item.id}, Repo {owner}/{repo}). "
-                    f"The user may not exist or have access to the repository."
-                )
         except Exception as e:
             # If the API request fails completely, log and re-raise
             logger.error(
                 f"Error creating GitHub issue for item {item.id} in {owner}/{repo}: {e}"
             )
             raise
+        
+        # Assign item locally to Copilot user in Agira
+        try:
+            copilot_user = User.objects.get(username='Copilot')
+            item.assigned_to = copilot_user
+            item.save()
+            logger.info(
+                f"Assigned item {item.id} to Copilot user locally in Agira"
+            )
+        except User.DoesNotExist:
+            logger.warning(
+                f"Copilot user does not exist in Agira. Item {item.id} not assigned locally. "
+                f"Please create a user with username 'Copilot' to enable local assignment tracking."
+            )
         
         # Create mapping
         state = self._map_state(github_issue, 'issue')
