@@ -407,7 +407,7 @@ def global_search(
             query=query,
             limit=limit,
             alpha=alpha,
-            where=where_filter,
+            filters=where_filter,
         )
         
         # Format results as AgiraSearchHit objects
