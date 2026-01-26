@@ -445,6 +445,72 @@ def items_ready(request):
     }
     return render(request, 'items_ready.html', context)
 
+def items_planning(request):
+    """Items Planning page view."""
+    items = Item.objects.filter(status=ItemStatus.PLANING).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_planning.html', context)
+
+def items_specification(request):
+    """Items Specification page view."""
+    items = Item.objects.filter(status=ItemStatus.SPECIFICATION).select_related(
+        'project', 'type', 'organisation', 'requester', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Search filter
+    q = request.GET.get('q', '')
+    if q:
+        items = items.filter(
+            models.Q(title__icontains=q) | models.Q(description__icontains=q)
+        )
+    
+    # Project filter
+    project_id = request.GET.get('project', '')
+    if project_id:
+        try:
+            items = items.filter(project_id=int(project_id))
+        except (ValueError, TypeError):
+            # Invalid project_id, ignore filter
+            project_id = ''
+    
+    # Get all projects for filter dropdown
+    projects = Project.objects.all().order_by('name')
+    
+    context = {
+        'items': items,
+        'search_query': q,
+        'project_id': project_id,
+        'projects': projects,
+    }
+    return render(request, 'items_specification.html', context)
+
 def changes(request):
     """Changes list page view."""
     changes_list = Change.objects.all().select_related(
