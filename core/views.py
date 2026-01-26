@@ -240,6 +240,68 @@ def project_detail(request, id):
     }
     return render(request, 'project_detail.html', context)
 
+def project_items_tab(request, id):
+    """Project Items tab with pagination, filtering, and sorting."""
+    project = get_object_or_404(Project, id=id)
+    
+    # Start with all items for this project
+    items = Item.objects.filter(project=project).select_related(
+        'type', 'assigned_to'
+    ).order_by('-updated_at')
+    
+    # Get filter parameters
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.getlist('status')
+    type_filter = request.GET.getlist('type')
+    
+    # Convert type_filter to integers for proper comparison
+    type_filter_ints = []
+    for t in type_filter:
+        try:
+            type_filter_ints.append(int(t))
+        except (ValueError, TypeError):
+            pass
+    
+    # Apply search filter (title and description)
+    if search_query:
+        items = items.filter(
+            Q(title__icontains=search_query) | Q(description__icontains=search_query)
+        )
+    
+    # Apply status filter - default: exclude Closed items
+    if status_filter:
+        items = items.filter(status__in=status_filter)
+    else:
+        # Default: show all statuses except Closed
+        items = items.exclude(status=ItemStatus.CLOSED)
+    
+    # Apply type filter
+    if type_filter_ints:
+        items = items.filter(type_id__in=type_filter_ints)
+    
+    # Pagination - 25 items per page
+    paginator = Paginator(items, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    # Get all item types for filter dropdown
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+    
+    # Get all status choices
+    status_choices = ItemStatus.choices
+    
+    context = {
+        'project': project,
+        'page_obj': page_obj,
+        'search_query': search_query,
+        'selected_statuses': status_filter,
+        'selected_types': type_filter_ints,
+        'item_types': item_types,
+        'status_choices': status_choices,
+        'closed_status_value': ItemStatus.CLOSED,  # Pass the constant to template
+    }
+    return render(request, 'partials/project_items_tab.html', context)
+
 def items_inbox(request):
     """Items Inbox page view."""
     items = Item.objects.filter(status=ItemStatus.INBOX).select_related(
