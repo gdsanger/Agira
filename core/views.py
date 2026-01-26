@@ -1698,7 +1698,7 @@ def project_delete_attachment(request, attachment_id):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Attachment deletion failed: {str(e)}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
 
 @require_POST
 def project_import_github_issues(request, id):

@@ -468,7 +468,7 @@ function handleImportResponse(event) {
                 // Reload page to show newly imported items
                 setTimeout(() => {
                     window.location.reload();
-                }, 2000);
+                }, 1000);
             } else {
                 showToast('error', 'Import Failed', response.error || 'Failed to import issues');
             }

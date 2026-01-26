@@ -633,9 +633,20 @@ class GitHubService(IntegrationBase):
         
         description = '\n\n'.join(description_parts)
         
-        # Get default item type (Feature or first available)
+        # Get default item type
+        # Try to find appropriate type based on common naming conventions
         from core.models import ItemType
-        item_type = ItemType.objects.filter(is_active=True, name='Feature').first()
+        
+        # Try different common item type names in order of preference
+        type_preferences = ['Feature', 'Bug', 'Task', 'Story']
+        item_type = None
+        
+        for type_name in type_preferences:
+            item_type = ItemType.objects.filter(is_active=True, name=type_name).first()
+            if item_type:
+                break
+        
+        # If none of the preferred types exist, use any active type
         if not item_type:
             item_type = ItemType.objects.filter(is_active=True).first()
         
