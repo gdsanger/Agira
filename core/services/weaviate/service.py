@@ -337,7 +337,8 @@ def query(
                 "text_preview": text_preview,
                 "url": props.get("url"),
                 # Get score from metadata (Weaviate v4 returns score or distance)
-                "score": getattr(obj.metadata, 'score', None) or getattr(obj.metadata, 'distance', None),
+                # Use explicit None check to handle score=0 as a valid value
+                "score": (score := getattr(obj.metadata, 'score', None)) if score is not None else getattr(obj.metadata, 'distance', None),
             }
             results.append(result)
         
