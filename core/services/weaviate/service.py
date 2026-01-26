@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 import weaviate
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, HybridFusion
 
 from core.services.weaviate.client import get_client
 from core.services.weaviate.schema import ensure_schema as _ensure_schema_internal, COLLECTION_NAME
@@ -403,11 +403,13 @@ def global_search(
         # Note: The collection is configured with vectorizer set to 'none', so hybrid search
         # uses BM25 keyword matching. The alpha parameter still applies but with limited effect.
         # For full hybrid search with semantic vectors, configure a vectorizer in the schema.
+        # Using RELATIVE_SCORE fusion ensures consistent score calculation for ranking.
         response = collection.query.hybrid(
             query=query,
             limit=limit,
             alpha=alpha,
             filters=where_filter,
+            fusion_type=HybridFusion.RELATIVE_SCORE,
         )
         
         # Format results as AgiraSearchHit objects
@@ -427,6 +429,10 @@ def global_search(
                 external_key=props.get("external_key"),
             )
             results.append(hit)
+        
+        # Sort results by score descending (highest relevance first)
+        # Weaviate should return sorted results, but we ensure it here for consistency
+        results.sort(key=lambda x: x.score if x.score is not None else -1, reverse=True)
         
         logger.debug(
             f"Global search for '{query}' returned {len(results)} results"
