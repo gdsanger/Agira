@@ -1777,7 +1777,6 @@ def project_import_github_issues(request, id):
             'success': False,
             'error': 'An unexpected error occurred while importing issues'
         }, status=500)
-        return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
 
 
 # ============================================================================
