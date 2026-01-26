@@ -225,7 +225,7 @@ class GitHubService(IntegrationBase):
             issue_body = '\n\n'.join(parts)
         
         # Create issue in GitHub with assignee "Copilot"
-        # If assignee setting fails, the issue is still created (handled by GitHub API)
+        # GitHub API will still create the issue even if assignee is invalid (silently ignored)
         try:
             github_issue = client.create_issue(
                 owner=owner,
@@ -247,8 +247,7 @@ class GitHubService(IntegrationBase):
                     f"The user may not exist or have access to the repository."
                 )
         except Exception as e:
-            # If the entire request fails, log and re-raise
-            # But if it's just an assignee issue, GitHub API should still create the issue
+            # If the API request fails completely, log and re-raise
             logger.error(
                 f"Error creating GitHub issue for item {item.id} in {owner}/{repo}: {e}"
             )
