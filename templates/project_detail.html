@@ -475,10 +475,6 @@ function handleClientResponse(event) {
 }
 
 function deleteProjectAttachment(attachmentId) {
-    if (!confirm('Are you sure you want to delete this attachment?')) {
-        return;
-    }
-
     fetch(`/projects/attachments/${attachmentId}/delete/`, {
         method: 'POST',
         headers: {
