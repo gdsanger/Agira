@@ -180,3 +180,8 @@ CACHES = {
         }
     }
 }
+
+# Weaviate Search Configuration
+WEAVIATE_SEARCH_LIMIT = int(os.getenv('WEAVIATE_SEARCH_LIMIT', '25'))
+WEAVIATE_SEARCH_ALPHA = float(os.getenv('WEAVIATE_SEARCH_ALPHA', '0.5'))
+WEAVIATE_SEARCH_MIN_QUERY_LENGTH = int(os.getenv('WEAVIATE_SEARCH_MIN_QUERY_LENGTH', '2'))

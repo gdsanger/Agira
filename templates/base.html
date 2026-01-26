@@ -49,6 +49,24 @@
         <div class="topbar-brand">
             <a href="{% url 'home' %}">Agira</a>
         </div>
+        
+        <!-- Global Search Bar -->
+        <div class="topbar-search mx-3">
+            <form action="{% url 'search' %}" method="get" class="d-flex" role="search">
+                <div class="input-group input-group-sm">
+                    <input type="text" 
+                           name="q" 
+                           class="form-control" 
+                           placeholder="Suchen..." 
+                           aria-label="Suchen"
+                           value="{{ request.GET.q|default:'' }}">
+                    <button class="btn btn-outline-secondary" type="submit" aria-label="Suchen">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+        
         {% if user.is_authenticated %}
         <div class="topbar-user ms-auto">
             <span class="text-muted me-3">{{ user.username }}</span>

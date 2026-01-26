@@ -9,6 +9,7 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
 
 import weaviate
 from weaviate.classes.query import Filter
@@ -23,6 +24,20 @@ _schema_ensured = False
 
 # Namespace for deterministic UUID5 generation
 UUID_NAMESPACE = uuid.UUID("a9c5e8d0-1234-5678-9abc-def012345678")
+
+
+@dataclass
+class AgiraSearchHit:
+    """Data transfer object for global search results."""
+    type: str
+    title: str
+    url: Optional[str] = None
+    object_id: Optional[str] = None
+    project_id: Optional[str] = None
+    score: Optional[float] = None
+    updated_at: Optional[datetime] = None
+    status: Optional[str] = None
+    external_key: Optional[str] = None
 
 
 def make_weaviate_uuid(type: str, object_id: str) -> str:
@@ -317,6 +332,104 @@ def query(
         
         logger.debug(
             f"Query '{query_text}' in project {project_id_str} returned {len(results)} results"
+        )
+        
+        return results
+        
+    finally:
+        client.close()
+
+
+def global_search(
+    query: str,
+    *,
+    limit: int = 25,
+    alpha: float = 0.5,
+    filters: Optional[Dict[str, Any]] = None,
+) -> List[AgiraSearchHit]:
+    """
+    Perform global search using Weaviate hybrid search (BM25 + Vector).
+    
+    This function searches across all AgiraObject instances using a hybrid
+    approach that combines keyword search (BM25) with semantic vector search.
+    
+    Args:
+        query: Search query text (minimum 2 characters recommended)
+        limit: Maximum number of results to return (default: 25)
+        alpha: Balance between BM25 and vector search (0.0 = BM25 only, 1.0 = vector only, default: 0.5)
+        filters: Optional filters (e.g., {"type": "item", "project_id": "123"})
+        
+    Returns:
+        List of AgiraSearchHit objects with search results
+        
+    Raises:
+        Exception: If Weaviate is not available or configured
+        
+    Example:
+        >>> results = global_search("login bug", limit=10)
+        >>> for hit in results:
+        ...     print(f"{hit.type}: {hit.title} (score: {hit.score})")
+        
+        >>> # Filter by type
+        >>> results = global_search("API", filters={"type": "item"})
+        
+        >>> # Filter by project
+        >>> results = global_search("bug", filters={"project_id": "1"})
+    """
+    # Get client and ensure schema
+    client = get_client()
+    try:
+        _ensure_schema_once(client)
+        
+        # Get collection
+        collection = client.collections.get(COLLECTION_NAME)
+        
+        # Build filter if provided
+        where_filter = None
+        if filters:
+            filter_conditions = []
+            for key, value in filters.items():
+                filter_conditions.append(Filter.by_property(key).equal(str(value)))
+            
+            # Combine filters with AND
+            if len(filter_conditions) == 1:
+                where_filter = filter_conditions[0]
+            else:
+                where_filter = filter_conditions[0]
+                for condition in filter_conditions[1:]:
+                    where_filter = where_filter & condition
+        
+        # Execute hybrid search
+        # Note: The collection is configured with vectorizer set to 'none', so hybrid search
+        # uses BM25 keyword matching. The alpha parameter still applies but with limited effect.
+        # For full hybrid search with semantic vectors, configure a vectorizer in the schema.
+        response = collection.query.hybrid(
+            query=query,
+            limit=limit,
+            alpha=alpha,
+            where=where_filter,
+        )
+        
+        # Format results as AgiraSearchHit objects
+        results = []
+        for obj in response.objects:
+            props = obj.properties
+            
+            hit = AgiraSearchHit(
+                type=props.get("type", "unknown"),
+                title=props.get("title", "Untitled"),
+                url=props.get("url"),
+                object_id=props.get("object_id"),
+                project_id=props.get("project_id"),
+                score=getattr(obj.metadata, 'score', None),
+                updated_at=props.get("updated_at"),
+                status=props.get("status"),
+                external_key=props.get("external_key"),
+            )
+            results.append(hit)
+        
+        logger.debug(
+            f"Global search for '{query}' returned {len(results)} results"
         )
         
         return results

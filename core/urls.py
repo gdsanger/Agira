@@ -113,4 +113,7 @@ urlpatterns = [
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
     path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),
     path('weaviate/push/<str:object_type>/<str:object_id>/', views.weaviate_push, name='weaviate-push'),
+    
+    # Global Search
+    path('search/', views.search, name='search'),
 ]

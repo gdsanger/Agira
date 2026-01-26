@@ -10,6 +10,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
+import logging
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
@@ -25,6 +26,9 @@ from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Create markdown parser once at module level for better performance
 MARKDOWN_PARSER = markdown.Markdown(extensions=['extra', 'fenced_code'])
@@ -3801,3 +3805,66 @@ def dashboard_activity_stream(request):
         'next_offset': offset + limit,
     }
     return render(request, 'partials/dashboard_activity_stream.html', context)
+
+
+@login_required
+def search(request):
+    """
+    Global search view using Weaviate hybrid search.
+    
+    Query parameters:
+    - q: Search query (required, minimum 2 characters)
+    - type: Optional filter by object type (e.g., 'item', 'project', 'comment')
+    - project_id: Optional filter by project ID
+    """
+    from django.conf import settings
+    from core.services.weaviate.service import global_search
+    
+    query = request.GET.get('q', '').strip()
+    object_type = request.GET.get('type', '').strip()
+    project_id = request.GET.get('project_id', '').strip()
+    
+    # Get configuration from settings
+    min_query_length = getattr(settings, 'WEAVIATE_SEARCH_MIN_QUERY_LENGTH', 2)
+    search_limit = getattr(settings, 'WEAVIATE_SEARCH_LIMIT', 25)
+    search_alpha = getattr(settings, 'WEAVIATE_SEARCH_ALPHA', 0.5)
+    
+    # Initialize context
+    context = {
+        'query': query,
+        'object_type': object_type,
+        'project_id': project_id,
+        'results': [],
+        'error': None,
+        'min_query_length': min_query_length,
+    }
+    
+    # Only search if query is provided and meets minimum length
+    if query:
+        if len(query) < min_query_length:
+            context['error'] = f'Bitte mindestens {min_query_length} Zeichen eingeben.'
+        else:
+            try:
+                # Build filters
+                filters = {}
+                if object_type:
+                    filters['type'] = object_type
+                if project_id:
+                    filters['project_id'] = project_id
+                
+                # Execute search
+                results = global_search(
+                    query=query,
+                    limit=search_limit,
+                    alpha=search_alpha,
+                    filters=filters if filters else None,
+                )
+                
+                context['results'] = results
+                
+            except Exception as e:
+                # Log error without including user query for security
+                logger.exception("Search error occurred")
+                context['error'] = 'Suchfehler: Weaviate ist möglicherweise nicht verfügbar. Bitte versuchen Sie es später erneut.'
+    
+    return render(request, 'search.html', context)
