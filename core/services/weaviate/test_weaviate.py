@@ -1153,7 +1153,7 @@ class GlobalSearchTestCase(TestCase):
         
         # Verify query parameters
         self.assertEqual(call_kwargs['query'], 'test')
-        self.assertIsNotNone(call_kwargs['where'])
+        self.assertIsNotNone(call_kwargs['filters'])
     
     @patch('core.services.weaviate.service.get_client')
     @patch('core.services.weaviate.service._ensure_schema_once')
