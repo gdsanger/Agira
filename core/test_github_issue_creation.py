@@ -74,6 +74,15 @@ class GitHubIssueCreationTestCase(TestCase):
         # Set up request
         self.request = MockRequest(self.user)
     
+    def _create_copilot_user(self):
+        """Helper method to create Copilot user for tests."""
+        return User.objects.create_user(
+            username='Copilot',
+            email='copilot@example.com',
+            password='copilot123',
+            name='GitHub Copilot Agent'
+        )
+    
     def test_can_create_issue_for_backlog_item(self):
         """Test that service allows issue creation for Backlog status."""
         item = Item.objects.create(
@@ -150,6 +159,9 @@ class GitHubIssueCreationTestCase(TestCase):
     @patch.object(ItemAdmin, 'message_user')
     def test_admin_action_creates_issue_for_backlog_item(self, mock_message_user, mock_create_issue):
         """Test that admin action creates GitHub issue for Backlog item."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
         item = Item.objects.create(
             project=self.project,
             title='Backlog Feature',
@@ -164,17 +176,16 @@ class GitHubIssueCreationTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Backlog Feature',
-            'assignees': [{'login': 'Copilot'}],
+            'assignees': [],  # No GitHub assignees
         }
         
         queryset = Item.objects.filter(id=item.id)
         self.admin.create_github_issue(self.request, queryset)
         
-        # Check that issue was created with Copilot assignee
+        # Check that issue was created WITHOUT GitHub assignees
         mock_create_issue.assert_called_once()
         call_kwargs = mock_create_issue.call_args[1]
-        self.assertIn('assignees', call_kwargs)
-        self.assertEqual(call_kwargs['assignees'], ['Copilot'])
+        self.assertNotIn('assignees', call_kwargs)
         
         # Check that mapping was created
         mapping = ExternalIssueMapping.objects.filter(item=item).first()
@@ -183,6 +194,10 @@ class GitHubIssueCreationTestCase(TestCase):
         self.assertEqual(mapping.number, 42)
         self.assertEqual(mapping.kind, ExternalIssueKind.ISSUE)
         self.assertEqual(mapping.state, 'open')
+        
+        # Check that item was assigned locally to Copilot user
+        item.refresh_from_db()
+        self.assertEqual(item.assigned_to, copilot_user)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
     @patch.object(ItemAdmin, 'message_user')
@@ -238,6 +253,9 @@ class GitHubIssueCreationTestCase(TestCase):
     @patch.object(ItemAdmin, 'message_user')
     def test_admin_action_creates_multiple_issues(self, mock_message_user, mock_create_issue):
         """Test that admin action can create multiple issues."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
         item1 = Item.objects.create(
             project=self.project,
             title='Backlog Item 1',
@@ -257,7 +275,11 @@ class GitHubIssueCreationTestCase(TestCase):
             status=ItemStatus.TESTING,
         )
         
-        def create_issue_side_effect(owner, repo, title, body, labels=None, assignees=None):
+        def create_issue_side_effect(owner, repo, title, body, labels=None):
+            """
+            Mock GitHub API create_issue response.
+            Note: assignees parameter was removed as we no longer assign GitHub users.
+            """
             # Simulate different issue numbers
             if 'Item 1' in title:
                 number = 101
@@ -272,7 +294,7 @@ class GitHubIssueCreationTestCase(TestCase):
                 'state': 'open',
                 'html_url': f'https://github.com/{owner}/{repo}/issues/{number}',
                 'title': title,
-                'assignees': [{'login': 'Copilot'}] if assignees else [],
+                'assignees': [],  # No GitHub assignees
             }
         
         mock_create_issue.side_effect = create_issue_side_effect
@@ -295,11 +317,22 @@ class GitHubIssueCreationTestCase(TestCase):
         
         mapping3 = ExternalIssueMapping.objects.get(item=item3)
         self.assertEqual(mapping3.number, 103)
+        
+        # Verify that all items were assigned locally to Copilot user
+        item1.refresh_from_db()
+        item2.refresh_from_db()
+        item3.refresh_from_db()
+        self.assertEqual(item1.assigned_to, copilot_user)
+        self.assertEqual(item2.assigned_to, copilot_user)
+        self.assertEqual(item3.assigned_to, copilot_user)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
     @patch.object(ItemAdmin, 'message_user')
     def test_admin_action_handles_mixed_statuses(self, mock_message_user, mock_create_issue):
         """Test that admin action creates issues for valid statuses and skips others."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
         valid_item = Item.objects.create(
             project=self.project,
             title='Valid Item',
@@ -319,7 +352,7 @@ class GitHubIssueCreationTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Valid Item',
-            'assignees': [{'login': 'Copilot'}],
+            'assignees': [],  # No GitHub assignees
         }
         
         queryset = Item.objects.filter(id__in=[valid_item.id, invalid_item.id])
@@ -395,8 +428,8 @@ class GitHubIssueCreationTestCase(TestCase):
     
     @patch('core.services.github.client.GitHubClient.create_issue')
     @patch.object(ItemAdmin, 'message_user')
-    def test_admin_action_creates_issue_even_when_assignee_fails(self, mock_message_user, mock_create_issue):
-        """Test that issue is created even when assignee 'Copilot' cannot be set."""
+    def test_admin_action_creates_issue_even_when_copilot_user_not_exists(self, mock_message_user, mock_create_issue):
+        """Test that issue is created even when Copilot user doesn't exist in Agira."""
         item = Item.objects.create(
             project=self.project,
             title='Test Item',
@@ -404,36 +437,40 @@ class GitHubIssueCreationTestCase(TestCase):
             status=ItemStatus.BACKLOG,
         )
         
-        # Simulate GitHub API response where assignee was not set (user not found/no access)
+        # No Copilot user exists in Agira
         mock_create_issue.return_value = {
             'id': 12345,
             'number': 42,
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Test Item',
-            'assignees': [],  # Empty assignees - Copilot was not set
+            'assignees': [],  # No GitHub assignees
         }
         
         queryset = Item.objects.filter(id=item.id)
         
-        # Should create issue successfully despite assignee failure
+        # Should create issue successfully and log warning about missing Copilot user
         with self.assertLogs('core.services.github.service', level='WARNING') as log:
             self.admin.create_github_issue(self.request, queryset)
             
-            # Check that warning was logged about assignee
+            # Check that warning was logged about missing Copilot user
             self.assertTrue(
-                any("Failed to set assignee 'Copilot'" in message for message in log.output),
-                "Expected warning about failed assignee not found in logs"
+                any("Copilot user does not exist" in message for message in log.output),
+                "Expected warning about missing Copilot user not found in logs"
             )
         
         # Check that issue was still created
         mock_create_issue.assert_called_once()
         
-        # Check that mapping was created despite assignee failure
+        # Check that mapping was created despite missing Copilot user
         mapping = ExternalIssueMapping.objects.filter(item=item).first()
         self.assertIsNotNone(mapping)
         self.assertEqual(mapping.github_id, 12345)
         self.assertEqual(mapping.number, 42)
+        
+        # Check that item was NOT assigned (no Copilot user exists)
+        item.refresh_from_db()
+        self.assertIsNone(item.assigned_to)
 
 
 class GitHubIssueCreationViewTestCase(TestCase):
@@ -469,10 +506,22 @@ class GitHubIssueCreationViewTestCase(TestCase):
             name='Feature'
         )
     
+    def _create_copilot_user(self):
+        """Helper method to create Copilot user for tests."""
+        return User.objects.create_user(
+            username='Copilot',
+            email='copilot@example.com',
+            password='copilot123',
+            name='GitHub Copilot Agent'
+        )
+    
     @patch('core.services.github.client.GitHubClient.create_issue')
     def test_view_creates_issue_for_backlog_item(self, mock_create_issue):
         """Test that view creates GitHub issue for Backlog item."""
         from django.test import Client
+        
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
         
         item = Item.objects.create(
             project=self.project,
@@ -488,7 +537,7 @@ class GitHubIssueCreationViewTestCase(TestCase):
             'state': 'open',
             'html_url': 'https://github.com/testowner/testrepo/issues/42',
             'title': 'Backlog Feature',
-            'assignees': [{'login': 'Copilot'}],
+            'assignees': [],  # No GitHub assignees
         }
         
         client = Client()
