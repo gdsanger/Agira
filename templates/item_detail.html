@@ -571,10 +571,6 @@
     
     // Attachment functions
     function deleteAttachment(attachmentId) {
-        if (!confirm('Are you sure you want to delete this attachment?')) {
-            return;
-        }
-        
         fetch(`/items/attachments/${attachmentId}/delete/`, {
             method: 'POST',
             headers: {
