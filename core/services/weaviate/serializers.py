@@ -148,6 +148,64 @@ def _serialize_comment(comment) -> Dict[str, Any]:
     }
 
 
+def _get_attachment_text_content(attachment) -> str:
+    """
+    Get text content for an attachment.
+    
+    For markdown files (.md), reads and returns the actual file content.
+    For other files, returns a description with metadata.
+    
+    Args:
+        attachment: Attachment instance
+        
+    Returns:
+        Text content for indexing in Weaviate
+    """
+    # Check if this is a markdown file
+    is_markdown = (
+        attachment.content_type == 'text/markdown' or
+        (attachment.original_name and attachment.original_name.lower().endswith('.md'))
+    )
+    
+    if is_markdown:
+        # Try to read the markdown file content
+        try:
+            from core.services.storage.service import AttachmentStorageService
+            storage_service = AttachmentStorageService()
+            file_path = storage_service.get_file_path(attachment)
+            
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Return the full markdown content
+            return content
+            
+        except FileNotFoundError:
+            logger.warning(f"Markdown file not found for attachment {attachment.id}: {attachment.storage_path}")
+            # Fall back to filename-based text
+            return f"Markdown file: {attachment.original_name} (content not available)"
+        except UnicodeDecodeError:
+            logger.warning(f"Could not decode markdown file for attachment {attachment.id} as UTF-8")
+            # Fall back to filename-based text
+            return f"Markdown file: {attachment.original_name} (encoding error)"
+        except Exception as e:
+            logger.error(f"Error reading markdown file for attachment {attachment.id}: {e}")
+            # Fall back to filename-based text
+            return f"Markdown file: {attachment.original_name} (error reading file)"
+    
+    # For non-markdown files, use the old behavior with metadata
+    text = f"Attachment: {attachment.original_name}"
+    if attachment.content_type:
+        text += f" ({attachment.content_type})"
+    
+    # Add file metadata
+    if attachment.size_bytes:
+        text += f"\nSize: {attachment.size_bytes} bytes"
+    
+    return text
+
+
 def _serialize_attachment(attachment) -> Dict[str, Any]:
     """Serialize an Attachment instance."""
     # Determine parent (could be item or comment via AttachmentLink)
@@ -168,13 +226,8 @@ def _serialize_attachment(attachment) -> Dict[str, Any]:
                 org_id = str(first_link.target.organisation_id)
     
     # Build text content
-    text = f"Attachment: {attachment.original_name}"
-    if attachment.content_type:
-        text += f" ({attachment.content_type})"
-    
-    # Add file metadata
-    if attachment.size_bytes:
-        text += f"\nSize: {attachment.size_bytes} bytes"
+    # For markdown files, read the actual file content
+    text = _get_attachment_text_content(attachment)
     
     return {
         'type': 'attachment',

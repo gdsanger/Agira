@@ -949,3 +949,133 @@ class ExternalIssueMappingSerializationTestCase(TestCase):
         self.assertEqual(result['type'], 'github_pr')
         self.assertEqual(result['title'], 'Fix critical bug')
         self.assertEqual(result['status'], 'merged')
+
+
+class AttachmentSerializationTestCase(TestCase):
+    """Test Attachment serialization with markdown content."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.models import Project
+        
+        # Create test project
+        self.project = Project.objects.create(
+            name="Test Project",
+            github_owner="test-owner",
+            github_repo="test-repo"
+        )
+    
+    def test_serialize_markdown_attachment_with_content(self):
+        """Test serializing markdown attachment reads file content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create markdown content
+        markdown_content = """# Test Markdown File
+
+This is a test markdown file with some content.
+
+## Section 1
+
+Here is some text in section 1.
+
+## Section 2
+
+Here is some text in section 2.
+"""
+        
+        # Create attachment via storage service
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(markdown_content.encode('utf-8'))
+        file_obj.name = 'test-readme.md'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Set content type to markdown
+        attachment.content_type = 'text/markdown'
+        attachment.save()
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual markdown content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'test-readme.md')
+        self.assertIn('# Test Markdown File', result['text'])
+        self.assertIn('This is a test markdown file with some content.', result['text'])
+        self.assertIn('## Section 1', result['text'])
+        self.assertIn('## Section 2', result['text'])
+        # Should NOT contain the old filename-based text
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_non_markdown_attachment(self):
+        """Test serializing non-markdown attachment uses metadata."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create a non-markdown file
+        content = b"Some binary content"
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(content)
+        file_obj.name = 'test-file.pdf'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Set content type to PDF
+        attachment.content_type = 'application/pdf'
+        attachment.save()
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains metadata, not file content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'test-file.pdf')
+        self.assertIn('Attachment: test-file.pdf', result['text'])
+        self.assertIn('application/pdf', result['text'])
+        self.assertIn(f'Size: {len(content)} bytes', result['text'])
+    
+    def test_serialize_markdown_by_extension(self):
+        """Test serializing markdown file identified by .md extension."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create markdown content
+        markdown_content = "# Quick Test\n\nJust a quick test."
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(markdown_content.encode('utf-8'))
+        file_obj.name = 'notes.md'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Don't set content_type, rely on .md extension detection
+        attachment.content_type = ''
+        attachment.save()
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Should still read content based on .md extension
+        self.assertIn('# Quick Test', result['text'])
+        self.assertIn('Just a quick test.', result['text'])
+
