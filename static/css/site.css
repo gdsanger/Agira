@@ -103,6 +103,11 @@ body {
     color: var(--accent-secondary);
 }
 
+.topbar-user {
+    display: flex;
+    align-items: center;
+}
+
 /* Layout Container */
 .layout-container {
     display: flex;
