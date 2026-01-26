@@ -1448,6 +1448,9 @@ def attachment_view(request, attachment_id):
     This view determines the parent of an attachment and redirects to the appropriate
     item or project attachment view, or serves the attachment directly.
     """
+    from django.contrib.contenttypes.models import ContentType
+    from django.http import Http404
+    
     try:
         attachment = get_object_or_404(Attachment, id=attachment_id)
         
@@ -1455,8 +1458,6 @@ def attachment_view(request, attachment_id):
             return HttpResponse("Attachment not found", status=404)
         
         # Try to determine parent via AttachmentLink
-        from django.contrib.contenttypes.models import ContentType
-        
         first_link = attachment.links.first()
         if first_link:
             # Check if parent is an Item
@@ -1514,6 +1515,9 @@ def attachment_view(request, attachment_id):
             response['Content-Length'] = len(file_content)
             return response
             
+    except Http404:
+        # Re-raise Http404 to let Django handle it properly
+        raise
     except Exception as e:
         logger.error(f"Error viewing attachment {attachment_id}: {str(e)}")
         return HttpResponse(f"Error viewing attachment: {str(e)}", status=500)
