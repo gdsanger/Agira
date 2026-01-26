@@ -66,6 +66,7 @@ class GitHubClient:
         title: str,
         body: Optional[str] = None,
         labels: Optional[List[str]] = None,
+        assignees: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Create a new issue.
@@ -76,6 +77,7 @@ class GitHubClient:
             title: Issue title
             body: Issue body (markdown)
             labels: List of label names
+            assignees: List of usernames to assign to the issue
             
         Returns:
             Created issue data as dictionary
@@ -90,6 +92,9 @@ class GitHubClient:
         
         if labels:
             payload['labels'] = labels
+        
+        if assignees:
+            payload['assignees'] = assignees
         
         return self.http.post(path, json=payload)
     

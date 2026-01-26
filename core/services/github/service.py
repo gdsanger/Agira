@@ -224,14 +224,34 @@ class GitHubService(IntegrationBase):
             
             issue_body = '\n\n'.join(parts)
         
-        # Create issue in GitHub
-        github_issue = client.create_issue(
-            owner=owner,
-            repo=repo,
-            title=issue_title,
-            body=issue_body,
-            labels=labels,
-        )
+        # Create issue in GitHub with assignee "Copilot"
+        # GitHub API will still create the issue even if assignee is invalid (silently ignored)
+        try:
+            github_issue = client.create_issue(
+                owner=owner,
+                repo=repo,
+                title=issue_title,
+                body=issue_body,
+                labels=labels,
+                assignees=['Copilot'],
+            )
+            
+            # Check if assignee was successfully set
+            assignees = github_issue.get('assignees', [])
+            assignee_logins = [a.get('login') for a in assignees if isinstance(a, dict)]
+            
+            if 'Copilot' not in assignee_logins:
+                logger.warning(
+                    f"Failed to set assignee 'Copilot' for GitHub issue #{github_issue['number']} "
+                    f"(Item {item.id}, Repo {owner}/{repo}). "
+                    f"The user may not exist or have access to the repository."
+                )
+        except Exception as e:
+            # If the API request fails completely, log and re-raise
+            logger.error(
+                f"Error creating GitHub issue for item {item.id} in {owner}/{repo}: {e}"
+            )
+            raise
         
         # Create mapping
         state = self._map_state(github_issue, 'issue')
