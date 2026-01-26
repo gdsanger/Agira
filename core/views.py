@@ -717,6 +717,7 @@ def item_github_tab(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_link_github(request, item_id):
     """Link a GitHub Issue or Pull Request to an item."""
@@ -810,6 +811,7 @@ def item_link_github(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_create_github_issue(request, item_id):
     """Create a new GitHub issue for an item."""
@@ -871,6 +873,7 @@ def item_create_github_issue(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_optimize_description_ai(request, item_id):
     """
@@ -967,6 +970,7 @@ Context from similar items and related information:
 
 
 @require_POST
+
 @login_required
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
@@ -990,6 +994,7 @@ def item_change_status(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_add_comment(request, item_id):
     """HTMX endpoint to add a comment to an item."""
@@ -1027,6 +1032,7 @@ def item_add_comment(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_update_comment(request, comment_id):
     """Update a comment."""
@@ -1058,6 +1064,7 @@ def item_update_comment(request, comment_id):
 
 
 @require_POST
+
 @login_required
 def item_delete_comment(request, comment_id):
     """Delete a comment."""
@@ -1081,6 +1088,7 @@ def item_delete_comment(request, comment_id):
 
 
 @require_POST
+
 @login_required
 def item_upload_attachment(request, item_id):
     """HTMX endpoint to upload an attachment to an item."""
@@ -1146,6 +1154,7 @@ def item_upload_attachment(request, item_id):
 
 
 @require_POST
+
 @login_required
 def item_delete_attachment(request, attachment_id):
     """Delete an attachment."""
@@ -1260,6 +1269,7 @@ def item_download_attachment(request, attachment_id):
 
 
 @require_POST
+
 @login_required
 def item_classify(request, item_id):
     """
@@ -1471,6 +1481,7 @@ def item_edit(request, item_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def item_update(request, item_id):
     """Update item details."""
@@ -1550,6 +1561,7 @@ def item_update(request, item_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def item_delete(request, item_id):
     """Delete an item."""
@@ -1568,6 +1580,7 @@ def item_delete(request, item_id):
 
 
 @require_POST
+
 @login_required
 def ai_generate_title(request):
     """Generate a title from description using AI agent."""
@@ -1598,6 +1611,7 @@ def ai_generate_title(request):
 
 
 @require_POST
+
 @login_required
 def ai_optimize_text(request):
     """Optimize text using AI agent."""
@@ -1626,6 +1640,7 @@ def ai_optimize_text(request):
 
 # Project CRUD operations
 @require_http_methods(["POST"])
+
 @login_required
 def project_update(request, id):
     """Update project details."""
@@ -1644,6 +1659,7 @@ def project_update(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_delete(request, id):
     """Delete a project."""
@@ -1657,6 +1673,7 @@ def project_delete(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_add_client(request, id):
     """Add a client (organisation) to a project."""
@@ -1675,6 +1692,7 @@ def project_add_client(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_remove_client(request, id):
     """Remove a client (organisation) from a project."""
@@ -1693,6 +1711,7 @@ def project_remove_client(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_add_item(request, id):
     """Add a new item to a project."""
@@ -1724,6 +1743,7 @@ def project_add_item(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_add_node(request, id):
     """Add a new node to a project."""
@@ -1752,6 +1772,7 @@ def project_add_node(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def project_add_release(request, id):
     """Add a new release to a project."""
@@ -1801,6 +1822,7 @@ def project_attachments_tab(request, id):
 
 
 @require_POST
+
 @login_required
 def project_upload_attachment(request, id):
     """Upload an attachment to a project."""
@@ -1866,6 +1888,7 @@ def project_upload_attachment(request, id):
 
 
 @require_POST
+
 @login_required
 def project_delete_attachment(request, attachment_id):
     """Delete a project attachment."""
@@ -1988,6 +2011,7 @@ def project_download_attachment(request, attachment_id):
 
 
 @require_POST
+
 @login_required
 def project_import_github_issues(request, id):
     """Import closed GitHub issues for a project."""
@@ -2199,6 +2223,7 @@ def organisation_delete(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def organisation_add_user(request, id):
     """Add a user to an organisation."""
@@ -2231,6 +2256,7 @@ def organisation_add_user(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def organisation_remove_user(request, id):
     """Remove a user from an organisation."""
@@ -2249,6 +2275,7 @@ def organisation_remove_user(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def organisation_update_user(request, id):
     """Update a user's role and primary status in an organisation."""
@@ -2278,6 +2305,7 @@ def organisation_update_user(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def organisation_link_project(request, id):
     """Link a project to an organisation."""
@@ -2296,6 +2324,7 @@ def organisation_link_project(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def organisation_unlink_project(request, id):
     """Unlink a project from an organisation."""
@@ -2407,6 +2436,7 @@ def ai_provider_create(request):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_provider_update(request, id):
     """Update AI Provider."""
@@ -2435,6 +2465,7 @@ def ai_provider_update(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_provider_delete(request, id):
     """Delete AI Provider."""
@@ -2453,6 +2484,7 @@ def ai_provider_delete(request, id):
 
 
 @require_http_methods(["GET"])
+
 @login_required
 def ai_provider_get_api_key(request, id):
     """Get decrypted API key for copying. Requires authentication."""
@@ -2469,6 +2501,7 @@ def ai_provider_get_api_key(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_provider_fetch_models(request, id):
     """Fetch available models from the provider API and save them to the database."""
@@ -2561,6 +2594,7 @@ def ai_provider_fetch_models(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_model_create(request, provider_id):
     """Create a new AI Model for a provider."""
@@ -2598,6 +2632,7 @@ def ai_model_create(request, provider_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_model_update(request, provider_id, model_id):
     """Update an AI Model."""
@@ -2635,6 +2670,7 @@ def ai_model_update(request, provider_id, model_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_model_delete(request, provider_id, model_id):
     """Delete an AI Model."""
@@ -2657,6 +2693,7 @@ def ai_model_delete(request, provider_id, model_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_model_update_field(request, provider_id, model_id):
     """Update a single field of an AI Model via HTMX."""
@@ -2698,6 +2735,7 @@ def ai_model_update_field(request, provider_id, model_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def ai_model_toggle_active(request, provider_id, model_id):
     """Toggle the active status of an AI Model via HTMX."""
@@ -2796,6 +2834,7 @@ def agent_create(request):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def agent_save(request, filename):
     """Save agent (update existing)."""
@@ -2859,6 +2898,7 @@ def agent_save(request, filename):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def agent_create_save(request):
     """Save agent (create new)."""
@@ -2936,6 +2976,7 @@ def agent_create_save(request):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def agent_delete(request, filename):
     """Delete an agent."""
@@ -2954,6 +2995,7 @@ def agent_delete(request, filename):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def agent_test(request, filename):
     """Test an agent with input text."""
@@ -2992,6 +3034,7 @@ def agent_test(request, filename):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
 @login_required
 def ai_jobs_history(request):
     """AI Jobs History list view with filtering and pagination."""
@@ -3147,6 +3190,7 @@ def weaviate_object(request, object_type, object_id):
 
 
 @require_POST
+
 @login_required
 def weaviate_push(request, object_type, object_id):
     """
@@ -3406,6 +3450,7 @@ def change_edit(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_update(request, id):
     """Update change details."""
@@ -3459,6 +3504,7 @@ def change_update(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_delete(request, id):
     """Delete a change."""
@@ -3476,6 +3522,7 @@ def change_delete(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_add_approver(request, id):
     """Add an approver to a change."""
@@ -3518,6 +3565,7 @@ def change_add_approver(request, id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_remove_approver(request, id, approval_id):
     """Remove an approver from a change."""
@@ -3546,6 +3594,7 @@ def change_remove_approver(request, id, approval_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_approve(request, id, approval_id):
     """Approve a change."""
@@ -3576,6 +3625,7 @@ def change_approve(request, id, approval_id):
 
 
 @require_http_methods(["POST"])
+
 @login_required
 def change_reject(request, id, approval_id):
     """Reject a change."""
