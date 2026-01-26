@@ -1025,9 +1025,12 @@ def item_delete_attachment(request, attachment_id):
         else:
             item = None
         
-        # Mark as deleted
-        attachment.is_deleted = True
-        attachment.save()
+        # Store filename for logging
+        filename = attachment.original_name
+        
+        # Delete the attachment (hard delete: removes file from storage, DB record, and Weaviate via signal)
+        storage_service = AttachmentStorageService()
+        storage_service.delete_attachment(attachment, hard=True)
         
         # Log activity
         if item:
@@ -1036,7 +1039,7 @@ def item_delete_attachment(request, attachment_id):
                 verb='attachment.deleted',
                 target=item,
                 actor=request.user if request.user.is_authenticated else None,
-                summary=f"Deleted file: {attachment.original_name}",
+                summary=f"Deleted file: {filename}",
             )
         
         return JsonResponse({'success': True, 'message': 'Attachment deleted successfully'})
@@ -1678,9 +1681,9 @@ def project_delete_attachment(request, attachment_id):
         # Store filename for logging
         filename = attachment.original_name
         
-        # Delete the attachment (soft delete)
+        # Delete the attachment (hard delete: removes file from storage, DB record, and Weaviate via signal)
         storage_service = AttachmentStorageService()
-        storage_service.delete_attachment(attachment)
+        storage_service.delete_attachment(attachment, hard=True)
         
         # Log activity if we have a project
         if project:
@@ -1699,6 +1702,81 @@ def project_delete_attachment(request, attachment_id):
         logger = logging.getLogger(__name__)
         logger.error(f"Attachment deletion failed: {str(e)}")
         return JsonResponse({'success': False, 'error': 'Failed to delete attachment'}, status=500)
+
+
+def project_view_attachment(request, attachment_id):
+    """View a project attachment (for viewable file types)."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            return JsonResponse({'success': False, 'error': 'Attachment not found'}, status=404)
+        
+        # Get file extension
+        extension = attachment.original_name.lower().split('.')[-1] if '.' in attachment.original_name else ''
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Process based on file type
+        if extension == 'md':
+            # Render markdown to HTML - create parser instance per request for thread safety
+            md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+            html_content = md_parser.convert(file_content.decode('utf-8'))
+            # Sanitize HTML
+            clean_html = bleach.clean(
+                html_content,
+                tags=ALLOWED_TAGS,
+                attributes=ALLOWED_ATTRIBUTES,
+                strip=True
+            )
+            return JsonResponse({'success': True, 'content_html': clean_html})
+        elif extension == 'pdf':
+            # Return base64 encoded PDF
+            import base64
+            pdf_base64 = base64.b64encode(file_content).decode('utf-8')
+            return JsonResponse({'success': True, 'content_base64': pdf_base64})
+        elif extension in ['html', 'htm']:
+            # Return sanitized HTML content (will be displayed in iframe)
+            html_content = file_content.decode('utf-8')
+            # Sanitize HTML before returning
+            clean_html = bleach.clean(
+                html_content,
+                tags=ALLOWED_TAGS + ['html', 'head', 'body', 'meta', 'title', 'style'],
+                attributes=ALLOWED_ATTRIBUTES,
+                strip=True
+            )
+            return JsonResponse({'success': True, 'content': clean_html})
+        else:
+            # Plain text
+            return JsonResponse({'success': True, 'content': file_content.decode('utf-8')})
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def project_download_attachment(request, attachment_id):
+    """Download a project attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            return HttpResponse("Attachment not found", status=404)
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Create response with file
+        response = HttpResponse(file_content, content_type=attachment.content_type or 'application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+        response['Content-Length'] = len(file_content)
+        
+        return response
+    except Exception as e:
+        return HttpResponse(f"Download failed: {str(e)}", status=500)
+
 
 @require_POST
 def project_import_github_issues(request, id):

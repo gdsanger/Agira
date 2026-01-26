@@ -402,6 +402,25 @@
 <!-- Include Weaviate Modal -->
 {% include 'partials/weaviate_modal.html' %}
 
+<!-- Attachment Viewer Modal -->
+<div class="modal fade" id="attachmentViewerModal" tabindex="-1" aria-labelledby="attachmentViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="attachmentViewerModalLabel">Attachment Viewer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="attachmentViewerContent">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container"></div>
 {% endblock %}
@@ -466,19 +485,88 @@ function deleteProjectAttachment(attachmentId) {
             'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
         }
     })
-    .then(response => {
-        if (response.ok) {
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
             htmx.ajax('GET', "{% url 'project-attachments-tab' project.id %}", {
                 target: '#project-attachments',
                 swap: 'innerHTML'
             });
+            showToast('success', 'Success', 'Attachment deleted successfully');
         } else {
-            showToast('error', 'Error', 'Failed to delete attachment');
+            showToast('error', 'Error', data.error || 'Failed to delete attachment');
         }
     })
     .catch(() => {
         showToast('error', 'Error', 'An error occurred while deleting the attachment');
     });
+}
+
+function viewAttachment(attachmentId, filename, contentType) {
+    const modal = new bootstrap.Modal(document.getElementById('attachmentViewerModal'));
+    const modalTitle = document.getElementById('attachmentViewerModalLabel');
+    const modalContent = document.getElementById('attachmentViewerContent');
+    
+    modalTitle.textContent = filename;
+    modalContent.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    
+    modal.show();
+    
+    // Determine if we can view this file type
+    const viewableTypes = ['.md', '.txt', '.pdf', '.html', '.htm'];
+    const extension = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+    const isViewable = viewableTypes.includes(extension);
+    
+    if (isViewable) {
+        // Fetch and display content
+        fetch(`/projects/attachments/${attachmentId}/view/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (extension === '.md') {
+                        // Render markdown
+                        modalContent.innerHTML = `<div class="markdown-viewer">${data.content_html}</div>`;
+                    } else if (extension === '.pdf') {
+                        // Show PDF in iframe
+                        modalContent.innerHTML = `<iframe src="data:application/pdf;base64,${data.content_base64}" style="width: 100%; height: 600px;" frameborder="0"></iframe>`;
+                    } else if (extension === '.html' || extension === '.htm') {
+                        // Show HTML in iframe for safety - using DOM manipulation with strict sandboxing
+                        const iframe = document.createElement('iframe');
+                        iframe.style.width = '100%';
+                        iframe.style.height = '600px';
+                        iframe.style.background = 'white';
+                        iframe.setAttribute('frameborder', '0');
+                        // Strict sandboxing - only allow same-origin, no scripts
+                        iframe.setAttribute('sandbox', 'allow-same-origin');
+                        // Create a blob URL for the content instead of using srcdoc
+                        const blob = new Blob([data.content], { type: 'text/html' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        modalContent.innerHTML = '';
+                        modalContent.appendChild(iframe);
+                        iframe.src = blobUrl;
+                        // Clean up blob URL when modal is closed
+                        document.getElementById('attachmentViewerModal').addEventListener('hidden.bs.modal', function cleanup() {
+                            URL.revokeObjectURL(blobUrl);
+                            this.removeEventListener('hidden.bs.modal', cleanup);
+                        });
+                    } else {
+                        // Plain text
+                        modalContent.innerHTML = `<pre style="white-space: pre-wrap; background-color: #1a1a1a; padding: 20px; border-radius: 4px; max-height: 600px; overflow-y: auto;">${data.content}</pre>`;
+                    }
+                } else {
+                    modalContent.innerHTML = `<div class="alert alert-danger">${data.error || 'Failed to load attachment'}</div>`;
+                }
+            })
+            .catch(error => {
+                modalContent.innerHTML = `<div class="alert alert-danger">An error occurred while loading the attachment</div>`;
+            });
+    } else {
+        // Download the file
+        modal.hide();
+        window.location.href = `/projects/attachments/${attachmentId}/download/`;
+    }
+}
+
 // Handle import GitHub issues response
 function handleImportResponse(event) {
     const xhr = event.detail.xhr;
