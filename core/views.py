@@ -1287,7 +1287,7 @@ def item_create(request):
         org_id = request.POST.get('organisation')
         if org_id:
             item.organisation = get_object_or_404(Organisation, id=org_id)
-        elif request.user.is_authenticated and not org_id:
+        elif request.user.is_authenticated:
             # Try to get user's primary organisation
             primary_org = UserOrganisation.objects.filter(
                 user=request.user, 
