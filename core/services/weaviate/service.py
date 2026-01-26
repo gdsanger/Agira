@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 import weaviate
-from weaviate.classes.query import Filter, HybridFusion
+from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
 
 from core.services.weaviate.client import get_client
 from core.services.weaviate.schema import ensure_schema as _ensure_schema_internal, COLLECTION_NAME
@@ -312,6 +312,7 @@ def query(
             query=query_text,
             limit=top_k,
             where=where_filter,
+            return_metadata=MetadataQuery(score=True, distance=True),
         )
         
         # Format results
@@ -427,6 +428,7 @@ def global_search(
                         query=query,
                         limit=limit,
                         where=where_filter,
+                        return_metadata=MetadataQuery(score=True, distance=True),
                     )
                 except (AttributeError, ValueError, RuntimeError) as e:
                     # Catch specific errors related to missing vectorizer or invalid query
@@ -441,6 +443,7 @@ def global_search(
                         alpha=alpha,
                         filters=where_filter,
                         fusion_type=HybridFusion.RELATIVE_SCORE,
+                        return_metadata=MetadataQuery(score=True),
                     )
             elif mode == 'keyword':
                 # Pure BM25 keyword search (alpha=0 means BM25 only)
@@ -450,6 +453,7 @@ def global_search(
                     alpha=0.0,  # Pure BM25
                     filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
+                    return_metadata=MetadataQuery(score=True),
                 )
             else:
                 # Hybrid search (default) - combines BM25 and vector
@@ -459,6 +463,7 @@ def global_search(
                     alpha=alpha,
                     filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
+                    return_metadata=MetadataQuery(score=True),
                 )
         except Exception as e:
             # Log and re-raise unexpected errors
