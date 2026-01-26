@@ -93,8 +93,7 @@ class GitHubClient:
         if labels:
             payload['labels'] = labels
         
-        if assignees:
-            payload['assignees'] = assignees
+      
         
         return self.http.post(path, json=payload)
     
