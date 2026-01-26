@@ -1264,9 +1264,11 @@ def item_create(request):
         project_id = request.GET.get('project')
         if project_id:
             try:
-                default_project = Project.objects.get(id=int(project_id))
-            except (ValueError, Project.DoesNotExist):
-                # Invalid project ID, ignore it
+                # Validate and convert project_id to integer
+                project_id_int = int(project_id)
+                default_project = Project.objects.get(id=project_id_int)
+            except (ValueError, Project.DoesNotExist, TypeError):
+                # Invalid or non-existent project ID, ignore it gracefully
                 pass
         
         context = {
