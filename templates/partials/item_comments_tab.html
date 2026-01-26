@@ -51,8 +51,8 @@
                                 hx-get="{% url 'weaviate-status' 'comment' comment.id %}"
                                 hx-trigger="load"
                                 hx-swap="innerHTML">
-                        <div class="d-flex align-items-center gap-2">
-                            <small class="text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</small>
+                            </div>
+                            {% if comment.kind != 'AIGenerated' %}
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-sm btn-outline-secondary comment-edit-btn" 
                                         data-comment-id="{{ comment.id }}"
@@ -71,17 +71,23 @@
                                     </svg>
                                 </button>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                     {% if comment.subject %}
                         <div class="mb-2"><strong>{{ comment.subject }}</strong></div>
                     {% endif %}
-                    <div id="comment-body-{{ comment.id }}" style="white-space: pre-wrap;">{{ comment.body }}</div>
-                    <div id="comment-edit-{{ comment.id }}" style="display: none;">
-                        <textarea class="form-control mb-2" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="saveComment({{ comment.id }})">Save</button>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEditComment({{ comment.id }})">Cancel</button>
-                    </div>
+                    {% if comment.kind == 'AIGenerated' %}
+                        <!-- Render AI comments as markdown -->
+                        <div id="comment-body-{{ comment.id }}" class="markdown-viewer">{{ comment.body|render_markdown }}</div>
+                    {% else %}
+                        <div id="comment-body-{{ comment.id }}" style="white-space: pre-wrap;">{{ comment.body }}</div>
+                        <div id="comment-edit-{{ comment.id }}" style="display: none;">
+                            <textarea class="form-control mb-2" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="saveComment({{ comment.id }})">Save</button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEditComment({{ comment.id }})">Cancel</button>
+                        </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             {% else %}

@@ -971,6 +971,177 @@ Context from similar items and related information:
 
 
 @login_required
+@require_POST
+def item_pre_review(request, item_id):
+    """
+    Generate a Pre-Review of an item using AI and RAG.
+    
+    Uses RAG to gather context and then calls the issue-analyse-agent
+    to generate a comprehensive review with recommendations.
+    
+    Only available to users with Agent role.
+    """
+    import json
+    from core.services.rag import build_context
+    
+    # Check user role
+    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'success': False,
+            'error': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get current description
+        current_description = item.description or ""
+        
+        if not current_description.strip():
+            return JsonResponse({
+                'success': False,
+                'error': 'Item has no description to review'
+            }, status=400)
+        
+        # Build RAG context
+        rag_context = build_context(
+            query=current_description,
+            project_id=str(item.project.id),
+            limit=10
+        )
+        
+        # Build input text for agent: description + RAG context
+        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        
+        agent_input = f"""Item Title: {item.title}
+
+Item Description:
+{current_description}
+
+---
+Context from similar items and related information:
+{context_text}
+"""
+        
+        # Execute the issue-analyse-agent
+        agent_service = AgentService()
+        review = agent_service.execute_agent(
+            filename='issue-analyse-agent.yml',
+            input_text=agent_input,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Convert markdown to HTML for display
+        review_html = MARKDOWN_PARSER.reset().convert(review)
+        review_html = bleach.clean(review_html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES)
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.pre_review.generated',
+            target=item,
+            actor=request.user,
+            summary='Pre-Review generated via AI (RAG + issue-analyse-agent)',
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'review': review,
+            'review_html': review_html
+        })
+        
+    except Exception as e:
+        # Log activity - error
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.pre_review.error',
+            target=item,
+            actor=request.user,
+            summary=f'Pre-Review generation failed: {str(e)}',
+        )
+        
+        logger.error(f"Pre-Review generation failed for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def item_save_pre_review(request, item_id):
+    """
+    Save Pre-Review as an AI-generated comment on the item.
+    
+    The comment will be marked with kind=AI_GENERATED and synced to Weaviate.
+    
+    Only available to users with Agent role.
+    """
+    import json
+    from core.models import CommentKind
+    
+    # Check user role
+    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'success': False,
+            'error': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Parse request body
+        data = json.loads(request.body)
+        review = data.get('review', '').strip()
+        
+        if not review:
+            return JsonResponse({
+                'success': False,
+                'error': 'No review content to save'
+            }, status=400)
+        
+        # Create AI-generated comment
+        comment = ItemComment.objects.create(
+            item=item,
+            author=request.user,
+            body=review,
+            kind=CommentKind.AI_GENERATED,
+            subject='AI Pre-Review'
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.comment.ai_review_saved',
+            target=item,
+            actor=request.user,
+            summary='Pre-Review saved as AI-generated comment',
+        )
+        
+        # The Weaviate sync will happen automatically via signals (if configured)
+        
+        return JsonResponse({
+            'success': True,
+            'comment_id': comment.id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Failed to save Pre-Review for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 
 @require_POST
 def item_change_status(request, item_id):
