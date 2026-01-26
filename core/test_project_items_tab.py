@@ -145,7 +145,7 @@ class ProjectItemsTabTestCase(TestCase):
         
         # Should be inbox and working items
         item_titles = {item.title for item in items}
-        self.assertEqual(item_titles, {"Inbox Item", "Working Item"})
+        self.assertSetEqual(item_titles, {"Inbox Item", "Working Item"})
     
     def test_filter_excludes_closed_when_other_statuses_selected(self):
         """Test that when other statuses are selected, closed items are not shown"""
