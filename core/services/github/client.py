@@ -4,8 +4,9 @@ GitHub API Client
 Low-level client for interacting with the GitHub REST API v3.
 """
 
+import base64
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 
 from core.services.integrations.http import HTTPClient
 from core.services.integrations.base import IntegrationError
@@ -232,3 +233,62 @@ class GitHubClient:
         }
         
         return self.http.get(path, params=params, headers=headers)
+    
+    # Repository content methods
+    
+    def get_repository_contents(
+        self,
+        owner: str,
+        repo: str,
+        path: str = '',
+        ref: Optional[str] = None,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Get contents of a file or directory in a repository.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            path: Path to file or directory (empty string for root)
+            ref: Git reference (branch, tag, or commit SHA). Defaults to default branch.
+            
+        Returns:
+            File metadata dict (if path is a file) or list of content dicts (if directory)
+        """
+        api_path = f'/repos/{owner}/{repo}/contents/{path}'
+        params = {}
+        
+        if ref:
+            params['ref'] = ref
+        
+        return self.http.get(api_path, params=params)
+    
+    def get_file_content(
+        self,
+        owner: str,
+        repo: str,
+        path: str,
+        ref: Optional[str] = None,
+    ) -> bytes:
+        """
+        Get raw file content from a repository.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            path: Path to file
+            ref: Git reference (branch, tag, or commit SHA)
+            
+        Returns:
+            Raw file content as bytes
+        """
+        # Get file metadata which includes base64-encoded content
+        file_data = self.get_repository_contents(owner, repo, path, ref)
+        
+        # If it's a file, it will have 'content' field (base64-encoded)
+        if isinstance(file_data, dict) and 'content' in file_data:
+            # Decode base64 content
+            content_b64 = file_data['content'].replace('\n', '')
+            return base64.b64decode(content_b64)
+        else:
+            raise IntegrationError(f"Path {path} is not a file or content not available")
