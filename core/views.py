@@ -2033,6 +2033,7 @@ def project_add_release(request, id):
     try:
         name = request.POST.get('name')
         version = request.POST.get('version')
+        release_type = request.POST.get('type')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -2041,6 +2042,7 @@ def project_add_release(request, id):
             project=project,
             name=name,
             version=version,
+            type=release_type if release_type else None,
             status=ReleaseStatus.PLANNED
         )
         

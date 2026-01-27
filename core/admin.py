@@ -124,14 +124,14 @@ class NodeAdmin(admin.ModelAdmin):
 
 @admin.register(Release)
 class ReleaseAdmin(admin.ModelAdmin):
-    list_display = ['project', 'version', 'name', 'status', 'risk', 'update_date']
-    list_filter = ['project', 'status', 'risk']
+    list_display = ['project', 'version', 'name', 'type', 'status', 'risk', 'update_date']
+    list_filter = ['project', 'status', 'risk', 'type']
     search_fields = ['name', 'version']
     autocomplete_fields = ['project']
     readonly_fields = ['update_date']
     
     fieldsets = (
-        (None, {'fields': ('project', 'name', 'version', 'status', 'update_date')}),
+        (None, {'fields': ('project', 'name', 'version', 'type', 'status', 'update_date')}),
         ('Risk Management', {'fields': ('risk', 'risk_description', 'risk_mitigation', 'rescue_measure')}),
     )
 
