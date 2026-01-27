@@ -3642,9 +3642,10 @@ def change_create(request):
         )
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.created',
             target=change,
-            verb='created',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'Change "{change.title}" was created'
         )
@@ -3742,9 +3743,10 @@ def change_update(request, id):
         change.save()
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.updated',
             target=change,
-            verb='updated',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'Change "{change.title}" was updated'
         )
@@ -3799,9 +3801,10 @@ def change_add_approver(request, id):
         )
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_added',
             target=change,
-            verb='added_approver',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'{user.name} was added as an approver'
         )
@@ -3828,9 +3831,10 @@ def change_remove_approver(request, id, approval_id):
         approval.delete()
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_removed',
             target=change,
-            verb='removed_approver',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'{approver_name} was removed as an approver'
         )
@@ -3859,9 +3863,10 @@ def change_approve(request, id, approval_id):
         approval.save()
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approved',
             target=change,
-            verb='approved',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'{approval.approver.name} approved the change'
         )
@@ -3890,9 +3895,10 @@ def change_reject(request, id, approval_id):
         approval.save()
         
         # Log activity
-        ActivityService.log_activity(
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.rejected',
             target=change,
-            verb='rejected',
             actor=request.user if request.user.is_authenticated else None,
             summary=f'{approval.approver.name} rejected the change'
         )
