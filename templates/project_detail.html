@@ -429,6 +429,7 @@
 {% block extra_js %}
 <script>
 // Function to apply filters from localStorage to HTMX request
+// This intercepts the HTMX request before it's sent and appends filter parameters from localStorage
 function applyItemsFiltersFromStorage(event) {
     const projectId = {{ project.id|escapejs }};
     const storageKeyStatus = `project_${projectId}_items_status_filter`;
@@ -458,7 +459,7 @@ function applyItemsFiltersFromStorage(event) {
             event.detail.path = currentPath + separator + params.toString();
         }
     } catch (e) {
-        console.debug('Could not apply filters from localStorage:', e);
+        console.warn('Could not apply filters from localStorage:', e);
     }
 }
 

@@ -220,7 +220,7 @@
 
 // Clear filters function
 function clearFilters() {
-    const projectId = {{ project.id }};
+    const projectId = {{ project.id|escapejs }};
     const storageKeyStatus = `project_${projectId}_items_status_filter`;
     const storageKeyType = `project_${projectId}_items_type_filter`;
     
