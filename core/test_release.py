@@ -150,3 +150,19 @@ class ReleaseViewTestCase(TestCase):
         response_data = response.json()
         self.assertFalse(response_data['success'])
         self.assertIn('required', response_data['error'].lower())
+    
+    def test_add_release_invalid_type(self):
+        """Test adding a release with an invalid type"""
+        url = reverse('project-add-release', args=[self.project.id])
+        data = {
+            'name': 'Invalid Release',
+            'version': '3.0.0',
+            'type': 'InvalidType'
+        }
+        
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('invalid', response_data['error'].lower())
