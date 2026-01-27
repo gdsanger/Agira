@@ -4103,6 +4103,249 @@ def change_remove_approver_attachment(request, id, approval_id, attachment_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@login_required
+@require_http_methods(["POST"])
+def change_polish_risk_description(request, id):
+    """Polish the risk description using AI agent."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Get current risk description
+        risk_description = change.risk_description or ''
+        
+        if not risk_description.strip():
+            return JsonResponse({
+                'success': False, 
+                'error': 'Risk description is empty. Please add some text first.'
+            }, status=400)
+        
+        # Execute the change-text-polish-agent
+        agent_service = AgentService()
+        polished_text = agent_service.execute_agent(
+            filename='change-text-polish-agent.yml',
+            input_text=risk_description,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update the risk description
+        change.risk_description = polished_text
+        change.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.ai_risk_polished',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'AI polished risk description for change "{change.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'text': polished_text,
+            'message': 'Risk description improved successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error polishing risk description: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_optimize_mitigation(request, id):
+    """Optimize the mitigation plan using AI agent."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Get current mitigation plan
+        mitigation = change.mitigation or ''
+        
+        if not mitigation.strip():
+            return JsonResponse({
+                'success': False, 
+                'error': 'Mitigation plan is empty. Please add some text first.'
+            }, status=400)
+        
+        # Execute the text-optimization-agent
+        agent_service = AgentService()
+        optimized_text = agent_service.execute_agent(
+            filename='text-optimization-agent.yml',
+            input_text=mitigation,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update the mitigation plan
+        change.mitigation = optimized_text
+        change.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.ai_mitigation_optimized',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'AI optimized mitigation plan for change "{change.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'text': optimized_text,
+            'message': 'Mitigation plan optimized successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error optimizing mitigation plan: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_optimize_rollback(request, id):
+    """Optimize the rollback plan using AI agent."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Get current rollback plan
+        rollback_plan = change.rollback_plan or ''
+        
+        if not rollback_plan.strip():
+            return JsonResponse({
+                'success': False, 
+                'error': 'Rollback plan is empty. Please add some text first.'
+            }, status=400)
+        
+        # Execute the text-optimization-agent
+        agent_service = AgentService()
+        optimized_text = agent_service.execute_agent(
+            filename='text-optimization-agent.yml',
+            input_text=rollback_plan,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update the rollback plan
+        change.rollback_plan = optimized_text
+        change.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.ai_rollback_optimized',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'AI optimized rollback plan for change "{change.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'text': optimized_text,
+            'message': 'Rollback plan optimized successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error optimizing rollback plan: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_assess_risk(request, id):
+    """Assess risk level automatically using AI agent."""
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Combine all relevant fields for risk assessment
+        risk_description = change.risk_description or ''
+        mitigation = change.mitigation or ''
+        rollback_plan = change.rollback_plan or ''
+        
+        # Build input for the agent
+        agent_input = f"""Risk Description:
+{risk_description}
+
+Mitigation Plan:
+{mitigation}
+
+Rollback Plan:
+{rollback_plan}"""
+        
+        if not risk_description.strip() and not mitigation.strip() and not rollback_plan.strip():
+            return JsonResponse({
+                'success': False, 
+                'error': 'At least one of Risk Description, Mitigation Plan, or Rollback Plan must have content.'
+            }, status=400)
+        
+        # Execute the change-risk-assessment-agent
+        agent_service = AgentService()
+        assessment_result = agent_service.execute_agent(
+            filename='change-risk-assessment-agent.yml',
+            input_text=agent_input,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Parse the result to extract risk level and reason
+        # Expected format includes risk class and reasoning
+        risk_class = None
+        risk_reason = assessment_result
+        
+        # Try to extract risk class from the response
+        # Check in order from most specific to least specific to avoid incorrect matches
+        assessment_lower = assessment_result.lower()
+        if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
+            risk_class = RiskLevel.VERY_HIGH
+        elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
+            risk_class = RiskLevel.LOW
+        elif 'high' in assessment_lower or 'hoch' in assessment_lower:
+            # This check is after "very high" to avoid false matches
+            risk_class = RiskLevel.HIGH
+        else:
+            risk_class = RiskLevel.NORMAL
+        
+        # Update risk level
+        old_risk = change.risk
+        change.risk = risk_class
+        
+        # Update or append the reasoning to risk description
+        # Check if an AI assessment section already exists and replace it
+        risk_desc = change.risk_description or ''
+        ai_marker = '## AI Risk Assessment'
+        
+        if ai_marker in risk_desc:
+            # Find and replace existing AI assessment
+            parts = risk_desc.split(ai_marker)
+            # Keep everything before the marker, append new assessment
+            change.risk_description = f"{parts[0].rstrip()}\n\n{ai_marker}\n{risk_reason}"
+        elif risk_desc:
+            # Append new assessment to existing description
+            change.risk_description = f"{risk_desc}\n\n{ai_marker}\n{risk_reason}"
+        else:
+            # No existing description, just add the assessment
+            change.risk_description = f"{ai_marker}\n{risk_reason}"
+        
+        change.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.ai_risk_assessed',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'AI assessed risk level for change "{change.title}" from {old_risk} to {risk_class}'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'risk_class': risk_class,
+            'risk_class_display': change.get_risk_display(),
+            'risk_reason': risk_reason,
+            'message': f'Risk level set to {change.get_risk_display()}'
+        })
+    except Exception as e:
+        logger.error(f"Error assessing risk: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 def get_human_readable_verb(verb):
     """Convert activity verb to human-readable text."""
     verb_mapping = {

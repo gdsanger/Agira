@@ -63,15 +63,24 @@
         <div class="card">
             <div class="card-body">
                 <h6 class="text-muted mb-2">Risk Level</h6>
-                {% if change.risk == 'VeryHigh' %}
-                <span class="badge bg-danger fs-6">{{ change.get_risk_display }}</span>
-                {% elif change.risk == 'High' %}
-                <span class="badge bg-warning text-dark fs-6">{{ change.get_risk_display }}</span>
-                {% elif change.risk == 'Normal' %}
-                <span class="badge bg-info fs-6">{{ change.get_risk_display }}</span>
-                {% elif change.risk == 'Low' %}
-                <span class="badge bg-success fs-6">{{ change.get_risk_display }}</span>
-                {% endif %}
+                <div id="risk-level-display">
+                    {% if change.risk == 'VeryHigh' %}
+                    <span class="badge bg-danger fs-6">{{ change.get_risk_display }}</span>
+                    {% elif change.risk == 'High' %}
+                    <span class="badge bg-warning text-dark fs-6">{{ change.get_risk_display }}</span>
+                    {% elif change.risk == 'Normal' %}
+                    <span class="badge bg-info fs-6">{{ change.get_risk_display }}</span>
+                    {% elif change.risk == 'Low' %}
+                    <span class="badge bg-success fs-6">{{ change.get_risk_display }}</span>
+                    {% endif %}
+                </div>
+                <button class="btn btn-sm btn-outline-primary mt-2 w-100"
+                        hx-post="{% url 'change-assess-risk' change.id %}"
+                        hx-indicator="#risk-assess-spinner"
+                        hx-on::after-request="handleRiskAssessment(event)">
+                    <span id="risk-assess-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    <i class="bi bi-robot"></i> Risk Level bestimmen (AI)
+                </button>
             </div>
         </div>
     </div>
@@ -171,15 +180,37 @@
             </div>
             <div class="card-body">
                 {% if risk_description_html %}
-                <h6>Risk Description</h6>
-                <div class="markdown-viewer mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6>Risk Description</h6>
+                    <button class="btn btn-sm btn-outline-primary"
+                            hx-post="{% url 'change-polish-risk-description' change.id %}"
+                            hx-target="#risk-description-content"
+                            hx-swap="innerHTML"
+                            hx-indicator="#risk-polish-spinner"
+                            hx-on::after-request="handleAIResponse(event, 'Risk description improved successfully')">
+                        <span id="risk-polish-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-magic"></i> Text verbessern (AI)
+                    </button>
+                </div>
+                <div class="markdown-viewer mb-3" id="risk-description-content">
                     {{ risk_description_html }}
                 </div>
                 {% endif %}
                 
                 {% if mitigation_html %}
-                <h6>Mitigation Plan</h6>
-                <div class="markdown-viewer">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6>Mitigation Plan</h6>
+                    <button class="btn btn-sm btn-outline-primary"
+                            hx-post="{% url 'change-optimize-mitigation' change.id %}"
+                            hx-target="#mitigation-content"
+                            hx-swap="innerHTML"
+                            hx-indicator="#mitigation-spinner"
+                            hx-on::after-request="handleAIResponse(event, 'Mitigation plan optimized successfully')">
+                        <span id="mitigation-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-magic"></i> Text verbessern (AI)
+                    </button>
+                </div>
+                <div class="markdown-viewer" id="mitigation-content">
                     {{ mitigation_html }}
                 </div>
                 {% endif %}
@@ -195,8 +226,19 @@
             </div>
             <div class="card-body">
                 {% if rollback_plan_html %}
-                <h6>Rollback Plan</h6>
-                <div class="markdown-viewer mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6>Rollback Plan</h6>
+                    <button class="btn btn-sm btn-outline-primary"
+                            hx-post="{% url 'change-optimize-rollback' change.id %}"
+                            hx-target="#rollback-content"
+                            hx-swap="innerHTML"
+                            hx-indicator="#rollback-spinner"
+                            hx-on::after-request="handleAIResponse(event, 'Rollback plan optimized successfully')">
+                        <span id="rollback-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-magic"></i> Text verbessern (AI)
+                    </button>
+                </div>
+                <div class="markdown-viewer mb-3" id="rollback-content">
                     {{ rollback_plan_html }}
                 </div>
                 {% endif %}
@@ -464,4 +506,71 @@
     padding-left: 2em;
 }
 </style>
+
+<script>
+    // Handle AI response for text optimization
+    function handleAIResponse(event, successMessage) {
+        const xhr = event.detail.xhr;
+        const spinner = event.target.querySelector('.spinner-border');
+        
+        if (spinner) {
+            spinner.classList.add('d-none');
+        }
+        
+        try {
+            const response = JSON.parse(xhr.response);
+            
+            if (response.success) {
+                showToast(response.message || successMessage, 'success');
+                
+                // Reload the page to show the properly rendered markdown
+                // Small delay to allow toast to be visible
+                setTimeout(() => {
+                    location.reload();
+                }, 800);
+            } else {
+                showToast(response.error || 'An error occurred', 'error');
+            }
+        } catch (e) {
+            console.error('Error parsing AI response:', e);
+            showToast('An unexpected error occurred', 'error');
+        }
+    }
+    
+    // Handle risk assessment response
+    function handleRiskAssessment(event) {
+        const xhr = event.detail.xhr;
+        const spinner = event.target.querySelector('.spinner-border');
+        
+        if (spinner) {
+            spinner.classList.add('d-none');
+        }
+        
+        try {
+            const response = JSON.parse(xhr.response);
+            
+            if (response.success) {
+                showToast(response.message, 'success');
+                
+                // Reload the page to show updated risk level and description
+                setTimeout(() => {
+                    location.reload();
+                }, 800);
+            } else {
+                showToast(response.error || 'An error occurred', 'error');
+            }
+        } catch (e) {
+            console.error('Error parsing risk assessment response:', e);
+            showToast('An unexpected error occurred', 'error');
+        }
+    }
+    
+    // Show spinner when HTMX request starts
+    document.body.addEventListener('htmx:beforeRequest', function(event) {
+        const spinner = event.target.querySelector('.spinner-border');
+        if (spinner) {
+            spinner.classList.remove('d-none');
+        }
+    });
+</script>
 {% endblock %}
