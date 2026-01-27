@@ -4290,13 +4290,15 @@ Rollback Plan:
         risk_reason = assessment_result
         
         # Try to extract risk class from the response
+        # Check in order from most specific to least specific to avoid incorrect matches
         assessment_lower = assessment_result.lower()
         if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
             risk_class = RiskLevel.VERY_HIGH
-        elif 'high' in assessment_lower or 'hoch' in assessment_lower:
-            risk_class = RiskLevel.HIGH
         elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
             risk_class = RiskLevel.LOW
+        elif 'high' in assessment_lower or 'hoch' in assessment_lower:
+            # This check is after "very high" to avoid false matches
+            risk_class = RiskLevel.HIGH
         else:
             risk_class = RiskLevel.NORMAL
         
@@ -4304,11 +4306,22 @@ Rollback Plan:
         old_risk = change.risk
         change.risk = risk_class
         
-        # Append the reasoning to risk description
-        if change.risk_description:
-            change.risk_description = f"{change.risk_description}\n\n## AI Risk Assessment\n{risk_reason}"
+        # Update or append the reasoning to risk description
+        # Check if an AI assessment section already exists and replace it
+        risk_desc = change.risk_description or ''
+        ai_marker = '## AI Risk Assessment'
+        
+        if ai_marker in risk_desc:
+            # Find and replace existing AI assessment
+            parts = risk_desc.split(ai_marker)
+            # Keep everything before the marker, append new assessment
+            change.risk_description = f"{parts[0].rstrip()}\n\n{ai_marker}\n{risk_reason}"
+        elif risk_desc:
+            # Append new assessment to existing description
+            change.risk_description = f"{risk_desc}\n\n{ai_marker}\n{risk_reason}"
         else:
-            change.risk_description = f"## AI Risk Assessment\n{risk_reason}"
+            # No existing description, just add the assessment
+            change.risk_description = f"{ai_marker}\n{risk_reason}"
         
         change.save()
         
