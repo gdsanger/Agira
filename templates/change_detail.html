@@ -184,8 +184,7 @@
                     <h6>Risk Description</h6>
                     <button class="btn btn-sm btn-outline-primary"
                             hx-post="{% url 'change-polish-risk-description' change.id %}"
-                            hx-target="#risk-description-content"
-                            hx-swap="innerHTML"
+                            hx-swap="none"
                             hx-indicator="#risk-polish-spinner"
                             hx-on::after-request="handleAIResponse(event, 'Risk description improved successfully')">
                         <span id="risk-polish-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
@@ -202,8 +201,7 @@
                     <h6>Mitigation Plan</h6>
                     <button class="btn btn-sm btn-outline-primary"
                             hx-post="{% url 'change-optimize-mitigation' change.id %}"
-                            hx-target="#mitigation-content"
-                            hx-swap="innerHTML"
+                            hx-swap="none"
                             hx-indicator="#mitigation-spinner"
                             hx-on::after-request="handleAIResponse(event, 'Mitigation plan optimized successfully')">
                         <span id="mitigation-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
@@ -230,8 +228,7 @@
                     <h6>Rollback Plan</h6>
                     <button class="btn btn-sm btn-outline-primary"
                             hx-post="{% url 'change-optimize-rollback' change.id %}"
-                            hx-target="#rollback-content"
-                            hx-swap="innerHTML"
+                            hx-swap="none"
                             hx-indicator="#rollback-spinner"
                             hx-on::after-request="handleAIResponse(event, 'Rollback plan optimized successfully')">
                         <span id="rollback-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
