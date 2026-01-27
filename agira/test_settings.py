@@ -12,3 +12,13 @@ DATABASES = {
 PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.MD5PasswordHasher',
 ]
+
+# Remove whitenoise middleware for tests
+MIDDLEWARE = [m for m in MIDDLEWARE if 'whitenoise' not in m.lower()]
+
+# Use simpler static files storage for tests
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}

@@ -427,6 +427,71 @@
 
 {% block extra_js %}
 <script>
+// Tab persistence functionality
+(function() {
+    const projectId = {{ project.id|escapejs }};
+    const storageKey = 'projectDetail.activeTab.{{ project.id|escapejs }}';
+    
+    // List of valid tab IDs for this view
+    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'attachments-tab'];
+    
+    // Restore active tab on page load
+    function restoreActiveTab() {
+        try {
+            const savedTabId = localStorage.getItem(storageKey);
+            
+            if (savedTabId && validTabIds.includes(savedTabId)) {
+                // Find the tab button with the saved ID
+                const tabButton = document.getElementById(savedTabId);
+                
+                if (tabButton) {
+                    // Use Bootstrap's Tab API to show the saved tab
+                    const tab = new bootstrap.Tab(tabButton);
+                    tab.show();
+                } else {
+                    // If saved tab doesn't exist, localStorage will be updated when first tab is shown
+                    console.debug('Saved tab not found, using default');
+                }
+            }
+            // If no saved tab, the first tab (default) remains active
+        } catch (e) {
+            // Silently fail if localStorage is not available
+            console.debug('localStorage not available:', e);
+        }
+    }
+    
+    // Save active tab when user switches tabs
+    function saveActiveTab(event) {
+        try {
+            const tabId = event.target.id;
+            if (tabId && validTabIds.includes(tabId)) {
+                localStorage.setItem(storageKey, tabId);
+            }
+        } catch (e) {
+            // Silently fail if localStorage is not available
+            console.debug('localStorage not available:', e);
+        }
+    }
+    
+    // Attach event listeners to all tab buttons
+    function initTabPersistence() {
+        const tabButtons = document.querySelectorAll('#projectTabs button[data-bs-toggle="tab"]');
+        tabButtons.forEach(button => {
+            button.addEventListener('shown.bs.tab', saveActiveTab);
+        });
+        
+        // Restore the active tab after DOM is ready
+        restoreActiveTab();
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTabPersistence);
+    } else {
+        initTabPersistence();
+    }
+})();
+
 // Handle delete response
 function handleDeleteResponse(event) {
     const xhr = event.detail.xhr;
