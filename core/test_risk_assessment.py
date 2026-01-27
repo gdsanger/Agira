@@ -165,6 +165,8 @@ class ChangeRiskAssessmentTestCase(TestCase):
         # Verify the full text is used as the reason
         self.change.refresh_from_db()
         self.assertIn(text_response, self.change.risk_description)
+        # Verify AI marker is present
+        self.assertIn("## AI Risk Assessment", self.change.risk_description)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
     def test_assess_risk_german_risk_classes(self, mock_execute_agent):
@@ -238,3 +240,86 @@ class ChangeRiskAssessmentTestCase(TestCase):
         data = response.json()
         self.assertFalse(data['success'])
         self.assertIn('content', data['error'].lower())
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    def test_assess_risk_with_unrecognized_risk_class(self, mock_execute_agent):
+        """Test that unrecognized risk classes default to NORMAL"""
+        json_response = '''{
+  "RiskClass": "medium",
+  "RiskClassReason": "This is a medium risk change."
+}'''
+        mock_execute_agent.return_value = json_response
+        
+        url = reverse('change-assess-risk', args=[self.change.id])
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        # Unrecognized value should default to NORMAL
+        self.assertEqual(data['risk_class'], RiskLevel.NORMAL)
+        
+        # Verify database was updated
+        self.change.refresh_from_db()
+        self.assertEqual(self.change.risk, RiskLevel.NORMAL)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    def test_assess_risk_with_only_risk_class(self, mock_execute_agent):
+        """Test JSON with only RiskClass field"""
+        json_response = '''{
+  "RiskClass": "high"
+}'''
+        mock_execute_agent.return_value = json_response
+        
+        url = reverse('change-assess-risk', args=[self.change.id])
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['risk_class'], RiskLevel.HIGH)
+        
+        # When only RiskClass is present, the full JSON should be used as reason
+        self.change.refresh_from_db()
+        self.assertIn(json_response.strip(), self.change.risk_description)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    def test_assess_risk_with_only_risk_class_reason(self, mock_execute_agent):
+        """Test JSON with only RiskClassReason field"""
+        json_response = '''{
+  "RiskClassReason": "This change needs attention but has no risk class specified."
+}'''
+        mock_execute_agent.return_value = json_response
+        
+        url = reverse('change-assess-risk', args=[self.change.id])
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        # Should default to NORMAL when RiskClass is missing
+        self.assertEqual(data['risk_class'], RiskLevel.NORMAL)
+        
+        # Only RiskClassReason should be in description
+        self.change.refresh_from_db()
+        self.assertIn("This change needs attention", self.change.risk_description)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    def test_assess_risk_with_malformed_json(self, mock_execute_agent):
+        """Test that malformed JSON falls back to text parsing"""
+        malformed_json = '{"RiskClass": "high"'  # Missing closing brace
+        mock_execute_agent.return_value = malformed_json
+        
+        url = reverse('change-assess-risk', args=[self.change.id])
+        response = self.client.post(url)
+        
+        # Should still work with fallback text parsing
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        # "high" should be detected in text via fallback
+        self.assertEqual(data['risk_class'], RiskLevel.HIGH)
+        
+        # Full malformed text should be used as reason
+        self.change.refresh_from_db()
+        self.assertIn(malformed_json, self.change.risk_description)
