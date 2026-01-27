@@ -3556,7 +3556,6 @@ def change_detail(request, id):
     change_org_ids = list(change.organisations.values_list('id', flat=True))
     if change_org_ids:
         # Get users who belong to any of the change's organisations and have role != USER
-        from django.db.models import Q
         all_users = User.objects.filter(
             active=True,
             user_organisations__organisation_id__in=change_org_ids
@@ -3570,7 +3569,6 @@ def change_detail(request, id):
         ).distinct().order_by('name')
     
     # Load attachments for each approval
-    from django.contrib.contenttypes.models import ContentType
     approval_ct = ContentType.objects.get_for_model(ChangeApproval)
     for approval in change.approvals.all():
         approval.attachments = AttachmentLink.objects.filter(
@@ -3973,6 +3971,9 @@ def change_update_approver(request, id, approval_id):
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
+    # Maximum file size: 10MB
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    
     try:
         # Update informed_at
         informed_at = request.POST.get('informed_at')
@@ -4007,6 +4008,22 @@ def change_update_approver(request, id, approval_id):
         if 'attachment' in request.FILES:
             file = request.FILES['attachment']
             
+            # Validate file size
+            if file.size > MAX_FILE_SIZE:
+                return JsonResponse({
+                    'success': False, 
+                    'error': f'File size exceeds maximum allowed size of {MAX_FILE_SIZE // (1024*1024)}MB'
+                }, status=400)
+            
+            # Validate file type
+            allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.txt', '.eml', '.msg']
+            file_ext = file.name.lower()[file.name.rfind('.'):] if '.' in file.name else ''
+            if file_ext not in allowed_extensions:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'File type not allowed. Allowed types: {", ".join(allowed_extensions)}'
+                }, status=400)
+            
             # Use storage service to save file
             storage_service = StorageService()
             attachment = storage_service.save_file(
@@ -4016,7 +4033,6 @@ def change_update_approver(request, id, approval_id):
             )
             
             # Create attachment link
-            from django.contrib.contenttypes.models import ContentType
             approval_ct = ContentType.objects.get_for_model(ChangeApproval)
             
             AttachmentLink.objects.create(
@@ -4054,7 +4070,6 @@ def change_remove_approver_attachment(request, id, approval_id, attachment_id):
     
     try:
         # Find and remove the attachment link
-        from django.contrib.contenttypes.models import ContentType
         approval_ct = ContentType.objects.get_for_model(ChangeApproval)
         
         link = AttachmentLink.objects.filter(
