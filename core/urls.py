@@ -74,6 +74,11 @@ urlpatterns = [
     path('changes/<int:id>/approvers/<int:approval_id>/attachments/<int:attachment_id>/remove/', views.change_remove_approver_attachment, name='change-remove-approver-attachment'),
     path('changes/<int:id>/approvals/<int:approval_id>/approve/', views.change_approve, name='change-approve'),
     path('changes/<int:id>/approvals/<int:approval_id>/reject/', views.change_reject, name='change-reject'),
+    # AI-assisted Change Management endpoints
+    path('changes/<int:id>/ai/polish-risk-description/', views.change_polish_risk_description, name='change-polish-risk-description'),
+    path('changes/<int:id>/ai/optimize-mitigation/', views.change_optimize_mitigation, name='change-optimize-mitigation'),
+    path('changes/<int:id>/ai/optimize-rollback/', views.change_optimize_rollback, name='change-optimize-rollback'),
+    path('changes/<int:id>/ai/assess-risk/', views.change_assess_risk, name='change-assess-risk'),
     
     # Organisation URLs
     path('organisations/', views.organisations, name='organisations'),
