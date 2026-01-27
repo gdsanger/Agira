@@ -99,6 +99,26 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="organisations" class="form-label">Organisations (Optional)</label>
+                        <select class="form-select" id="organisations" name="organisations" multiple size="5">
+                            {% for org in organisations %}
+                            <option value="{{ org.id }}" {% if change and org in change.organisations.all %}selected{% endif %}>
+                                {{ org.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Hold Ctrl/Cmd to select multiple organisations</small>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="is_safety_relevant" name="is_safety_relevant" value="true" {% if change and change.is_safety_relevant %}checked{% endif %}>
+                        <label class="form-check-label" for="is_safety_relevant">
+                            <strong>Safety Relevant</strong>
+                            <br><small class="text-muted">Check if this change involves or addresses safety risks</small>
+                        </label>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="description" class="form-label">Description</label>
                         <textarea class="form-control" 
                                   id="description" 

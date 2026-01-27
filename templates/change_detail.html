@@ -78,9 +78,53 @@
     <div class="col-md-3">
         <div class="card">
             <div class="card-body">
+                <h6 class="text-muted mb-2">Safety Relevant</h6>
+                {% if change.is_safety_relevant %}
+                <span class="badge bg-danger fs-6"><i class="bi bi-exclamation-triangle-fill"></i> Yes</span>
+                {% else %}
+                <span class="badge bg-secondary fs-6">No</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
                 <h6 class="text-muted mb-2">Planned Start</h6>
                 {% if change.planned_start %}
                 <p class="mb-0">{{ change.planned_start|date:"Y-m-d H:i" }}</p>
+                {% else %}
+                <p class="mb-0 text-muted">Not scheduled</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Additional Info Row -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Organisations</h6>
+                {% if change.organisations.all %}
+                <div class="d-flex flex-wrap gap-1" role="list" aria-label="Assigned organisations">
+                    {% for org in change.organisations.all %}
+                    <span class="badge bg-primary" role="listitem">{{ org.name }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="mb-0 text-muted">No organisations assigned</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Planned End</h6>
+                {% if change.planned_end %}
+                <p class="mb-0">{{ change.planned_end|date:"Y-m-d H:i" }}</p>
                 {% else %}
                 <p class="mb-0 text-muted">Not scheduled</p>
                 {% endif %}
@@ -194,72 +238,152 @@
         <!-- Approvals -->
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Approvals</h5>
+                <h5 class="mb-0">Approvers</h5>
                 <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addApproverModal">
                     <i class="bi bi-plus-lg"></i>
                 </button>
             </div>
             <div class="card-body">
                 {% if change.approvals.all %}
-                <ul class="list-group list-group-flush">
+                <div class="accordion" id="approversAccordion">
                     {% for approval in change.approvals.all %}
-                    <li class="list-group-item px-0">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <strong>{{ approval.approver.name }}</strong>
-                                {% if approval.is_required %}
-                                <span class="badge bg-warning text-dark ms-1">Required</span>
-                                {% endif %}
-                                <br>
-                                
-                                {% if approval.status == 'Pending' %}
-                                <span class="badge bg-warning text-dark mt-1">
-                                    <i class="bi bi-clock"></i> Pending
-                                </span>
-                                {% elif approval.status == 'Approved' %}
-                                <span class="badge bg-success mt-1">
-                                    <i class="bi bi-check-lg"></i> Approved
-                                </span>
-                                {% elif approval.status == 'Rejected' %}
-                                <span class="badge bg-danger mt-1">
-                                    <i class="bi bi-x-lg"></i> Rejected
-                                </span>
-                                {% endif %}
-                                
-                                {% if approval.decision_at %}
-                                <br><small class="text-muted">{{ approval.decision_at|date:"Y-m-d H:i" }}</small>
-                                {% endif %}
-                                
-                                {% if approval.comment %}
-                                <br><small class="text-muted">{{ approval.comment }}</small>
-                                {% endif %}
-                            </div>
-                            <div class="btn-group-vertical btn-group-sm">
-                                {% if approval.status == 'Pending' %}
-                                <button class="btn btn-success btn-sm"
-                                        hx-post="{% url 'change-approve' change.id approval.id %}"
-                                        hx-confirm="Approve this change?"
-                                        hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
-                                    <i class="bi bi-check"></i>
-                                </button>
-                                <button class="btn btn-danger btn-sm"
-                                        hx-post="{% url 'change-reject' change.id approval.id %}"
-                                        hx-confirm="Reject this change?"
-                                        hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
-                                    <i class="bi bi-x"></i>
-                                </button>
-                                {% endif %}
-                                <button class="btn btn-outline-danger btn-sm"
-                                        hx-post="{% url 'change-remove-approver' change.id approval.id %}"
-                                        hx-confirm="Remove this approver?"
-                                        hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading{{ approval.id }}">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ approval.id }}" aria-expanded="false" aria-controls="collapse{{ approval.id }}">
+                                <div class="w-100 d-flex justify-content-between align-items-center me-3">
+                                    <div>
+                                        <strong>{{ approval.approver.name }}</strong>
+                                        {% if approval.is_required %}
+                                        <span class="badge bg-warning text-dark ms-1">Required</span>
+                                        {% endif %}
+                                        {% if approval.approved %}
+                                        <span class="badge bg-success ms-1">
+                                            <i class="bi bi-check-lg"></i> Approved
+                                        </span>
+                                        {% elif approval.status == 'Rejected' %}
+                                        <span class="badge bg-danger ms-1">
+                                            <i class="bi bi-x-lg"></i> Rejected
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary ms-1">
+                                            <i class="bi bi-clock"></i> Pending
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="collapse{{ approval.id }}" class="accordion-collapse collapse" data-bs-parent="#approversAccordion">
+                            <div class="accordion-body">
+                                <!-- Approver Details Form -->
+                                <form hx-post="{% url 'change-update-approver' change.id approval.id %}"
+                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
+                                    {% csrf_token %}
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Approver</label>
+                                        <input type="text" class="form-control" value="{{ approval.approver.name }} ({{ approval.approver.username }})" readonly>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="informed_at_{{ approval.id }}" class="form-label">Informed At</label>
+                                        <input type="datetime-local" 
+                                               class="form-control" 
+                                               id="informed_at_{{ approval.id }}" 
+                                               name="informed_at"
+                                               value="{% if approval.informed_at %}{{ approval.informed_at|date:'Y-m-d\TH:i' }}{% endif %}">
+                                    </div>
+                                    
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" 
+                                               type="checkbox" 
+                                               id="approved_{{ approval.id }}" 
+                                               name="approved" 
+                                               value="true" 
+                                               {% if approval.approved %}checked{% endif %}>
+                                        <label class="form-check-label" for="approved_{{ approval.id }}">
+                                            Approval granted
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="approved_at_{{ approval.id }}" class="form-label">Approved At</label>
+                                        <input type="datetime-local" 
+                                               class="form-control" 
+                                               id="approved_at_{{ approval.id }}" 
+                                               name="approved_at"
+                                               value="{% if approval.approved_at %}{{ approval.approved_at|date:'Y-m-d\TH:i' }}{% endif %}">
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="notes_{{ approval.id }}" class="form-label">Notes</label>
+                                        <textarea class="form-control" 
+                                                  id="notes_{{ approval.id }}" 
+                                                  name="notes" 
+                                                  rows="3">{{ approval.notes }}</textarea>
+                                        <small class="text-muted">Internal notes about the approval process</small>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="comment_{{ approval.id }}" class="form-label">Comment</label>
+                                        <textarea class="form-control" 
+                                                  id="comment_{{ approval.id }}" 
+                                                  name="comment" 
+                                                  rows="2">{{ approval.comment }}</textarea>
+                                        <small class="text-muted">Public comment from approver</small>
+                                    </div>
+                                    
+                                    <!-- Attachments Section -->
+                                    <div class="mb-3">
+                                        <label class="form-label">Attachment</label>
+                                        {% if approval.attachments %}
+                                        <div class="list-group mb-2">
+                                            {% for link in approval.attachments %}
+                                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <i class="bi bi-file-earmark"></i>
+                                                    <a href="{% url 'attachment-download' link.attachment.id %}" target="_blank">
+                                                        {{ link.attachment.original_name }}
+                                                    </a>
+                                                    <small class="text-muted">({{ link.attachment.size_bytes|filesizeformat }})</small>
+                                                </div>
+                                                <button type="button" 
+                                                        class="btn btn-sm btn-outline-danger"
+                                                        hx-post="{% url 'change-remove-approver-attachment' change.id approval.id link.attachment.id %}"
+                                                        hx-confirm="Remove this attachment?"
+                                                        hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                        <input type="file" 
+                                               class="form-control" 
+                                               id="attachment_{{ approval.id }}"
+                                               name="attachment"
+                                               accept=".pdf,.png,.jpg,.jpeg,.txt,.eml,.msg">
+                                        <small class="text-muted">Supported: PDF, PNG, JPG, TXT, EML, MSG</small>
+                                    </div>
+                                    
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-save"></i> Save Changes
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-outline-danger btn-sm"
+                                                hx-post="{% url 'change-remove-approver' change.id approval.id %}"
+                                                hx-confirm="Remove this approver?"
+                                                hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
+                                            <i class="bi bi-trash"></i> Remove Approver
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
-                    </li>
+                    </div>
                     {% endfor %}
-                </ul>
+                </div>
                 {% else %}
                 <p class="text-muted mb-0">No approvers assigned yet.</p>
                 {% endif %}

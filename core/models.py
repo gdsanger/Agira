@@ -109,6 +109,7 @@ class AttachmentRole(models.TextChoices):
     PROJECT_FILE = 'ProjectFile', _('Project File')
     ITEM_FILE = 'ItemFile', _('Item File')
     COMMENT_ATTACHMENT = 'CommentAttachment', _('Comment Attachment')
+    APPROVER_ATTACHMENT = 'ApproverAttachment', _('Approver Attachment')
 
 
 # Custom User Manager
@@ -281,6 +282,8 @@ class Change(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_changes')
     release = models.ForeignKey(Release, on_delete=models.SET_NULL, null=True, blank=True, related_name='changes')
+    organisations = models.ManyToManyField(Organisation, blank=True, related_name='changes')
+    is_safety_relevant = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-created_at']
@@ -303,6 +306,11 @@ class ChangeApproval(models.Model):
     status = models.CharField(max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING)
     decision_at = models.DateTimeField(null=True, blank=True)
     comment = models.TextField(blank=True)
+    # New fields for enhanced approver management
+    informed_at = models.DateTimeField(null=True, blank=True, help_text="When the approver was informed about the change")
+    approved = models.BooleanField(default=False, help_text="Whether the approval has been granted")
+    approved_at = models.DateTimeField(null=True, blank=True, help_text="When the approval was granted")
+    notes = models.TextField(blank=True, help_text="Internal notes about the approval process")
 
     class Meta:
         constraints = [

@@ -3516,7 +3516,7 @@ def change_detail(request, id):
     change = get_object_or_404(
         Change.objects.select_related(
             'project', 'created_by', 'release'
-        ).prefetch_related('approvals__approver'),
+        ).prefetch_related('approvals__approver', 'organisations'),
         id=id
     )
     
@@ -3551,8 +3551,31 @@ def change_detail(request, id):
         html = MARKDOWN_PARSER.convert(change.communication_plan)
         communication_plan_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
     
-    # Get all users for approver selection
-    all_users = User.objects.filter(active=True).order_by('name')
+    # Get users for approver selection - filter by organisations assigned to change
+    # Only show users with role != USER who are members of the change's organisations
+    change_org_ids = list(change.organisations.values_list('id', flat=True))
+    if change_org_ids:
+        # Get users who belong to any of the change's organisations and have role != USER
+        all_users = User.objects.filter(
+            active=True,
+            user_organisations__organisation_id__in=change_org_ids
+        ).exclude(
+            user_organisations__role=UserRole.USER
+        ).distinct().order_by('name')
+    else:
+        # If no organisations assigned, show all active users with role != USER
+        all_users = User.objects.filter(active=True).exclude(
+            user_organisations__role=UserRole.USER
+        ).distinct().order_by('name')
+    
+    # Load attachments for each approval
+    approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+    for approval in change.approvals.all():
+        approval.attachments = AttachmentLink.objects.filter(
+            target_content_type=approval_ct,
+            target_object_id=approval.id,
+            role=AttachmentRole.APPROVER_ATTACHMENT
+        ).select_related('attachment')
     
     # Get items associated with this change
     items = change.items.all().select_related('project', 'type')
@@ -3579,6 +3602,7 @@ def change_create(request):
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.all().select_related('project').order_by('-update_date')
+        organisations = Organisation.objects.all().order_by('name')
         
         context = {
             'change': None,
@@ -3586,6 +3610,7 @@ def change_create(request):
             'statuses': statuses,
             'risk_levels': risk_levels,
             'releases': releases,
+            'organisations': organisations,
         }
         return render(request, 'change_form.html', context)
     
@@ -3601,12 +3626,14 @@ def change_create(request):
                 statuses = ChangeStatus.choices
                 risk_levels = RiskLevel.choices
                 releases = Release.objects.all().select_related('project').order_by('-update_date')
+                organisations = Organisation.objects.all().order_by('name')
                 context = {
                     'change': None,
                     'projects': projects,
                     'statuses': statuses,
                     'risk_levels': risk_levels,
                     'releases': releases,
+                    'organisations': organisations,
                     'error': 'Project is required'
                 }
                 return render(request, 'change_form.html', context)
@@ -3624,6 +3651,9 @@ def change_create(request):
         planned_end = request.POST.get('planned_end')
         executed_at = request.POST.get('executed_at')
         
+        # Get safety relevant flag
+        is_safety_relevant = request.POST.get('is_safety_relevant') == 'true'
+        
         change = Change.objects.create(
             project=project,
             title=request.POST.get('title'),
@@ -3638,8 +3668,14 @@ def change_create(request):
             rollback_plan=request.POST.get('rollback_plan', ''),
             communication_plan=request.POST.get('communication_plan', ''),
             release=release,
+            is_safety_relevant=is_safety_relevant,
             created_by=request.user if request.user.is_authenticated else None,
         )
+        
+        # Set organisations (many-to-many field, must be set after object creation)
+        organisation_ids = request.POST.getlist('organisations')
+        if organisation_ids:
+            change.organisations.set(organisation_ids)
         
         # Log activity
         activity_service = ActivityService()
@@ -3668,12 +3704,14 @@ def change_create(request):
             statuses = ChangeStatus.choices
             risk_levels = RiskLevel.choices
             releases = Release.objects.all().select_related('project').order_by('-update_date')
+            organisations = Organisation.objects.all().order_by('name')
             context = {
                 'change': None,
                 'projects': projects,
                 'statuses': statuses,
                 'risk_levels': risk_levels,
                 'releases': releases,
+                'organisations': organisations,
                 'error': str(e)
             }
             return render(request, 'change_form.html', context)
@@ -3690,6 +3728,7 @@ def change_edit(request, id):
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.filter(project=change.project).order_by('-update_date')
+        organisations = Organisation.objects.all().order_by('name')
         
         context = {
             'change': change,
@@ -3697,6 +3736,7 @@ def change_edit(request, id):
             'statuses': statuses,
             'risk_levels': risk_levels,
             'releases': releases,
+            'organisations': organisations,
         }
         return render(request, 'change_form.html', context)
 
@@ -3718,6 +3758,9 @@ def change_update(request, id):
         change.mitigation = request.POST.get('mitigation', change.mitigation)
         change.rollback_plan = request.POST.get('rollback_plan', change.rollback_plan)
         change.communication_plan = request.POST.get('communication_plan', change.communication_plan)
+        
+        # Update safety flag
+        change.is_safety_relevant = request.POST.get('is_safety_relevant') == 'true'
         
         # Update project if changed
         project_id = request.POST.get('project')
@@ -3741,6 +3784,13 @@ def change_update(request, id):
         change.executed_at = executed_at if executed_at else None
         
         change.save()
+        
+        # Update organisations (many-to-many field)
+        organisation_ids = request.POST.getlist('organisations')
+        if organisation_ids:
+            change.organisations.set(organisation_ids)
+        else:
+            change.organisations.clear()
         
         # Log activity
         activity_service = ActivityService()
@@ -3906,6 +3956,147 @@ def change_reject(request, id, approval_id):
         return JsonResponse({
             'success': True,
             'message': 'Change rejected',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_update_approver(request, id, approval_id):
+    """Update approver details including new fields and attachment."""
+    from core.services.storage.service import StorageService
+    
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    # Maximum file size: 10MB
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    
+    try:
+        # Update informed_at
+        informed_at = request.POST.get('informed_at')
+        if informed_at:
+            approval.informed_at = informed_at
+        else:
+            approval.informed_at = None
+        
+        # Update approved flag
+        approval.approved = request.POST.get('approved') == 'true'
+        
+        # Update approved_at
+        approved_at = request.POST.get('approved_at')
+        if approved_at:
+            approval.approved_at = approved_at
+        else:
+            approval.approved_at = None
+        
+        # Update notes and comment
+        approval.notes = request.POST.get('notes', '')
+        approval.comment = request.POST.get('comment', '')
+        
+        # Update status based on approved flag
+        if approval.approved:
+            approval.status = ApprovalStatus.APPROVED
+            if not approval.decision_at:
+                approval.decision_at = approval.approved_at or timezone.now()
+        
+        approval.save()
+        
+        # Handle file upload if present
+        if 'attachment' in request.FILES:
+            file = request.FILES['attachment']
+            
+            # Validate file size
+            if file.size > MAX_FILE_SIZE:
+                return JsonResponse({
+                    'success': False, 
+                    'error': f'File size exceeds maximum allowed size of {MAX_FILE_SIZE // (1024*1024)}MB'
+                }, status=400)
+            
+            # Validate file type
+            allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.txt', '.eml', '.msg']
+            file_ext = file.name.lower()[file.name.rfind('.'):] if '.' in file.name else ''
+            if file_ext not in allowed_extensions:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'File type not allowed. Allowed types: {", ".join(allowed_extensions)}'
+                }, status=400)
+            
+            # Use storage service to save file
+            storage_service = StorageService()
+            attachment = storage_service.save_file(
+                file=file,
+                user=request.user,
+                original_name=file.name
+            )
+            
+            # Create attachment link
+            approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+            
+            AttachmentLink.objects.create(
+                attachment=attachment,
+                target_content_type=approval_ct,
+                target_object_id=approval.id,
+                role=AttachmentRole.APPROVER_ATTACHMENT
+            )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_updated',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Approver {approval.approver.name} details updated'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Approver updated successfully',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_remove_approver_attachment(request, id, approval_id, attachment_id):
+    """Remove an attachment from an approver."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    attachment = get_object_or_404(Attachment, id=attachment_id)
+    
+    try:
+        # Find and remove the attachment link
+        approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+        
+        link = AttachmentLink.objects.filter(
+            attachment=attachment,
+            target_content_type=approval_ct,
+            target_object_id=approval.id,
+            role=AttachmentRole.APPROVER_ATTACHMENT
+        ).first()
+        
+        if link:
+            link.delete()
+            # Mark attachment as deleted (soft delete)
+            attachment.is_deleted = True
+            attachment.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_attachment_removed',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Attachment removed from approver {approval.approver.name}'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Attachment removed successfully',
             'reload': True
         })
     except Exception as e:

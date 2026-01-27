@@ -26,8 +26,8 @@ class ChangeApprovalInline(admin.TabularInline):
     model = ChangeApproval
     extra = 1
     autocomplete_fields = ['approver']
-    readonly_fields = ['decision_at']
-    fields = ['approver', 'is_required', 'status', 'decision_at', 'comment']
+    readonly_fields = ['decision_at', 'approved_at']
+    fields = ['approver', 'is_required', 'status', 'informed_at', 'approved', 'approved_at', 'decision_at', 'comment', 'notes']
 
 
 class ExternalIssueMappingInline(admin.TabularInline):
@@ -138,15 +138,16 @@ class ReleaseAdmin(admin.ModelAdmin):
 
 @admin.register(Change)
 class ChangeAdmin(admin.ModelAdmin):
-    list_display = ['title', 'project', 'status', 'risk', 'executed_at', 'created_by']
-    list_filter = ['project', 'status', 'risk']
+    list_display = ['title', 'project', 'status', 'risk', 'is_safety_relevant', 'executed_at', 'created_by']
+    list_filter = ['project', 'status', 'risk', 'is_safety_relevant', 'organisations']
     search_fields = ['title', 'description']
     autocomplete_fields = ['project', 'release', 'created_by']
+    filter_horizontal = ['organisations']
     readonly_fields = ['created_at', 'updated_at']
     inlines = [ChangeApprovalInline]
     
     fieldsets = (
-        (None, {'fields': ('project', 'title', 'description', 'status', 'release')}),
+        (None, {'fields': ('project', 'title', 'description', 'status', 'release', 'organisations', 'is_safety_relevant')}),
         ('Timeline', {'fields': ('planned_start', 'planned_end', 'executed_at', 'created_by')}),
         ('Risk Management', {'fields': ('risk', 'risk_description', 'mitigation', 'rollback_plan', 'communication_plan')}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
@@ -155,11 +156,18 @@ class ChangeAdmin(admin.ModelAdmin):
 
 @admin.register(ChangeApproval)
 class ChangeApprovalAdmin(admin.ModelAdmin):
-    list_display = ['change', 'approver', 'is_required', 'status', 'decision_at']
-    list_filter = ['status', 'is_required']
+    list_display = ['change', 'approver', 'is_required', 'status', 'informed_at', 'approved', 'approved_at', 'decision_at']
+    list_filter = ['status', 'is_required', 'approved']
     search_fields = ['change__title', 'approver__username']
     autocomplete_fields = ['change', 'approver']
-    readonly_fields = ['decision_at']
+    readonly_fields = ['decision_at', 'approved_at']
+    
+    fieldsets = (
+        (None, {'fields': ('change', 'approver', 'is_required')}),
+        ('Status', {'fields': ('status', 'approved', 'decision_at', 'approved_at')}),
+        ('Timeline', {'fields': ('informed_at',)}),
+        ('Comments & Notes', {'fields': ('comment', 'notes')}),
+    )
 
 
 @admin.register(Item)
