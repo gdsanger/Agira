@@ -3516,7 +3516,7 @@ def change_detail(request, id):
     change = get_object_or_404(
         Change.objects.select_related(
             'project', 'created_by', 'release'
-        ).prefetch_related('approvals__approver'),
+        ).prefetch_related('approvals__approver', 'organisations'),
         id=id
     )
     
@@ -3579,6 +3579,7 @@ def change_create(request):
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.all().select_related('project').order_by('-update_date')
+        organisations = Organisation.objects.all().order_by('name')
         
         context = {
             'change': None,
@@ -3586,6 +3587,7 @@ def change_create(request):
             'statuses': statuses,
             'risk_levels': risk_levels,
             'releases': releases,
+            'organisations': organisations,
         }
         return render(request, 'change_form.html', context)
     
@@ -3601,12 +3603,14 @@ def change_create(request):
                 statuses = ChangeStatus.choices
                 risk_levels = RiskLevel.choices
                 releases = Release.objects.all().select_related('project').order_by('-update_date')
+                organisations = Organisation.objects.all().order_by('name')
                 context = {
                     'change': None,
                     'projects': projects,
                     'statuses': statuses,
                     'risk_levels': risk_levels,
                     'releases': releases,
+                    'organisations': organisations,
                     'error': 'Project is required'
                 }
                 return render(request, 'change_form.html', context)
@@ -3624,6 +3628,9 @@ def change_create(request):
         planned_end = request.POST.get('planned_end')
         executed_at = request.POST.get('executed_at')
         
+        # Get safety relevant flag
+        is_safety_relevant = request.POST.get('is_safety_relevant') == 'true'
+        
         change = Change.objects.create(
             project=project,
             title=request.POST.get('title'),
@@ -3638,8 +3645,14 @@ def change_create(request):
             rollback_plan=request.POST.get('rollback_plan', ''),
             communication_plan=request.POST.get('communication_plan', ''),
             release=release,
+            is_safety_relevant=is_safety_relevant,
             created_by=request.user if request.user.is_authenticated else None,
         )
+        
+        # Set organisations (many-to-many field, must be set after object creation)
+        organisation_ids = request.POST.getlist('organisations')
+        if organisation_ids:
+            change.organisations.set(organisation_ids)
         
         # Log activity
         activity_service = ActivityService()
@@ -3668,12 +3681,14 @@ def change_create(request):
             statuses = ChangeStatus.choices
             risk_levels = RiskLevel.choices
             releases = Release.objects.all().select_related('project').order_by('-update_date')
+            organisations = Organisation.objects.all().order_by('name')
             context = {
                 'change': None,
                 'projects': projects,
                 'statuses': statuses,
                 'risk_levels': risk_levels,
                 'releases': releases,
+                'organisations': organisations,
                 'error': str(e)
             }
             return render(request, 'change_form.html', context)
@@ -3690,6 +3705,7 @@ def change_edit(request, id):
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.filter(project=change.project).order_by('-update_date')
+        organisations = Organisation.objects.all().order_by('name')
         
         context = {
             'change': change,
@@ -3697,6 +3713,7 @@ def change_edit(request, id):
             'statuses': statuses,
             'risk_levels': risk_levels,
             'releases': releases,
+            'organisations': organisations,
         }
         return render(request, 'change_form.html', context)
 
@@ -3718,6 +3735,9 @@ def change_update(request, id):
         change.mitigation = request.POST.get('mitigation', change.mitigation)
         change.rollback_plan = request.POST.get('rollback_plan', change.rollback_plan)
         change.communication_plan = request.POST.get('communication_plan', change.communication_plan)
+        
+        # Update safety flag
+        change.is_safety_relevant = request.POST.get('is_safety_relevant') == 'true'
         
         # Update project if changed
         project_id = request.POST.get('project')
@@ -3741,6 +3761,13 @@ def change_update(request, id):
         change.executed_at = executed_at if executed_at else None
         
         change.save()
+        
+        # Update organisations (many-to-many field)
+        organisation_ids = request.POST.getlist('organisations')
+        if organisation_ids:
+            change.organisations.set(organisation_ids)
+        else:
+            change.organisations.clear()
         
         # Log activity
         activity_service = ActivityService()
