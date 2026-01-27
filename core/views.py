@@ -3551,8 +3551,33 @@ def change_detail(request, id):
         html = MARKDOWN_PARSER.convert(change.communication_plan)
         communication_plan_html = mark_safe(bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRIBUTES, strip=True))
     
-    # Get all users for approver selection
-    all_users = User.objects.filter(active=True).order_by('name')
+    # Get users for approver selection - filter by organisations assigned to change
+    # Only show users with role != USER who are members of the change's organisations
+    change_org_ids = list(change.organisations.values_list('id', flat=True))
+    if change_org_ids:
+        # Get users who belong to any of the change's organisations and have role != USER
+        from django.db.models import Q
+        all_users = User.objects.filter(
+            active=True,
+            user_organisations__organisation_id__in=change_org_ids
+        ).exclude(
+            user_organisations__role=UserRole.USER
+        ).distinct().order_by('name')
+    else:
+        # If no organisations assigned, show all active users with role != USER
+        all_users = User.objects.filter(active=True).exclude(
+            user_organisations__role=UserRole.USER
+        ).distinct().order_by('name')
+    
+    # Load attachments for each approval
+    from django.contrib.contenttypes.models import ContentType
+    approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+    for approval in change.approvals.all():
+        approval.attachments = AttachmentLink.objects.filter(
+            target_content_type=approval_ct,
+            target_object_id=approval.id,
+            role=AttachmentRole.APPROVER_ATTACHMENT
+        ).select_related('attachment')
     
     # Get items associated with this change
     items = change.items.all().select_related('project', 'type')
@@ -3933,6 +3958,130 @@ def change_reject(request, id, approval_id):
         return JsonResponse({
             'success': True,
             'message': 'Change rejected',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_update_approver(request, id, approval_id):
+    """Update approver details including new fields and attachment."""
+    from core.services.storage.service import StorageService
+    
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    try:
+        # Update informed_at
+        informed_at = request.POST.get('informed_at')
+        if informed_at:
+            approval.informed_at = informed_at
+        else:
+            approval.informed_at = None
+        
+        # Update approved flag
+        approval.approved = request.POST.get('approved') == 'true'
+        
+        # Update approved_at
+        approved_at = request.POST.get('approved_at')
+        if approved_at:
+            approval.approved_at = approved_at
+        else:
+            approval.approved_at = None
+        
+        # Update notes and comment
+        approval.notes = request.POST.get('notes', '')
+        approval.comment = request.POST.get('comment', '')
+        
+        # Update status based on approved flag
+        if approval.approved:
+            approval.status = ApprovalStatus.APPROVED
+            if not approval.decision_at:
+                approval.decision_at = approval.approved_at or timezone.now()
+        
+        approval.save()
+        
+        # Handle file upload if present
+        if 'attachment' in request.FILES:
+            file = request.FILES['attachment']
+            
+            # Use storage service to save file
+            storage_service = StorageService()
+            attachment = storage_service.save_file(
+                file=file,
+                user=request.user,
+                original_name=file.name
+            )
+            
+            # Create attachment link
+            from django.contrib.contenttypes.models import ContentType
+            approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+            
+            AttachmentLink.objects.create(
+                attachment=attachment,
+                target_content_type=approval_ct,
+                target_object_id=approval.id,
+                role=AttachmentRole.APPROVER_ATTACHMENT
+            )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_updated',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Approver {approval.approver.name} details updated'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Approver updated successfully',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_remove_approver_attachment(request, id, approval_id, attachment_id):
+    """Remove an attachment from an approver."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    attachment = get_object_or_404(Attachment, id=attachment_id)
+    
+    try:
+        # Find and remove the attachment link
+        from django.contrib.contenttypes.models import ContentType
+        approval_ct = ContentType.objects.get_for_model(ChangeApproval)
+        
+        link = AttachmentLink.objects.filter(
+            attachment=attachment,
+            target_content_type=approval_ct,
+            target_object_id=approval.id,
+            role=AttachmentRole.APPROVER_ATTACHMENT
+        ).first()
+        
+        if link:
+            link.delete()
+            # Mark attachment as deleted (soft delete)
+            attachment.is_deleted = True
+            attachment.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.approver_attachment_removed',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Attachment removed from approver {approval.approver.name}'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Attachment removed successfully',
             'reload': True
         })
     except Exception as e:
