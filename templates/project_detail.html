@@ -429,17 +429,20 @@
 <script>
 // Tab persistence functionality
 (function() {
-    const projectId = {{ project.id }};
-    const storageKey = 'projectDetail.activeTab.{{ project.id }}';
+    const projectId = {{ project.id|escapejs }};
+    const storageKey = 'projectDetail.activeTab.{{ project.id|escapejs }}';
+    
+    // List of valid tab IDs for this view
+    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'attachments-tab'];
     
     // Restore active tab on page load
     function restoreActiveTab() {
         try {
             const savedTabId = localStorage.getItem(storageKey);
             
-            if (savedTabId) {
+            if (savedTabId && validTabIds.includes(savedTabId)) {
                 // Find the tab button with the saved ID
-                const tabButton = document.querySelector(`#${savedTabId}`);
+                const tabButton = document.getElementById(savedTabId);
                 
                 if (tabButton) {
                     // Use Bootstrap's Tab API to show the saved tab
@@ -461,7 +464,7 @@
     function saveActiveTab(event) {
         try {
             const tabId = event.target.id;
-            if (tabId) {
+            if (tabId && validTabIds.includes(tabId)) {
                 localStorage.setItem(storageKey, tabId);
             }
         } catch (e) {
