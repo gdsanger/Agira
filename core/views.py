@@ -17,6 +17,7 @@ from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
+import json
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
@@ -4285,22 +4286,47 @@ Rollback Plan:
         )
         
         # Parse the result to extract risk level and reason
-        # Expected format includes risk class and reasoning
+        # Expected format can be JSON with RiskClass and RiskClassReason fields
         risk_class = None
         risk_reason = assessment_result
         
-        # Try to extract risk class from the response
-        # Check in order from most specific to least specific to avoid incorrect matches
-        assessment_lower = assessment_result.lower()
-        if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
-            risk_class = RiskLevel.VERY_HIGH
-        elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
-            risk_class = RiskLevel.LOW
-        elif 'high' in assessment_lower or 'hoch' in assessment_lower:
-            # This check is after "very high" to avoid false matches
-            risk_class = RiskLevel.HIGH
-        else:
-            risk_class = RiskLevel.NORMAL
+        # Try to parse as JSON first
+        try:
+            # Attempt to parse JSON response
+            result_json = json.loads(assessment_result)
+            
+            # Extract RiskClassReason for the description
+            if 'RiskClassReason' in result_json:
+                risk_reason = result_json['RiskClassReason']
+            
+            # Extract and normalize RiskClass for the enum
+            if 'RiskClass' in result_json:
+                risk_class_value = result_json['RiskClass'].lower().strip()
+                
+                # Normalize to RiskLevel enum values
+                if risk_class_value in ['very high', 'veryhigh', 'sehr hoch']:
+                    risk_class = RiskLevel.VERY_HIGH
+                elif risk_class_value in ['low', 'niedrig', 'gering']:
+                    risk_class = RiskLevel.LOW
+                elif risk_class_value in ['high', 'hoch']:
+                    risk_class = RiskLevel.HIGH
+                elif risk_class_value in ['normal', 'mittel']:
+                    risk_class = RiskLevel.NORMAL
+                else:
+                    # Default to normal if unrecognized
+                    risk_class = RiskLevel.NORMAL
+        except (json.JSONDecodeError, KeyError, AttributeError):
+            # If not JSON or missing fields, fall back to text parsing
+            assessment_lower = assessment_result.lower()
+            if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
+                risk_class = RiskLevel.VERY_HIGH
+            elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
+                risk_class = RiskLevel.LOW
+            elif 'high' in assessment_lower or 'hoch' in assessment_lower:
+                # This check is after "very high" to avoid false matches
+                risk_class = RiskLevel.HIGH
+            else:
+                risk_class = RiskLevel.NORMAL
         
         # Update risk level
         old_risk = change.risk
