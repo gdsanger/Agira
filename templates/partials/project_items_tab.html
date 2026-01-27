@@ -8,7 +8,10 @@
 
 <!-- Filter Bar -->
 <div class="mb-4">
-    <form id="itemsFilterForm" method="get" class="row g-3">
+    <form id="itemsFilterForm" method="get" class="row g-3"
+          hx-get="{% url 'project-items-tab' project.id %}"
+          hx-target="#items"
+          hx-swap="innerHTML">
         <div class="col-md-4">
             <input type="text" name="q" id="searchInput" class="form-control" placeholder="Search items..." value="{{ search_query }}">
         </div>
@@ -49,7 +52,11 @@
         <div class="col-auto">
             <button type="submit" class="btn btn-primary">Filter</button>
             {% if search_query or selected_statuses or selected_types %}
-            <a href="{% url 'project-items-tab' project.id %}" class="btn btn-secondary">Clear</a>
+            <button type="button" class="btn btn-secondary" 
+                    hx-get="{% url 'project-items-tab' project.id %}"
+                    hx-target="#items"
+                    hx-swap="innerHTML"
+                    onclick="clearFilters()">Clear</button>
             {% endif %}
         </div>
     </form>
@@ -104,10 +111,16 @@
     <ul class="pagination justify-content-center">
         {% if page_obj.has_previous %}
         <li class="page-item">
-            <a class="page-link" href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}">First</a>
+            <a class="page-link" href="#"
+               hx-get="{% url 'project-items-tab' project.id %}?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}"
+               hx-target="#items"
+               hx-swap="innerHTML">First</a>
         </li>
         <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}">Previous</a>
+            <a class="page-link" href="#"
+               hx-get="{% url 'project-items-tab' project.id %}?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}"
+               hx-target="#items"
+               hx-swap="innerHTML">Previous</a>
         </li>
         {% endif %}
         
@@ -119,10 +132,16 @@
         
         {% if page_obj.has_next %}
         <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}">Next</a>
+            <a class="page-link" href="#"
+               hx-get="{% url 'project-items-tab' project.id %}?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}"
+               hx-target="#items"
+               hx-swap="innerHTML">Next</a>
         </li>
         <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}">Last</a>
+            <a class="page-link" href="#"
+               hx-get="{% url 'project-items-tab' project.id %}?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% for s in selected_statuses %}&status={{ s }}{% endfor %}{% for t in selected_types %}&type={{ t }}{% endfor %}"
+               hx-target="#items"
+               hx-swap="innerHTML">Last</a>
         </li>
         {% endif %}
     </ul>
@@ -198,4 +217,24 @@
     // Initialize filters from localStorage
     loadFiltersFromStorage();
 })();
+
+// Clear filters function
+function clearFilters() {
+    const projectId = {{ project.id }};
+    const storageKeyStatus = `project_${projectId}_items_status_filter`;
+    const storageKeyType = `project_${projectId}_items_type_filter`;
+    
+    // Clear localStorage
+    localStorage.removeItem(storageKeyStatus);
+    localStorage.removeItem(storageKeyType);
+    
+    // Uncheck all checkboxes
+    document.querySelectorAll('.status-checkbox, .type-checkbox').forEach(cb => cb.checked = false);
+    
+    // Clear search input
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+}
 </script>
