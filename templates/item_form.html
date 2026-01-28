@@ -218,7 +218,7 @@
                 </div>
                 
                 <!-- Solution Release -->
-                <div class="mb-0">
+                <div class="mb-3">
                     <label for="solution_release" class="form-label">Solution Release</label>
                     {% if item %}
                     <select class="form-select" id="solution_release" name="solution_release" form="itemForm">
@@ -235,6 +235,27 @@
                         <option value="">None</option>
                     </select>
                     <small class="text-muted d-block">Available after creating the item</small>
+                    {% endif %}
+                </div>
+                
+                <!-- Node -->
+                <div class="mb-0">
+                    <label for="node" class="form-label">Node</label>
+                    {% if nodes %}
+                    <select class="form-select" id="node" name="node" form="itemForm">
+                        <option value="">None</option>
+                        {% for node in nodes %}
+                        <option value="{{ node.id }}" 
+                                {% if item and item.nodes.first and item.nodes.first.id == node.id %}selected{% endif %}>
+                            {{ node.name }} ({{ node.type }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <select class="form-select" id="node" name="node" form="itemForm" disabled>
+                        <option value="">None</option>
+                    </select>
+                    <small class="text-muted d-block">{% if not item %}Select a project first{% else %}No nodes available for this project{% endif %}</small>
                     {% endif %}
                 </div>
             </div>

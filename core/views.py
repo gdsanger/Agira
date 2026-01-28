@@ -631,7 +631,7 @@ def item_detail(request, item_id):
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
             'assigned_to', 'solution_release'
-        ),
+        ).prefetch_related('nodes'),
         id=item_id
     )
     
@@ -1660,11 +1660,14 @@ def item_create(request):
         # Support pre-selecting project via query parameter
         default_project = None
         project_id = request.GET.get('project')
+        nodes = []
         if project_id:
             try:
                 # Validate and convert project_id to integer
                 project_id_int = int(project_id)
                 default_project = Project.objects.get(id=project_id_int)
+                # Get nodes for the default project
+                nodes = Node.objects.filter(project=default_project).order_by('name')
             except (ValueError, Project.DoesNotExist, TypeError):
                 # Invalid or non-existent project ID, ignore it gracefully
                 pass
@@ -1679,6 +1682,7 @@ def item_create(request):
             'default_requester': default_requester,
             'default_organisation': default_organisation,
             'default_project': default_project,
+            'nodes': nodes,
         }
         return render(request, 'item_form.html', context)
     
@@ -1728,7 +1732,22 @@ def item_create(request):
         if solution_release_id:
             item.solution_release = get_object_or_404(Release, id=solution_release_id)
         
+        # Handle node selection and update description before saving
+        node_id = request.POST.get('node')
+        if node_id:
+            node = get_object_or_404(Node, id=node_id, project=item.project)
+            # Update description with breadcrumb before saving
+            item.update_description_with_breadcrumb(node)
+        
+        # Save item once with all changes
         item.save()
+        
+        # Update nodes relationship (ManyToMany, requires item to be saved first)
+        if node_id:
+            node = get_object_or_404(Node, id=node_id, project=item.project)
+            item.nodes.add(node)
+            # Validate nodes belong to project
+            item.validate_nodes()
         
         # Log activity
         activity_service = ActivityService()
@@ -1762,7 +1781,7 @@ def item_edit(request, item_id):
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
             'assigned_to', 'solution_release', 'parent'
-        ),
+        ).prefetch_related('nodes'),
         id=item_id
     )
     
@@ -1780,6 +1799,9 @@ def item_edit(request, item_id):
         # Get potential parent items from the same project
         parent_items = Item.objects.filter(project=item.project).exclude(id=item.id).order_by('title')
         
+        # Get nodes from the current project
+        nodes = Node.objects.filter(project=item.project).order_by('name')
+        
         context = {
             'item': item,
             'projects': projects,
@@ -1789,6 +1811,7 @@ def item_edit(request, item_id):
             'statuses': statuses,
             'releases': releases,
             'parent_items': parent_items,
+            'nodes': nodes,
         }
         return render(request, 'item_form.html', context)
     
@@ -1804,9 +1827,22 @@ def item_update(request, item_id):
     item = get_object_or_404(Item, id=item_id)
     
     try:
+        # Check if node is being updated
+        node_id = request.POST.get('node')
+        node_changed = node_id is not None
+        
         # Update basic fields
         item.title = request.POST.get('title', item.title)
-        item.description = request.POST.get('description', item.description)
+        # Don't update description from POST if we're changing node - we'll handle it separately
+        if not node_changed:
+            item.description = request.POST.get('description', item.description)
+        else:
+            # User might have edited description in form - we need to extract non-breadcrumb content
+            # and then re-add the new breadcrumb
+            posted_description = request.POST.get('description', item.description)
+            # Temporarily set description to extract content without breadcrumb
+            item.description = posted_description
+        
         item.solution_description = request.POST.get('solution_description', item.solution_description)
         item.status = request.POST.get('status', item.status)
         
@@ -1850,7 +1886,29 @@ def item_update(request, item_id):
         elif solution_release_id == '':
             item.solution_release = None
         
+        # Handle node selection before first save
+        if node_changed:
+            if node_id:
+                node = get_object_or_404(Node, id=node_id, project=item.project)
+                # Update description with breadcrumb before saving
+                item.update_description_with_breadcrumb(node)
+            else:
+                # Clear breadcrumb
+                item.update_description_with_breadcrumb(None)
+        
+        # Save item once with all changes
         item.save()
+        
+        # Update nodes relationship (ManyToMany, requires item to be saved first)
+        if node_changed:
+            if node_id:
+                node = get_object_or_404(Node, id=node_id, project=item.project)
+                item.nodes.clear()
+                item.nodes.add(node)
+                # Validate nodes belong to project
+                item.validate_nodes()
+            else:
+                item.nodes.clear()
         
         # Log activity
         activity_service = ActivityService()

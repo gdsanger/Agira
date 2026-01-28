@@ -250,6 +250,26 @@ class Node(models.Model):
     def matchkey(self):
         return f"{self.type}:{self.name}"
 
+    def get_breadcrumb(self):
+        """
+        Calculate the breadcrumb path from root to this node.
+        Returns a string like "Root / Subnode / Leaf"
+        
+        Protects against circular references by limiting depth.
+        """
+        path = []
+        current = self
+        max_depth = 100  # Protect against circular references
+        depth = 0
+        
+        # Traverse up the tree to build the path
+        while current is not None and depth < max_depth:
+            path.insert(0, current.name)
+            current = current.parent_node
+            depth += 1
+        
+        return " / ".join(path)
+
     def __str__(self):
         return f"{self.project.name} - {self.matchkey}"
 
@@ -375,6 +395,87 @@ class Item(models.Model):
 
         if errors:
             raise ValidationError(errors)
+    
+    def validate_nodes(self):
+        """
+        Validate that all assigned nodes belong to the item's project.
+        This must be called after the item is saved (for M2M validation).
+        """
+        project_node_ids = set(self.project.nodes.values_list('id', flat=True))
+        item_node_ids = set(self.nodes.values_list('id', flat=True))
+        invalid_nodes = item_node_ids - project_node_ids
+        if invalid_nodes:
+            raise ValidationError({
+                'nodes': _('All nodes must belong to the item\'s project.')
+            })
+    
+    def get_primary_node(self):
+        """
+        Get the primary node for this item.
+        Returns the first node if any are assigned, None otherwise.
+        """
+        return self.nodes.first()
+    
+    def update_description_with_breadcrumb(self, node=None):
+        """
+        Update the description to include or update the node breadcrumb.
+        If node is None, uses the primary node from self.nodes.
+        If no node is assigned, removes any existing breadcrumb.
+        
+        Format:
+        Betrifft: {breadcrumb}
+        
+        ---
+        {existing description}
+        """
+        if node is None:
+            node = self.get_primary_node()
+        
+        # Remove any existing breadcrumb block
+        desc = self.description or ""
+        lines = desc.split('\n')
+        
+        # Find and remove existing "Betrifft:" block
+        new_lines = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if line.startswith('Betrifft: '):
+                # Skip this line and look for separator
+                i += 1
+                # Skip empty lines and find separator
+                while i < len(lines):
+                    if lines[i].strip() == '---':
+                        # Skip separator
+                        i += 1
+                        # Skip one following empty line if present
+                        if i < len(lines) and lines[i].strip() == '':
+                            i += 1
+                        break
+                    elif lines[i].strip() == '':
+                        # Skip empty lines between Betrifft and separator
+                        i += 1
+                    else:
+                        # Content before separator - shouldn't happen, but handle it
+                        break
+                continue
+            new_lines.append(line)
+            i += 1
+        
+        # Remove leading empty lines
+        while new_lines and new_lines[0].strip() == '':
+            new_lines.pop(0)
+        
+        # Build new description
+        if node:
+            breadcrumb = node.get_breadcrumb()
+            new_description = f"Betrifft: {breadcrumb}\n\n---\n"
+            if new_lines:
+                new_description += '\n'.join(new_lines)
+            self.description = new_description
+        else:
+            # No node, just use the cleaned description without breadcrumb
+            self.description = '\n'.join(new_lines)
 
     def save(self, *args, **kwargs):
         self.full_clean()

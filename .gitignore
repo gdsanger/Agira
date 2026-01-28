@@ -211,4 +211,5 @@ __marimo__/
 # Agira data directories (attachment storage)
 data/
 agents/
-*.yml
+*.yml.env
+db.sqlite3

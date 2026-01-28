@@ -340,6 +340,10 @@
                             <div>{% if item.solution_release %}{{ item.solution_release.version }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>
                         <div class="mb-3">
+                            <strong>Node:</strong>
+                            <div>{% if item.nodes.first %}{{ item.nodes.first.name }} ({{ item.nodes.first.type }}){% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Created:</strong>
                             <div><small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small></div>
                         </div>
