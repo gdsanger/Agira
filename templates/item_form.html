@@ -5,6 +5,45 @@
 {% block extra_head %}
 <!-- ToastUI Editor CSS -->
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<style>
+/* Prevent Toast Editor from growing infinitely */
+#description-editor,
+#solution-editor {
+    max-height: 400px;
+    overflow: hidden;
+}
+
+#description-editor .toastui-editor-defaultUI,
+#solution-editor .toastui-editor-defaultUI {
+    max-height: 400px !important;
+    overflow: hidden !important;
+}
+
+#description-editor .toastui-editor-md-container,
+#solution-editor .toastui-editor-md-container,
+#description-editor .toastui-editor-preview,
+#solution-editor .toastui-editor-preview {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    max-height: 350px !important;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Ensure the editor wraps long lines and allows horizontal scrolling if needed */
+#description-editor .toastui-editor-contents,
+#solution-editor .toastui-editor-contents {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+#description-editor .toastui-editor-contents pre,
+#solution-editor .toastui-editor-contents pre {
+    overflow-x: auto;
+    white-space: pre;
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -12,6 +51,7 @@
 <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
         {% if item %}
+        <li class="breadcrumb-item"><a href="{% url 'project-detail' item.project.id %}">{{ item.project.name }}</a></li>
         <li class="breadcrumb-item"><a href="{% url 'item-detail' item.id %}">{{ item.title }}</a></li>
         <li class="breadcrumb-item active">Edit</li>
         {% else %}
@@ -43,14 +83,13 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <label for="title" class="form-label">Title</label>
                         <div class="input-group">
                             <input type="text" 
                                    class="form-control" 
                                    id="title" 
                                    name="title" 
                                    value="{% if item %}{{ item.title }}{% endif %}"
-                                   required
                                    maxlength="500">
                             <button type="button" class="btn btn-outline-secondary" id="ai-title-btn" title="Generate title from description using AI">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
@@ -294,8 +333,13 @@ const descriptionEditor = new toastui.Editor({
     {% else %}
     initialValue: '',
     {% endif %}
-    theme: 'dark'
+    theme: 'dark',
+    usageStatistics: false
 });
+
+// Force editor to respect height constraints and enable proper scrolling
+document.querySelector('#description-editor .toastui-editor-defaultUI').style.maxHeight = '400px';
+document.querySelector('#description-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
 // Initialize ToastUI Editor for Solution Description
 const solutionEditor = new toastui.Editor({
@@ -308,8 +352,13 @@ const solutionEditor = new toastui.Editor({
     {% else %}
     initialValue: '',
     {% endif %}
-    theme: 'dark'
+    theme: 'dark',
+    usageStatistics: false
 });
+
+// Force editor to respect height constraints and enable proper scrolling
+document.querySelector('#solution-editor .toastui-editor-defaultUI').style.maxHeight = '400px';
+document.querySelector('#solution-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
 // Sync editor content to hidden fields on form submit
 document.getElementById('itemForm').addEventListener('submit', function() {
