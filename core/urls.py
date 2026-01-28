@@ -130,6 +130,14 @@ urlpatterns = [
     path('mail-templates/<int:id>/delete/', views.mail_template_delete, name='mail-template-delete'),
     path('mail-templates/<int:id>/ai/generate/', views.mail_template_generate_ai, name='mail-template-generate-ai'),
     
+    # Mail Action Mapping URLs
+    path('mail-action-mappings/', views.mail_action_mappings, name='mail-action-mappings'),
+    path('mail-action-mappings/new/', views.mail_action_mapping_create, name='mail-action-mapping-create'),
+    path('mail-action-mappings/<int:id>/', views.mail_action_mapping_detail, name='mail-action-mapping-detail'),
+    path('mail-action-mappings/<int:id>/edit/', views.mail_action_mapping_edit, name='mail-action-mapping-edit'),
+    path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
+    path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
+    
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
     path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),
