@@ -163,7 +163,8 @@
             <div class="tab-pane fade show active" id="items" role="tabpanel" aria-labelledby="items-tab"
                  hx-get="{% url 'project-items-tab' project.id %}"
                  hx-trigger="load once"
-                 hx-swap="innerHTML">
+                 hx-swap="innerHTML"
+                 hx-on::before-request="applyItemsFiltersFromStorage(event)">
                 <!-- Content will be loaded via HTMX -->
                 <div class="text-center py-4">
                     <div class="spinner-border text-primary" role="status">
@@ -427,6 +428,41 @@
 
 {% block extra_js %}
 <script>
+// Function to apply filters from localStorage to HTMX request
+// This intercepts the HTMX request before it's sent and appends filter parameters from localStorage
+function applyItemsFiltersFromStorage(event) {
+    const projectId = {{ project.id|escapejs }};
+    const storageKeyStatus = `project_${projectId}_items_status_filter`;
+    const storageKeyType = `project_${projectId}_items_type_filter`;
+    
+    try {
+        const savedStatuses = localStorage.getItem(storageKeyStatus);
+        const savedTypes = localStorage.getItem(storageKeyType);
+        
+        if (savedStatuses || savedTypes) {
+            // Build query parameters from localStorage
+            const params = new URLSearchParams();
+            
+            if (savedStatuses) {
+                const statusArray = JSON.parse(savedStatuses);
+                statusArray.forEach(status => params.append('status', status));
+            }
+            
+            if (savedTypes) {
+                const typeArray = JSON.parse(savedTypes);
+                typeArray.forEach(type => params.append('type', type));
+            }
+            
+            // Update the HTMX request path with query parameters
+            const currentPath = event.detail.path;
+            const separator = currentPath.includes('?') ? '&' : '?';
+            event.detail.path = currentPath + separator + params.toString();
+        }
+    } catch (e) {
+        console.warn('Could not apply filters from localStorage:', e);
+    }
+}
+
 // Tab persistence functionality
 (function() {
     const projectId = {{ project.id|escapejs }};
