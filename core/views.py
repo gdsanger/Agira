@@ -9,20 +9,23 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from django.urls import reverse
 from decimal import Decimal, InvalidOperation
 import logging
 import os
+import re
+import json
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
-import json
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
-    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType)
+    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
+    MailTemplate)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -4863,3 +4866,275 @@ def search(request):
                 context['error'] = 'Suchfehler: Weaviate ist möglicherweise nicht verfügbar. Bitte versuchen Sie es später erneut.'
     
     return render(request, 'search.html', context)
+
+
+# ===========================
+# Mail Template Views
+# ===========================
+
+@login_required
+def mail_templates(request):
+    """Mail templates list view with search and filter."""
+    templates = MailTemplate.objects.all()
+    
+    # Search by key or subject
+    search_query = request.GET.get('q', '').strip()
+    if search_query:
+        templates = templates.filter(
+            Q(key__icontains=search_query) | Q(subject__icontains=search_query)
+        )
+    
+    # Filter by is_active
+    is_active_filter = request.GET.get('is_active', '').strip()
+    if is_active_filter == 'true':
+        templates = templates.filter(is_active=True)
+    elif is_active_filter == 'false':
+        templates = templates.filter(is_active=False)
+    
+    context = {
+        'templates': templates,
+        'search_query': search_query,
+        'is_active_filter': is_active_filter,
+    }
+    return render(request, 'mail_templates.html', context)
+
+
+@login_required
+def mail_template_detail(request, id):
+    """Mail template detail view."""
+    template = get_object_or_404(MailTemplate, id=id)
+    
+    context = {
+        'template': template,
+    }
+    return render(request, 'mail_template_detail.html', context)
+
+
+@login_required
+def mail_template_create(request):
+    """Show create form for new mail template."""
+    context = {
+        'template': None,
+    }
+    return render(request, 'mail_template_form.html', context)
+
+
+@login_required
+def mail_template_edit(request, id):
+    """Show edit form for existing mail template."""
+    template = get_object_or_404(MailTemplate, id=id)
+    
+    context = {
+        'template': template,
+    }
+    return render(request, 'mail_template_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def mail_template_update(request, id):
+    """Create or update a mail template."""
+    try:
+        # Parse form data
+        key = request.POST.get('key', '').strip()
+        subject = request.POST.get('subject', '').strip()
+        message = request.POST.get('message', '').strip()
+        from_name = request.POST.get('from_name', '').strip()
+        from_address = request.POST.get('from_address', '').strip()
+        cc_address = request.POST.get('cc_address', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        action = request.POST.get('action', 'save')
+        
+        # Validate required fields
+        if not key:
+            return JsonResponse({'success': False, 'error': 'Key is required'}, status=400)
+        if not subject:
+            return JsonResponse({'success': False, 'error': 'Subject is required'}, status=400)
+        if not message:
+            return JsonResponse({'success': False, 'error': 'Message is required'}, status=400)
+        
+        # Validate key format (lowercase, numbers, hyphens only)
+        if not re.match(r'^[a-z0-9-]+$', key):
+            return JsonResponse({
+                'success': False, 
+                'error': 'Key must contain only lowercase letters, numbers, and hyphens'
+            }, status=400)
+        
+        # Create or update
+        if id == 0:
+            # Create new template
+            # Check if key already exists
+            if MailTemplate.objects.filter(key=key).exists():
+                return JsonResponse({
+                    'success': False, 
+                    'error': f'A template with key "{key}" already exists'
+                }, status=400)
+            
+            template = MailTemplate.objects.create(
+                key=key,
+                subject=subject,
+                message=message,
+                from_name=from_name,
+                from_address=from_address,
+                cc_address=cc_address,
+                is_active=is_active
+            )
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='mail_template.created',
+                target=template,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Created mail template "{template.key}"'
+            )
+            
+            message_text = f'Mail template "{key}" created successfully'
+        else:
+            # Update existing template
+            template = get_object_or_404(MailTemplate, id=id)
+            
+            # Update fields
+            template.subject = subject
+            template.message = message
+            template.from_name = from_name
+            template.from_address = from_address
+            template.cc_address = cc_address
+            template.is_active = is_active
+            template.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='mail_template.updated',
+                target=template,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Updated mail template "{template.key}"'
+            )
+            
+            message_text = f'Mail template "{template.key}" updated successfully'
+        
+        # Determine redirect based on action
+        if action == 'save_close':
+            redirect_url = reverse('mail-templates')
+        else:
+            redirect_url = reverse('mail-template-detail', args=[template.id])
+        
+        return JsonResponse({
+            'success': True,
+            'message': message_text,
+            'redirect': redirect_url,
+            'template_id': template.id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving mail template: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def mail_template_delete(request, id):
+    """Delete a mail template."""
+    # get_object_or_404 will raise Http404 if not found, which Django will handle
+    template = get_object_or_404(MailTemplate, id=id)
+    template_key = template.key
+    
+    try:
+        # Log activity before deletion
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='mail_template.deleted',
+            target=template,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Deleted mail template "{template_key}"'
+        )
+        
+        template.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Mail template "{template_key}" deleted successfully',
+            'redirect': reverse('mail-templates')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting mail template: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def mail_template_generate_ai(request, id):
+    """Generate subject and message using AI agent."""
+    try:
+        # Parse JSON body
+        data = json.loads(request.body)
+        context = data.get('context', '').strip()
+        
+        if not context:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Context description is required'
+            }, status=400)
+        
+        # Execute the create-mail-template agent
+        agent_service = AgentService()
+        result = agent_service.execute_agent(
+            filename='create-mail-template.yml',
+            input_text=context,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Parse JSON response from agent
+        try:
+            # Clean up potential markdown code blocks
+            result = result.strip()
+            if result.startswith('```json'):
+                result = result[7:]
+            if result.startswith('```'):
+                result = result[3:]
+            if result.endswith('```'):
+                result = result[:-3]
+            result = result.strip()
+            
+            result_json = json.loads(result)
+            
+            # Extract Subject and Message
+            subject = result_json.get('Subject', '')
+            message = result_json.get('Message', '')
+            
+            if not subject or not message:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'AI agent did not return valid Subject and Message fields'
+                }, status=500)
+            
+            # Log activity if template exists
+            if id > 0:
+                template = get_object_or_404(MailTemplate, id=id)
+                activity_service = ActivityService()
+                activity_service.log(
+                    verb='mail_template.ai_generated',
+                    target=template,
+                    actor=request.user if request.user.is_authenticated else None,
+                    summary=f'AI generated content for mail template "{template.key}"'
+                )
+            
+            return JsonResponse({
+                'success': True,
+                'subject': subject,
+                'message': message
+            })
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI agent response as JSON: {result}")
+            return JsonResponse({
+                'success': False, 
+                'error': f'AI agent returned invalid JSON: {str(e)}'
+            }, status=500)
+        
+    except Exception as e:
+        logger.error(f"Error generating mail template with AI: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

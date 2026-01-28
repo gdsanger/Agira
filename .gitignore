@@ -210,6 +210,7 @@ __marimo__/
 
 # Agira data directories (attachment storage)
 data/
-agents/
+agents/*
+!agents/create-mail-template.yml
 *.yml.env
 db.sqlite3

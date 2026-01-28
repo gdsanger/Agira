@@ -121,6 +121,15 @@ urlpatterns = [
     # AI Jobs History URLs
     path('ai-jobs-history/', views.ai_jobs_history, name='ai-jobs-history'),
     
+    # Mail Template URLs
+    path('mail-templates/', views.mail_templates, name='mail-templates'),
+    path('mail-templates/new/', views.mail_template_create, name='mail-template-create'),
+    path('mail-templates/<int:id>/', views.mail_template_detail, name='mail-template-detail'),
+    path('mail-templates/<int:id>/edit/', views.mail_template_edit, name='mail-template-edit'),
+    path('mail-templates/<int:id>/update/', views.mail_template_update, name='mail-template-update'),
+    path('mail-templates/<int:id>/delete/', views.mail_template_delete, name='mail-template-delete'),
+    path('mail-templates/<int:id>/ai/generate/', views.mail_template_generate_ai, name='mail-template-generate-ai'),
+    
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
     path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),
