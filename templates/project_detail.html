@@ -831,7 +831,12 @@ const NodeTreeManager = {
         fetch(`/projects/${this.projectId}/nodes/tree/`, {
             credentials: 'same-origin'
         })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 this.renderTree(data.tree, treeContainer);
             })
@@ -968,7 +973,12 @@ const NodeTreeManager = {
         fetch(`/projects/${this.projectId}/nodes/${nodeId}/`, {
             credentials: 'same-origin'
         })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(node => {
                 detailTitle.textContent = node.name;
                 this.renderNodeDetail(node, detailContent);
@@ -1079,9 +1089,15 @@ const NodeTreeManager = {
             headers: {
                 'X-CSRFToken': csrfToken
             },
-            body: formData
+            body: formData,
+            credentials: 'same-origin'
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 showToast('success', 'Success', data.message);

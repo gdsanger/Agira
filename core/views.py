@@ -2236,27 +2236,14 @@ def project_nodes_tree(request, id):
     """Get the hierarchical tree structure of all nodes in a project."""
     project = get_object_or_404(Project, id=id)
     
-    # Get all root nodes (nodes without parents)
-    root_nodes = Node.objects.filter(project=project, parent_node=None)
+    # Get all root nodes with optimized prefetching of children
+    root_nodes = Node.objects.filter(
+        project=project, 
+        parent_node=None
+    ).prefetch_related('child_nodes')
     
-    def build_tree_node(node):
-        """Recursively build tree structure for a node."""
-        children = []
-        for child in node.child_nodes.all().order_by('name'):
-            children.append(build_tree_node(child))
-        
-        return {
-            'id': node.id,
-            'name': node.name,
-            'type': node.type,
-            'description': node.description,
-            'children': children
-        }
-    
-    # Build the tree
-    tree = []
-    for root in root_nodes.order_by('name'):
-        tree.append(build_tree_node(root))
+    # Build the tree using the model method
+    tree = [root.get_tree_structure() for root in root_nodes.order_by('name')]
     
     return JsonResponse({'tree': tree})
 
