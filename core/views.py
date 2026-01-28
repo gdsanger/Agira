@@ -2025,21 +2025,35 @@ def item_delete(request, item_id):
 def item_send_status_mail(request, item_id):
     """Send status change email for an item."""
     from .services.graph.mail_service import send_email
+    import bleach
     
     item = get_object_or_404(Item, id=item_id)
+    
+    # Authorization check: user must be requester, assignee, or have permission to edit item
+    # For now, we allow anyone who can view the item (authenticated users)
+    # In a more restrictive scenario, check project membership or specific permissions
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Authentication required'}, status=401)
     
     try:
         data = json.loads(request.body)
         
-        # Extract mail data from request
-        subject = data.get('subject', '')
-        message = data.get('message', '')
-        to_address = data.get('to', '')
-        from_address = data.get('from_address', '')
-        cc_address = data.get('cc_address', '')
+        # Extract and validate mail data from request
+        subject = data.get('subject', '').strip()
+        message = data.get('message', '').strip()
+        to_address = data.get('to', '').strip()
+        from_address = data.get('from_address', '').strip()
+        cc_address = data.get('cc_address', '').strip()
         
         if not subject or not message:
             return JsonResponse({'success': False, 'error': 'Subject and message are required'}, status=400)
+        
+        # Sanitize HTML message to prevent script injection
+        # Allow common HTML tags but strip dangerous ones
+        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                       'ul', 'ol', 'li', 'blockquote', 'a', 'span', 'div', 'table', 'tr', 'td', 'th']
+        allowed_attrs = {'a': ['href', 'title'], 'span': ['style'], 'div': ['style']}
+        message = bleach.clean(message, tags=allowed_tags, attributes=allowed_attrs, strip=True)
         
         if not to_address:
             # Try to get recipient from requester
