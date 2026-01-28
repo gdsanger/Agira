@@ -61,6 +61,15 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label for="nodeParent" class="form-label">Parent Node (Optional)</label>
+                        <select class="form-select" id="nodeParent" name="parent_node_id">
+                            <option value="">— No Parent (Root Node) —</option>
+                            {% for node in project.nodes.all %}
+                            <option value="{{ node.id }}">{{ node.get_breadcrumb }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <label for="nodeDescription" class="form-label">Description</label>
                         <textarea class="form-control" id="nodeDescription" name="description" rows="3"></textarea>
                     </div>

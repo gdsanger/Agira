@@ -2127,15 +2127,25 @@ def project_add_node(request, id):
         name = request.POST.get('name')
         node_type = request.POST.get('type')
         description = request.POST.get('description', '')
+        parent_node_id = request.POST.get('parent_node_id')
         
         if not name or not node_type:
             return JsonResponse({'success': False, 'error': 'Name and Type are required'}, status=400)
+        
+        # Handle parent node if specified
+        parent_node = None
+        if parent_node_id:
+            try:
+                parent_node = Node.objects.get(id=parent_node_id, project=project)
+            except Node.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Invalid parent node'}, status=400)
         
         node = Node.objects.create(
             project=project,
             name=name,
             type=node_type,
-            description=description
+            description=description,
+            parent_node=parent_node
         )
         
         return JsonResponse({'success': True, 'message': 'Node created successfully', 'node_id': node.id})
@@ -2143,6 +2153,99 @@ def project_add_node(request, id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+def project_node_detail(request, project_id, node_id):
+    """Get details of a specific node as JSON."""
+    project = get_object_or_404(Project, id=project_id)
+    node = get_object_or_404(Node, id=node_id, project=project)
+    
+    # Get child nodes
+    children = []
+    for child in node.child_nodes.all():
+        children.append({
+            'id': child.id,
+            'name': child.name,
+            'type': child.type,
+            'breadcrumb': child.get_breadcrumb()
+        })
+    
+    data = {
+        'id': node.id,
+        'name': node.name,
+        'type': node.type,
+        'description': node.description,
+        'parent_node_id': node.parent_node.id if node.parent_node else None,
+        'parent_node_name': node.parent_node.name if node.parent_node else None,
+        'breadcrumb': node.get_breadcrumb(),
+        'children': children
+    }
+    
+    return JsonResponse(data)
+
+
+@login_required
+@require_http_methods(["POST"])
+def project_node_update(request, project_id, node_id):
+    """Update a node."""
+    project = get_object_or_404(Project, id=project_id)
+    node = get_object_or_404(Node, id=node_id, project=project)
+    
+    try:
+        name = request.POST.get('name')
+        node_type = request.POST.get('type')
+        description = request.POST.get('description', '')
+        parent_node_id = request.POST.get('parent_node_id')
+        
+        if not name or not node_type:
+            return JsonResponse({'success': False, 'error': 'Name and Type are required'}, status=400)
+        
+        # Handle parent node if specified
+        parent_node = None
+        if parent_node_id:
+            try:
+                parent_node = Node.objects.get(id=parent_node_id, project=project)
+                
+                # Check for circular references
+                if node.would_create_cycle(parent_node):
+                    return JsonResponse({
+                        'success': False, 
+                        'error': 'Cannot set parent: would create circular reference'
+                    }, status=400)
+                    
+            except Node.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Invalid parent node'}, status=400)
+        
+        # Update node
+        node.name = name
+        node.type = node_type
+        node.description = description
+        node.parent_node = parent_node
+        node.save()
+        
+        return JsonResponse({'success': True, 'message': 'Node updated successfully'})
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+def project_nodes_tree(request, id):
+    """Get the hierarchical tree structure of all nodes in a project."""
+    project = get_object_or_404(Project, id=id)
+    
+    # Get all root nodes with optimized prefetching of children
+    root_nodes = Node.objects.filter(
+        project=project, 
+        parent_node=None
+    ).prefetch_related('child_nodes')
+    
+    # Build the tree using the model method
+    tree = [root.get_tree_structure() for root in root_nodes.order_by('name')]
+    
+    return JsonResponse({'tree': tree})
 
 
 @login_required

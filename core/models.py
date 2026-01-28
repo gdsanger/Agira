@@ -269,6 +269,63 @@ class Node(models.Model):
             depth += 1
         
         return " / ".join(path)
+    
+    def would_create_cycle(self, potential_parent):
+        """
+        Check if setting potential_parent as this node's parent would create a circular reference.
+        Returns True if it would create a cycle, False otherwise.
+        """
+        if potential_parent is None:
+            return False
+        
+        # A node cannot be its own parent
+        if potential_parent.id == self.id:
+            return True
+        
+        # Parent must be in the same project
+        if potential_parent.project_id != self.project_id:
+            return True
+        
+        # Check if potential_parent is a descendant of this node
+        current = potential_parent
+        max_depth = 100  # Protect against infinite loops
+        depth = 0
+        
+        while current is not None and depth < max_depth:
+            if current.id == self.id:
+                return True
+            current = current.parent_node
+            depth += 1
+        
+        return False
+    
+    @classmethod
+    def get_root_nodes_for_project(cls, project):
+        """Get all root nodes (nodes without parents) for a project."""
+        return cls.objects.filter(project=project, parent_node=None)
+    
+    def get_tree_structure(self, depth=0, max_depth=100):
+        """
+        Get the hierarchical tree structure starting from this node.
+        Returns a dictionary with node info and children.
+        Protects against circular references with max_depth limit.
+        """
+        if depth >= max_depth:
+            return {
+                'id': self.id,
+                'name': f"{self.name} (max depth reached)",
+                'type': self.type,
+                'description': self.description,
+                'children': []
+            }
+        
+        return {
+            'id': self.id,
+            'name': self.name,
+            'type': self.type,
+            'description': self.description,
+            'children': [child.get_tree_structure(depth + 1, max_depth) for child in self.child_nodes.all()]
+        }
 
     def __str__(self):
         return f"{self.project.name} - {self.matchkey}"
