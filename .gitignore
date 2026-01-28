@@ -145,7 +145,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-agents/
 
 # Spyder project settings
 .spyderproject
@@ -209,5 +208,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Agira data directory (attachment storage)
+# Agira data directories (attachment storage)
 data/
+agents/
+*.yml
