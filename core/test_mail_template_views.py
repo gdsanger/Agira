@@ -153,6 +153,30 @@ class MailTemplateViewsTestCase(TestCase):
         self.assertFalse(response_data['success'])
         self.assertIn('lowercase', response_data['error'])
     
+    def test_mail_template_create_with_hyphens(self):
+        """Test that keys with hyphens are accepted"""
+        data = {
+            'key': 'test-template-with-hyphens',
+            'subject': 'Test Template',
+            'message': '<p>Test message</p>',
+            'is_active': 'on',
+            'action': 'save'
+        }
+        
+        response = self.client.post(
+            reverse('mail-template-update', args=[0]),
+            data=data
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = json.loads(response.content)
+        self.assertTrue(response_data['success'])
+        
+        # Verify template was created
+        template = MailTemplate.objects.get(key='test-template-with-hyphens')
+        self.assertEqual(template.subject, 'Test Template')
+    
+    
     def test_mail_template_update_existing(self):
         """Test updating an existing template"""
         data = {

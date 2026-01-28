@@ -4954,7 +4954,7 @@ def mail_template_update(request, id):
             return JsonResponse({'success': False, 'error': 'Message is required'}, status=400)
         
         # Validate key format (lowercase, numbers, hyphens only)
-        if not re.match(r'^[a-z0-9-]+$', key):
+        if not re.match(r'^[a-z0-9\-]+$', key):
             return JsonResponse({
                 'success': False, 
                 'error': 'Key must contain only lowercase letters, numbers, and hyphens'
