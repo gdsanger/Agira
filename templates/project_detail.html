@@ -77,6 +77,37 @@
     font-style: italic;
     color: #c678dd;
 }
+
+/* Node Tree Styles */
+.node-tree {
+    padding-left: 0;
+}
+.node-tree-item {
+    margin-bottom: 0.25rem;
+}
+.node-tree-node {
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+.node-tree-node:hover {
+    background-color: rgba(13, 110, 253, 0.1);
+}
+.node-tree-node.selected {
+    background-color: rgba(13, 110, 253, 0.2);
+    font-weight: 500;
+}
+.node-tree-children {
+    padding-left: 1rem;
+    margin-top: 0.25rem;
+}
+.node-expand-icon {
+    transition: transform 0.2s;
+    font-size: 0.875rem;
+}
+.node-name {
+    flex-grow: 1;
+}
 </style>
 {% endblock %}
 
@@ -181,28 +212,42 @@
                         + Add Node
                     </button>
                 </div>
+                
                 {% if project.nodes.count > 0 %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Description</th>
-                                <th>Parent</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for node in project.nodes.all %}
-                            <tr>
-                                <td><strong>{{ node.name }}</strong></td>
-                                <td><span class="badge bg-primary">{{ node.type }}</span></td>
-                                <td>{{ node.description|truncatewords:10|default:"—" }}</td>
-                                <td>{{ node.parent_node.name|default:"—" }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="row">
+                    <!-- Left Panel: Tree View -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Node Hierarchy</h6>
+                            </div>
+                            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                <div id="nodeTree">
+                                    <!-- Tree will be loaded here -->
+                                    <div class="text-center py-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Panel: Node Detail -->
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0" id="nodeDetailTitle">Node Details</h6>
+                            </div>
+                            <div class="card-body" id="nodeDetailContent" style="min-height: 400px;">
+                                <div class="text-muted text-center py-5">
+                                    <i class="bi bi-diagram-3" style="font-size: 3rem;"></i>
+                                    <p class="mt-3">Select a node from the tree to view details</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 {% else %}
                 <div class="alert alert-info">
@@ -746,5 +791,321 @@ function showToast(type, title, message) {
         toastEl.remove();
     });
 }
+
+// Node Tree Management
+const NodeTreeManager = {
+    projectId: {{ project.id }},
+    selectedNodeId: null,
+    
+    init() {
+        // Load tree when nodes tab is shown
+        const nodesTab = document.getElementById('nodes-tab');
+        if (nodesTab) {
+            nodesTab.addEventListener('shown.bs.tab', () => {
+                this.loadTree();
+            });
+        }
+        
+        // Load tree immediately if nodes tab is active
+        if (document.getElementById('nodes').classList.contains('active')) {
+            this.loadTree();
+        }
+    },
+    
+    loadTree() {
+        const treeContainer = document.getElementById('nodeTree');
+        if (!treeContainer) return;
+        
+        fetch(`/projects/${this.projectId}/nodes/tree/`)
+            .then(response => response.json())
+            .then(data => {
+                this.renderTree(data.tree, treeContainer);
+            })
+            .catch(error => {
+                console.error('Error loading tree:', error);
+                treeContainer.innerHTML = '<div class="alert alert-danger">Failed to load tree</div>';
+            });
+    },
+    
+    renderTree(nodes, container) {
+        if (nodes.length === 0) {
+            container.innerHTML = '<div class="text-muted p-2">No nodes yet</div>';
+            return;
+        }
+        
+        const ul = document.createElement('ul');
+        ul.className = 'node-tree list-unstyled';
+        
+        nodes.forEach(node => {
+            const li = this.createTreeNode(node);
+            ul.appendChild(li);
+        });
+        
+        container.innerHTML = '';
+        container.appendChild(ul);
+    },
+    
+    createTreeNode(node) {
+        const li = document.createElement('li');
+        li.className = 'node-tree-item';
+        li.dataset.nodeId = node.id;
+        
+        const nodeDiv = document.createElement('div');
+        nodeDiv.className = 'node-tree-node d-flex align-items-center';
+        
+        // Expand/collapse icon
+        if (node.children && node.children.length > 0) {
+            const expandIcon = document.createElement('i');
+            expandIcon.className = 'bi bi-chevron-right node-expand-icon me-1';
+            expandIcon.style.cursor = 'pointer';
+            expandIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleNode(li);
+            });
+            nodeDiv.appendChild(expandIcon);
+        } else {
+            const spacer = document.createElement('span');
+            spacer.className = 'me-3';
+            spacer.innerHTML = '&nbsp;';
+            nodeDiv.appendChild(spacer);
+        }
+        
+        // Node icon
+        const nodeIcon = document.createElement('i');
+        nodeIcon.className = 'bi bi-circle-fill me-2';
+        nodeIcon.style.fontSize = '0.5rem';
+        nodeIcon.style.color = this.getNodeColor(node.type);
+        nodeDiv.appendChild(nodeIcon);
+        
+        // Node name
+        const nodeName = document.createElement('span');
+        nodeName.className = 'node-name';
+        nodeName.textContent = node.name;
+        nodeName.style.cursor = 'pointer';
+        nodeDiv.appendChild(nodeName);
+        
+        // Click handler for node selection
+        nodeDiv.addEventListener('click', () => {
+            this.selectNode(node.id);
+        });
+        
+        li.appendChild(nodeDiv);
+        
+        // Add children
+        if (node.children && node.children.length > 0) {
+            const childrenUl = document.createElement('ul');
+            childrenUl.className = 'node-tree-children list-unstyled ms-3';
+            childrenUl.style.display = 'none';
+            
+            node.children.forEach(child => {
+                const childLi = this.createTreeNode(child);
+                childrenUl.appendChild(childLi);
+            });
+            
+            li.appendChild(childrenUl);
+        }
+        
+        return li;
+    },
+    
+    toggleNode(li) {
+        const icon = li.querySelector('.node-expand-icon');
+        const children = li.querySelector('.node-tree-children');
+        
+        if (children) {
+            const isExpanded = children.style.display !== 'none';
+            children.style.display = isExpanded ? 'none' : 'block';
+            icon.className = isExpanded ? 'bi bi-chevron-right node-expand-icon me-1' : 'bi bi-chevron-down node-expand-icon me-1';
+        }
+    },
+    
+    selectNode(nodeId) {
+        this.selectedNodeId = nodeId;
+        
+        // Update visual selection
+        document.querySelectorAll('.node-tree-node').forEach(n => {
+            n.classList.remove('selected');
+        });
+        
+        const selectedNode = document.querySelector(`[data-node-id="${nodeId}"] .node-tree-node`);
+        if (selectedNode) {
+            selectedNode.classList.add('selected');
+        }
+        
+        // Load node details
+        this.loadNodeDetail(nodeId);
+    },
+    
+    loadNodeDetail(nodeId) {
+        const detailContent = document.getElementById('nodeDetailContent');
+        const detailTitle = document.getElementById('nodeDetailTitle');
+        
+        if (!detailContent) return;
+        
+        // Show loading state
+        detailContent.innerHTML = `
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+        
+        fetch(`/projects/${this.projectId}/nodes/${nodeId}/`)
+            .then(response => response.json())
+            .then(node => {
+                detailTitle.textContent = node.name;
+                this.renderNodeDetail(node, detailContent);
+            })
+            .catch(error => {
+                console.error('Error loading node detail:', error);
+                detailContent.innerHTML = '<div class="alert alert-danger">Failed to load node details</div>';
+            });
+    },
+    
+    renderNodeDetail(node, container) {
+        let childrenHtml = '';
+        if (node.children && node.children.length > 0) {
+            childrenHtml = `
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Child Nodes</label>
+                    <div class="list-group">
+                        ${node.children.map(child => `
+                            <a href="#" class="list-group-item list-group-item-action" onclick="NodeTreeManager.selectNode(${child.id}); return false;">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">${this.escapeHtml(child.name)}</h6>
+                                    <small><span class="badge bg-primary">${this.escapeHtml(child.type)}</span></small>
+                                </div>
+                                <small class="text-muted">${this.escapeHtml(child.breadcrumb)}</small>
+                            </a>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        container.innerHTML = `
+            <form id="nodeEditForm" onsubmit="NodeTreeManager.saveNode(event, ${node.id})">
+                <div class="mb-3">
+                    <label for="editNodeName" class="form-label fw-bold">Name</label>
+                    <input type="text" class="form-control" id="editNodeName" name="name" value="${this.escapeHtml(node.name)}" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="editNodeType" class="form-label fw-bold">Type</label>
+                    <select class="form-select" id="editNodeType" name="type" required>
+                        {% for type_value, type_label in node_types %}
+                        <option value="{{ type_value }}" ${node.type === '{{ type_value }}' ? 'selected' : ''}>{{ type_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="editNodeParent" class="form-label fw-bold">Parent Node</label>
+                    <select class="form-select" id="editNodeParent" name="parent_node_id">
+                        <option value="">— No Parent (Root Node) —</option>
+                        {% for pnode in project.nodes.all %}
+                        <option value="{{ pnode.id }}" ${node.parent_node_id === {{ pnode.id }} ? 'selected' : ''}>{{ pnode.get_breadcrumb }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="editNodeDescription" class="form-label fw-bold">Description</label>
+                    <textarea class="form-control" id="editNodeDescription" name="description" rows="4">${this.escapeHtml(node.description || '')}</textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Breadcrumb Path</label>
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-diagram-3 me-2"></i>${this.escapeHtml(node.breadcrumb)}
+                    </div>
+                </div>
+                
+                ${childrenHtml}
+                
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save me-1"></i>Save Changes
+                    </button>
+                </div>
+            </form>
+        `;
+        
+        // Update the parent dropdown to exclude self and descendants
+        this.updateParentDropdown(node.id);
+    },
+    
+    updateParentDropdown(nodeId) {
+        const parentSelect = document.getElementById('editNodeParent');
+        if (!parentSelect) return;
+        
+        // Disable the current node option
+        Array.from(parentSelect.options).forEach(option => {
+            if (option.value == nodeId) {
+                option.disabled = true;
+                option.text = option.text + ' (cannot select self)';
+            }
+        });
+    },
+    
+    saveNode(event, nodeId) {
+        event.preventDefault();
+        
+        const form = event.target;
+        const formData = new FormData(form);
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+        fetch(`/projects/${this.projectId}/nodes/${nodeId}/update/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', 'Success', data.message);
+                // Reload tree to show updated structure
+                this.loadTree();
+                // Reload node detail
+                setTimeout(() => {
+                    this.selectNode(nodeId);
+                }, 500);
+            } else {
+                showToast('error', 'Error', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error saving node:', error);
+            showToast('error', 'Error', 'Failed to save node');
+        });
+    },
+    
+    getNodeColor(type) {
+        const colors = {
+            'PROJECT': '#0d6efd',
+            'VIEW': '#6610f2',
+            'ENTITY': '#198754',
+            'PROCESS': '#fd7e14',
+            'INTERFACE': '#0dcaf0'
+        };
+        return colors[type] || '#6c757d';
+    },
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+};
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    NodeTreeManager.init();
+});
 </script>
 {% endblock %}
