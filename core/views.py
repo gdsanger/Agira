@@ -820,7 +820,6 @@ def item_create_github_issue(request, item_id):
     """Create a new GitHub issue for an item."""
     from core.services.github.service import GitHubService
     from core.services.integrations.base import IntegrationError
-    from datetime import datetime
     
     item = get_object_or_404(Item, id=item_id)
     
@@ -852,9 +851,6 @@ def item_create_github_issue(request, item_id):
             
             if not notes:
                 return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
-            
-            # Update item description with notes and references
-            _append_followup_notes_to_item(item, notes)
         
         # Create GitHub issue
         try:
@@ -863,10 +859,15 @@ def item_create_github_issue(request, item_id):
                 actor=request.user
             )
             
+            # For follow-up issues, update item description after issue is created
+            # This ensures the new issue is included in the references
+            if existing_issues:
+                _append_followup_notes_to_item(item, notes)
+            
             # Return updated GitHub tab
             external_mappings = item.external_mappings.all().order_by('-last_synced_at')
-            github_service_context = GitHubService()
-            can_create_issue = github_service_context.can_create_issue_for_item(item)
+            github_service = GitHubService()
+            can_create_issue = github_service.can_create_issue_for_item(item)
             has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
             
             context = {
@@ -895,6 +896,9 @@ def _append_followup_notes_to_item(item, notes):
     """
     Append follow-up notes and issue/PR references to item description.
     
+    This function should be called AFTER the new GitHub issue has been created
+    so that the newly created issue is included in the references.
+    
     Args:
         item: Item instance
         notes: User-provided notes for the follow-up
@@ -910,6 +914,10 @@ def _append_followup_notes_to_item(item, notes):
     
     # Build the addition to description
     addition_parts = []
+    
+    # Initialize description if it's None or empty
+    if not item.description:
+        item.description = ""
     
     # If description doesn't have original header, add it
     if item.description and not item.description.startswith("## "):

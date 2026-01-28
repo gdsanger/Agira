@@ -188,7 +188,9 @@ class FollowupGitHubIssueTestCase(TestCase):
         self.assertIn('## Hinweise und Änderungen', item.description)
         self.assertIn(notes, item.description)
         self.assertIn('### Siehe folgende Issues und PRs', item.description)
+        # Now the list should include all issues: #1, #2 (newly created), and #5
         self.assertIn('#1', item.description)
+        self.assertIn('#2', item.description)  # Newly created issue should be included
         self.assertIn('#5', item.description)
     
     @patch('core.services.github.client.GitHubClient.create_issue')
@@ -354,13 +356,47 @@ class FollowupGitHubIssueTestCase(TestCase):
             status=ItemStatus.BACKLOG,
         )
         
-        # Mock datetime to get predictable date
+        # Mock datetime.now to get predictable date
         with patch('core.views.datetime') as mock_datetime:
-            mock_datetime.now.return_value = datetime(2024, 12, 25, 10, 30, 0)
-            mock_datetime.strftime = datetime.strftime
+            # Create a real datetime object for the return value
+            test_date = datetime(2024, 12, 25, 10, 30, 0)
+            mock_datetime.now.return_value = test_date
             
             _append_followup_notes_to_item(item, 'Test notes')
         
         # Check date format
         item.refresh_from_db()
         self.assertIn('## Hinweise und Änderungen 25.12.2024', item.description)
+    
+    def test_empty_description_handling(self):
+        """Test that function handles items with empty/None description correctly."""
+        from core.views import _append_followup_notes_to_item
+        
+        # Test with None description
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description=None,
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Create a mapping for references
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=12345,
+            number=1,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/issues/1',
+        )
+        
+        # Should not raise an error
+        _append_followup_notes_to_item(item, 'Notes for empty item')
+        
+        # Check that description was created correctly
+        item.refresh_from_db()
+        self.assertIsNotNone(item.description)
+        self.assertIn('## Hinweise und Änderungen', item.description)
+        self.assertIn('Notes for empty item', item.description)
+        self.assertIn('#1', item.description)
