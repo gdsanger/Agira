@@ -5035,10 +5035,11 @@ def mail_template_update(request, id):
 @require_http_methods(["POST"])
 def mail_template_delete(request, id):
     """Delete a mail template."""
+    # get_object_or_404 will raise Http404 if not found, which Django will handle
+    template = get_object_or_404(MailTemplate, id=id)
+    template_key = template.key
+    
     try:
-        template = get_object_or_404(MailTemplate, id=id)
-        template_key = template.key
-        
         # Log activity before deletion
         activity_service = ActivityService()
         activity_service.log(
