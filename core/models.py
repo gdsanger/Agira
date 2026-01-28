@@ -921,3 +921,53 @@ class MailTemplate(models.Model):
 
     def __str__(self):
         return f"{self.key} ({'active' if self.is_active else 'inactive'})"
+
+
+class MailActionMapping(models.Model):
+    """
+    Model for mapping issue states (status + type) to mail templates.
+    This mapping defines which mail template should be used for specific
+    combinations of item status and item type.
+    
+    This is a purely declarative model - it does not trigger emails or
+    evaluate state changes. It serves as configuration data for notification logic.
+    """
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this mapping is active and can be used"
+    )
+    item_status = models.CharField(
+        max_length=20,
+        choices=ItemStatus.choices,
+        help_text="Issue status for which this mapping applies"
+    )
+    item_type = models.ForeignKey(
+        ItemType,
+        on_delete=models.CASCADE,
+        related_name='mail_action_mappings',
+        help_text="Issue type for which this mapping applies"
+    )
+    mail_template = models.ForeignKey(
+        MailTemplate,
+        on_delete=models.PROTECT,
+        related_name='mail_action_mappings',
+        help_text="Mail template to use for this status/type combination"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['item_status', 'item_type']
+        verbose_name = 'Mail Action Mapping'
+        verbose_name_plural = 'Mail Action Mappings'
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['item_status', 'item_type']),
+        ]
+
+    def __str__(self):
+        status_display = self.get_item_status_display()
+        type_name = self.item_type.name if self.item_type else 'Unknown'
+        template_key = self.mail_template.key if self.mail_template else 'Unknown'
+        active_str = 'active' if self.is_active else 'inactive'
+        return f"{status_display} + {type_name} → {template_key} ({active_str})"
