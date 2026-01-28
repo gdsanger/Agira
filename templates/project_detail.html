@@ -226,6 +226,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Version</th>
+                                <th>Type</th>
                                 <th>Status</th>
                                 <th>Risk</th>
                                 <th>Updated</th>
@@ -236,6 +237,13 @@
                             <tr>
                                 <td><strong>{{ release.name }}</strong></td>
                                 <td>{{ release.version }}</td>
+                                <td>
+                                    {% if release.type %}
+                                    <span class="badge bg-secondary">{{ release.type }}</span>
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if release.status == 'Planned' %}
                                     <span class="badge bg-info">{{ release.status }}</span>

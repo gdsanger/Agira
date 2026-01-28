@@ -48,6 +48,13 @@ class ReleaseStatus(models.TextChoices):
     CLOSED = 'Closed', _('Closed')
 
 
+class ReleaseType(models.TextChoices):
+    MAJOR = 'Major', _('Major')
+    MINOR = 'Minor', _('Minor')
+    HOTFIX = 'Hotfix', _('Hotfix')
+    SECURITYFIX = 'Securityfix', _('Securityfix')
+
+
 class ChangeStatus(models.TextChoices):
     DRAFT = 'Draft', _('Draft')
     PLANNED = 'Planned', _('Planned')
@@ -251,6 +258,7 @@ class Release(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='releases')
     name = models.CharField(max_length=255)
     version = models.CharField(max_length=100)
+    type = models.CharField(max_length=20, choices=ReleaseType.choices, null=True, blank=True)
     risk = models.CharField(max_length=20, choices=RiskLevel.choices, default=RiskLevel.NORMAL)
     risk_description = models.TextField(blank=True)
     risk_mitigation = models.TextField(blank=True)

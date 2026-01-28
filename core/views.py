@@ -22,7 +22,7 @@ from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
-    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel)
+    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -2033,14 +2033,20 @@ def project_add_release(request, id):
     try:
         name = request.POST.get('name')
         version = request.POST.get('version')
+        release_type = request.POST.get('type')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
+        
+        # Validate release type if provided
+        if release_type and release_type not in ReleaseType.values:
+            return JsonResponse({'success': False, 'error': f'Invalid release type. Must be one of: {", ".join(ReleaseType.values)}'}, status=400)
         
         release = Release.objects.create(
             project=project,
             name=name,
             version=version,
+            type=release_type if release_type else None,
             status=ReleaseStatus.PLANNED
         )
         

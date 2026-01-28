@@ -19,7 +19,7 @@
             <p class="text-muted">
                 <strong>Project:</strong> <a href="{% url 'project-detail' change.project.id %}">{{ change.project.name }}</a>
                 {% if change.release %}
-                | <strong>Release:</strong> {{ change.release.version }}
+                | <strong>Release:</strong> {{ change.release.version }}{% if change.release.type %} ({{ change.release.type }}){% endif %}
                 {% endif %}
             </p>
         </div>
