@@ -842,9 +842,15 @@ def item_create_github_issue(request, item_id):
                 status=400
             )
         
-        # Check if item already has a GitHub issue
-        if item.external_mappings.filter(kind='Issue').exists():
-            return HttpResponse("This item already has a GitHub issue. You can only link existing issues or PRs.", status=400)
+        # Check if this is a follow-up issue (item already has issues)
+        existing_issues = item.external_mappings.filter(kind='Issue').exists()
+        
+        if existing_issues:
+            # For follow-up issues, get the notes from the request
+            notes = request.POST.get('notes', '').strip()
+            
+            if not notes:
+                return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
         
         # Create GitHub issue
         try:
@@ -853,11 +859,22 @@ def item_create_github_issue(request, item_id):
                 actor=request.user
             )
             
+            # For follow-up issues, update item description after issue is created
+            # This ensures the new issue is included in the references
+            if existing_issues:
+                _append_followup_notes_to_item(item, notes)
+            
             # Return updated GitHub tab
             external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+            github_service = GitHubService()
+            can_create_issue = github_service.can_create_issue_for_item(item)
+            has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
+            
             context = {
                 'item': item,
                 'external_mappings': external_mappings,
+                'can_create_issue': can_create_issue,
+                'has_existing_issue': has_existing_issue,
             }
             response = render(request, 'partials/item_github_tab.html', context)
             response['HX-Trigger'] = 'githubIssueCreated'
@@ -873,6 +890,53 @@ def item_create_github_issue(request, item_id):
         logger = logging.getLogger(__name__)
         logger.error(f"GitHub issue creation failed for item {item_id}: {str(e)}")
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
+
+
+def _append_followup_notes_to_item(item, notes):
+    """
+    Append follow-up notes and issue/PR references to item description.
+    
+    This function should be called AFTER the new GitHub issue has been created
+    so that the newly created issue is included in the references.
+    
+    Args:
+        item: Item instance
+        notes: User-provided notes for the follow-up
+    """
+    from datetime import datetime
+    
+    # Get current date formatted for German locale
+    current_date = datetime.now().strftime("%d.%m.%Y")
+    
+    # Get all existing issue and PR numbers
+    mappings = item.external_mappings.all().order_by('kind', 'number')
+    issue_pr_refs = ", ".join([f"#{m.number}" for m in mappings])
+    
+    # Build the addition to description
+    addition_parts = []
+    
+    # Initialize description if it's None or empty
+    if not item.description:
+        item.description = ""
+    
+    # If description doesn't have original header, add it
+    if item.description and not item.description.startswith("## "):
+        # Preserve original description with header
+        original_desc = item.description
+        item.description = f"## Original Item Issue Text\n{original_desc}"
+    
+    # Add notes section
+    addition_parts.append(f"\n\n## Hinweise und Änderungen {current_date}")
+    addition_parts.append(notes)
+    
+    # Add issue/PR references section
+    if issue_pr_refs:
+        addition_parts.append("\n### Siehe folgende Issues und PRs")
+        addition_parts.append(issue_pr_refs)
+    
+    # Append to description
+    item.description += "\n".join(addition_parts)
+    item.save(update_fields=['description'])
 
 
 @login_required
