@@ -4,6 +4,7 @@ Tests for MailActionMapping model
 
 from django.test import TestCase
 from django.db import IntegrityError
+from django.db.models import ProtectedError
 from core.models import (
     MailActionMapping,
     MailTemplate,
@@ -208,7 +209,7 @@ class MailActionMappingTestCase(TestCase):
     def test_protect_delete_mail_template(self):
         """Test that deleting MailTemplate is protected when referenced"""
         # Try to delete the template that is referenced by mapping
-        with self.assertRaises(Exception):  # Will raise ProtectedError
+        with self.assertRaises(ProtectedError):
             self.template.delete()
         
         # Mapping should still exist
