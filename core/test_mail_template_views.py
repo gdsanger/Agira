@@ -181,6 +181,8 @@ class MailTemplateViewsTestCase(TestCase):
     
     def test_mail_template_save_and_close(self):
         """Test save and close action"""
+        from django.urls import reverse
+        
         data = {
             'key': 'welcome-email',
             'subject': 'Updated',
@@ -198,7 +200,6 @@ class MailTemplateViewsTestCase(TestCase):
         response_data = json.loads(response.content)
         self.assertTrue(response_data['success'])
         # Check that redirect uses reverse URL
-        from django.urls import reverse
         self.assertEqual(response_data['redirect'], reverse('mail-templates'))
     
     def test_mail_template_delete(self):
