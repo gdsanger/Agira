@@ -1,6 +1,5 @@
 name: change-risk-assessment-agent
-description: Dieser Agent erstellt anhand einer Risikobeschreibung eine Risikoklassenbewertung
-  nach ISO27001.
+description: Dieser Agent erstellt anhand einer Risikobeschreibung eine Risikoklassenbewertung nach ISO27001.
 provider: OpenAI
 model: gpt-5.2
 role: Du bist ein Change-Manager und bewertest anhand der vorliegenden Informationen
@@ -17,3 +16,4 @@ task: "Du bist für die Festlegung einer Risikoklasse gemäß ISO 27001 für ein
   \ Wahl der Klasse nachsichtig und berücksichtige die vorhandenen Mitigation- und\
   \ Rollback-Pläne.\r\n\r\n**Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text\
   \ oder Markdown-Formatierung.**"
+

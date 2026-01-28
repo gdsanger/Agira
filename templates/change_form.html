@@ -92,7 +92,7 @@
                             <option value="">No release association</option>
                             {% for rel in releases %}
                             <option value="{{ rel.id }}" {% if change and change.release and change.release.id == rel.id %}selected{% endif %}>
-                                {{ rel.project.name }} - {{ rel.version }}
+                                {{ rel.project.name }} - {{ rel.version }}{% if rel.type %} ({{ rel.type }}){% endif %}
                             </option>
                             {% endfor %}
                         </select>

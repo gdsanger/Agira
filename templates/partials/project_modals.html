@@ -93,6 +93,16 @@
                         <label for="releaseVersion" class="form-label">Version</label>
                         <input type="text" class="form-control" id="releaseVersion" name="version" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="releaseType" class="form-label">Type</label>
+                        <select class="form-select" id="releaseType" name="type">
+                            <option value="">— Select Type (Optional) —</option>
+                            <option value="Major">Major</option>
+                            <option value="Minor">Minor</option>
+                            <option value="Hotfix">Hotfix</option>
+                            <option value="Securityfix">Securityfix</option>
+                        </select>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">

@@ -17,11 +17,12 @@ from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
+import json
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
-    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel)
+    ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -841,9 +842,15 @@ def item_create_github_issue(request, item_id):
                 status=400
             )
         
-        # Check if item already has a GitHub issue
-        if item.external_mappings.filter(kind='Issue').exists():
-            return HttpResponse("This item already has a GitHub issue. You can only link existing issues or PRs.", status=400)
+        # Check if this is a follow-up issue (item already has issues)
+        existing_issues = item.external_mappings.filter(kind='Issue').exists()
+        
+        if existing_issues:
+            # For follow-up issues, get the notes from the request
+            notes = request.POST.get('notes', '').strip()
+            
+            if not notes:
+                return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
         
         # Create GitHub issue
         try:
@@ -852,11 +859,22 @@ def item_create_github_issue(request, item_id):
                 actor=request.user
             )
             
+            # For follow-up issues, update item description after issue is created
+            # This ensures the new issue is included in the references
+            if existing_issues:
+                _append_followup_notes_to_item(item, notes)
+            
             # Return updated GitHub tab
             external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+            github_service = GitHubService()
+            can_create_issue = github_service.can_create_issue_for_item(item)
+            has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
+            
             context = {
                 'item': item,
                 'external_mappings': external_mappings,
+                'can_create_issue': can_create_issue,
+                'has_existing_issue': has_existing_issue,
             }
             response = render(request, 'partials/item_github_tab.html', context)
             response['HX-Trigger'] = 'githubIssueCreated'
@@ -872,6 +890,53 @@ def item_create_github_issue(request, item_id):
         logger = logging.getLogger(__name__)
         logger.error(f"GitHub issue creation failed for item {item_id}: {str(e)}")
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
+
+
+def _append_followup_notes_to_item(item, notes):
+    """
+    Append follow-up notes and issue/PR references to item description.
+    
+    This function should be called AFTER the new GitHub issue has been created
+    so that the newly created issue is included in the references.
+    
+    Args:
+        item: Item instance
+        notes: User-provided notes for the follow-up
+    """
+    from datetime import datetime
+    
+    # Get current date formatted for German locale
+    current_date = datetime.now().strftime("%d.%m.%Y")
+    
+    # Get all existing issue and PR numbers
+    mappings = item.external_mappings.all().order_by('kind', 'number')
+    issue_pr_refs = ", ".join([f"#{m.number}" for m in mappings])
+    
+    # Build the addition to description
+    addition_parts = []
+    
+    # Initialize description if it's None or empty
+    if not item.description:
+        item.description = ""
+    
+    # If description doesn't have original header, add it
+    if item.description and not item.description.startswith("## "):
+        # Preserve original description with header
+        original_desc = item.description
+        item.description = f"## Original Item Issue Text\n{original_desc}"
+    
+    # Add notes section
+    addition_parts.append(f"\n\n## Hinweise und Änderungen {current_date}")
+    addition_parts.append(notes)
+    
+    # Add issue/PR references section
+    if issue_pr_refs:
+        addition_parts.append("\n### Siehe folgende Issues und PRs")
+        addition_parts.append(issue_pr_refs)
+    
+    # Append to description
+    item.description += "\n".join(addition_parts)
+    item.save(update_fields=['description'])
 
 
 @login_required
@@ -2032,14 +2097,20 @@ def project_add_release(request, id):
     try:
         name = request.POST.get('name')
         version = request.POST.get('version')
+        release_type = request.POST.get('type')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
+        
+        # Validate release type if provided
+        if release_type and release_type not in ReleaseType.values:
+            return JsonResponse({'success': False, 'error': f'Invalid release type. Must be one of: {", ".join(ReleaseType.values)}'}, status=400)
         
         release = Release.objects.create(
             project=project,
             name=name,
             version=version,
+            type=release_type if release_type else None,
             status=ReleaseStatus.PLANNED
         )
         
@@ -4285,22 +4356,46 @@ Rollback Plan:
         )
         
         # Parse the result to extract risk level and reason
-        # Expected format includes risk class and reasoning
-        risk_class = None
-        risk_reason = assessment_result
+        # Expected format can be JSON with RiskClass and RiskClassReason fields
+        risk_class = RiskLevel.NORMAL  # Default to NORMAL if no risk class can be determined
+        risk_reason = None  # Will be set based on parsing
         
-        # Try to extract risk class from the response
-        # Check in order from most specific to least specific to avoid incorrect matches
-        assessment_lower = assessment_result.lower()
-        if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
-            risk_class = RiskLevel.VERY_HIGH
-        elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
-            risk_class = RiskLevel.LOW
-        elif 'high' in assessment_lower or 'hoch' in assessment_lower:
-            # This check is after "very high" to avoid false matches
-            risk_class = RiskLevel.HIGH
-        else:
-            risk_class = RiskLevel.NORMAL
+        # Try to parse as JSON first
+        try:
+            # Attempt to parse JSON response
+            result_json = json.loads(assessment_result)
+            
+            # Extract RiskClassReason for the description
+            # ONLY use RiskClassReason if present, otherwise use full JSON
+            risk_reason = result_json.get('RiskClassReason', assessment_result)
+            
+            # Extract and normalize RiskClass for the enum
+            if 'RiskClass' in result_json and result_json['RiskClass']:
+                risk_class_value = result_json['RiskClass'].lower().strip()
+                
+                # Normalize to RiskLevel enum values
+                if risk_class_value in ['very high', 'veryhigh', 'sehr hoch']:
+                    risk_class = RiskLevel.VERY_HIGH
+                elif risk_class_value in ['low', 'niedrig', 'gering']:
+                    risk_class = RiskLevel.LOW
+                elif risk_class_value in ['high', 'hoch']:
+                    risk_class = RiskLevel.HIGH
+                elif risk_class_value in ['normal', 'mittel']:
+                    risk_class = RiskLevel.NORMAL
+                # If unrecognized value, keep default NORMAL (set above)
+        except (json.JSONDecodeError, AttributeError):
+            # If not JSON, assessment_result is None, or .lower() fails on None,
+            # fall back to text parsing
+            risk_reason = assessment_result  # Use full text for non-JSON responses
+            assessment_lower = assessment_result.lower() if assessment_result else ''
+            if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
+                risk_class = RiskLevel.VERY_HIGH
+            elif 'low' in assessment_lower or 'niedrig' in assessment_lower or 'gering' in assessment_lower:
+                risk_class = RiskLevel.LOW
+            elif 'high' in assessment_lower or 'hoch' in assessment_lower:
+                # This check is after "very high" to avoid false matches
+                risk_class = RiskLevel.HIGH
+            # If no match, keep default NORMAL (set above)
         
         # Update risk level
         old_risk = change.risk
