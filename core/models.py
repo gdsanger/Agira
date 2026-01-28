@@ -882,7 +882,6 @@ class MailTemplate(models.Model):
     key = models.SlugField(
         max_length=100,
         unique=True,
-        db_index=True,
         help_text="Technical identifier for the template (e.g., issue-created-confirmation)"
     )
     subject = models.CharField(
@@ -917,7 +916,6 @@ class MailTemplate(models.Model):
         verbose_name = 'Mail Template'
         verbose_name_plural = 'Mail Templates'
         indexes = [
-            models.Index(fields=['key']),
             models.Index(fields=['is_active']),
         ]
 

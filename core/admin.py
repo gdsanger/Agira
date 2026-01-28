@@ -542,8 +542,3 @@ class MailTemplateAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-    
-    # Allow searching by key in autocomplete fields
-    def get_search_results(self, request, queryset, search_term):
-        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
-        return queryset, use_distinct
