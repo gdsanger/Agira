@@ -54,10 +54,10 @@
                 <h5 class="mb-0">Message</h5>
             </div>
             <div class="card-body">
-                <div class="bg-light p-3 rounded border">
+                <div class="border rounded" style="background-color: var(--bg-tertiary);">
                     <!-- Display rendered HTML preview -->
-                    <div class="text-muted small mb-2">HTML Preview:</div>
-                    <div class="html-preview">
+                    <div class="text-muted small mb-2 px-3 pt-3">HTML Preview:</div>
+                    <div class="html-preview mx-3 mb-3">
                         {{ template.message|safe_html }}
                     </div>
                 </div>

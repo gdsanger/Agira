@@ -18,12 +18,28 @@ ALLOWED_TAGS = [
 ]
 
 ALLOWED_ATTRIBUTES = {
-    'a': ['href', 'title', 'target', 'rel'],
-    'img': ['src', 'alt', 'title', 'width', 'height'],
-    'code': ['class'],
-    'pre': ['class'],
-    'div': ['class'],
-    'span': ['class'],
+    'a': ['href', 'title', 'target', 'rel', 'style'],
+    'img': ['src', 'alt', 'title', 'width', 'height', 'style'],
+    'code': ['class', 'style'],
+    'pre': ['class', 'style'],
+    'div': ['class', 'style'],
+    'span': ['class', 'style'],
+    'p': ['style'],
+    'h1': ['style'],
+    'h2': ['style'],
+    'h3': ['style'],
+    'h4': ['style'],
+    'h5': ['style'],
+    'h6': ['style'],
+    'td': ['style'],
+    'th': ['style'],
+    'tr': ['style'],
+    'table': ['style'],
+    'ul': ['style'],
+    'ol': ['style'],
+    'li': ['style'],
+    'strong': ['style'],
+    'em': ['style'],
 }
 
 
