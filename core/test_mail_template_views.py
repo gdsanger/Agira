@@ -321,12 +321,14 @@ class MailTemplateViewsTestCase(TestCase):
         
         # Find the HTML preview div using a more robust method
         # Look for the preview div and verify dangerous content is not there
-        preview_marker = '<div class="html-preview">'
+        preview_marker = 'class="html-preview'
         preview_start = content.find(preview_marker)
         self.assertNotEqual(preview_start, -1, "HTML preview section not found")
         
         # Find the end of the preview div by counting nested divs
-        preview_content_start = preview_start + len(preview_marker)
+        # First, find the start of the div tag
+        div_start = content.rfind('<div', 0, preview_start)
+        preview_content_start = content.find('>', div_start) + 1
         depth = 1
         i = preview_content_start
         while i < len(content) and depth > 0:
@@ -338,9 +340,36 @@ class MailTemplateViewsTestCase(TestCase):
                     break
             i += 1
         
-        preview_section = content[preview_start:i]
+        preview_section = content[div_start:i]
         
         # Verify script tags and event handlers are not in the preview section
         self.assertNotIn('<script>', preview_section)
         self.assertNotIn('</script>', preview_section)
         self.assertNotIn('onclick=', preview_section)
+    
+    def test_mail_template_detail_css_sanitization(self):
+        """Test that inline CSS styles are properly sanitized"""
+        # Create a template with various CSS styles
+        css_template = MailTemplate.objects.create(
+            key='css-test',
+            subject='Test CSS Sanitization',
+            message='''
+                <p style="color: red;">Safe red text</p>
+                <p style="color: #00ff00;">Safe green text</p>
+                <div style="font-size: 16px; font-weight: bold;">Safe styled div</div>
+                <span style="background-color: yellow;">Safe background</span>
+            ''',
+            is_active=True
+        )
+        
+        response = self.client.get(reverse('mail-template-detail', args=[css_template.id]))
+        
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        
+        # Verify safe CSS properties are preserved
+        self.assertIn('color: red', content.lower())
+        self.assertIn('color: #00ff00', content.lower())
+        self.assertIn('font-size: 16px', content.lower())
+        self.assertIn('font-weight: bold', content.lower())
+        self.assertIn('background-color: yellow', content.lower())
