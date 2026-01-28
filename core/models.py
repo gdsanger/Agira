@@ -269,6 +269,48 @@ class Node(models.Model):
             depth += 1
         
         return " / ".join(path)
+    
+    def would_create_cycle(self, potential_parent):
+        """
+        Check if setting potential_parent as this node's parent would create a circular reference.
+        Returns True if it would create a cycle, False otherwise.
+        """
+        if potential_parent is None:
+            return False
+        
+        # A node cannot be its own parent
+        if potential_parent.id == self.id:
+            return True
+        
+        # Check if potential_parent is a descendant of this node
+        current = potential_parent
+        max_depth = 100  # Protect against infinite loops
+        depth = 0
+        
+        while current is not None and depth < max_depth:
+            if current.id == self.id:
+                return True
+            current = current.parent_node
+            depth += 1
+        
+        return False
+    
+    def get_root_nodes(self):
+        """Get all root nodes (nodes without parents) for this project."""
+        return Node.objects.filter(project=self.project, parent_node=None)
+    
+    def get_tree_structure(self):
+        """
+        Get the hierarchical tree structure starting from this node.
+        Returns a dictionary with node info and children.
+        """
+        return {
+            'id': self.id,
+            'name': self.name,
+            'type': self.type,
+            'description': self.description,
+            'children': [child.get_tree_structure() for child in self.child_nodes.all()]
+        }
 
     def __str__(self):
         return f"{self.project.name} - {self.matchkey}"
