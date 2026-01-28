@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}{% if template %}Edit {{ template.key }}{% else %}New Mail Template{% endif %} - Agira{% endblock %}
+
+{% block extra_head %}
+<!-- TinyMCE -->
+<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+<style>
+/* Custom styling for the form */
+.ai-generating {
+    pointer-events: none;
+    opacity: 0.6;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'mail-templates' %}">Mail Templates</a></li>
+        {% if template %}
+        <li class="breadcrumb-item"><a href="{% url 'mail-template-detail' template.id %}">{{ template.key }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Template</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>{% if template %}Edit Mail Template{% else %}Create New Mail Template{% endif %}</h1>
+    <p class="text-muted">{% if template %}Update template details{% else %}Add a new email template{% endif %}</p>
+</div>
+
+<!-- Form Container with 2-Column Layout -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content -->
+    <div class="detail-main">
+        <form id="templateForm" 
+              hx-post="{% if template %}{% url 'mail-template-update' template.id %}{% else %}{% url 'mail-template-update' 0 %}{% endif %}"
+              hx-swap="none"
+              hx-on::after-request="handleFormResponse(event)">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Basic Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="key" class="form-label">Key <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="key" 
+                               name="key" 
+                               value="{% if template %}{{ template.key }}{% endif %}"
+                               maxlength="100"
+                               pattern="[a-z0-9-]+"
+                               required
+                               {% if template %}readonly{% endif %}>
+                        <div class="form-text">Technical identifier (lowercase, numbers, and hyphens only). Cannot be changed after creation.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="subject" class="form-label">Subject <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="subject" 
+                               name="subject" 
+                               value="{% if template %}{{ template.subject }}{% endif %}"
+                               maxlength="500"
+                               required>
+                        <div class="form-text">Email subject line. You can use placeholders like {{placeholder}}.</div>
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                               type="checkbox" 
+                               id="is_active" 
+                               name="is_active"
+                               {% if not template or template.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="is_active">
+                            Active
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- AI Generation Section -->
+            <div class="card mb-3 border-primary">
+                <div class="card-header bg-primary bg-opacity-10">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-stars"></i> AI Generation
+                        </h5>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="ai-context" class="form-label">Describe the email template</label>
+                        <textarea class="form-control" 
+                                  id="ai-context" 
+                                  rows="3"
+                                  placeholder="E.g., 'Welcome email for new users when they sign up'"></textarea>
+                        <div class="form-text">Provide a description or context for the email template. The AI will generate the subject and message based on this.</div>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" 
+                               type="checkbox" 
+                               id="ai-overwrite" 
+                               checked>
+                        <label class="form-check-label" for="ai-overwrite">
+                            Overwrite existing Subject and Message
+                        </label>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="ai-generate-btn">
+                        <i class="bi bi-stars"></i> Generate with AI
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Message with TinyMCE Editor -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Message <span class="text-danger">*</span></h5>
+                </div>
+                <div class="card-body">
+                    <textarea id="message" name="message" class="form-control">{% if template %}{{ template.message }}{% endif %}</textarea>
+                    <div class="form-text mt-2">HTML email content. You can use placeholders like {{placeholder}}.</div>
+                </div>
+            </div>
+            
+            <!-- Sender Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Sender Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="from_name" class="form-label">From Name</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="from_name" 
+                               name="from_name" 
+                               value="{% if template %}{{ template.from_name }}{% endif %}"
+                               maxlength="255">
+                        <div class="form-text">Optional sender name</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="from_address" class="form-label">From Email Address</label>
+                        <input type="email" 
+                               class="form-control" 
+                               id="from_address" 
+                               name="from_address" 
+                               value="{% if template %}{{ template.from_address }}{% endif %}">
+                        <div class="form-text">Optional sender email address</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cc_address" class="form-label">CC Email Address</label>
+                        <input type="email" 
+                               class="form-control" 
+                               id="cc_address" 
+                               name="cc_address" 
+                               value="{% if template %}{{ template.cc_address }}{% endif %}">
+                        <div class="form-text">Optional CC email address</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex gap-2 mb-3">
+                <button type="submit" name="action" value="save" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Save
+                </button>
+                <button type="submit" name="action" value="save_close" class="btn btn-success">
+                    <i class="bi bi-save"></i> Save & Close
+                </button>
+                {% if template %}
+                <button type="button" class="btn btn-danger" id="delete-btn">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+                {% endif %}
+                <a href="{% if template %}{% url 'mail-template-detail' template.id %}{% else %}{% url 'mail-templates' %}{% endif %}" 
+                   class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Sidebar -->
+    <div class="detail-sidebar">
+        <!-- Help Card -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Help</h6>
+            </div>
+            <div class="card-body">
+                <h6>Placeholders</h6>
+                <p class="small">Use double curly braces for placeholders:</p>
+                <code class="small">{{username}}</code><br>
+                <code class="small">{{item_title}}</code><br>
+                <code class="small">{{project_name}}</code>
+                
+                <hr>
+                
+                <h6 class="mt-3">HTML Email</h6>
+                <p class="small">The message field supports full HTML. Use the editor to format your email content.</p>
+            </div>
+        </div>
+        
+        {% if template %}
+        <!-- Metadata Card -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-clock-history"></i> Metadata</h6>
+            </div>
+            <div class="card-body">
+                <p class="small mb-1"><strong>Created:</strong><br>{{ template.created_at|date:"Y-m-d H:i:s" }}</p>
+                <p class="small mb-0"><strong>Updated:</strong><br>{{ template.updated_at|date:"Y-m-d H:i:s" }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Toast Container for Notifications -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
+    <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto" id="toast-title">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-body">
+            Message
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize TinyMCE
+tinymce.init({
+    selector: '#message',
+    height: 400,
+    menubar: false,
+    plugins: [
+        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+        'insertdatetime', 'media', 'table', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | blocks | ' +
+        'bold italic forecolor | alignleft aligncenter ' +
+        'alignright alignjustify | bullist numlist outdent indent | ' +
+        'removeformat | help',
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+    skin: 'oxide-dark',
+    content_css: 'dark'
+});
+
+// Show toast notification
+function showToast(type, message) {
+    const toast = document.getElementById('notification-toast');
+    const toastBody = document.getElementById('toast-body');
+    const toastTitle = document.getElementById('toast-title');
+    
+    // Set message
+    toastBody.textContent = message;
+    
+    // Set title and style based on type
+    if (type === 'success') {
+        toastTitle.textContent = 'Success';
+        toast.classList.remove('bg-danger');
+        toast.classList.add('bg-success', 'text-white');
+    } else if (type === 'error') {
+        toastTitle.textContent = 'Error';
+        toast.classList.remove('bg-success');
+        toast.classList.add('bg-danger', 'text-white');
+    }
+    
+    // Show toast
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+}
+
+// Handle form response
+function handleFormResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    try {
+        const response = JSON.parse(xhr.responseText);
+        
+        if (response.success) {
+            showToast('success', response.message || 'Template saved successfully');
+            
+            // Redirect if specified
+            if (response.redirect) {
+                setTimeout(() => {
+                    window.location.href = response.redirect;
+                }, 1000);
+            }
+        } else {
+            showToast('error', response.error || 'An error occurred');
+        }
+    } catch (e) {
+        showToast('error', 'Failed to process response');
+    }
+}
+
+// AI Generate Button Handler
+document.getElementById('ai-generate-btn').addEventListener('click', async function() {
+    const context = document.getElementById('ai-context').value.trim();
+    const overwrite = document.getElementById('ai-overwrite').checked;
+    const btn = this;
+    
+    if (!context) {
+        showToast('error', 'Please provide a description for the email template');
+        return;
+    }
+    
+    // Check if we should proceed without overwriting
+    const currentSubject = document.getElementById('subject').value;
+    const currentMessage = tinymce.get('message').getContent();
+    
+    if (!overwrite && (currentSubject || currentMessage)) {
+        showToast('error', 'Subject or Message already has content. Enable "Overwrite" to proceed.');
+        return;
+    }
+    
+    // Disable button and show loading
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Generating...';
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const templateId = {% if template %}{{ template.id }}{% else %}0{% endif %};
+        
+        const response = await fetch('/mail-templates/' + templateId + '/ai/generate/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                context: context
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update subject and message
+            document.getElementById('subject').value = data.subject;
+            tinymce.get('message').setContent(data.message);
+            
+            showToast('success', 'Subject and Message generated successfully!');
+        } else {
+            showToast('error', data.error || 'Failed to generate template');
+        }
+    } catch (error) {
+        console.error('AI Generation Error:', error);
+        showToast('error', 'Failed to generate template: ' + error.message);
+    } finally {
+        // Re-enable button
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-stars"></i> Generate with AI';
+    }
+});
+
+// Delete Button Handler
+{% if template %}
+document.getElementById('delete-btn').addEventListener('click', async function() {
+    if (!confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const response = await fetch('{% url "mail-template-delete" template.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Template deleted successfully');
+            setTimeout(() => {
+                window.location.href = data.redirect || '{% url "mail-templates" %}';
+            }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to delete template');
+        }
+    } catch (error) {
+        console.error('Delete Error:', error);
+        showToast('error', 'Failed to delete template: ' + error.message);
+    }
+});
+{% endif %}
+
+// Before form submit, sync TinyMCE content
+document.getElementById('templateForm').addEventListener('htmx:configRequest', function() {
+    tinymce.triggerSave();
+});
+</script>
+{% endblock %}

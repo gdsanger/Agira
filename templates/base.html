@@ -156,6 +156,19 @@
                     </div>
                 </div>
                 
+                <!-- Configuration Section -->
+                <div class="sidebar-section">
+                    <a class="sidebar-section-header" data-bs-toggle="collapse" href="#configCollapse" role="button" aria-expanded="false" aria-controls="configCollapse">
+                        <i class="bi bi-chevron-down sidebar-section-chevron"></i>
+                        <span class="sidebar-section-title">Configuration</span>
+                    </a>
+                    <div class="collapse" id="configCollapse">
+                        <a href="{% url 'mail-templates' %}" class="sidebar-link sidebar-link-sub {% if 'mail-template' in request.resolver_match.url_name %}active{% endif %}">
+                            <i class="bi bi-envelope sidebar-icon"></i>
+                            <span class="sidebar-text">Mail Templates</span>
+                        </a>
+                    </div>
+                </div>
 
                 <a href="/admin/" class="sidebar-link">
                     <i class="bi bi-gear sidebar-icon"></i>

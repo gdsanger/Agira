@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Mail Templates - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>Mail Templates</h1>
+            <p class="text-muted">Manage email templates</p>
+        </div>
+        <a href="{% url 'mail-template-create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Template
+        </a>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'mail-templates' %}" class="row g-3">
+        <div class="col-md-4">
+            <input type="text" name="q" class="form-control" placeholder="Search by key or subject..." value="{{ search_query }}">
+        </div>
+        <div class="col-md-3">
+            <select name="is_active" class="form-select">
+                <option value="">All Status</option>
+                <option value="true" {% if is_active_filter == 'true' %}selected{% endif %}>Active</option>
+                <option value="false" {% if is_active_filter == 'false' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-funnel"></i> Filter
+            </button>
+            {% if search_query or is_active_filter %}
+            <a href="{% url 'mail-templates' %}" class="btn btn-secondary">
+                <i class="bi bi-x-circle"></i> Clear
+            </a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Templates Table -->
+<div class="card">
+    <div class="card-body p-0">
+        {% if templates %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>From Address</th>
+                        <th>CC Address</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for template in templates %}
+                    <tr style="cursor: pointer;" onclick="window.location='{% url 'mail-template-detail' template.id %}'">
+                        <td>
+                            <code class="text-info">{{ template.key }}</code>
+                        </td>
+                        <td>
+                            <strong>{{ template.subject|truncatechars:60 }}</strong>
+                        </td>
+                        <td>
+                            {% if template.is_active %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle"></i> Active
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-x-circle"></i> Inactive
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if template.from_address %}
+                            <small class="text-muted">{{ template.from_address }}</small>
+                            {% else %}
+                            <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if template.cc_address %}
+                            <small class="text-muted">{{ template.cc_address }}</small>
+                            {% else %}
+                            <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ template.updated_at|date:"Y-m-d H:i" }}</small>
+                        </td>
+                        <td onclick="event.stopPropagation();">
+                            <a href="{% url 'mail-template-edit' template.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4">
+            <div class="alert alert-info mb-0">
+                {% if search_query or is_active_filter %}
+                No mail templates found matching the current filters.
+                {% else %}
+                No mail templates yet. <a href="{% url 'mail-template-create' %}">Create your first template</a>.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if templates %}
+<div class="mt-3">
+    <small class="text-muted">Showing {{ templates|length }} template{{ templates|length|pluralize }}</small>
+</div>
+{% endif %}
+{% endblock %}
