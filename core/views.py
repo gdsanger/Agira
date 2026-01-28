@@ -9,15 +9,17 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from django.urls import reverse
 from decimal import Decimal, InvalidOperation
 import logging
 import os
+import re
+import json
 import openai
 from google import genai
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
-import json
 from .models import (
     Project, Item, ItemStatus, ItemComment, User, Release, Node, ItemType, Organisation,
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
@@ -4952,7 +4954,6 @@ def mail_template_update(request, id):
             return JsonResponse({'success': False, 'error': 'Message is required'}, status=400)
         
         # Validate key format (lowercase, numbers, hyphens only)
-        import re
         if not re.match(r'^[a-z0-9-]+$', key):
             return JsonResponse({
                 'success': False, 
@@ -5015,9 +5016,9 @@ def mail_template_update(request, id):
         
         # Determine redirect based on action
         if action == 'save_close':
-            redirect_url = f'/mail-templates/'
+            redirect_url = reverse('mail-templates')
         else:
-            redirect_url = f'/mail-templates/{template.id}/'
+            redirect_url = reverse('mail-template-detail', args=[template.id])
         
         return JsonResponse({
             'success': True,
@@ -5027,7 +5028,7 @@ def mail_template_update(request, id):
         })
         
     except Exception as e:
-        logger.error(f"Error saving mail template: {e}")
+        logger.error(f"Error saving mail template: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -5054,11 +5055,11 @@ def mail_template_delete(request, id):
         return JsonResponse({
             'success': True,
             'message': f'Mail template "{template_key}" deleted successfully',
-            'redirect': '/mail-templates/'
+            'redirect': reverse('mail-templates')
         })
         
     except Exception as e:
-        logger.error(f"Error deleting mail template: {e}")
+        logger.error(f"Error deleting mail template: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -5135,5 +5136,5 @@ def mail_template_generate_ai(request, id):
             }, status=500)
         
     except Exception as e:
-        logger.error(f"Error generating mail template with AI: {e}")
+        logger.error(f"Error generating mail template with AI: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

@@ -197,7 +197,9 @@ class MailTemplateViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         response_data = json.loads(response.content)
         self.assertTrue(response_data['success'])
-        self.assertEqual(response_data['redirect'], '/mail-templates/')
+        # Check that redirect uses reverse URL
+        from django.urls import reverse
+        self.assertEqual(response_data['redirect'], reverse('mail-templates'))
     
     def test_mail_template_delete(self):
         """Test deleting a template"""

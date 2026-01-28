@@ -365,7 +365,8 @@ document.getElementById('ai-generate-btn').addEventListener('click', async funct
         }
     } catch (error) {
         console.error('AI Generation Error:', error);
-        showToast('error', 'Failed to generate template: ' + error.message);
+        const errorMessage = error.message || 'An unexpected error occurred while generating template';
+        showToast('error', 'Failed to generate template: ' + errorMessage);
     } finally {
         // Re-enable button
         btn.disabled = false;
@@ -402,7 +403,8 @@ document.getElementById('delete-btn').addEventListener('click', async function()
         }
     } catch (error) {
         console.error('Delete Error:', error);
-        showToast('error', 'Failed to delete template: ' + error.message);
+        const errorMessage = error.message || 'An unexpected error occurred while deleting';
+        showToast('error', 'Failed to delete template: ' + errorMessage);
     }
 });
 {% endif %}
