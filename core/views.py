@@ -31,6 +31,7 @@ from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
+from .services.mail import check_mail_trigger, prepare_mail_preview
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1793,12 +1794,21 @@ def item_create(request):
             summary=f"Created item: {item.title}",
         )
         
-        return JsonResponse({
+        # Check for mail trigger
+        response_data = {
             'success': True,
             'message': 'Item created successfully',
             'redirect': f'/items/{item.id}/',
             'item_id': item.id
-        })
+        }
+        
+        mapping = check_mail_trigger(item)
+        if mapping:
+            # Prepare mail preview for modal
+            mail_preview = prepare_mail_preview(item, mapping)
+            response_data['mail_preview'] = mail_preview
+        
+        return JsonResponse(response_data)
     except ValidationError as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
@@ -1860,6 +1870,9 @@ def item_edit(request, item_id):
 def item_update(request, item_id):
     """Update item details."""
     item = get_object_or_404(Item, id=item_id)
+    
+    # Capture old status to detect changes
+    old_status = item.status
     
     try:
         # Check if node is being updated
@@ -1962,11 +1975,22 @@ def item_update(request, item_id):
             summary=f"Updated item: {item.title}",
         )
         
-        return JsonResponse({
+        # Check for mail trigger (only if status changed)
+        response_data = {
             'success': True,
             'message': 'Item updated successfully',
             'redirect': f'/items/{item.id}/'
-        })
+        }
+        
+        # Only check for mail trigger if status changed
+        if item.status != old_status:
+            mapping = check_mail_trigger(item)
+            if mapping:
+                # Prepare mail preview for modal
+                mail_preview = prepare_mail_preview(item, mapping)
+                response_data['mail_preview'] = mail_preview
+        
+        return JsonResponse(response_data)
     except ValidationError as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
@@ -1994,6 +2018,70 @@ def item_delete(request, item_id):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def item_send_status_mail(request, item_id):
+    """Send status change email for an item."""
+    from .services.graph.mail_service import send_email
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Extract mail data from request
+        subject = data.get('subject', '')
+        message = data.get('message', '')
+        to_address = data.get('to', '')
+        from_address = data.get('from_address', '')
+        cc_address = data.get('cc_address', '')
+        
+        if not subject or not message:
+            return JsonResponse({'success': False, 'error': 'Subject and message are required'}, status=400)
+        
+        if not to_address:
+            # Try to get recipient from requester
+            if item.requester and item.requester.email:
+                to_address = item.requester.email
+            else:
+                return JsonResponse({'success': False, 'error': 'No recipient email available'}, status=400)
+        
+        # Prepare recipient list
+        to = [to_address] if isinstance(to_address, str) else to_address
+        cc = [cc_address] if cc_address and isinstance(cc_address, str) else (cc_address if cc_address else None)
+        
+        # Send email using graph service
+        result = send_email(
+            subject=subject,
+            body=message,
+            to=to,
+            body_is_html=True,
+            cc=cc,
+            sender=from_address if from_address else None,
+            item=item,
+            author=request.user if request.user.is_authenticated else None,
+            visibility='Internal',
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        if result.success:
+            return JsonResponse({
+                'success': True,
+                'message': 'Email sent successfully'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result.error or 'Failed to send email'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f"Failed to send status mail for item {item_id}: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @login_required
