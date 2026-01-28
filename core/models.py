@@ -254,13 +254,20 @@ class Node(models.Model):
         """
         Calculate the breadcrumb path from root to this node.
         Returns a string like "Root / Subnode / Leaf"
+        
+        Protects against circular references by limiting depth.
         """
         path = []
         current = self
+        max_depth = 100  # Protect against circular references
+        depth = 0
+        
         # Traverse up the tree to build the path
-        while current is not None:
+        while current is not None and depth < max_depth:
             path.insert(0, current.name)
             current = current.parent_node
+            depth += 1
+        
         return " / ".join(path)
 
     def __str__(self):
@@ -430,22 +437,30 @@ class Item(models.Model):
         
         # Find and remove existing "Betrifft:" block
         new_lines = []
-        skip_until_separator = False
-        found_betrifft = False
-        
-        for i, line in enumerate(lines):
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             if line.startswith('Betrifft: '):
-                skip_until_separator = True
-                found_betrifft = True
-                continue
-            if skip_until_separator:
-                if line.strip() == '---':
-                    skip_until_separator = False
-                    # Skip the separator line and any following empty line
-                    if i + 1 < len(lines) and lines[i + 1].strip() == '':
-                        continue
+                # Skip this line and look for separator
+                i += 1
+                # Skip empty lines and find separator
+                while i < len(lines):
+                    if lines[i].strip() == '---':
+                        # Skip separator
+                        i += 1
+                        # Skip one following empty line if present
+                        if i < len(lines) and lines[i].strip() == '':
+                            i += 1
+                        break
+                    elif lines[i].strip() == '':
+                        # Skip empty lines between Betrifft and separator
+                        i += 1
+                    else:
+                        # Content before separator - shouldn't happen, but handle it
+                        break
                 continue
             new_lines.append(line)
+            i += 1
         
         # Remove leading empty lines
         while new_lines and new_lines[0].strip() == '':
