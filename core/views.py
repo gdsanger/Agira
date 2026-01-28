@@ -5178,6 +5178,9 @@ def mail_action_mappings(request):
     elif is_active_filter == 'false':
         mappings = mappings.filter(is_active=False)
     
+    # Apply consistent ordering
+    mappings = mappings.order_by('item_status', 'item_type__name')
+    
     # Get all item types and statuses for filters
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     item_statuses = ItemStatus.choices
@@ -5255,27 +5258,27 @@ def mail_action_mapping_update(request, id):
         
         # Validate required fields
         if not item_status:
-            return JsonResponse({'success': False, 'error': 'Status is required'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Status ist erforderlich'}, status=400)
         if not item_type_id:
-            return JsonResponse({'success': False, 'error': 'Item Type is required'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Typ ist erforderlich'}, status=400)
         if not mail_template_id:
-            return JsonResponse({'success': False, 'error': 'Mail Template is required'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Mail-Template ist erforderlich'}, status=400)
         
         # Validate item_status is valid choice
         valid_statuses = [choice[0] for choice in ItemStatus.choices]
         if item_status not in valid_statuses:
-            return JsonResponse({'success': False, 'error': 'Invalid item status'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Ungültiger Status'}, status=400)
         
         # Get related objects
         try:
             item_type = ItemType.objects.get(id=int(item_type_id))
         except (ItemType.DoesNotExist, ValueError):
-            return JsonResponse({'success': False, 'error': 'Invalid item type'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Ungültiger Typ'}, status=400)
         
         try:
             mail_template = MailTemplate.objects.get(id=int(mail_template_id))
         except (MailTemplate.DoesNotExist, ValueError):
-            return JsonResponse({'success': False, 'error': 'Invalid mail template'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Ungültiges Mail-Template'}, status=400)
         
         # Check for uniqueness (status + type combination)
         existing_mapping = MailActionMapping.objects.filter(

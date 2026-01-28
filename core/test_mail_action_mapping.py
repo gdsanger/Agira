@@ -5,6 +5,7 @@ Tests for MailActionMapping model
 from django.test import TestCase
 from django.db import IntegrityError
 from django.db.models import ProtectedError
+from django.urls import reverse
 from core.models import (
     MailActionMapping,
     MailTemplate,
@@ -406,7 +407,7 @@ class MailActionMappingViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Try to create a mapping with the same status and type as existing
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_status': ItemStatus.WORKING,
             'item_type': self.type1.id,
             'mail_template': self.template2.id,
@@ -425,7 +426,7 @@ class MailActionMappingViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Create a mapping with different status
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_status': ItemStatus.TESTING,
             'item_type': self.type1.id,
             'mail_template': self.template1.id,
@@ -449,7 +450,7 @@ class MailActionMappingViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Create a mapping with different type
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_status': ItemStatus.WORKING,
             'item_type': self.type2.id,
             'mail_template': self.template1.id,
@@ -480,7 +481,7 @@ class MailActionMappingViewsTestCase(TestCase):
         )
         
         # Try to edit mapping2 to have the same status+type as mapping1
-        response = self.client.post(f'/mail-action-mappings/{mapping2.id}/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[mapping2.id]), {
             'item_status': ItemStatus.WORKING,
             'item_type': self.type1.id,
             'mail_template': self.template2.id,
@@ -499,7 +500,7 @@ class MailActionMappingViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Edit the mapping but keep same status and type
-        response = self.client.post(f'/mail-action-mappings/{self.mapping.id}/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[self.mapping.id]), {
             'item_status': ItemStatus.WORKING,
             'item_type': self.type1.id,
             'mail_template': self.template2.id,  # Change template
@@ -518,14 +519,14 @@ class MailActionMappingViewsTestCase(TestCase):
     
     def test_list_view_requires_login(self):
         """Test that list view requires login"""
-        response = self.client.get('/mail-action-mappings/')
+        response = self.client.get(reverse('mail-action-mappings'))
         self.assertEqual(response.status_code, 302)  # Redirect to login
     
     def test_list_view_displays_mappings(self):
         """Test that list view displays all mappings"""
         self.client.login(username='testuser', password='testpass123')
         
-        response = self.client.get('/mail-action-mappings/')
+        response = self.client.get(reverse('mail-action-mappings'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Working')
         self.assertContains(response, 'Bug')
@@ -542,7 +543,7 @@ class MailActionMappingViewsTestCase(TestCase):
         )
         
         # Filter by WORKING status
-        response = self.client.get('/mail-action-mappings/?status=Working')
+        response = self.client.get(reverse('mail-action-mappings') + '?status=Working')
         self.assertEqual(response.status_code, 200)
         
         # Should only show WORKING mapping
@@ -564,7 +565,7 @@ class MailActionMappingViewsTestCase(TestCase):
         )
         
         # Filter by type1
-        response = self.client.get(f'/mail-action-mappings/?type={self.type1.id}')
+        response = self.client.get(reverse('mail-action-mappings') + f'?type={self.type1.id}')
         self.assertEqual(response.status_code, 200)
         
         # Should only show type1 mapping
@@ -585,7 +586,7 @@ class MailActionMappingViewsTestCase(TestCase):
         )
         
         # Filter for active only
-        response = self.client.get('/mail-action-mappings/?is_active=true')
+        response = self.client.get(reverse('mail-action-mappings') + '?is_active=true')
         self.assertEqual(response.status_code, 200)
         
         mappings = response.context['mappings']
@@ -596,7 +597,7 @@ class MailActionMappingViewsTestCase(TestCase):
         """Test that detail view displays mapping details"""
         self.client.login(username='testuser', password='testpass123')
         
-        response = self.client.get(f'/mail-action-mappings/{self.mapping.id}/')
+        response = self.client.get(reverse('mail-action-mapping-detail', args=[self.mapping.id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Working')
         self.assertContains(response, 'Bug')
@@ -606,7 +607,7 @@ class MailActionMappingViewsTestCase(TestCase):
         """Test that create view displays the form"""
         self.client.login(username='testuser', password='testpass123')
         
-        response = self.client.get('/mail-action-mappings/new/')
+        response = self.client.get(reverse('mail-action-mapping-create'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Create New Mail Action Mapping')
         self.assertContains(response, 'Item Status')
@@ -617,7 +618,7 @@ class MailActionMappingViewsTestCase(TestCase):
         """Test that edit view displays the form with existing data"""
         self.client.login(username='testuser', password='testpass123')
         
-        response = self.client.get(f'/mail-action-mappings/{self.mapping.id}/edit/')
+        response = self.client.get(reverse('mail-action-mapping-edit', args=[self.mapping.id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Edit Mail Action Mapping')
         self.assertContains(response, self.type1.name)
@@ -628,7 +629,7 @@ class MailActionMappingViewsTestCase(TestCase):
         
         mapping_id = self.mapping.id
         
-        response = self.client.post(f'/mail-action-mappings/{mapping_id}/delete/')
+        response = self.client.post(reverse('mail-action-mapping-delete', args=[mapping_id]))
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -642,21 +643,21 @@ class MailActionMappingViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Missing item_status
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_type': self.type1.id,
             'mail_template': self.template1.id,
         })
         self.assertEqual(response.status_code, 400)
         
         # Missing item_type
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_status': ItemStatus.WORKING,
             'mail_template': self.template1.id,
         })
         self.assertEqual(response.status_code, 400)
         
         # Missing mail_template
-        response = self.client.post('/mail-action-mappings/0/update/', {
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
             'item_status': ItemStatus.WORKING,
             'item_type': self.type1.id,
         })
