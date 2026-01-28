@@ -4294,7 +4294,7 @@ Rollback Plan:
         # Parse the result to extract risk level and reason
         # Expected format can be JSON with RiskClass and RiskClassReason fields
         risk_class = RiskLevel.NORMAL  # Default to NORMAL if no risk class can be determined
-        risk_reason = assessment_result
+        risk_reason = None  # Will be set based on parsing
         
         # Try to parse as JSON first
         try:
@@ -4302,8 +4302,8 @@ Rollback Plan:
             result_json = json.loads(assessment_result)
             
             # Extract RiskClassReason for the description
-            if 'RiskClassReason' in result_json:
-                risk_reason = result_json['RiskClassReason']
+            # ONLY use RiskClassReason if present, otherwise use full JSON
+            risk_reason = result_json.get('RiskClassReason', assessment_result)
             
             # Extract and normalize RiskClass for the enum
             if 'RiskClass' in result_json and result_json['RiskClass']:
@@ -4322,6 +4322,7 @@ Rollback Plan:
         except (json.JSONDecodeError, AttributeError):
             # If not JSON, assessment_result is None, or .lower() fails on None,
             # fall back to text parsing
+            risk_reason = assessment_result  # Use full text for non-JSON responses
             assessment_lower = assessment_result.lower() if assessment_result else ''
             if 'very high' in assessment_lower or 'veryhigh' in assessment_lower or 'sehr hoch' in assessment_lower:
                 risk_class = RiskLevel.VERY_HIGH
