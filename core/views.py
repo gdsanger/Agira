@@ -1639,6 +1639,30 @@ def _get_user_primary_organisation(user):
     return primary_org.organisation if primary_org else None
 
 
+def _auto_generate_title_from_description(description, user=None):
+    """
+    Generate a title from description using AI agent if description is provided.
+    Returns the generated title or empty string if generation fails or description is empty.
+    """
+    if not description or not description.strip():
+        return ''
+    
+    try:
+        agent_service = AgentService()
+        title = agent_service.execute_agent(
+            filename='text-to-title-generator.yml',
+            input_text=description,
+            user=user,
+            client_ip=None
+        )
+        # Clean up the title (remove quotes, newlines, etc.)
+        title = title.strip().strip('"').strip("'").replace('\n', ' ').replace('\r', '')
+        return title
+    except Exception as e:
+        logger.error(f"Failed to auto-generate title: {str(e)}")
+        return ''
+
+
 @login_required
 def item_create(request):
     """Item create page view."""
@@ -1694,11 +1718,19 @@ def item_create(request):
         type_id = request.POST.get('type')
         item_type = get_object_or_404(ItemType, id=type_id)
         
+        # Get title and description
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '')
+        
+        # Auto-generate title from description if title is empty
+        if not title and description:
+            title = _auto_generate_title_from_description(description, request.user if request.user.is_authenticated else None)
+        
         # Create the item
         item = Item(
             project=project,
-            title=request.POST.get('title', ''),
-            description=request.POST.get('description', ''),
+            title=title,
+            description=description,
             solution_description=request.POST.get('solution_description', ''),
             type=item_type,
             status=request.POST.get('status', ItemStatus.INBOX),
@@ -1831,15 +1863,23 @@ def item_update(request, item_id):
         node_id = request.POST.get('node')
         node_changed = node_id is not None
         
+        # Get title and description
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', item.description)
+        
+        # Auto-generate title from description if title is empty
+        if not title and description:
+            title = _auto_generate_title_from_description(description, request.user if request.user.is_authenticated else None)
+        
         # Update basic fields
-        item.title = request.POST.get('title', item.title)
+        item.title = title if title else item.title
         # Don't update description from POST if we're changing node - we'll handle it separately
         if not node_changed:
-            item.description = request.POST.get('description', item.description)
+            item.description = description
         else:
             # User might have edited description in form - we need to extract non-breadcrumb content
             # and then re-add the new breadcrumb
-            posted_description = request.POST.get('description', item.description)
+            posted_description = description
             # Temporarily set description to extract content without breadcrumb
             item.description = posted_description
         
