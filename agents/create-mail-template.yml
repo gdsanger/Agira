@@ -15,6 +15,7 @@ task: "Erstelle anhand der Dir bereitgestellten Informationen ein schönes und p
   \ arbeiten. Es stehen folgende Variablen zur Verfügung: \r\n### ISSUES\r\n- title\r\
   \n- description\r\n- organisation\r\n- requester\r\n- assigned_to\r\n- status\r\n\
   - type\r\n- project\r\n- solution_release\r\n\r\nDiese können in den Text, je nach\
-  \ Context und Sinnhaftigkeit wie folgt verwendet werden: {{ issue.status }}. \r\n\
-  \r\nAusgabe als JOSN wie folgt:\r\n\r\n```JSON\r\n{\r\n    \"Subject\": \"Subject\"\
+  \ Context und Sinnhaftigkeit wie folgt verwendet werden: {{ issue.status }}. Beachte,\
+  \ dass das HTML mit gängigen Mail Clients wie Outlook kompatibel sein muss!\r\n\r\
+  \nAusgabe als JOSN wie folgt:\r\n\r\n```JSON\r\n{\r\n    \"Subject\": \"Subject\"\
   ,\r\n    \"Message\": \"HTML Formated Message\"\r\n}"
