@@ -27,6 +27,29 @@ ALLOWED_ATTRIBUTES = {
 }
 
 
+def _sanitize_html(html):
+    """
+    Helper function to sanitize HTML and prevent XSS attacks.
+    
+    Args:
+        html: HTML string to sanitize
+        
+    Returns:
+        Safe HTML string with dangerous elements stripped
+    """
+    if not html:
+        return ""
+    
+    sanitized_html = bleach.clean(
+        html,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True
+    )
+    
+    return mark_safe(sanitized_html)
+
+
 @register.filter
 def filesize(bytes_value):
     """
@@ -74,14 +97,7 @@ def render_markdown(text):
     html = md_parser.convert(text)
     
     # Sanitize HTML to prevent XSS attacks
-    sanitized_html = bleach.clean(
-        html,
-        tags=ALLOWED_TAGS,
-        attributes=ALLOWED_ATTRIBUTES,
-        strip=True
-    )
-    
-    return mark_safe(sanitized_html)
+    return _sanitize_html(html)
 
 
 @register.filter
@@ -95,16 +111,5 @@ def safe_html(text):
     Returns:
         Safe HTML string with dangerous elements stripped
     """
-    if not text:
-        return ""
-    
-    # Sanitize HTML to prevent XSS attacks
-    sanitized_html = bleach.clean(
-        text,
-        tags=ALLOWED_TAGS,
-        attributes=ALLOWED_ATTRIBUTES,
-        strip=True
-    )
-    
-    return mark_safe(sanitized_html)
+    return _sanitize_html(text)
 
