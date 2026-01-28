@@ -1218,6 +1218,7 @@ def item_save_pre_review(request, item_id):
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
     item = get_object_or_404(Item, id=item_id)
+    old_status = item.status
     new_status = request.POST.get('status')
     
     if not new_status:
@@ -1227,7 +1228,22 @@ def item_change_status(request, item_id):
         guard = ItemWorkflowGuard()
         guard.transition(item, new_status, actor=request.user if request.user.is_authenticated else None)
         
-        # Return updated status badge
+        # Check for mail trigger (only if status changed)
+        mapping = check_mail_trigger(item)
+        if mapping and item.status != old_status:
+            # Prepare mail preview for modal
+            mail_preview = prepare_mail_preview(item, mapping)
+            
+            # Return JSON response with mail preview
+            return JsonResponse({
+                'success': True,
+                'item_id': item.id,
+                'mail_preview': mail_preview,
+                'new_status': item.status,
+                'new_status_display': item.get_status_display()
+            })
+        
+        # Return updated status badge (normal HTMX swap)
         response = render(request, 'partials/item_status_badge.html', {'item': item})
         response['HX-Trigger'] = 'statusChanged'
         return response
@@ -1979,6 +1995,7 @@ def item_update(request, item_id):
         response_data = {
             'success': True,
             'message': 'Item updated successfully',
+            'item_id': item.id,
             'redirect': f'/items/{item.id}/'
         }
         
