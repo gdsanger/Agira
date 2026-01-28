@@ -749,6 +749,12 @@ function handleImportResponse(event) {
 
 // Toast notification function
 function showToast(type, title, message) {
+    // If bootstrap is not available, use alert
+    if (typeof bootstrap === 'undefined') {
+        alert(`${title}: ${message}`);
+        return;
+    }
+    
     // Remove existing toasts
     const existingToasts = document.querySelectorAll('.toast');
     existingToasts.forEach(t => {
@@ -801,13 +807,19 @@ const NodeTreeManager = {
         // Load tree when nodes tab is shown
         const nodesTab = document.getElementById('nodes-tab');
         if (nodesTab) {
+            // Try Bootstrap event if available
             nodesTab.addEventListener('shown.bs.tab', () => {
                 this.loadTree();
+            });
+            
+            // Also add click listener as fallback
+            nodesTab.addEventListener('click', () => {
+                setTimeout(() => this.loadTree(), 100);
             });
         }
         
         // Load tree immediately if nodes tab is active
-        if (document.getElementById('nodes').classList.contains('active')) {
+        if (document.getElementById('nodes').classList.contains('show')) {
             this.loadTree();
         }
     },
@@ -816,7 +828,9 @@ const NodeTreeManager = {
         const treeContainer = document.getElementById('nodeTree');
         if (!treeContainer) return;
         
-        fetch(`/projects/${this.projectId}/nodes/tree/`)
+        fetch(`/projects/${this.projectId}/nodes/tree/`, {
+            credentials: 'same-origin'
+        })
             .then(response => response.json())
             .then(data => {
                 this.renderTree(data.tree, treeContainer);
@@ -951,7 +965,9 @@ const NodeTreeManager = {
             </div>
         `;
         
-        fetch(`/projects/${this.projectId}/nodes/${nodeId}/`)
+        fetch(`/projects/${this.projectId}/nodes/${nodeId}/`, {
+            credentials: 'same-origin'
+        })
             .then(response => response.json())
             .then(node => {
                 detailTitle.textContent = node.name;
