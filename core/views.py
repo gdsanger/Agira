@@ -1222,7 +1222,7 @@ def item_change_status(request, item_id):
     new_status = request.POST.get('status')
     
     if not new_status:
-        return HttpResponse("Missing 'status' parameter", status=400)
+        return JsonResponse({'success': False, 'error': 'Missing status parameter'}, status=400)
     
     try:
         guard = ItemWorkflowGuard()
@@ -1249,7 +1249,7 @@ def item_change_status(request, item_id):
         return response
         
     except ValidationError as e:
-        return HttpResponse(str(e), status=400)
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 @login_required

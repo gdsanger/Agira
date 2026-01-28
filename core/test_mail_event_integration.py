@@ -420,7 +420,7 @@ class ItemStatusMailTriggerIntegrationTestCase(TestCase):
         
         # Should return JSON with mail preview
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/json')
+        self.assertIn('application/json', response['Content-Type'])
         
         data = json.loads(response.content)
         self.assertTrue(data['success'])

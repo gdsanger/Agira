@@ -875,6 +875,16 @@
             body: 'status=' + encodeURIComponent(newStatus)
         })
         .then(response => {
+            // Check if response is ok
+            if (!response.ok) {
+                // Try to parse error message from JSON
+                return response.json().then(data => {
+                    throw new Error(data.error || 'Failed to change status');
+                }).catch(() => {
+                    throw new Error('Failed to change status');
+                });
+            }
+            
             // Check if response is JSON or HTML
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
@@ -907,7 +917,7 @@
         })
         .catch(error => {
             console.error('Status change error:', error);
-            showToast('error', 'Failed to change status');
+            showToast('error', error.message || 'Failed to change status');
             applyBtn.disabled = false;
             applyBtn.innerHTML = 'Apply';
         });
@@ -920,7 +930,8 @@
         // Populate modal with mail preview data
         document.getElementById('mail-subject-preview').textContent = mailPreview.subject;
         
-        // Set message HTML (already sanitized by server)
+        // Set message HTML (sanitized by bleach on server-side in mail_trigger_service.py)
+        // The server uses bleach.clean() with allowed_tags and allowed_attrs to prevent XSS
         const messagePreview = document.getElementById('mail-message-preview');
         messagePreview.innerHTML = mailPreview.message;
         
