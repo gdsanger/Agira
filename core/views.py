@@ -25,7 +25,7 @@ from .models import (
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
-    MailTemplate)
+    MailTemplate, MailActionMapping)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -5137,4 +5137,248 @@ def mail_template_generate_ai(request, id):
         
     except Exception as e:
         logger.error(f"Error generating mail template with AI: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# Mail Action Mapping Views
+
+@login_required
+def mail_action_mappings(request):
+    """Mail action mappings list view with search and filter."""
+    mappings = MailActionMapping.objects.select_related('item_type', 'mail_template').all()
+    
+    # Search by status or type name
+    search_query = request.GET.get('q', '').strip()
+    if search_query:
+        mappings = mappings.filter(
+            Q(item_status__icontains=search_query) | 
+            Q(item_type__name__icontains=search_query) |
+            Q(item_type__key__icontains=search_query) |
+            Q(mail_template__key__icontains=search_query)
+        )
+    
+    # Filter by status
+    status_filter = request.GET.get('status', '').strip()
+    if status_filter:
+        mappings = mappings.filter(item_status=status_filter)
+    
+    # Filter by type
+    type_filter = request.GET.get('type', '').strip()
+    if type_filter:
+        try:
+            type_id = int(type_filter)
+            mappings = mappings.filter(item_type_id=type_id)
+        except ValueError:
+            pass
+    
+    # Filter by is_active
+    is_active_filter = request.GET.get('is_active', '').strip()
+    if is_active_filter == 'true':
+        mappings = mappings.filter(is_active=True)
+    elif is_active_filter == 'false':
+        mappings = mappings.filter(is_active=False)
+    
+    # Get all item types and statuses for filters
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+    item_statuses = ItemStatus.choices
+    
+    context = {
+        'mappings': mappings,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'type_filter': type_filter,
+        'is_active_filter': is_active_filter,
+        'item_types': item_types,
+        'item_statuses': item_statuses,
+    }
+    return render(request, 'mail_action_mappings.html', context)
+
+
+@login_required
+def mail_action_mapping_detail(request, id):
+    """Mail action mapping detail view."""
+    mapping = get_object_or_404(MailActionMapping.objects.select_related('item_type', 'mail_template'), id=id)
+    
+    context = {
+        'mapping': mapping,
+    }
+    return render(request, 'mail_action_mapping_detail.html', context)
+
+
+@login_required
+def mail_action_mapping_create(request):
+    """Show create form for new mail action mapping."""
+    # Get all active item types and mail templates
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+    mail_templates = MailTemplate.objects.filter(is_active=True).order_by('key')
+    item_statuses = ItemStatus.choices
+    
+    context = {
+        'mapping': None,
+        'item_types': item_types,
+        'mail_templates': mail_templates,
+        'item_statuses': item_statuses,
+    }
+    return render(request, 'mail_action_mapping_form.html', context)
+
+
+@login_required
+def mail_action_mapping_edit(request, id):
+    """Show edit form for existing mail action mapping."""
+    mapping = get_object_or_404(MailActionMapping.objects.select_related('item_type', 'mail_template'), id=id)
+    
+    # Get all active item types and mail templates
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+    mail_templates = MailTemplate.objects.filter(is_active=True).order_by('key')
+    item_statuses = ItemStatus.choices
+    
+    context = {
+        'mapping': mapping,
+        'item_types': item_types,
+        'mail_templates': mail_templates,
+        'item_statuses': item_statuses,
+    }
+    return render(request, 'mail_action_mapping_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def mail_action_mapping_update(request, id):
+    """Create or update a mail action mapping with uniqueness validation."""
+    try:
+        # Parse form data
+        item_status = request.POST.get('item_status', '').strip()
+        item_type_id = request.POST.get('item_type', '').strip()
+        mail_template_id = request.POST.get('mail_template', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        action = request.POST.get('action', 'save')
+        
+        # Validate required fields
+        if not item_status:
+            return JsonResponse({'success': False, 'error': 'Status is required'}, status=400)
+        if not item_type_id:
+            return JsonResponse({'success': False, 'error': 'Item Type is required'}, status=400)
+        if not mail_template_id:
+            return JsonResponse({'success': False, 'error': 'Mail Template is required'}, status=400)
+        
+        # Validate item_status is valid choice
+        valid_statuses = [choice[0] for choice in ItemStatus.choices]
+        if item_status not in valid_statuses:
+            return JsonResponse({'success': False, 'error': 'Invalid item status'}, status=400)
+        
+        # Get related objects
+        try:
+            item_type = ItemType.objects.get(id=int(item_type_id))
+        except (ItemType.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': 'Invalid item type'}, status=400)
+        
+        try:
+            mail_template = MailTemplate.objects.get(id=int(mail_template_id))
+        except (MailTemplate.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': 'Invalid mail template'}, status=400)
+        
+        # Check for uniqueness (status + type combination)
+        existing_mapping = MailActionMapping.objects.filter(
+            item_status=item_status,
+            item_type=item_type
+        )
+        
+        # If editing, exclude the current mapping from uniqueness check
+        if id != 0:
+            existing_mapping = existing_mapping.exclude(id=id)
+        
+        if existing_mapping.exists():
+            status_display = dict(ItemStatus.choices).get(item_status, item_status)
+            return JsonResponse({
+                'success': False,
+                'error': f'Ein Mapping für Status "{status_display}" und Typ "{item_type.name}" existiert bereits.'
+            }, status=400)
+        
+        # Create or update
+        if id == 0:
+            # Create new mapping
+            mapping = MailActionMapping.objects.create(
+                item_status=item_status,
+                item_type=item_type,
+                mail_template=mail_template,
+                is_active=is_active
+            )
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='mail_action_mapping.created',
+                target=mapping,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Created mail action mapping: {mapping}'
+            )
+            
+            message_text = f'Mail action mapping created successfully'
+        else:
+            # Update existing mapping
+            mapping = get_object_or_404(MailActionMapping, id=id)
+            
+            # Update fields
+            mapping.item_status = item_status
+            mapping.item_type = item_type
+            mapping.mail_template = mail_template
+            mapping.is_active = is_active
+            mapping.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='mail_action_mapping.updated',
+                target=mapping,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Updated mail action mapping: {mapping}'
+            )
+            
+            message_text = f'Mail action mapping updated successfully'
+        
+        # Determine redirect based on action
+        if action == 'save_close':
+            redirect_url = reverse('mail-action-mappings')
+        else:
+            redirect_url = reverse('mail-action-mapping-detail', args=[mapping.id])
+        
+        return JsonResponse({
+            'success': True,
+            'message': message_text,
+            'redirect': redirect_url,
+            'mapping_id': mapping.id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving mail action mapping: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def mail_action_mapping_delete(request, id):
+    """Delete a mail action mapping."""
+    mapping = get_object_or_404(MailActionMapping, id=id)
+    mapping_str = str(mapping)
+    
+    try:
+        # Log activity before deletion
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='mail_action_mapping.deleted',
+            target=mapping,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Deleted mail action mapping: {mapping_str}'
+        )
+        
+        mapping.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Mail action mapping deleted successfully',
+            'redirect': reverse('mail-action-mappings')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting mail action mapping: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
