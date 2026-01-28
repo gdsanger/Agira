@@ -535,8 +535,8 @@ a:hover {
     color: #212529;
 }
 
-/* Ensure links are visible */
-.html-preview a:not([style*="color"]) {
+/* Set default link color that can be overridden by inline styles */
+.html-preview a {
     color: #0d6efd;
     text-decoration: underline;
 }

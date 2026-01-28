@@ -346,3 +346,30 @@ class MailTemplateViewsTestCase(TestCase):
         self.assertNotIn('<script>', preview_section)
         self.assertNotIn('</script>', preview_section)
         self.assertNotIn('onclick=', preview_section)
+    
+    def test_mail_template_detail_css_sanitization(self):
+        """Test that inline CSS styles are properly sanitized"""
+        # Create a template with various CSS styles
+        css_template = MailTemplate.objects.create(
+            key='css-test',
+            subject='Test CSS Sanitization',
+            message='''
+                <p style="color: red;">Safe red text</p>
+                <p style="color: #00ff00;">Safe green text</p>
+                <div style="font-size: 16px; font-weight: bold;">Safe styled div</div>
+                <span style="background-color: yellow;">Safe background</span>
+            ''',
+            is_active=True
+        )
+        
+        response = self.client.get(reverse('mail-template-detail', args=[css_template.id]))
+        
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        
+        # Verify safe CSS properties are preserved
+        self.assertIn('color: red', content.lower())
+        self.assertIn('color: #00ff00', content.lower())
+        self.assertIn('font-size: 16px', content.lower())
+        self.assertIn('font-weight: bold', content.lower())
+        self.assertIn('background-color: yellow', content.lower())

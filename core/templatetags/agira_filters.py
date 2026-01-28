@@ -36,18 +36,28 @@ ALLOWED_ATTRIBUTES = {
     'th': ['style'],
     'tr': ['style'],
     'table': ['style'],
+    'thead': ['style'],
+    'tbody': ['style'],
     'ul': ['style'],
     'ol': ['style'],
     'li': ['style'],
     'strong': ['style'],
     'em': ['style'],
+    'u': ['style'],
+    'strike': ['style'],
+    'blockquote': ['style'],
 }
 
 # CSS properties that are allowed in inline styles
 ALLOWED_CSS_PROPERTIES = [
-    'color', 'background-color', 'font-size', 'font-weight', 'font-family',
-    'text-align', 'text-decoration', 'margin', 'padding', 'border',
-    'width', 'height', 'display', 'float', 'clear'
+    'color', 'background-color', 'font-size', 'font-weight', 'font-family', 'font-style',
+    'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'vertical-align',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'border', 'border-width', 'border-style', 'border-color', 'border-radius',
+    'border-top', 'border-right', 'border-bottom', 'border-left',
+    'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
+    'display', 'float', 'clear', 'text-transform'
 ]
 
 # Create a CSS sanitizer for safe inline styles
