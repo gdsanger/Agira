@@ -297,3 +297,50 @@ class MailTemplateViewsTestCase(TestCase):
         response = self.client.get(reverse('mail-template-create'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+    
+    def test_mail_template_detail_html_sanitization(self):
+        """Test that HTML in mail templates is sanitized to prevent XSS"""
+        from html.parser import HTMLParser
+        
+        # Create a template with potentially malicious HTML
+        malicious_template = MailTemplate.objects.create(
+            key='malicious-test',
+            subject='Test XSS Prevention',
+            message='<h1>Safe Heading</h1><p>Safe paragraph</p><script>alert("XSS")</script><p onclick="alert(\'click\')">Click me</p>',
+            is_active=True
+        )
+        
+        response = self.client.get(reverse('mail-template-detail', args=[malicious_template.id]))
+        
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        
+        # Verify safe HTML is preserved in the preview
+        self.assertIn('<h1>Safe Heading</h1>', content)
+        self.assertIn('<p>Safe paragraph</p>', content)
+        
+        # Find the HTML preview div using a more robust method
+        # Look for the preview div and verify dangerous content is not there
+        preview_marker = '<div class="html-preview">'
+        preview_start = content.find(preview_marker)
+        self.assertNotEqual(preview_start, -1, "HTML preview section not found")
+        
+        # Find the end of the preview div by counting nested divs
+        preview_content_start = preview_start + len(preview_marker)
+        depth = 1
+        i = preview_content_start
+        while i < len(content) and depth > 0:
+            if content[i:i+5] == '<div ':
+                depth += 1
+            elif content[i:i+6] == '</div>':
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        
+        preview_section = content[preview_start:i]
+        
+        # Verify script tags and event handlers are not in the preview section
+        self.assertNotIn('<script>', preview_section)
+        self.assertNotIn('</script>', preview_section)
+        self.assertNotIn('onclick=', preview_section)

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load agira_filters %}
 
 {% block title %}{{ template.key }} - Mail Template - Agira{% endblock %}
 
@@ -53,10 +54,12 @@
                 <h5 class="mb-0">Message</h5>
             </div>
             <div class="card-body">
-                <div class="bg-dark p-3 rounded">
-                    <!-- Display sanitized HTML preview -->
+                <div class="bg-light p-3 rounded border">
+                    <!-- Display rendered HTML preview -->
                     <div class="text-muted small mb-2">HTML Preview:</div>
-                    {{ template.message|striptags|truncatewords:100 }}
+                    <div class="html-preview">
+                        {{ template.message|safe_html }}
+                    </div>
                 </div>
                 <details class="mt-3">
                     <summary class="text-muted small" style="cursor: pointer;">Show HTML Source</summary>
