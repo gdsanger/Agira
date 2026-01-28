@@ -3,6 +3,7 @@ from django import template
 from django.utils.safestring import mark_safe
 import markdown
 import bleach
+from bleach.css_sanitizer import CSSSanitizer
 
 register = template.Library()
 
@@ -42,6 +43,16 @@ ALLOWED_ATTRIBUTES = {
     'em': ['style'],
 }
 
+# CSS properties that are allowed in inline styles
+ALLOWED_CSS_PROPERTIES = [
+    'color', 'background-color', 'font-size', 'font-weight', 'font-family',
+    'text-align', 'text-decoration', 'margin', 'padding', 'border',
+    'width', 'height', 'display', 'float', 'clear'
+]
+
+# Create a CSS sanitizer for safe inline styles
+css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES)
+
 
 def _sanitize_html(html):
     """
@@ -60,6 +71,7 @@ def _sanitize_html(html):
         html,
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
+        css_sanitizer=css_sanitizer,
         strip=True
     )
     

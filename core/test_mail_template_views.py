@@ -321,12 +321,14 @@ class MailTemplateViewsTestCase(TestCase):
         
         # Find the HTML preview div using a more robust method
         # Look for the preview div and verify dangerous content is not there
-        preview_marker = '<div class="html-preview">'
+        preview_marker = 'class="html-preview'
         preview_start = content.find(preview_marker)
         self.assertNotEqual(preview_start, -1, "HTML preview section not found")
         
         # Find the end of the preview div by counting nested divs
-        preview_content_start = preview_start + len(preview_marker)
+        # First, find the start of the div tag
+        div_start = content.rfind('<div', 0, preview_start)
+        preview_content_start = content.find('>', div_start) + 1
         depth = 1
         i = preview_content_start
         while i < len(content) and depth > 0:
@@ -338,7 +340,7 @@ class MailTemplateViewsTestCase(TestCase):
                     break
             i += 1
         
-        preview_section = content[preview_start:i]
+        preview_section = content[div_start:i]
         
         # Verify script tags and event handlers are not in the preview section
         self.assertNotIn('<script>', preview_section)
