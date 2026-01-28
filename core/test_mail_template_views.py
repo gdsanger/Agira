@@ -176,7 +176,6 @@ class MailTemplateViewsTestCase(TestCase):
         template = MailTemplate.objects.get(key='test-template-with-hyphens')
         self.assertEqual(template.subject, 'Test Template')
     
-    
     def test_mail_template_update_existing(self):
         """Test updating an existing template"""
         data = {
