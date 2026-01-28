@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load agira_filters %}
 
 {% block title %}{{ template.key }} - Mail Template - Agira{% endblock %}
 
@@ -57,7 +58,7 @@
                     <!-- Display rendered HTML preview -->
                     <div class="text-muted small mb-2">HTML Preview:</div>
                     <div class="html-preview">
-                        {{ template.message|safe }}
+                        {{ template.message|safe_html }}
                     </div>
                 </div>
                 <details class="mt-3">

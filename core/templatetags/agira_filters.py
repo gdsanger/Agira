@@ -83,3 +83,28 @@ def render_markdown(text):
     
     return mark_safe(sanitized_html)
 
+
+@register.filter
+def safe_html(text):
+    """
+    Sanitize HTML content to prevent XSS attacks while preserving formatting.
+    
+    Args:
+        text: HTML-formatted text
+        
+    Returns:
+        Safe HTML string with dangerous elements stripped
+    """
+    if not text:
+        return ""
+    
+    # Sanitize HTML to prevent XSS attacks
+    sanitized_html = bleach.clean(
+        text,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True
+    )
+    
+    return mark_safe(sanitized_html)
+

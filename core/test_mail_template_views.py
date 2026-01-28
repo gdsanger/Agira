@@ -297,3 +297,31 @@ class MailTemplateViewsTestCase(TestCase):
         response = self.client.get(reverse('mail-template-create'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+    
+    def test_mail_template_detail_html_sanitization(self):
+        """Test that HTML in mail templates is sanitized to prevent XSS"""
+        # Create a template with potentially malicious HTML
+        malicious_template = MailTemplate.objects.create(
+            key='malicious-test',
+            subject='Test XSS Prevention',
+            message='<h1>Safe Heading</h1><p>Safe paragraph</p><script>alert("XSS")</script><p onclick="alert(\'click\')">Click me</p>',
+            is_active=True
+        )
+        
+        response = self.client.get(reverse('mail-template-detail', args=[malicious_template.id]))
+        
+        self.assertEqual(response.status_code, 200)
+        # Verify safe HTML is preserved
+        self.assertContains(response, '<h1>Safe Heading</h1>')
+        self.assertContains(response, '<p>Safe paragraph</p>')
+        # Verify dangerous script content is stripped from the preview (but alert text may remain)
+        # The key is that it's not in a script tag in the preview
+        content = response.content.decode('utf-8')
+        # Find the HTML preview section
+        preview_start = content.find('<div class="html-preview">')
+        preview_end = content.find('</div>', preview_start)
+        preview_section = content[preview_start:preview_end]
+        # Verify script tags are not in the preview section
+        self.assertNotIn('<script>', preview_section)
+        # Verify onclick handlers are stripped from preview
+        self.assertNotIn('onclick=', preview_section)
