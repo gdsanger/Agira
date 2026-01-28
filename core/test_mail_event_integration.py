@@ -396,3 +396,68 @@ class ItemStatusMailTriggerIntegrationTestCase(TestCase):
         self.assertIn('Test Project', mail_preview['message'])
         self.assertIn('Test User', mail_preview['message'])
         self.assertIn('Assignee User', mail_preview['message'])
+    
+    def test_item_change_status_triggers_mail(self):
+        """Test that item_change_status endpoint triggers mail preview when status changes"""
+        # Login
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Create an item with INBOX status
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Test description',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            requester=self.user
+        )
+        
+        # Change status to WORKING (which has a mail mapping)
+        response = self.client.post(
+            reverse('item-change-status', args=[item.id]),
+            {'status': ItemStatus.WORKING}
+        )
+        
+        # Should return JSON with mail preview
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('application/json', response['Content-Type'])
+        
+        data = json.loads(response.content)
+        self.assertTrue(data['success'])
+        self.assertIn('mail_preview', data)
+        self.assertEqual(data['item_id'], item.id)
+        self.assertEqual(data['new_status'], ItemStatus.WORKING)
+        
+        # Verify mail preview content
+        mail_preview = data['mail_preview']
+        self.assertIn('Test Item', mail_preview['subject'])
+        self.assertIn('Working', mail_preview['subject'])
+    
+    def test_item_change_status_without_mail_trigger(self):
+        """Test that item_change_status returns HTML when no mail trigger exists"""
+        # Login
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Create an item with INBOX status
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Test description',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            requester=self.user
+        )
+        
+        # Change status to BACKLOG (which has no mail mapping)
+        response = self.client.post(
+            reverse('item-change-status', args=[item.id]),
+            {'status': ItemStatus.BACKLOG}
+        )
+        
+        # Should return HTML (status badge)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+        
+        # Refresh item from DB
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.BACKLOG)
