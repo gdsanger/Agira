@@ -406,8 +406,12 @@ document.getElementById('delete-btn').addEventListener('click', async function()
 {% endif %}
 
 // Before form submit, sync TinyMCE content
-document.getElementById('templateForm').addEventListener('htmx:configRequest', function() {
-    tinymce.triggerSave();
+// Use submit event instead of htmx:configRequest to ensure content is synced before HTMX processes the form
+document.getElementById('templateForm').addEventListener('submit', function(e) {
+    // Sync TinyMCE content to textarea before HTMX processes the form
+    if (tinymce.get('message')) {
+        tinymce.get('message').save();
+    }
 });
 </script>
 {% endblock %}
