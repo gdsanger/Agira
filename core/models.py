@@ -872,3 +872,54 @@ class AIJobsHistory(models.Model):
     def __str__(self):
         model_name = self.model.name if self.model else 'Unknown'
         return f"{self.agent} - {model_name} ({self.status}) @ {self.timestamp}"
+
+
+class MailTemplate(models.Model):
+    """
+    Model for managing email templates.
+    Templates can be used for various email notifications without versioning or mapping logic.
+    """
+    key = models.SlugField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="Technical identifier for the template (e.g., issue-created-confirmation)"
+    )
+    subject = models.CharField(
+        max_length=500,
+        help_text="Email subject line. Placeholders are allowed but not evaluated."
+    )
+    message = models.TextField(
+        help_text="Email content (Markdown or HTML). Placeholders are allowed but not evaluated."
+    )
+    from_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional sender name"
+    )
+    from_address = models.EmailField(
+        blank=True,
+        help_text="Optional sender email address"
+    )
+    cc_address = models.EmailField(
+        blank=True,
+        help_text="Optional CC email address"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this template is active and can be used"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['key']
+        verbose_name = 'Mail Template'
+        verbose_name_plural = 'Mail Templates'
+        indexes = [
+            models.Index(fields=['key']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.key} ({'active' if self.is_active else 'inactive'})"

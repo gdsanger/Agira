@@ -9,7 +9,7 @@ from .models import (
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
-    ExternalIssueKind
+    ExternalIssueKind, MailTemplate
 )
 from core.services.github.service import GitHubService
 from core.services.integrations.base import IntegrationError
@@ -521,3 +521,29 @@ class AIJobsHistoryAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Jobs are created by the system, not manually
         return False
+
+
+@admin.register(MailTemplate)
+class MailTemplateAdmin(admin.ModelAdmin):
+    list_display = ['key', 'subject', 'is_active', 'created_at', 'updated_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['key', 'subject', 'message']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        (None, {'fields': ('key', 'subject', 'is_active')}),
+        ('Content', {'fields': ('message',)}),
+        ('Sender Information', {
+            'fields': ('from_name', 'from_address', 'cc_address'),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    # Allow searching by key in autocomplete fields
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        return queryset, use_distinct
