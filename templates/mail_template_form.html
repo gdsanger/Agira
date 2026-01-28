@@ -58,7 +58,7 @@
                                name="key" 
                                value="{% if template %}{{ template.key }}{% endif %}"
                                maxlength="100"
-                               pattern="[a-z0-9-]+"
+                               pattern="[a-z0-9\-]+"
                                required
                                {% if template %}readonly{% endif %}>
                         <div class="form-text">Technical identifier (lowercase, numbers, and hyphens only). Cannot be changed after creation.</div>

@@ -41,6 +41,7 @@ urlpatterns = [
     path('items/<int:item_id>/edit/', views.item_edit, name='item-edit'),
     path('items/<int:item_id>/update/', views.item_update, name='item-update'),
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
+    path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
     path('items/<int:item_id>/classify/', views.item_classify, name='item-classify'),
     path('items/<int:item_id>/change-status/', views.item_change_status, name='item-change-status'),
     path('items/<int:item_id>/add-comment/', views.item_add_comment, name='item-add-comment'),
@@ -129,6 +130,14 @@ urlpatterns = [
     path('mail-templates/<int:id>/update/', views.mail_template_update, name='mail-template-update'),
     path('mail-templates/<int:id>/delete/', views.mail_template_delete, name='mail-template-delete'),
     path('mail-templates/<int:id>/ai/generate/', views.mail_template_generate_ai, name='mail-template-generate-ai'),
+    
+    # Mail Action Mapping URLs
+    path('mail-action-mappings/', views.mail_action_mappings, name='mail-action-mappings'),
+    path('mail-action-mappings/new/', views.mail_action_mapping_create, name='mail-action-mapping-create'),
+    path('mail-action-mappings/<int:id>/', views.mail_action_mapping_detail, name='mail-action-mapping-detail'),
+    path('mail-action-mappings/<int:id>/edit/', views.mail_action_mapping_edit, name='mail-action-mapping-edit'),
+    path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
+    path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
     
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
