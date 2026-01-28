@@ -250,6 +250,19 @@ class Node(models.Model):
     def matchkey(self):
         return f"{self.type}:{self.name}"
 
+    def get_breadcrumb(self):
+        """
+        Calculate the breadcrumb path from root to this node.
+        Returns a string like "Root / Subnode / Leaf"
+        """
+        path = []
+        current = self
+        # Traverse up the tree to build the path
+        while current is not None:
+            path.insert(0, current.name)
+            current = current.parent_node
+        return " / ".join(path)
+
     def __str__(self):
         return f"{self.project.name} - {self.matchkey}"
 
@@ -375,6 +388,79 @@ class Item(models.Model):
 
         if errors:
             raise ValidationError(errors)
+    
+    def validate_nodes(self):
+        """
+        Validate that all assigned nodes belong to the item's project.
+        This must be called after the item is saved (for M2M validation).
+        """
+        project_node_ids = set(self.project.nodes.values_list('id', flat=True))
+        item_node_ids = set(self.nodes.values_list('id', flat=True))
+        invalid_nodes = item_node_ids - project_node_ids
+        if invalid_nodes:
+            raise ValidationError({
+                'nodes': _('All nodes must belong to the item\'s project.')
+            })
+    
+    def get_primary_node(self):
+        """
+        Get the primary node for this item.
+        Returns the first node if any are assigned, None otherwise.
+        """
+        return self.nodes.first()
+    
+    def update_description_with_breadcrumb(self, node=None):
+        """
+        Update the description to include or update the node breadcrumb.
+        If node is None, uses the primary node from self.nodes.
+        If no node is assigned, removes any existing breadcrumb.
+        
+        Format:
+        Betrifft: {breadcrumb}
+        
+        ---
+        {existing description}
+        """
+        if node is None:
+            node = self.get_primary_node()
+        
+        # Remove any existing breadcrumb block
+        desc = self.description or ""
+        lines = desc.split('\n')
+        
+        # Find and remove existing "Betrifft:" block
+        new_lines = []
+        skip_until_separator = False
+        found_betrifft = False
+        
+        for i, line in enumerate(lines):
+            if line.startswith('Betrifft: '):
+                skip_until_separator = True
+                found_betrifft = True
+                continue
+            if skip_until_separator:
+                if line.strip() == '---':
+                    skip_until_separator = False
+                    # Skip the separator line and any following empty line
+                    if i + 1 < len(lines) and lines[i + 1].strip() == '':
+                        continue
+                continue
+            new_lines.append(line)
+        
+        # Remove leading empty lines
+        while new_lines and new_lines[0].strip() == '':
+            new_lines.pop(0)
+        
+        # Build new description
+        if node:
+            breadcrumb = node.get_breadcrumb()
+            new_description = f"Betrifft: {breadcrumb}\n\n---\n"
+            if new_lines:
+                new_description += '\n'.join(new_lines)
+            self.description = new_description
+        else:
+            # No node, just use the cleaned description without breadcrumb
+            self.description = '\n'.join(new_lines)
 
     def save(self, *args, **kwargs):
         self.full_clean()

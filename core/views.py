@@ -1660,11 +1660,14 @@ def item_create(request):
         # Support pre-selecting project via query parameter
         default_project = None
         project_id = request.GET.get('project')
+        nodes = []
         if project_id:
             try:
                 # Validate and convert project_id to integer
                 project_id_int = int(project_id)
                 default_project = Project.objects.get(id=project_id_int)
+                # Get nodes for the default project
+                nodes = Node.objects.filter(project=default_project).order_by('name')
             except (ValueError, Project.DoesNotExist, TypeError):
                 # Invalid or non-existent project ID, ignore it gracefully
                 pass
@@ -1679,6 +1682,7 @@ def item_create(request):
             'default_requester': default_requester,
             'default_organisation': default_organisation,
             'default_project': default_project,
+            'nodes': nodes,
         }
         return render(request, 'item_form.html', context)
     
@@ -1730,6 +1734,18 @@ def item_create(request):
         
         item.save()
         
+        # Handle node selection (ManyToMany, so handle after save)
+        node_id = request.POST.get('node')
+        if node_id:
+            node = get_object_or_404(Node, id=node_id, project=item.project)
+            item.nodes.add(node)
+            # Update description with breadcrumb
+            item.update_description_with_breadcrumb(node)
+            item.save()
+        
+        # Validate nodes belong to project
+        item.validate_nodes()
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -1780,6 +1796,9 @@ def item_edit(request, item_id):
         # Get potential parent items from the same project
         parent_items = Item.objects.filter(project=item.project).exclude(id=item.id).order_by('title')
         
+        # Get nodes from the current project
+        nodes = Node.objects.filter(project=item.project).order_by('name')
+        
         context = {
             'item': item,
             'projects': projects,
@@ -1789,6 +1808,7 @@ def item_edit(request, item_id):
             'statuses': statuses,
             'releases': releases,
             'parent_items': parent_items,
+            'nodes': nodes,
         }
         return render(request, 'item_form.html', context)
     
@@ -1851,6 +1871,24 @@ def item_update(request, item_id):
             item.solution_release = None
         
         item.save()
+        
+        # Handle node selection (ManyToMany, so handle after save)
+        node_id = request.POST.get('node')
+        if node_id:
+            node = get_object_or_404(Node, id=node_id, project=item.project)
+            item.nodes.clear()
+            item.nodes.add(node)
+            # Update description with breadcrumb
+            item.update_description_with_breadcrumb(node)
+            item.save()
+        elif node_id == '':
+            # Clear nodes and remove breadcrumb
+            item.nodes.clear()
+            item.update_description_with_breadcrumb(None)
+            item.save()
+        
+        # Validate nodes belong to project
+        item.validate_nodes()
         
         # Log activity
         activity_service = ActivityService()
