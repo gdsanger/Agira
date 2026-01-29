@@ -67,10 +67,13 @@ After registration, note the following values (you'll need them for configuratio
 3. Select **Microsoft Graph**
 4. Select **Delegated permissions**
 5. Add the following permissions:
-   - `openid`
-   - `profile`
+   - `openid` (automatically requested by MSAL)
+   - `profile` (automatically requested by MSAL)
    - `email`
    - `User.Read`
+   
+   **Note**: The `openid` and `profile` scopes are reserved and automatically included by MSAL. 
+   Your application code should only request non-reserved scopes like `User.Read` and `email`.
 6. Click **Add permissions**
 7. (Optional but recommended) Click **Grant admin consent** to pre-approve for all users
 
