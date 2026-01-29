@@ -924,7 +924,7 @@
     let mailModalEventListenerAdded = false;
     
     function showMailConfirmationModal(mailPreview, itemId) {
-        // Check if modal exists in DOM
+        // Check if modal and all required elements exist in DOM
         const modalEl = document.getElementById('mailConfirmationModal');
         if (!modalEl) {
             console.error('Mail confirmation modal not found in DOM');
@@ -932,36 +932,43 @@
             return;
         }
         
-        // Populate modal with mail preview data - with null checks
+        // Verify all required elements exist before populating
         const subjectPreview = document.getElementById('mail-subject-preview');
-        if (subjectPreview) {
-            subjectPreview.textContent = mailPreview.subject;
+        const messagePreview = document.getElementById('mail-message-preview');
+        const fromPreview = document.getElementById('mail-from-preview');
+        const toPreview = document.getElementById('mail-to-preview');
+        const sendBtn = document.getElementById('confirmSendMailBtn');
+        
+        if (!subjectPreview || !messagePreview || !fromPreview || !toPreview || !sendBtn) {
+            console.error('Required modal elements missing:', {
+                subject: !!subjectPreview,
+                message: !!messagePreview,
+                from: !!fromPreview,
+                to: !!toPreview,
+                sendBtn: !!sendBtn
+            });
+            showToast('error', 'Fehler: Mail-Dialog ist nicht vollständig');
+            return;
         }
+        
+        // Populate modal with mail preview data
+        subjectPreview.textContent = mailPreview.subject;
         
         // Set message HTML (sanitized by bleach on server-side in mail_trigger_service.py)
         // The server uses bleach.clean() with allowed_tags and allowed_attrs to prevent XSS
-        const messagePreview = document.getElementById('mail-message-preview');
-        if (messagePreview) {
-            messagePreview.innerHTML = mailPreview.message;
-        }
+        messagePreview.innerHTML = mailPreview.message;
         
         // Set sender info
         const fromText = mailPreview.from_name 
             ? `${mailPreview.from_name} <${mailPreview.from_address || 'default'}>`
             : mailPreview.from_address || 'Standard-Absender';
-        const fromPreview = document.getElementById('mail-from-preview');
-        if (fromPreview) {
-            fromPreview.textContent = fromText;
-        }
+        fromPreview.textContent = fromText;
         
         // Set recipient info
         const toText = 'Anfragender (aus Item)';
-        const toPreview = document.getElementById('mail-to-preview');
-        if (toPreview) {
-            toPreview.textContent = toText;
-        }
+        toPreview.textContent = toText;
         
-        // Set CC if present
+        // Set CC if present (optional elements)
         const ccContainer = document.getElementById('mail-cc-container');
         const ccPreview = document.getElementById('mail-cc-preview');
         if (ccContainer && ccPreview) {
@@ -971,6 +978,9 @@
             } else {
                 ccContainer.style.display = 'none';
             }
+        } else if (ccContainer) {
+            // Hide CC container if elements are incomplete
+            ccContainer.style.display = 'none';
         }
         
         // Show the modal
@@ -978,7 +988,6 @@
         modal.show();
         
         // Handle send button
-        const sendBtn = document.getElementById('confirmSendMailBtn');
         sendBtn.dataset.sent = '';  // Clear sent flag
         sendBtn.onclick = function() {
             sendStatusMail(itemId, mailPreview, modal);
