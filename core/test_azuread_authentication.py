@@ -143,7 +143,7 @@ class AzureADAuthenticationTestCase(TestCase):
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_auth_code_response.return_value = {
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -189,7 +189,7 @@ class AzureADAuthenticationTestCase(TestCase):
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_auth_code_response.return_value = {
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -239,7 +239,7 @@ class AzureADAuthenticationTestCase(TestCase):
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_auth_code_response.return_value = {
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -286,7 +286,7 @@ class AzureADAuthenticationTestCase(TestCase):
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_auth_code_response.return_value = {
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }

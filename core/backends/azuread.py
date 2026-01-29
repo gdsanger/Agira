@@ -90,12 +90,13 @@ class AzureADAuth:
         logger.info("Initiated Azure AD authorization code flow")
         return flow
     
-    def acquire_token_by_auth_code(self, code: str, flow: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def acquire_token_by_auth_code(self, code: str, state: Optional[str] = None, flow: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Exchange authorization code for access token.
         
         Args:
             code: Authorization code from Azure AD callback
+            state: State parameter from Azure AD callback
             flow: Optional flow dictionary from initiate_auth_code_flow
             
         Returns:
@@ -106,12 +107,16 @@ class AzureADAuth:
         """
         msal_app = self.get_msal_app()
         
-        # If flow is provided, use it for better CSRF protection
+        # If flow is provided, use the recommended flow-based method
         if flow:
-            result = msal_app.acquire_token_by_auth_code_response(
-                auth_response={'code': code},
-                scopes=flow.get('scope', self.scopes),
-                redirect_uri=flow.get('redirect_uri', self.redirect_uri)
+            # Build auth_response from callback parameters
+            auth_response = {'code': code}
+            if state:
+                auth_response['state'] = state
+            
+            result = msal_app.acquire_token_by_auth_code_flow(
+                flow,
+                auth_response
             )
         else:
             # Fallback to direct code exchange

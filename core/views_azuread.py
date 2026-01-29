@@ -155,7 +155,7 @@ def azuread_callback(request):
         
         # Exchange authorization code for tokens
         logger.info("Exchanging authorization code for tokens")
-        token_result = azure_ad.acquire_token_by_auth_code(code, flow)
+        token_result = azure_ad.acquire_token_by_auth_code(code, state, flow)
         
         # Get ID token
         id_token = token_result.get('id_token')
