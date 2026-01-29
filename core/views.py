@@ -2331,10 +2331,6 @@ def item_move_project(request, item_id):
     
     item = get_object_or_404(Item, id=item_id)
     
-    # Authorization check
-    if not request.user.is_authenticated:
-        return JsonResponse({'success': False, 'error': 'Authentication required'}, status=401)
-    
     try:
         data = json.loads(request.body)
         
@@ -2374,7 +2370,9 @@ def item_move_project(request, item_id):
             # Clear organisation if not a client of the new project
             if item.organisation:
                 project_clients = list(target_project.clients.all())
-                if project_clients and item.organisation not in project_clients:
+                # Clear organisation if project has clients and organisation is not one of them,
+                # or if project has no clients at all
+                if not project_clients or item.organisation not in project_clients:
                     item.organisation = None
             
             # Save the item

@@ -292,3 +292,132 @@ class ItemMoveProjectTestCase(TestCase):
         self.assertTrue(response_data['success'])
         # Mail should not be sent because requester has no email
         self.assertFalse(response_data.get('mail_sent', False))
+    
+    def test_move_item_clears_solution_release_if_different_project(self):
+        """Test that solution_release is cleared if it belongs to a different project."""
+        from core.models import Release, ReleaseStatus
+        
+        # Create release in project A
+        release = Release.objects.create(
+            project=self.project_a,
+            name='Release 1.0',
+            version='1.0.0',
+            status=ReleaseStatus.PLANNED
+        )
+        self.item.solution_release = release
+        self.item.save()
+        
+        # Move item to project B
+        url = f'/items/{self.item.id}/move-project/'
+        data = {
+            'target_project_id': self.project_b.id,
+            'send_mail_to_requester': False
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify solution_release was cleared
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.solution_release)
+    
+    def test_move_item_clears_organisation_if_not_client(self):
+        """Test that organisation is cleared when not a client of target project."""
+        # Create organisation
+        org = Organisation.objects.create(
+            name='Test Org',
+            email_domain='testorg.com'
+        )
+        
+        # Add organisation to project A as client
+        self.project_a.clients.add(org)
+        self.item.organisation = org
+        self.item.save()
+        
+        # Move to project B (which has no clients)
+        url = f'/items/{self.item.id}/move-project/'
+        data = {
+            'target_project_id': self.project_b.id,
+            'send_mail_to_requester': False
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify organisation was cleared
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.organisation)
+    
+    def test_move_item_keeps_organisation_if_client_of_target(self):
+        """Test that organisation is kept when it's a client of target project."""
+        # Create organisation
+        org = Organisation.objects.create(
+            name='Test Org',
+            email_domain='testorg.com'
+        )
+        
+        # Add organisation as client of both projects
+        self.project_a.clients.add(org)
+        self.project_b.clients.add(org)
+        self.item.organisation = org
+        self.item.save()
+        
+        # Move to project B
+        url = f'/items/{self.item.id}/move-project/'
+        data = {
+            'target_project_id': self.project_b.id,
+            'send_mail_to_requester': False
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify organisation was kept
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.organisation, org)
+    
+    def test_move_item_logs_activity(self):
+        """Test that moving an item logs an activity."""
+        from core.models import Activity
+        
+        # Count activities before move
+        activity_count_before = Activity.objects.count()
+        
+        url = f'/items/{self.item.id}/move-project/'
+        data = {
+            'target_project_id': self.project_b.id,
+            'send_mail_to_requester': False
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify activity was logged
+        activity_count_after = Activity.objects.count()
+        self.assertEqual(activity_count_after, activity_count_before + 1)
+        
+        # Check the activity details
+        latest_activity = Activity.objects.latest('created_at')
+        self.assertEqual(latest_activity.action, 'item_moved')
+        self.assertEqual(latest_activity.details['from_project'], self.project_a.name)
+        self.assertEqual(latest_activity.details['to_project'], self.project_b.name)

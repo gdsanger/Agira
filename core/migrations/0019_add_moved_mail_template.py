@@ -19,14 +19,12 @@ def add_moved_mail_template(apps, schema_editor):
     <li><strong>Neues Projekt:</strong> {{ issue.project }}</li>
     <li><strong>Status:</strong> {{ issue.status }}</li>
     <li><strong>Typ:</strong> {{ issue.type }}</li>
-    {% if issue.assigned_to %}<li><strong>Zugewiesen an:</strong> {{ issue.assigned_to }}</li>{% endif %}
-    {% if issue.solution_release %}<li><strong>Release:</strong> {{ issue.solution_release }}</li>{% endif %}
+    <li><strong>Zugewiesen an:</strong> {{ issue.assigned_to }}</li>
+    <li><strong>Release:</strong> {{ issue.solution_release }}</li>
 </ul>
 
-{% if issue.description %}
 <p><strong>Beschreibung:</strong></p>
 <p>{{ issue.description }}</p>
-{% endif %}
 
 <p>Mit freundlichen Grüßen<br>
 Agira Team</p>''',
