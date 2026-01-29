@@ -856,6 +856,10 @@ def item_create_github_issue(request, item_id):
             
             if not notes:
                 return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
+            
+            # Update item description BEFORE creating GitHub issue
+            # This ensures the notes and existing issue references are included in the GitHub issue body
+            _append_followup_notes_to_item(item, notes)
         
         # Store old status to detect changes
         old_status = item.status
@@ -867,10 +871,9 @@ def item_create_github_issue(request, item_id):
                 actor=request.user
             )
             
-            # For follow-up issues, update item description after issue is created
-            # This ensures the new issue is included in the references
+            # For follow-up issues, update the references section to include the newly created issue
             if existing_issues:
-                _append_followup_notes_to_item(item, notes)
+                _update_issue_references(item)
             
             # Check if status changed and if mail trigger exists
             # Refresh item to get the latest status
@@ -939,8 +942,9 @@ def _append_followup_notes_to_item(item, notes):
     """
     Append follow-up notes and issue/PR references to item description.
     
-    This function should be called AFTER the new GitHub issue has been created
-    so that the newly created issue is included in the references.
+    This function is called BEFORE the new GitHub issue is created to ensure
+    the notes and existing issue references are included in the GitHub issue body.
+    After creation, _update_issue_references() is called to add the new issue number.
     
     Args:
         item: Item instance
@@ -951,7 +955,7 @@ def _append_followup_notes_to_item(item, notes):
     # Get current date formatted for German locale
     current_date = datetime.now().strftime("%d.%m.%Y")
     
-    # Get all existing issue and PR numbers
+    # Get existing issue and PR numbers
     mappings = item.external_mappings.all().order_by('kind', 'number')
     issue_pr_refs = ", ".join([f"#{m.number}" for m in mappings])
     
@@ -980,6 +984,49 @@ def _append_followup_notes_to_item(item, notes):
     # Append to description
     item.description += "\n".join(addition_parts)
     item.save(update_fields=['description'])
+
+
+def _update_issue_references(item):
+    """
+    Update the issue/PR references section in the item description to include
+    all current mappings (including newly created ones).
+    
+    This is called AFTER a new GitHub issue has been created to add its number
+    to the references list.
+    
+    Args:
+        item: Item instance
+    """
+    import re
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Refresh item to get the latest description
+    item.refresh_from_db()
+    
+    # Get all issue and PR numbers
+    mappings = item.external_mappings.all().order_by('kind', 'number')
+    issue_pr_refs = ", ".join([f"#{m.number}" for m in mappings])
+    
+    if not issue_pr_refs:
+        logger.warning(f"No issue/PR references found for item {item.id}, but _update_issue_references was called")
+        return
+    
+    # Find and replace the references section
+    # Pattern matches the header followed by the references on the next line(s)
+    # This handles cases where there might be whitespace or multiple lines of refs
+    pattern = r"(### Siehe folgende Issues und PRs\s*\n)([^\n#]*)"
+    replacement = rf"\g<1>{issue_pr_refs}"
+    
+    if re.search(pattern, item.description):
+        item.description = re.sub(pattern, replacement, item.description)
+        item.save(update_fields=['description'])
+    else:
+        logger.warning(
+            f"Could not find 'Siehe folgende Issues und PRs' section in item {item.id} description. "
+            f"The newly created issue may not be added to references."
+        )
 
 
 @login_required
