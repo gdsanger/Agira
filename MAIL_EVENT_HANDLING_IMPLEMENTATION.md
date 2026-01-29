@@ -12,13 +12,15 @@ Successfully implemented a comprehensive mail event handling system that trigger
 - Replaces template variables with item data
 - HTML-escapes all user-provided values to prevent XSS
 - Supports all required variables:
-  - `{{ issue.title }}`
-  - `{{ issue.status }}`
-  - `{{ issue.type }}`
-  - `{{ issue.project }}`
-  - `{{ issue.requester }}`
-  - `{{ issue.assigned_to }}`
-  - `{{ issue.solution_release }}`
+  - `{{ issue.title }}` - Item title
+  - `{{ issue.description }}` - Item description
+  - `{{ issue.status }}` - Item status (display name with emoji)
+  - `{{ issue.type }}` - Item type name
+  - `{{ issue.project }}` - Project name
+  - `{{ issue.requester }}` - Requester name
+  - `{{ issue.assigned_to }}` - Assigned user name
+  - `{{ issue.organisation }}` - Requester's primary organisation name
+  - `{{ issue.solution_release }}` - Solution release with name, version and planned date
 
 **Security:**
 - Uses Python's `html.escape()` for all user data
@@ -207,7 +209,12 @@ Uses existing `core.services.graph.mail_service.send_email()`:
 - Shows subject, message, sender, recipient
 
 ✅ **Variablen im Template werden korrekt ersetzt**
-- All 7 variables supported
+- All 9 variables supported:
+  - `{{ issue.title }}`, `{{ issue.description }}`, `{{ issue.status }}`
+  - `{{ issue.type }}`, `{{ issue.project }}`  
+  - `{{ issue.requester }}`, `{{ issue.assigned_to }}`
+  - `{{ issue.organisation }}` - Requester's primary organisation
+  - `{{ issue.solution_release }}` - Name, version and planned date
 - HTML-escaped for security
 
 ✅ **Mail wird über Graph API versendet**
