@@ -981,6 +981,33 @@ a:hover {
     border-top: 1px solid var(--border-default);
 }
 
+/* Mail Confirmation Modal - Enlarged dimensions */
+#mailConfirmationModal .modal-dialog {
+    max-width: 1050px; /* Bootstrap modal-lg is 800px, +250px = 1050px */
+}
+
+#mailConfirmationModal .modal-body {
+    min-height: 500px; /* Increased height by approximately +100px for better content visibility */
+}
+
+/* Responsive behavior for smaller viewports */
+@media (max-width: 1200px) {
+    #mailConfirmationModal .modal-dialog {
+        max-width: 90%;
+    }
+}
+
+@media (max-width: 768px) {
+    #mailConfirmationModal .modal-dialog {
+        max-width: 95%;
+        margin: 1rem;
+    }
+
+    #mailConfirmationModal .modal-body {
+        min-height: 400px;
+    }
+}
+
 /* Nav tabs */
 .nav-tabs {
     border-bottom: 1px solid var(--border-default);
