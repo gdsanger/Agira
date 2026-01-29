@@ -25,6 +25,7 @@ from core.models import (
     ItemStatus,
     ItemComment,
     CommentKind,
+    CommentVisibility,
 )
 from core.services.config import get_graph_config
 from core.services.exceptions import ServiceNotConfigured, ServiceDisabled, ServiceError
@@ -203,7 +204,7 @@ class EmailIngestionService:
                     sender_name=sender_name,
                     subject=subject,
                     body=body_markdown,
-                    message_id=message_id,
+                    message=message,
                 )
                 
             except Item.DoesNotExist:
@@ -611,7 +612,7 @@ Email Body:
         sender_name: str,
         subject: str,
         body: str,
-        message_id: str,
+        message: Dict[str, Any],
     ) -> Item:
         """
         Add an email as a comment to an existing item.
@@ -625,11 +626,13 @@ Email Body:
             sender_name: Display name of the sender
             subject: Email subject line
             body: Email body content (already converted to markdown)
-            message_id: Graph API message ID
+            message: Graph API message dictionary
             
         Returns:
             The Item instance (unchanged)
         """
+        message_id = message.get("id")
+        
         try:
             with transaction.atomic():
                 # Get or create user
@@ -642,7 +645,7 @@ Email Body:
                 comment = ItemComment.objects.create(
                     item=item,
                     author=user,
-                    visibility="Public",  # Email replies are public
+                    visibility=CommentVisibility.PUBLIC,  # Email replies are public
                     kind=CommentKind.EMAIL_IN,
                     subject=subject,
                     body=body,
@@ -663,11 +666,12 @@ Email Body:
                     category=self.PROCESSED_CATEGORY,
                 )
                 
-                # Optionally mark as read
-                self.client.mark_message_as_read(
-                    user_upn=self.mailbox,
-                    message_id=message_id,
-                )
+                # Optionally mark as read (same logic as _process_message)
+                if not message.get("isRead", False):
+                    self.client.mark_message_as_read(
+                        user_upn=self.mailbox,
+                        message_id=message_id,
+                    )
             except Exception as e:
                 logger.error(f"Failed to mark message {message_id} as processed: {e}")
                 # Don't raise - comment was created successfully

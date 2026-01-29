@@ -483,6 +483,13 @@ class EmailReplyHandlingTestCase(TestCase):
         
         service = EmailIngestionService()
         
+        # Create message dictionary
+        message = {
+            "id": "msg-123",
+            "subject": "Re: [AGIRA-1] Original Subject",
+            "isRead": False,
+        }
+        
         # Add email as comment
         result_item = service._add_email_as_comment(
             item=self.item,
@@ -490,7 +497,7 @@ class EmailReplyHandlingTestCase(TestCase):
             sender_name="Reply User",
             subject="Re: [AGIRA-1] Original Subject",
             body="This is a reply",
-            message_id="msg-123",
+            message=message,
         )
         
         # Verify item is returned
