@@ -15,7 +15,8 @@ from core.models import (
 )
 from core.services.graph.mail_service import (
     send_email, GraphSendResult, _build_email_payload,
-    _process_attachment, MAX_ATTACHMENT_SIZE_V1
+    _process_attachment, MAX_ATTACHMENT_SIZE_V1,
+    _normalize_email, _is_blocked_system_recipient
 )
 from core.services.exceptions import ServiceDisabled, ServiceNotConfigured, ServiceError
 
@@ -467,3 +468,285 @@ class GraphSendResultTestCase(TestCase):
         
         self.assertFalse(result.success)
         self.assertEqual(result.error, 'Connection failed')
+
+
+class MailLoopProtectionTestCase(TestCase):
+    """Test cases for mail loop protection (blocking emails to system default address)."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Clear any existing configuration
+        GraphAPIConfiguration.objects.all().delete()
+        # Clear cache
+        cache.clear()
+    
+    def test_normalize_email_lowercase(self):
+        """Test that _normalize_email converts to lowercase."""
+        self.assertEqual(_normalize_email('USER@EXAMPLE.COM'), 'user@example.com')
+        self.assertEqual(_normalize_email('User@Example.Com'), 'user@example.com')
+    
+    def test_normalize_email_strips_whitespace(self):
+        """Test that _normalize_email strips whitespace."""
+        self.assertEqual(_normalize_email('  user@example.com  '), 'user@example.com')
+        self.assertEqual(_normalize_email('\tuser@example.com\n'), 'user@example.com')
+    
+    def test_is_blocked_system_recipient_no_config(self):
+        """Test that _is_blocked_system_recipient returns False when no config."""
+        # No configuration exists
+        result = _is_blocked_system_recipient(['test@example.com'])
+        self.assertFalse(result)
+    
+    def test_is_blocked_system_recipient_empty_list(self):
+        """Test that _is_blocked_system_recipient handles empty lists."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        result = _is_blocked_system_recipient([])
+        self.assertFalse(result)
+    
+    def test_is_blocked_system_recipient_matches(self):
+        """Test that _is_blocked_system_recipient detects matching addresses."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        # Test various matching scenarios
+        self.assertTrue(_is_blocked_system_recipient(['system@example.com']))
+        self.assertTrue(_is_blocked_system_recipient(['SYSTEM@EXAMPLE.COM']))
+        self.assertTrue(_is_blocked_system_recipient(['  system@example.com  ']))
+        self.assertTrue(_is_blocked_system_recipient(['other@example.com', 'system@example.com']))
+    
+    def test_is_blocked_system_recipient_no_match(self):
+        """Test that _is_blocked_system_recipient returns False for non-matching addresses."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        self.assertFalse(_is_blocked_system_recipient(['user@example.com']))
+        self.assertFalse(_is_blocked_system_recipient(['other@example.com', 'another@test.com']))
+    
+    def test_blocks_email_to_default_address_in_to_field(self):
+        """Test that emails to the default address in 'to' field are blocked."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['system@example.com', 'other@example.com']
+        )
+        
+        # Email should be blocked
+        self.assertFalse(result.success)
+        self.assertIn('mail loop protection', result.error.lower())
+        self.assertIn('blocked', result.error.lower())
+    
+    def test_blocks_email_to_default_address_in_cc_field(self):
+        """Test that emails with default address in 'cc' field are blocked."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['user@example.com'],
+            cc=['system@example.com']
+        )
+        
+        # Email should be blocked
+        self.assertFalse(result.success)
+        self.assertIn('mail loop protection', result.error.lower())
+    
+    def test_blocks_email_to_default_address_in_bcc_field(self):
+        """Test that emails with default address in 'bcc' field are blocked."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['user@example.com'],
+            bcc=['system@example.com']
+        )
+        
+        # Email should be blocked
+        self.assertFalse(result.success)
+        self.assertIn('mail loop protection', result.error.lower())
+    
+    def test_blocks_email_case_insensitive(self):
+        """Test that blocking is case-insensitive."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        # Try different case variations
+        for address in ['SYSTEM@EXAMPLE.COM', 'System@Example.Com', 'SyStEm@ExAmPlE.cOm']:
+            result = send_email(
+                subject='Test Subject',
+                body='Test body',
+                to=[address]
+            )
+            
+            self.assertFalse(result.success, f"Should block {address}")
+            self.assertIn('mail loop protection', result.error.lower())
+    
+    def test_blocks_email_with_whitespace(self):
+        """Test that blocking handles email addresses with whitespace."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['  system@example.com  ']
+        )
+        
+        # Email should be blocked
+        self.assertFalse(result.success)
+        self.assertIn('mail loop protection', result.error.lower())
+    
+    @patch('core.services.graph.mail_service.get_client')
+    def test_allows_email_to_different_address(self, mock_get_client):
+        """Test that emails to different addresses are allowed."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['user@example.com'],
+            cc=['other@example.com'],
+            bcc=['another@example.com']
+        )
+        
+        # Email should be sent successfully
+        self.assertTrue(result.success)
+        mock_client.send_mail.assert_called_once()
+    
+    @patch('core.services.graph.mail_service.get_client')
+    def test_allows_email_when_no_default_configured(self, mock_get_client):
+        """Test that emails are allowed when no default address is configured."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='',  # No default configured
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['system@example.com'],
+            sender='custom@example.com'
+        )
+        
+        # Email should be sent successfully
+        self.assertTrue(result.success)
+        mock_client.send_mail.assert_called_once()
+    
+    def test_blocked_email_logs_details(self):
+        """Test that blocked emails are logged with appropriate details."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        with self.assertLogs('core.services.graph.mail_service', level='WARNING') as log_context:
+            result = send_email(
+                subject='Important Email',
+                body='Test body',
+                to=['user@example.com', 'system@example.com'],
+                cc=['cc@example.com']
+            )
+            
+            # Check that warning was logged
+            self.assertTrue(
+                any('Agira self-mail protection' in msg for msg in log_context.output),
+                "Should log 'Agira self-mail protection'"
+            )
+            self.assertTrue(
+                any('system@example.com' in msg for msg in log_context.output),
+                "Should log the default address"
+            )
+            self.assertTrue(
+                any('Important Email' in msg for msg in log_context.output),
+                "Should log the subject"
+            )
+    
+    @patch('core.services.graph.mail_service.get_client')
+    def test_multiple_recipients_with_mixed_addresses(self, mock_get_client):
+        """Test blocking works correctly with multiple recipients including blocked ones."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='system@example.com',
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Even one blocked address should prevent sending
+        result = send_email(
+            subject='Test Subject',
+            body='Test body',
+            to=['user1@example.com', 'system@example.com', 'user2@example.com']
+        )
+        
+        # Email should be blocked
+        self.assertFalse(result.success)
+        # Client should NOT be called
+        mock_client.send_mail.assert_not_called()
