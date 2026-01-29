@@ -4,7 +4,7 @@ Context processors for Agira templates.
 These functions add variables to the template context globally.
 """
 
-from core.models import ExternalIssueMapping, ExternalIssueKind, ItemStatus
+from core.views import get_open_github_issues_count
 
 
 def open_github_issues_count(request):
@@ -17,11 +17,6 @@ def open_github_issues_count(request):
     if not request.user.is_authenticated:
         return {'open_github_issues_count': 0}
     
-    count = ExternalIssueMapping.objects.filter(
-        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
-        kind=ExternalIssueKind.ISSUE,
-    ).exclude(
-        state='closed'
-    ).count()
+    count = get_open_github_issues_count()
     
     return {'open_github_issues_count': count}

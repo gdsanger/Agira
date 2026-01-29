@@ -623,36 +623,24 @@ def get_open_github_issues_count():
 @login_required
 def items_github_open(request):
     """Open GitHub Issues page view - shows all open GitHub issues linked to Working/Testing items."""
-    # Get items with status Working or Testing that have open GitHub issues (not PRs)
-    items_with_issues = Item.objects.filter(
-        status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
-        external_mappings__kind=ExternalIssueKind.ISSUE,
+    # Query ExternalIssueMapping directly to get all open issues from Working/Testing items
+    # This avoids N+1 queries and correctly handles items with multiple mappings
+    open_issue_mappings = ExternalIssueMapping.objects.filter(
+        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
+        kind=ExternalIssueKind.ISSUE,
     ).exclude(
-        external_mappings__state='closed'
-    ).select_related(
-        'project', 'type', 'organisation', 'requester', 'assigned_to'
-    ).prefetch_related('external_mappings').distinct().order_by('-updated_at')
+        state='closed'
+    ).select_related('item', 'item__project').order_by('-number')
     
     # Build list of issue data for display
     issues_data = []
-    for item in items_with_issues:
-        # Get open GitHub issues for this item (excluding PRs and closed issues)
-        open_issues = item.external_mappings.filter(
-            kind=ExternalIssueKind.ISSUE
-        ).exclude(state='closed')
-        
-        for issue_mapping in open_issues:
-            issues_data.append({
-                'issue_number': issue_mapping.number,
-                'item_title': item.title,
-                'item_id': item.id,
-                'github_url': issue_mapping.html_url,
-                'github_owner': item.project.github_owner,
-                'github_repo': item.project.github_repo,
-            })
-    
-    # Sort by issue number descending
-    issues_data.sort(key=lambda x: x['issue_number'], reverse=True)
+    for mapping in open_issue_mappings:
+        issues_data.append({
+            'issue_number': mapping.number,
+            'item_title': mapping.item.title,
+            'item_id': mapping.item.id,
+            'github_url': mapping.html_url,
+        })
     
     context = {
         'issues_data': issues_data,

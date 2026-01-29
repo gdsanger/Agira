@@ -299,3 +299,53 @@ class OpenGitHubIssuesTestCase(TestCase):
         for issue in issues_data:
             item = Item.objects.get(id=issue['item_id'])
             self.assertIn(item.status, [ItemStatus.WORKING, ItemStatus.TESTING])
+    
+    def test_items_with_mixed_open_closed_issues(self):
+        """Test that items with both open and closed issues show only the open ones"""
+        # Create an item with both open and closed issues
+        mixed_item = Item.objects.create(
+            title="Item with Mixed Issues",
+            description="This item has both open and closed issues",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            organisation=self.org,
+            requester=self.user,
+            assigned_to=self.user
+        )
+        
+        # Add open issue
+        open_mapping = ExternalIssueMapping.objects.create(
+            item=mixed_item,
+            github_id=2001,
+            number=201,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/testorg/testrepo/issues/201'
+        )
+        
+        # Add closed issue
+        closed_mapping = ExternalIssueMapping.objects.create(
+            item=mixed_item,
+            github_id=2002,
+            number=202,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testorg/testrepo/issues/202'
+        )
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        issues_data = response.context['issues_data']
+        issue_numbers = [issue['issue_number'] for issue in issues_data]
+        
+        # The open issue should be present
+        self.assertIn(201, issue_numbers)
+        
+        # The closed issue should NOT be present
+        self.assertNotIn(202, issue_numbers)
+        
+        # Count should include the mixed item's open issue
+        count = get_open_github_issues_count()
+        self.assertEqual(count, 3)  # Original 2 + new open issue
