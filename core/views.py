@@ -639,11 +639,19 @@ def item_detail(request, item_id):
         id=item_id
     )
     
+    # Get followers for this item
+    followers = item.get_followers()
+    
+    # Get all users for the follower selection dropdown
+    users = User.objects.all().order_by('name')
+    
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
     
     context = {
         'item': item,
+        'followers': followers,
+        'users': users,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
     }
@@ -1887,6 +1895,23 @@ def item_create(request):
             # Validate nodes belong to project
             item.validate_nodes()
         
+        # Handle followers (ManyToMany, requires item to be saved first)
+        follower_ids = request.POST.getlist('follower_ids')
+        if follower_ids:
+            from core.models import ItemFollower
+            # Remove any existing followers (for create, this should be none, but be safe)
+            ItemFollower.objects.filter(item=item).delete()
+            # Add new followers
+            seen_user_ids = set()
+            for user_id in follower_ids:
+                if user_id and user_id not in seen_user_ids:
+                    try:
+                        user = get_object_or_404(User, id=user_id)
+                        ItemFollower.objects.create(item=item, user=user)
+                        seen_user_ids.add(user_id)
+                    except Exception:
+                        pass  # Skip invalid user IDs
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -1901,7 +1926,8 @@ def item_create(request):
             'success': True,
             'message': 'Item created successfully',
             'redirect': f'/items/{item.id}/',
-            'item_id': item.id
+            'item_id': item.id,
+            'followers': list(item.get_followers().values('id', 'username', 'email', 'name'))
         }
         
         mapping = check_mail_trigger(item)
@@ -2068,6 +2094,23 @@ def item_update(request, item_id):
             else:
                 item.nodes.clear()
         
+        # Handle followers (ManyToMany, requires item to be saved first)
+        follower_ids = request.POST.getlist('follower_ids')
+        if follower_ids is not None:  # Check if follower_ids was provided in the request
+            from core.models import ItemFollower
+            # Remove existing followers
+            ItemFollower.objects.filter(item=item).delete()
+            # Add new followers
+            seen_user_ids = set()
+            for user_id in follower_ids:
+                if user_id and user_id not in seen_user_ids:
+                    try:
+                        user = get_object_or_404(User, id=user_id)
+                        ItemFollower.objects.create(item=item, user=user)
+                        seen_user_ids.add(user_id)
+                    except Exception:
+                        pass  # Skip invalid user IDs
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -2082,7 +2125,8 @@ def item_update(request, item_id):
             'success': True,
             'message': 'Item updated successfully',
             'item_id': item.id,
-            'redirect': f'/items/{item.id}/'
+            'redirect': f'/items/{item.id}/',
+            'followers': list(item.get_followers().values('id', 'username', 'email', 'name'))
         }
         
         # Only check for mail trigger if status changed
@@ -2128,6 +2172,7 @@ def item_delete(request, item_id):
 def item_send_status_mail(request, item_id):
     """Send status change email for an item."""
     from .services.graph.mail_service import send_email
+    from .services.mail import get_notification_recipients_for_item
     import bleach
     
     item = get_object_or_404(Item, id=item_id)
@@ -2165,9 +2210,29 @@ def item_send_status_mail(request, item_id):
             else:
                 return JsonResponse({'success': False, 'error': 'No recipient email available'}, status=400)
         
+        # Get follower emails for CC using the utility function
+        recipients = get_notification_recipients_for_item(item)
+        follower_emails = recipients['cc']
+        
         # Prepare recipient list
         to = [to_address] if isinstance(to_address, str) else to_address
-        cc = [cc_address] if cc_address and isinstance(cc_address, str) else (cc_address if cc_address else None)
+        
+        # Merge follower emails with any existing CC addresses from the request
+        cc_list = []
+        if cc_address:
+            if isinstance(cc_address, str):
+                cc_list.append(cc_address)
+            else:
+                cc_list.extend(cc_address)
+        
+        # Add follower emails to CC, avoiding duplicates
+        seen = set(cc_list)
+        for email in follower_emails:
+            if email and email not in seen:
+                cc_list.append(email)
+                seen.add(email)
+        
+        cc = cc_list if cc_list else None
         
         # Send email using graph service
         result = send_email(

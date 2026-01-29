@@ -6,10 +6,56 @@ based on item status and type, and to prepare mail previews.
 """
 
 from typing import Optional, TYPE_CHECKING
-from .template_processor import process_template
 
 if TYPE_CHECKING:
     from core.models import Item, MailActionMapping
+
+from .template_processor import process_template
+
+
+def get_notification_recipients_for_item(item: "Item") -> dict:
+    """
+    Get email recipients for item notifications.
+    
+    Args:
+        item: Item instance to get recipients for
+        
+    Returns:
+        dict with 'to' (requester email) and 'cc' (list of follower emails)
+        
+    Example:
+        >>> item = Item.objects.get(id=123)
+        >>> recipients = get_notification_recipients_for_item(item)
+        >>> print(recipients['to'])  # requester@example.com
+        >>> print(recipients['cc'])  # ['follower1@example.com', 'follower2@example.com']
+    """
+    result = {
+        'to': None,
+        'cc': []
+    }
+    
+    # Get requester email for 'to'
+    if item.requester and item.requester.email:
+        result['to'] = item.requester.email
+    
+    # Get follower emails for 'cc'
+    followers = item.get_followers().filter(email__isnull=False).exclude(email='')
+    follower_emails = list(followers.values_list('email', flat=True))
+    
+    # Remove duplicates and exclude requester from CC if present
+    unique_emails = []
+    seen = set()
+    if result['to']:
+        seen.add(result['to'])
+    
+    for email in follower_emails:
+        if email and email not in seen:
+            unique_emails.append(email)
+            seen.add(email)
+    
+    result['cc'] = unique_emails
+    
+    return result
 
 
 def check_mail_trigger(item: "Item") -> Optional["MailActionMapping"]:
