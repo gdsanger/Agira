@@ -110,6 +110,17 @@
                         Anmelden
                     </button>
                 </form>
+                
+                {% if azure_ad_enabled %}
+                <div class="text-center my-3">
+                    <span class="text-muted">oder</span>
+                </div>
+                
+                <a href="{% url 'azuread-login' %}{% if next %}?next={{ next }}{% endif %}" class="btn btn-outline-primary btn-login">
+                    <i class="bi bi-microsoft me-2"></i>
+                    Login mit Azure AD
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>

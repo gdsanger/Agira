@@ -10,6 +10,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.urls import reverse
+from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import logging
 import os
@@ -32,6 +33,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
 from .services.mail import check_mail_trigger, prepare_mail_preview
+from .backends.azuread import AzureADAuth, AzureADAuthError
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -86,19 +88,52 @@ def login_view(request):
             else:
                 # User account is inactive
                 error = 'Ihr Konto ist deaktiviert.'
-                return render(request, 'login.html', {'error': error, 'next': next_url})
+                return render(request, 'login.html', {
+                    'error': error, 
+                    'next': next_url,
+                    'azure_ad_enabled': settings.AZURE_AD_ENABLED
+                })
         else:
             # Invalid credentials
             error = 'Benutzername oder Passwort ist falsch.'
-            return render(request, 'login.html', {'error': error, 'next': next_url})
+            return render(request, 'login.html', {
+                'error': error, 
+                'next': next_url,
+                'azure_ad_enabled': settings.AZURE_AD_ENABLED
+            })
     
     # GET request - show login form
     next_url = request.GET.get('next', '')
-    return render(request, 'login.html', {'next': next_url})
+    return render(request, 'login.html', {
+        'next': next_url,
+        'azure_ad_enabled': settings.AZURE_AD_ENABLED
+    })
 
 def logout_view(request):
-    """Logout view."""
+    """Logout view with Azure AD single sign-out support."""
+    # Check if user was logged in via Azure AD (has azure_ad_object_id)
+    azure_ad_user = False
+    if request.user.is_authenticated:
+        azure_ad_user = hasattr(request.user, 'azure_ad_object_id') and request.user.azure_ad_object_id
+    
+    # Log out from Agira
     auth_logout(request)
+    
+    # If user was logged in via Azure AD and Azure AD is enabled, offer single logout
+    if azure_ad_user and settings.AZURE_AD_ENABLED:
+        # Redirect to Azure AD logout
+        try:
+            azure_ad = AzureADAuth()
+            post_logout_uri = request.build_absolute_uri(reverse('login'))
+            logout_url = azure_ad.get_logout_url(post_logout_uri)
+            return redirect(logout_url)
+        except AzureADAuthError as e:
+            logger.warning(f"Azure AD logout failed: {str(e)}")
+            # Continue with local logout page
+        except Exception as e:
+            logger.error(f"Unexpected error during Azure AD logout: {str(e)}", exc_info=True)
+            # Continue with local logout page
+    
     return render(request, 'logged_out.html')
 
 @login_required

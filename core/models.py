@@ -193,6 +193,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=20, choices=UserRole.choices, default=UserRole.USER)
     active = models.BooleanField(default=True)
     
+    # Azure AD SSO fields
+    azure_ad_object_id = models.CharField(max_length=255, unique=True, null=True, blank=True, 
+                                          help_text=_('Azure AD Object ID for SSO'))
+    
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
