@@ -18,6 +18,11 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     
     User-provided data is HTML-escaped to prevent XSS vulnerabilities.
     
+    Note: To avoid N+1 queries when processing multiple items, callers should
+    prefetch related data using:
+    - select_related('requester', 'solution_release')
+    - prefetch_related('requester__user_organisations__organisation')
+    
     Supported variables:
     - {{ issue.title }} - Item title
     - {{ issue.description }} - Item description
@@ -53,7 +58,9 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     # Build solution release info with name, version and date
     solution_release_info = ''
     if item.solution_release:
-        parts = [item.solution_release.name]
+        parts = []
+        if item.solution_release.name:
+            parts.append(item.solution_release.name)
         if item.solution_release.version:
             parts.append(f"Version {item.solution_release.version}")
         if item.solution_release.update_date:
