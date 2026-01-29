@@ -162,7 +162,13 @@ class Organisation(models.Model):
         return self.name
     
     def get_mail_domains_list(self):
-        """Return list of mail domains, one per line."""
+        """
+        Return list of mail domains, one per line.
+        
+        Returns:
+            List of domain strings with whitespace stripped.
+            Empty or whitespace-only domains are filtered out.
+        """
         if not self.mail_domains:
             return []
         return [domain.strip() for domain in self.mail_domains.strip().split('\n') if domain.strip()]

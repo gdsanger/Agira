@@ -233,6 +233,8 @@ class GraphClient:
             >>> client = get_client()
             >>> messages = client.get_inbox_messages("support@company.com", top=50)
         """
+        from urllib.parse import urlencode
+        
         url = f"/users/{user_upn}/mailFolders/inbox/messages"
         
         # Build query parameters
@@ -245,8 +247,8 @@ class GraphClient:
         if filter_query:
             params["$filter"] = filter_query
         
-        # Build URL with query parameters
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        # Build URL with properly encoded query parameters
+        query_string = urlencode(params, safe=':,')
         full_url = f"{url}?{query_string}"
         
         logger.info(f"Fetching inbox messages for {user_upn}")

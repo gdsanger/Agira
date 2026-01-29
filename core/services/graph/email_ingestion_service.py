@@ -131,6 +131,7 @@ class EmailIngestionService:
         
         if not sender_email:
             logger.warning(f"Message {message_id} has no sender email, skipping")
+            # Note: This would increment stats['skipped'] if stats were passed as parameter
             return None
         
         # Extract email body
@@ -145,6 +146,7 @@ class EmailIngestionService:
             body_markdown = body_content
         
         try:
+            # Create item in database transaction
             with transaction.atomic():
                 # Get or create user and organization
                 user, organisation = self._get_or_create_user_and_org(
@@ -174,11 +176,18 @@ class EmailIngestionService:
                     f"Created item {item.id} in project '{project.name}' "
                     f"from email by {sender_email}"
                 )
-                
-                # Send auto-confirmation email if mail trigger exists
+            
+            # After transaction commits successfully, send confirmation email
+            # This is done outside the transaction to avoid holding locks
+            try:
                 self._send_confirmation_email(item)
-                
-                # Mark message as processed
+            except Exception as e:
+                logger.error(f"Failed to send confirmation email for item {item.id}: {e}")
+                # Don't raise - email sending failure shouldn't prevent marking as processed
+            
+            # Mark message as processed
+            # Done after transaction to avoid duplicate processing if DB transaction fails
+            try:
                 self.client.add_category_to_message(
                     user_upn=self.mailbox,
                     message_id=message_id,
@@ -191,8 +200,11 @@ class EmailIngestionService:
                         user_upn=self.mailbox,
                         message_id=message_id,
                     )
-                
-                return item
+            except Exception as e:
+                logger.error(f"Failed to mark message {message_id} as processed: {e}")
+                # Don't raise - item was created successfully
+            
+            return item
                 
         except Exception as e:
             logger.error(f"Error creating item from message {message_id}: {e}")
@@ -258,8 +270,16 @@ class EmailIngestionService:
         if domain:
             organisation = self._find_organisation_by_domain(domain)
         
-        # Generate username from email
-        username = email.split('@')[0]
+        # Generate username from email (sanitize for Django username requirements)
+        # Django usernames allow letters, digits, and @/./+/-/_ characters
+        import re
+        username_base = email.split('@')[0] if '@' in email else email
+        # Replace invalid characters with underscores
+        username = re.sub(r'[^\w.@+-]', '_', username_base)
+        
+        # Ensure username is not empty
+        if not username:
+            username = "user_" + email.replace("@", "_at_").replace(".", "_")
         
         # Ensure username is unique
         base_username = username
@@ -336,6 +356,9 @@ class EmailIngestionService:
         projects = list(Project.objects.all())
         project_names = [p.name for p in projects]
         
+        # Limit body to first 1000 chars to avoid overwhelming the AI
+        body_preview = body[:1000]
+        
         # Build context for AI agent
         context = f"""
 Available Projects:
@@ -346,7 +369,7 @@ Sender: {sender_email}
 Subject: {subject}
 
 Email Body:
-{body[:1000]}  # Limit body to first 1000 chars
+{body_preview}
 """
         
         try:
