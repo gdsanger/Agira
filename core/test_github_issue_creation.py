@@ -471,6 +471,107 @@ class GitHubIssueCreationTestCase(TestCase):
         # Check that item was NOT assigned (no Copilot user exists)
         item.refresh_from_db()
         self.assertIsNone(item.assigned_to)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_changes_status_to_working_for_backlog_item(self, mock_message_user, mock_create_issue):
+        """Test that admin action changes item status to WORKING when creating issue from Backlog."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Backlog Item',
+            description='A backlog item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        mock_create_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/42',
+            'title': 'Backlog Item',
+            'assignees': [],
+        }
+        
+        queryset = Item.objects.filter(id=item.id)
+        self.admin.create_github_issue(self.request, queryset)
+        
+        # Verify item status changed to WORKING
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.WORKING)
+        self.assertEqual(item.assigned_to, copilot_user)
+        
+        # Verify mapping was created
+        mapping = ExternalIssueMapping.objects.filter(item=item).first()
+        self.assertIsNotNone(mapping)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_keeps_working_status_if_already_working(self, mock_message_user, mock_create_issue):
+        """Test that admin action keeps item in WORKING status if already Working."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Working Item',
+            description='An item already in working status',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+        )
+        
+        mock_create_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/42',
+            'title': 'Working Item',
+            'assignees': [],
+        }
+        
+        queryset = Item.objects.filter(id=item.id)
+        self.admin.create_github_issue(self.request, queryset)
+        
+        # Verify item status remains WORKING
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.WORKING)
+        self.assertEqual(item.assigned_to, copilot_user)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    @patch.object(ItemAdmin, 'message_user')
+    def test_admin_action_changes_testing_to_working(self, mock_message_user, mock_create_issue):
+        """Test that admin action changes TESTING status to WORKING (valid transition)."""
+        # Create Copilot user for local assignment
+        copilot_user = self._create_copilot_user()
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Testing Item',
+            description='An item in testing status',
+            type=self.item_type,
+            status=ItemStatus.TESTING,
+        )
+        
+        mock_create_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/42',
+            'title': 'Testing Item',
+            'assignees': [],
+        }
+        
+        queryset = Item.objects.filter(id=item.id)
+        self.admin.create_github_issue(self.request, queryset)
+        
+        # Verify item status changed to WORKING (valid transition from TESTING)
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.WORKING)
+        self.assertEqual(item.assigned_to, copilot_user)
+
 
 
 class GitHubIssueCreationViewTestCase(TestCase):
