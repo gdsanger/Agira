@@ -606,6 +606,47 @@ def items_specification(request):
     }
     return render(request, 'items_specification.html', context)
 
+def get_open_github_issues_count():
+    """
+    Get count of open GitHub issues linked to items with status Working or Testing.
+    
+    Returns:
+        int: Count of open GitHub issues (excluding PRs, excluding closed issues)
+    """
+    return ExternalIssueMapping.objects.filter(
+        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
+        kind=ExternalIssueKind.ISSUE,
+    ).exclude(
+        state='closed'
+    ).count()
+
+@login_required
+def items_github_open(request):
+    """Open GitHub Issues page view - shows all open GitHub issues linked to Working/Testing items."""
+    # Query ExternalIssueMapping directly to get all open issues from Working/Testing items
+    # This avoids N+1 queries and correctly handles items with multiple mappings
+    open_issue_mappings = ExternalIssueMapping.objects.filter(
+        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
+        kind=ExternalIssueKind.ISSUE,
+    ).exclude(
+        state='closed'
+    ).select_related('item', 'item__project').order_by('-number')
+    
+    # Build list of issue data for display
+    issues_data = []
+    for mapping in open_issue_mappings:
+        issues_data.append({
+            'issue_number': mapping.number,
+            'item_title': mapping.item.title,
+            'item_id': mapping.item.id,
+            'github_url': mapping.html_url,
+        })
+    
+    context = {
+        'issues_data': issues_data,
+    }
+    return render(request, 'items_github_open.html', context)
+
 @login_required
 def changes(request):
     """Changes list page view."""
