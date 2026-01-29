@@ -150,12 +150,22 @@ class UserManager(BaseUserManager):
 # Models
 class Organisation(models.Model):
     name = models.CharField(max_length=255, unique=True)
+    mail_domains = models.TextField(
+        blank=True,
+        help_text="Mail domains for this organization, one per line (e.g., example.com)"
+    )
 
     class Meta:
         ordering = ['name']
 
     def __str__(self):
         return self.name
+    
+    def get_mail_domains_list(self):
+        """Return list of mail domains, one per line."""
+        if not self.mail_domains:
+            return []
+        return [domain.strip() for domain in self.mail_domains.strip().split('\n') if domain.strip()]
 
 
 class ItemType(models.Model):
