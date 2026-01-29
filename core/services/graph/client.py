@@ -8,7 +8,7 @@ for app-only authentication.
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import msal
 import requests
@@ -208,6 +208,135 @@ class GraphClient:
         self.request("POST", url, json=payload)
         
         logger.info("Email sent successfully via Graph API")
+    
+    def get_inbox_messages(
+        self,
+        user_upn: str,
+        top: int = 10,
+        filter_query: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get messages from a user's inbox.
+        
+        Args:
+            user_upn: User Principal Name (e.g., user@domain.com)
+            top: Maximum number of messages to retrieve (default: 10, max: 999)
+            filter_query: Optional OData filter query
+            
+        Returns:
+            List of message dictionaries
+            
+        Raises:
+            ServiceError: If the request fails
+            
+        Example:
+            >>> client = get_client()
+            >>> messages = client.get_inbox_messages("support@company.com", top=50)
+        """
+        from urllib.parse import urlencode
+        
+        url = f"/users/{user_upn}/mailFolders/inbox/messages"
+        
+        # Build query parameters
+        params = {
+            "$top": str(min(top, 999)),  # Max 999 per request
+            "$select": "id,subject,from,toRecipients,body,receivedDateTime,hasAttachments,isRead,categories",
+            "$orderby": "receivedDateTime desc",
+        }
+        
+        if filter_query:
+            params["$filter"] = filter_query
+        
+        # Build URL with properly encoded query parameters
+        query_string = urlencode(params, safe=':,')
+        full_url = f"{url}?{query_string}"
+        
+        logger.info(f"Fetching inbox messages for {user_upn}")
+        
+        response = self.request("GET", full_url)
+        
+        if response and "value" in response:
+            messages = response["value"]
+            logger.info(f"Retrieved {len(messages)} messages from inbox")
+            return messages
+        
+        return []
+    
+    def mark_message_as_read(self, user_upn: str, message_id: str) -> None:
+        """
+        Mark a message as read.
+        
+        Args:
+            user_upn: User Principal Name
+            message_id: Message ID
+            
+        Raises:
+            ServiceError: If the request fails
+        """
+        url = f"/users/{user_upn}/messages/{message_id}"
+        payload = {"isRead": True}
+        
+        logger.info(f"Marking message {message_id} as read")
+        self.request("PATCH", url, json=payload)
+        logger.debug("Message marked as read")
+    
+    def add_category_to_message(
+        self,
+        user_upn: str,
+        message_id: str,
+        category: str,
+    ) -> None:
+        """
+        Add a category to a message.
+        
+        Args:
+            user_upn: User Principal Name
+            message_id: Message ID
+            category: Category name to add
+            
+        Raises:
+            ServiceError: If the request fails
+        """
+        # First, get current categories
+        url = f"/users/{user_upn}/messages/{message_id}"
+        response = self.request("GET", f"{url}?$select=categories")
+        
+        current_categories = response.get("categories", []) if response else []
+        
+        # Add new category if not already present
+        if category not in current_categories:
+            current_categories.append(category)
+            
+            # Update message with new categories
+            payload = {"categories": current_categories}
+            self.request("PATCH", url, json=payload)
+            logger.info(f"Added category '{category}' to message {message_id}")
+        else:
+            logger.debug(f"Category '{category}' already exists on message {message_id}")
+    
+    def move_message(
+        self,
+        user_upn: str,
+        message_id: str,
+        destination_folder_id: str,
+    ) -> None:
+        """
+        Move a message to a different folder.
+        
+        Args:
+            user_upn: User Principal Name
+            message_id: Message ID
+            destination_folder_id: Destination folder ID (e.g., "deletedItems")
+            
+        Raises:
+            ServiceError: If the request fails
+        """
+        url = f"/users/{user_upn}/messages/{message_id}/move"
+        payload = {"destinationId": destination_folder_id}
+        
+        logger.info(f"Moving message {message_id} to folder {destination_folder_id}")
+        self.request("POST", url, json=payload)
+        logger.debug("Message moved successfully")
 
 
 def get_client() -> GraphClient:
