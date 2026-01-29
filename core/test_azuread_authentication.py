@@ -62,7 +62,11 @@ class AzureADAuthenticationTestCase(TestCase):
         """Test Azure AD login initiates redirect to Azure"""
         # Mock MSAL app
         mock_app = MagicMock()
-        mock_app.get_authorization_request_url.return_value = 'https://login.microsoftonline.com/test-tenant-id/oauth2/v2.0/authorize?...'
+        mock_app.initiate_auth_code_flow.return_value = {
+            'auth_uri': 'https://login.microsoftonline.com/test-tenant-id/oauth2/v2.0/authorize?...',
+            'state': 'test-state',
+            'scope': ['User.Read', 'email']
+        }
         mock_msal.return_value = mock_app
         
         response = self.client.get(reverse('azuread-login'))
@@ -71,15 +75,19 @@ class AzureADAuthenticationTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith('https://login.microsoftonline.com'))
         
-        # State should be stored in session
-        self.assertIn('azure_ad_state', self.client.session)
+        # Flow should be stored in session
+        self.assertIn('azure_ad_flow', self.client.session)
     
     @patch('core.backends.azuread.msal.ConfidentialClientApplication')
     def test_azuread_login_with_next_parameter(self, mock_msal):
         """Test Azure AD login stores next parameter"""
         # Mock MSAL app
         mock_app = MagicMock()
-        mock_app.get_authorization_request_url.return_value = 'https://login.microsoftonline.com/...'
+        mock_app.initiate_auth_code_flow.return_value = {
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'state': 'test-state',
+            'scope': ['User.Read', 'email']
+        }
         mock_msal.return_value = mock_app
         
         next_url = reverse('projects')
@@ -106,7 +114,11 @@ class AzureADAuthenticationTestCase(TestCase):
         """Test Azure AD callback with state token mismatch (CSRF protection)"""
         # Set a different state in session
         session = self.client.session
-        session['azure_ad_state'] = 'different-state'
+        session['azure_ad_flow'] = {
+            'state': 'different-state',
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'scope': ['User.Read', 'email']
+        }
         session.save()
         
         response = self.client.get(reverse('azuread-callback') + '?code=test-code&state=wrong-state')
@@ -119,14 +131,19 @@ class AzureADAuthenticationTestCase(TestCase):
     @patch('core.backends.azuread.jwt.decode')
     def test_azuread_callback_successful_existing_user(self, mock_jwt_decode, mock_msal):
         """Test successful Azure AD callback for existing user"""
-        # Set state in session
+        # Set flow in session
         session = self.client.session
-        session['azure_ad_state'] = 'test-state'
+        session['azure_ad_flow'] = {
+            'state': 'test-state',
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'scope': ['User.Read', 'email'],
+            'redirect_uri': 'http://testserver/auth/azuread/callback/'
+        }
         session.save()
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_authorization_code.return_value = {
+        mock_app.acquire_token_by_auth_code_response.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -160,14 +177,19 @@ class AzureADAuthenticationTestCase(TestCase):
     @patch('core.backends.azuread.jwt.decode')
     def test_azuread_callback_auto_provision_new_user(self, mock_jwt_decode, mock_msal):
         """Test Azure AD callback auto-provisions new user"""
-        # Set state in session
+        # Set flow in session
         session = self.client.session
-        session['azure_ad_state'] = 'test-state'
+        session['azure_ad_flow'] = {
+            'state': 'test-state',
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'scope': ['User.Read', 'email'],
+            'redirect_uri': 'http://testserver/auth/azuread/callback/'
+        }
         session.save()
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_authorization_code.return_value = {
+        mock_app.acquire_token_by_auth_code_response.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -205,14 +227,19 @@ class AzureADAuthenticationTestCase(TestCase):
     @patch('core.backends.azuread.jwt.decode')
     def test_azuread_callback_links_existing_user_by_email(self, mock_jwt_decode, mock_msal):
         """Test Azure AD callback links existing user by email"""
-        # Set state in session
+        # Set flow in session
         session = self.client.session
-        session['azure_ad_state'] = 'test-state'
+        session['azure_ad_flow'] = {
+            'state': 'test-state',
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'scope': ['User.Read', 'email'],
+            'redirect_uri': 'http://testserver/auth/azuread/callback/'
+        }
         session.save()
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_authorization_code.return_value = {
+        mock_app.acquire_token_by_auth_code_response.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -247,14 +274,19 @@ class AzureADAuthenticationTestCase(TestCase):
         self.azure_user.active = False
         self.azure_user.save()
         
-        # Set state in session
+        # Set flow in session
         session = self.client.session
-        session['azure_ad_state'] = 'test-state'
+        session['azure_ad_flow'] = {
+            'state': 'test-state',
+            'auth_uri': 'https://login.microsoftonline.com/...',
+            'scope': ['User.Read', 'email'],
+            'redirect_uri': 'http://testserver/auth/azuread/callback/'
+        }
         session.save()
         
         # Mock MSAL token acquisition
         mock_app = MagicMock()
-        mock_app.acquire_token_by_authorization_code.return_value = {
+        mock_app.acquire_token_by_auth_code_response.return_value = {
             'id_token': 'mock-id-token',
             'access_token': 'mock-access-token'
         }
@@ -335,17 +367,22 @@ class AzureADAuthBackendTestCase(TestCase):
         AZURE_AD_AUTHORITY='https://login.microsoftonline.com/test-tenant'
     )
     @patch('core.backends.azuread.msal.ConfidentialClientApplication')
-    def test_get_auth_url(self, mock_msal):
-        """Test get_auth_url returns authorization URL"""
+    def test_initiate_auth_code_flow(self, mock_msal):
+        """Test initiate_auth_code_flow returns flow dictionary"""
         mock_app = MagicMock()
-        mock_app.get_authorization_request_url.return_value = 'https://login.microsoftonline.com/authorize'
+        mock_app.initiate_auth_code_flow.return_value = {
+            'auth_uri': 'https://login.microsoftonline.com/authorize',
+            'state': 'test-state',
+            'scope': ['User.Read', 'email']
+        }
         mock_msal.return_value = mock_app
         
         azure_ad = AzureADAuth()
-        auth_url = azure_ad.get_auth_url('test-state')
+        flow = azure_ad.initiate_auth_code_flow('test-state')
         
-        self.assertTrue(auth_url.startswith('https://login.microsoftonline.com'))
-        mock_app.get_authorization_request_url.assert_called_once()
+        self.assertIn('auth_uri', flow)
+        self.assertTrue(flow['auth_uri'].startswith('https://login.microsoftonline.com'))
+        mock_app.initiate_auth_code_flow.assert_called_once()
     
     @override_settings(
         AZURE_AD_ENABLED=True,
