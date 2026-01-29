@@ -8,7 +8,7 @@ for app-only authentication.
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import msal
 import requests

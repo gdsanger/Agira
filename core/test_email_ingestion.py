@@ -71,6 +71,10 @@ class EmailIngestionServiceTest(TestCase):
         self.config.enabled = False
         self.config.save()
         
+        # Clear config cache
+        from core.services.config import invalidate_singleton
+        invalidate_singleton(GraphAPIConfiguration)
+        
         with self.assertRaises(ServiceDisabled):
             EmailIngestionService()
     
@@ -78,6 +82,10 @@ class EmailIngestionServiceTest(TestCase):
         """Test that service raises error when not configured."""
         self.config.default_mail_sender = ""
         self.config.save()
+        
+        # Clear config cache
+        from core.services.config import invalidate_singleton
+        invalidate_singleton(GraphAPIConfiguration)
         
         with self.assertRaises(ServiceNotConfigured):
             EmailIngestionService()
