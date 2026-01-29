@@ -41,11 +41,17 @@ def azuread_login(request):
         })
     
     try:
+        # Get Azure AD auth handler
+        azure_ad = AzureADAuth()
+        
         # Generate CSRF state token
         state = secrets.token_urlsafe(32)
         
-        # Store state in session for validation in callback
-        request.session['azure_ad_state'] = state
+        # Initiate auth code flow
+        flow = azure_ad.initiate_auth_code_flow(state)
+        
+        # Store flow in session for validation in callback
+        request.session['azure_ad_flow'] = flow
         
         # Store next URL if provided (validate it's safe)
         next_url = request.GET.get('next', '')
@@ -57,11 +63,10 @@ def azuread_login(request):
             else:
                 logger.warning(f"Rejected unsafe next URL: {next_url}")
         
-        # Get Azure AD auth handler
-        azure_ad = AzureADAuth()
-        
-        # Get authorization URL
-        auth_url = azure_ad.get_auth_url(state)
+        # Get authorization URL from flow
+        auth_url = flow.get('auth_uri')
+        if not auth_url:
+            raise AzureADAuthError("Flow does not contain auth_uri")
         
         logger.info("Redirecting to Azure AD for authentication")
         return redirect(auth_url)
@@ -124,24 +129,33 @@ def azuread_callback(request):
                 'azure_ad_enabled': settings.AZURE_AD_ENABLED
             })
         
+        # Get flow from session
+        flow = request.session.get('azure_ad_flow')
+        if not flow:
+            logger.error("Azure AD flow not found in session")
+            return render(request, 'login.html', {
+                'error': 'Sitzung abgelaufen. Bitte erneut versuchen.',
+                'azure_ad_enabled': settings.AZURE_AD_ENABLED
+            })
+        
         # Validate state token (CSRF protection)
-        session_state = request.session.get('azure_ad_state')
-        if not session_state or session_state != state:
+        flow_state = flow.get('state')
+        if not flow_state or flow_state != state:
             logger.error("Azure AD state token mismatch (CSRF attack?)")
             return render(request, 'login.html', {
                 'error': 'Sicherheitsvalidierung fehlgeschlagen. Bitte erneut versuchen.',
                 'azure_ad_enabled': settings.AZURE_AD_ENABLED
             })
         
-        # Clean up state from session
-        del request.session['azure_ad_state']
+        # Clean up flow from session
+        del request.session['azure_ad_flow']
         
         # Get Azure AD auth handler
         azure_ad = AzureADAuth()
         
         # Exchange authorization code for tokens
         logger.info("Exchanging authorization code for tokens")
-        token_result = azure_ad.acquire_token_by_auth_code(code)
+        token_result = azure_ad.acquire_token_by_auth_code(code, flow)
         
         # Get ID token
         id_token = token_result.get('id_token')

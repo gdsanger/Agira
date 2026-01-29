@@ -65,31 +65,38 @@ class AzureADAuth:
             client_credential=self.client_secret,
         )
     
-    def get_auth_url(self, state: str) -> str:
+    def initiate_auth_code_flow(self, state: str) -> Dict[str, Any]:
         """
-        Get the authorization URL for Azure AD login.
+        Initiate the authorization code flow for Azure AD login.
         
         Args:
             state: CSRF state token
             
         Returns:
-            Authorization URL
+            Flow dictionary containing auth_uri and other flow data
         """
         msal_app = self.get_msal_app()
-        auth_url = msal_app.get_authorization_request_url(
+        flow = msal_app.initiate_auth_code_flow(
             scopes=self.scopes,
-            state=state,
-            redirect_uri=self.redirect_uri
+            redirect_uri=self.redirect_uri,
+            state=state
         )
-        logger.info("Generated Azure AD authorization URL")
-        return auth_url
+        
+        if "error" in flow:
+            error_msg = f"Failed to initiate auth flow: {flow.get('error')}: {flow.get('error_description')}"
+            logger.error(error_msg)
+            raise AzureADAuthError(error_msg)
+        
+        logger.info("Initiated Azure AD authorization code flow")
+        return flow
     
-    def acquire_token_by_auth_code(self, code: str) -> Dict[str, Any]:
+    def acquire_token_by_auth_code(self, code: str, flow: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Exchange authorization code for access token.
         
         Args:
             code: Authorization code from Azure AD callback
+            flow: Optional flow dictionary from initiate_auth_code_flow
             
         Returns:
             Token response dictionary
@@ -98,11 +105,21 @@ class AzureADAuth:
             AzureADAuthError: If token acquisition fails
         """
         msal_app = self.get_msal_app()
-        result = msal_app.acquire_token_by_authorization_code(
-            code,
-            scopes=self.scopes,
-            redirect_uri=self.redirect_uri
-        )
+        
+        # If flow is provided, use it for better CSRF protection
+        if flow:
+            result = msal_app.acquire_token_by_auth_code_response(
+                auth_response={'code': code},
+                scopes=flow.get('scope', self.scopes),
+                redirect_uri=flow.get('redirect_uri', self.redirect_uri)
+            )
+        else:
+            # Fallback to direct code exchange
+            result = msal_app.acquire_token_by_authorization_code(
+                code,
+                scopes=self.scopes,
+                redirect_uri=self.redirect_uri
+            )
         
         if "error" in result:
             error_msg = f"Token acquisition failed: {result.get('error')}: {result.get('error_description')}"
