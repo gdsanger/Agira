@@ -41,7 +41,7 @@ Solution Release: Release 2.5 - Version 2.5.0 - Planned: 2026-06-30
 The `{{ issue.organisation }}` variable uses the **requester's PRIMARY organisation**, NOT the `item.organisation` field.
 
 This is per the requirement:
-> "{{ issue.organisation }} muss durch die Primäre Organisation des Requesters ersetzte werden"
+> "{{ issue.organisation }} muss durch die Primäre Organisation des Requesters ersetzt werden"
 
 **How it works:**
 1. Gets the `item.requester` (User object)
@@ -99,9 +99,9 @@ If data is missing, the variable is replaced with an empty string (not an error)
 If variables appear not to be working:
 
 1. **Check Template Syntax**
-   - Use `{{ issue.variable }}` (with spaces)
-   - NOT `{{issue.variable}}` (without spaces) - this will still work
-   - NOT `{issue.variable}` (single braces) - this won't work
+   - Recommended: `{{ issue.variable }}` (with spaces - more readable)
+   - Also works: `{{issue.variable}}` (without spaces)
+   - Does NOT work: `{issue.variable}` (single braces)
 
 2. **Check Data Availability**
    - For description: `item.description` must be set
