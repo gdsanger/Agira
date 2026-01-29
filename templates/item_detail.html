@@ -329,6 +329,31 @@
                             <div>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>
                         <div class="mb-3">
+                            <strong>Followers:</strong>
+                            <div id="followers-display">
+                                {% if followers %}
+                                    <div class="d-flex flex-wrap gap-1">
+                                        {% for follower in followers %}
+                                            <span class="badge bg-secondary follower-badge" data-user-id="{{ follower.id }}">
+                                                {{ follower.name|default:follower.username }}
+                                                <button type="button" class="btn-close btn-close-white ms-1 remove-follower-btn" style="font-size: 0.6rem; padding: 0.1rem;" data-user-id="{{ follower.id }}" aria-label="Remove"></button>
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </div>
+                            <div class="mt-2">
+                                <select class="form-select form-select-sm" id="follower-select">
+                                    <option value="">+ Add Follower...</option>
+                                    {% for user in users %}
+                                        <option value="{{ user.id }}" data-name="{{ user.name|default:user.username }}">{{ user.name|default:user.username }} ({{ user.email }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Project:</strong>
                             <div>{{ item.project.name }}</div>
                         </div>
@@ -1048,6 +1073,166 @@
             showToast('error', 'Netzwerkfehler beim Mailversand');
             sendBtn.disabled = false;
             sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send me-1" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/></svg> Mail senden';
+        });
+    }
+
+    // Follower management functions
+    let currentFollowers = new Set();
+    
+    // Initialize current followers
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('#followers-display .badge[data-user-id]').forEach(badge => {
+            currentFollowers.add(badge.dataset.userId);
+        });
+        updateFollowerSelect();
+        
+        // Add event listener for follower select
+        const followerSelect = document.getElementById('follower-select');
+        if (followerSelect) {
+            followerSelect.addEventListener('change', function() {
+                if (this.value) {
+                    addFollower(this.value);
+                    this.value = '';
+                }
+            });
+        }
+        
+        // Add event delegation for remove buttons
+        document.getElementById('followers-display').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-follower-btn')) {
+                const userId = e.target.dataset.userId;
+                if (userId) {
+                    removeFollower(parseInt(userId));
+                }
+            }
+        });
+    });
+    
+    function updateFollowerSelect() {
+        const select = document.getElementById('follower-select');
+        if (!select) return;
+        
+        // Update options to hide already selected followers
+        Array.from(select.options).forEach(option => {
+            if (option.value && currentFollowers.has(option.value)) {
+                option.style.display = 'none';
+            } else {
+                option.style.display = '';
+            }
+        });
+    }
+    
+    function addFollower(userId) {
+        if (!userId || currentFollowers.has(userId)) return;
+        
+        const select = document.getElementById('follower-select');
+        const option = select.querySelector(`option[value="${userId}"]`);
+        if (!option) return;
+        
+        const userName = option.dataset.name;
+        
+        // Add to current followers set
+        currentFollowers.add(userId);
+        
+        // Update UI optimistically
+        const display = document.getElementById('followers-display');
+        let badgesContainer = display.querySelector('.d-flex');
+        
+        if (!badgesContainer) {
+            // Remove "—" placeholder
+            display.innerHTML = '<div class="d-flex flex-wrap gap-1"></div>';
+            badgesContainer = display.querySelector('.d-flex');
+        }
+        
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-secondary';
+        badge.dataset.userId = userId;
+        
+        // Create text node for username (safe from XSS)
+        const userNameText = document.createTextNode(userName + ' ');
+        badge.appendChild(userNameText);
+        
+        // Create remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn-close btn-close-white ms-1 remove-follower-btn';
+        removeBtn.style.fontSize = '0.6rem';
+        removeBtn.style.padding = '0.1rem';
+        removeBtn.setAttribute('aria-label', 'Remove');
+        removeBtn.dataset.userId = userId;
+        badge.appendChild(removeBtn);
+        
+        badgesContainer.appendChild(badge);
+        
+        // Update select options
+        updateFollowerSelect();
+        
+        // Save to backend
+        updateFollowersOnServer();
+    }
+    
+    function removeFollower(userId) {
+        // Remove from current followers set
+        currentFollowers.delete(userId.toString());
+        
+        // Update UI
+        const badge = document.querySelector(`#followers-display .badge[data-user-id="${userId}"]`);
+        if (badge) {
+            badge.remove();
+        }
+        
+        // Check if no followers left
+        const display = document.getElementById('followers-display');
+        const badgesContainer = display.querySelector('.d-flex');
+        if (badgesContainer && badgesContainer.children.length === 0) {
+            display.innerHTML = '<span class="text-muted">—</span>';
+        }
+        
+        // Update select options
+        updateFollowerSelect();
+        
+        // Save to backend
+        updateFollowersOnServer();
+    }
+    
+    function updateFollowersOnServer() {
+        const itemId = {{ item.id }};
+        const followerIds = Array.from(currentFollowers);
+        
+        // Create form data
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        // Add all current item fields (needed for update endpoint)
+        formData.append('project', '{{ item.project.id }}');
+        formData.append('type', '{{ item.type.id }}');
+        formData.append('title', '{{ item.title|escapejs }}');
+        formData.append('status', '{{ item.status }}');
+        
+        // Add follower IDs
+        followerIds.forEach(id => {
+            formData.append('follower_ids', id);
+        });
+        
+        // Send update request
+        fetch(`/items/${itemId}/update/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                showToast('error', data.error || 'Failed to update followers');
+                // Optionally reload to reset UI
+                setTimeout(() => location.reload(), 1500);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating followers:', error);
+            showToast('error', 'Network error while updating followers');
         });
     }
 </script>

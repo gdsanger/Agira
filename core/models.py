@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -537,6 +537,13 @@ class Item(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+    
+    def get_followers(self):
+        """
+        Get all users following this item.
+        Returns a QuerySet of User objects.
+        """
+        return User.objects.filter(followed_items__item=self)
 
     def __str__(self):
         return f"{self.project.name} - {self.title}"
@@ -558,6 +565,29 @@ class ItemRelation(models.Model):
 
     def __str__(self):
         return f"{self.from_item.title} {self.relation_type} {self.to_item.title}"
+
+
+class ItemFollower(models.Model):
+    """
+    Many-to-Many relationship table between Items and Users for followers.
+    Allows users to follow items and receive notifications (e.g., in CC of emails).
+    """
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='item_followers')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followed_items')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['item', 'user'], name='unique_item_follower')
+        ]
+        indexes = [
+            models.Index(fields=['item']),
+            models.Index(fields=['user']),
+        ]
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.user.username} follows {self.item.title}"
 
 
 class ExternalIssueMapping(models.Model):

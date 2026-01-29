@@ -3,7 +3,7 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -639,11 +639,19 @@ def item_detail(request, item_id):
         id=item_id
     )
     
+    # Get followers for this item
+    followers = item.get_followers()
+    
+    # Get all users for the follower selection dropdown
+    users = User.objects.all().order_by('name')
+    
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
     
     context = {
         'item': item,
+        'followers': followers,
+        'users': users,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
     }
@@ -1769,6 +1777,46 @@ def _auto_generate_title_from_description(description, user=None):
         return ''
 
 
+def _update_item_followers(item, follower_ids):
+    """
+    Update followers for an item.
+    
+    Args:
+        item: Item instance to update followers for
+        follower_ids: List of user IDs to set as followers
+        
+    This function atomically replaces all followers with the provided list.
+    Validates that all user IDs are valid and prevents duplicates.
+    """
+    from core.models import ItemFollower
+    
+    if not follower_ids:
+        follower_ids = []
+    
+    with transaction.atomic():
+        # Remove existing followers
+        ItemFollower.objects.filter(item=item).delete()
+        
+        # Add new followers
+        seen_user_ids = set()
+        for user_id in follower_ids:
+            if not user_id or user_id in seen_user_ids:
+                continue
+                
+            try:
+                # Validate user ID is an integer
+                user_id_int = int(user_id)
+                # Try to get the user
+                user = User.objects.filter(id=user_id_int).first()
+                if user:
+                    ItemFollower.objects.create(item=item, user=user)
+                    seen_user_ids.add(user_id)
+                else:
+                    logger.warning(f"Invalid user ID {user_id} for item {item.id} followers")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid user ID format {user_id} for item {item.id} followers: {e}")
+
+
 @login_required
 def item_create(request):
     """Item create page view."""
@@ -1887,6 +1935,10 @@ def item_create(request):
             # Validate nodes belong to project
             item.validate_nodes()
         
+        # Handle followers (ManyToMany, requires item to be saved first)
+        follower_ids = request.POST.getlist('follower_ids')
+        _update_item_followers(item, follower_ids)
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -1901,7 +1953,8 @@ def item_create(request):
             'success': True,
             'message': 'Item created successfully',
             'redirect': f'/items/{item.id}/',
-            'item_id': item.id
+            'item_id': item.id,
+            'followers': list(item.get_followers().values('id', 'username', 'email', 'name'))
         }
         
         mapping = check_mail_trigger(item)
@@ -2068,6 +2121,12 @@ def item_update(request, item_id):
             else:
                 item.nodes.clear()
         
+        # Handle followers (ManyToMany, requires item to be saved first)
+        # Only update if follower_ids was provided in the request
+        if 'follower_ids' in request.POST:
+            follower_ids = request.POST.getlist('follower_ids')
+            _update_item_followers(item, follower_ids)
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -2082,7 +2141,8 @@ def item_update(request, item_id):
             'success': True,
             'message': 'Item updated successfully',
             'item_id': item.id,
-            'redirect': f'/items/{item.id}/'
+            'redirect': f'/items/{item.id}/',
+            'followers': list(item.get_followers().values('id', 'username', 'email', 'name'))
         }
         
         # Only check for mail trigger if status changed
@@ -2128,6 +2188,7 @@ def item_delete(request, item_id):
 def item_send_status_mail(request, item_id):
     """Send status change email for an item."""
     from .services.graph.mail_service import send_email
+    from .services.mail import get_notification_recipients_for_item
     import bleach
     
     item = get_object_or_404(Item, id=item_id)
@@ -2165,9 +2226,29 @@ def item_send_status_mail(request, item_id):
             else:
                 return JsonResponse({'success': False, 'error': 'No recipient email available'}, status=400)
         
+        # Get follower emails for CC using the utility function
+        recipients = get_notification_recipients_for_item(item)
+        follower_emails = recipients['cc']
+        
         # Prepare recipient list
         to = [to_address] if isinstance(to_address, str) else to_address
-        cc = [cc_address] if cc_address and isinstance(cc_address, str) else (cc_address if cc_address else None)
+        
+        # Merge follower emails with any existing CC addresses from the request
+        cc_list = []
+        if cc_address:
+            if isinstance(cc_address, str):
+                cc_list.append(cc_address)
+            else:
+                cc_list.extend(cc_address)
+        
+        # Add follower emails to CC, avoiding duplicates
+        seen = set(cc_list)
+        for email in follower_emails:
+            if email and email not in seen:
+                cc_list.append(email)
+                seen.add(email)
+        
+        cc = cc_list if cc_list else None
         
         # Send email using graph service
         result = send_email(
