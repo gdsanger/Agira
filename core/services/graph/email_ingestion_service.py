@@ -7,6 +7,7 @@ and creates items in Agira projects with AI-powered classification.
 
 import logging
 import json
+import re
 import secrets
 import string
 from typing import Optional, Dict, Any, List, Tuple
@@ -22,6 +23,9 @@ from core.models import (
     UserOrganisation,
     UserRole,
     ItemStatus,
+    ItemComment,
+    CommentKind,
+    CommentVisibility,
 )
 from core.services.config import get_graph_config
 from core.services.exceptions import ServiceNotConfigured, ServiceDisabled, ServiceError
@@ -29,6 +33,43 @@ from core.services.graph.client import get_client
 from core.services.agents.agent_service import AgentService
 
 logger = logging.getLogger(__name__)
+
+
+def extract_issue_id_from_subject(subject: str) -> Optional[int]:
+    """
+    Extract issue ID from email subject.
+    
+    Looks for pattern [AGIRA-{id}] in the subject line.
+    
+    Args:
+        subject: Email subject line
+        
+    Returns:
+        Issue ID as integer if found, None otherwise
+        
+    Example:
+        >>> extract_issue_id_from_subject("[AGIRA-123] Test Subject")
+        123
+        >>> extract_issue_id_from_subject("Re: [AGIRA-456] Another Subject")
+        456
+        >>> extract_issue_id_from_subject("Regular Subject")
+        None
+    """
+    if not subject:
+        return None
+    
+    # Pattern matches [AGIRA-{digits}] anywhere in the subject
+    # This handles replies like "Re: [AGIRA-123] Original Subject"
+    pattern = r'\[AGIRA-(\d+)\]'
+    match = re.search(pattern, subject)
+    
+    if match:
+        try:
+            return int(match.group(1))
+        except (ValueError, IndexError):
+            return None
+    
+    return None
 
 
 class EmailIngestionService:
@@ -110,13 +151,16 @@ class EmailIngestionService:
     
     def _process_message(self, message: Dict[str, Any]) -> Optional[Item]:
         """
-        Process a single email message and create an item.
+        Process a single email message.
+        
+        If the subject contains an issue ID (format: [AGIRA-{id}]), the email is
+        added as a comment to the existing item. Otherwise, a new item is created.
         
         Args:
             message: Message dictionary from Graph API
             
         Returns:
-            Created Item instance or None
+            Item instance (existing or newly created) or None
         """
         message_id = message.get("id")
         subject = message.get("subject", "No Subject")
@@ -131,7 +175,6 @@ class EmailIngestionService:
         
         if not sender_email:
             logger.warning(f"Message {message_id} has no sender email, skipping")
-            # Note: This would increment stats['skipped'] if stats were passed as parameter
             return None
         
         # Extract email body
@@ -145,6 +188,33 @@ class EmailIngestionService:
         else:
             body_markdown = body_content
         
+        # Check if this is a reply to an existing issue
+        issue_id = extract_issue_id_from_subject(subject)
+        
+        if issue_id is not None:
+            # Try to find the existing item
+            try:
+                item = Item.objects.get(id=issue_id)
+                logger.info(f"Found existing item {issue_id} for reply")
+                
+                # Add email as comment to existing item
+                return self._add_email_as_comment(
+                    item=item,
+                    sender_email=sender_email,
+                    sender_name=sender_name,
+                    subject=subject,
+                    body=body_markdown,
+                    message=message,
+                )
+                
+            except Item.DoesNotExist:
+                logger.warning(
+                    f"Issue ID {issue_id} found in subject but item does not exist. "
+                    f"Creating new item instead."
+                )
+                # Fall through to create new item
+        
+        # No valid issue ID found or item doesn't exist - create new item
         try:
             # Create item in database transaction
             with transaction.atomic():
@@ -534,4 +604,82 @@ Email Body:
         except Exception as e:
             logger.error(f"Error sending confirmation email for item {item.id}: {e}")
             # Don't raise - email sending failure shouldn't prevent item creation
+    
+    def _add_email_as_comment(
+        self,
+        item: Item,
+        sender_email: str,
+        sender_name: str,
+        subject: str,
+        body: str,
+        message: Dict[str, Any],
+    ) -> Item:
+        """
+        Add an email as a comment to an existing item.
+        
+        This is called when an email is a reply to a previously sent email
+        (identified by issue ID in the subject).
+        
+        Args:
+            item: Existing Item instance to add comment to
+            sender_email: Email address of the sender
+            sender_name: Display name of the sender
+            subject: Email subject line
+            body: Email body content (already converted to markdown)
+            message: Graph API message dictionary
+            
+        Returns:
+            The Item instance (unchanged)
+        """
+        message_id = message.get("id")
+        
+        try:
+            with transaction.atomic():
+                # Get or create user
+                user, _ = self._get_or_create_user_and_org(
+                    email=sender_email,
+                    name=sender_name,
+                )
+                
+                # Create comment with email content
+                comment = ItemComment.objects.create(
+                    item=item,
+                    author=user,
+                    visibility=CommentVisibility.PUBLIC,  # Email replies are public
+                    kind=CommentKind.EMAIL_IN,
+                    subject=subject,
+                    body=body,
+                    external_from=sender_email,
+                    message_id=message_id,
+                )
+                
+                logger.info(
+                    f"Added email reply from {sender_email} as comment {comment.id} "
+                    f"to item {item.id}"
+                )
+            
+            # Mark message as processed (outside transaction)
+            try:
+                self.client.add_category_to_message(
+                    user_upn=self.mailbox,
+                    message_id=message_id,
+                    category=self.PROCESSED_CATEGORY,
+                )
+                
+                # Optionally mark as read (same logic as _process_message)
+                if not message.get("isRead", False):
+                    self.client.mark_message_as_read(
+                        user_upn=self.mailbox,
+                        message_id=message_id,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to mark message {message_id} as processed: {e}")
+                # Don't raise - comment was created successfully
+            
+            return item
+            
+        except Exception as e:
+            logger.error(f"Error adding email as comment to item {item.id}: {e}")
+            raise
+
 
