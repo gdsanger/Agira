@@ -824,6 +824,7 @@ def item_create_github_issue(request, item_id):
     """Create a new GitHub issue for an item."""
     from core.services.github.service import GitHubService
     from core.services.integrations.base import IntegrationError
+    from core.services.mail import check_mail_trigger, prepare_mail_preview
     
     item = get_object_or_404(Item, id=item_id)
     
@@ -856,7 +857,10 @@ def item_create_github_issue(request, item_id):
             if not notes:
                 return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
         
-        # Create GitHub issue
+        # Store old status to detect changes
+        old_status = item.status
+        
+        # Create GitHub issue (this will also change status to WORKING if applicable)
         try:
             mapping = github_service.create_issue_for_item(
                 item=item,
@@ -868,9 +872,44 @@ def item_create_github_issue(request, item_id):
             if existing_issues:
                 _append_followup_notes_to_item(item, notes)
             
-            # Return updated GitHub tab
+            # Check if status changed and if mail trigger exists
+            # Refresh item to get the latest status
+            item.refresh_from_db()
+            status_changed = (old_status != item.status)
+            
+            # Check for mail trigger if status changed
+            if status_changed:
+                mapping = check_mail_trigger(item)
+                if mapping:
+                    # Prepare mail preview for modal
+                    mail_preview = prepare_mail_preview(item, mapping)
+                    
+                    # Return JSON response with mail preview and updated tab HTML
+                    external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+                    can_create_issue = github_service.can_create_issue_for_item(item)
+                    has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
+                    
+                    context = {
+                        'item': item,
+                        'external_mappings': external_mappings,
+                        'can_create_issue': can_create_issue,
+                        'has_existing_issue': has_existing_issue,
+                    }
+                    
+                    # Render the GitHub tab to HTML string
+                    from django.template.loader import render_to_string
+                    github_tab_html = render_to_string('partials/item_github_tab.html', context, request=request)
+                    
+                    # Return JSON with both mail preview and tab HTML
+                    return JsonResponse({
+                        'success': True,
+                        'mail_preview': mail_preview,
+                        'github_tab_html': github_tab_html,
+                        'item_id': item.id
+                    })
+            
+            # No mail trigger or no status change - return updated GitHub tab
             external_mappings = item.external_mappings.all().order_by('-last_synced_at')
-            github_service = GitHubService()
             can_create_issue = github_service.can_create_issue_for_item(item)
             has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
             

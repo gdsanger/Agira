@@ -187,6 +187,7 @@ class GitHubService(IntegrationBase):
         body: Optional[str] = None,
         labels: Optional[list[str]] = None,
         actor=None,
+        change_status_to_working: bool = True,
     ) -> ExternalIssueMapping:
         """
         Create a GitHub issue for an Agira item.
@@ -197,6 +198,7 @@ class GitHubService(IntegrationBase):
             body: Issue body (default: rendered from item.description)
             labels: List of label names
             actor: User creating the issue
+            change_status_to_working: If True, changes item status to WORKING (default: True)
             
         Returns:
             Created ExternalIssueMapping
@@ -244,7 +246,10 @@ class GitHubService(IntegrationBase):
             )
             raise
         
-        # Assign item locally to Copilot user in Agira
+        # Store old status for later use (before any changes)
+        old_status = item.status
+        
+        # Assign item locally to Copilot user in Agira and optionally change status to WORKING
         try:
             copilot_user = User.objects.get(username='Copilot')
             
@@ -253,9 +258,29 @@ class GitHubService(IntegrationBase):
                 # Re-fetch the item with a lock to ensure consistency
                 locked_item = Item.objects.select_for_update().get(pk=item.pk)
                 locked_item.assigned_to = copilot_user
+                
+                # Change status to WORKING if requested and not already WORKING
+                if change_status_to_working and locked_item.status != ItemStatus.WORKING:
+                    # Use workflow guard to ensure valid transition
+                    from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
+                    guard = ItemWorkflowGuard()
+                    
+                    # Check if transition is valid
+                    allowed_transitions = guard.VALID_TRANSITIONS.get(locked_item.status, [])
+                    if ItemStatus.WORKING in allowed_transitions:
+                        locked_item.status = ItemStatus.WORKING
+                        logger.info(
+                            f"Changed item {item.id} status from {old_status} to WORKING"
+                        )
+                    else:
+                        logger.warning(
+                            f"Cannot change item {item.id} status from {locked_item.status} to WORKING: "
+                            f"invalid transition. Allowed: {allowed_transitions}"
+                        )
+                
                 locked_item.save()
             
-            # Refresh the item object from database to get the updated assigned_to value
+            # Refresh the item object from database to get the updated values
             # This ensures the returned item object reflects the database state
             item.refresh_from_db()
             
@@ -267,6 +292,19 @@ class GitHubService(IntegrationBase):
                 f"Copilot user does not exist in Agira. Item {item.id} not assigned locally. "
                 f"Please create a user with username 'Copilot' to enable local assignment tracking."
             )
+            
+            # Even without Copilot user, we can still change the status if requested
+            if change_status_to_working and item.status != ItemStatus.WORKING:
+                from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
+                guard = ItemWorkflowGuard()
+                
+                allowed_transitions = guard.VALID_TRANSITIONS.get(item.status, [])
+                if ItemStatus.WORKING in allowed_transitions:
+                    item.status = ItemStatus.WORKING
+                    item.save()
+                    logger.info(
+                        f"Changed item {item.id} status from {old_status} to WORKING"
+                    )
         
         # Create mapping
         state = self._map_state(github_issue, 'issue')
@@ -280,13 +318,24 @@ class GitHubService(IntegrationBase):
             html_url=github_issue['html_url'],
         )
         
-        # Log activity
+        # Log activity for issue creation
         self._log_activity(
             item=item,
             verb='github.issue_created',
             summary=f"Created GitHub issue #{github_issue['number']}: {issue_title}",
             actor=actor,
         )
+        
+        # Log activity for status change if it occurred
+        if change_status_to_working and old_status != item.status and item.status == ItemStatus.WORKING:
+            from core.services.activity import ActivityService
+            activity_service = ActivityService()
+            activity_service.log_status_change(
+                item=item,
+                from_status=old_status,
+                to_status=ItemStatus.WORKING,
+                actor=actor,
+            )
         
         logger.info(
             f"Created GitHub issue #{github_issue['number']} for item {item.id}"

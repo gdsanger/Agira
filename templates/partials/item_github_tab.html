@@ -36,7 +36,7 @@
                         </button>
                     {% else %}
                         <!-- First issue creation - no notes required -->
-                        <form hx-post="{% url 'item-create-github-issue' item.id %}" hx-swap="innerHTML" hx-target="#github">
+                        <form hx-post="{% url 'item-create-github-issue' item.id %}" hx-swap="none" hx-on::after-request="handleGitHubIssueCreation(event)">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-success">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
@@ -179,7 +179,7 @@
                 <h5 class="modal-title" id="followupIssueModalLabel">Create Follow-up GitHub Issue</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="followupIssueForm" hx-post="{% url 'item-create-github-issue' item.id %}" hx-swap="innerHTML" hx-target="#github" hx-on::after-request="handleFollowupIssueResponse(event)">
+            <form id="followupIssueForm" hx-post="{% url 'item-create-github-issue' item.id %}" hx-swap="none" hx-on::after-request="handleGitHubIssueCreation(event)">
                 {% csrf_token %}
                 <div class="modal-body">
                     <div class="alert alert-info">
@@ -216,15 +216,69 @@
 </div>
 
 <script>
-function handleFollowupIssueResponse(event) {
-    // Close the modal on successful response
+function handleGitHubIssueCreation(event) {
+    const xhr = event.detail.xhr;
+    
+    // Check if request was successful
     if (event.detail.successful) {
-        const modal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
-        if (modal) {
-            modal.hide();
+        try {
+            // Try to parse response as JSON
+            const response = JSON.parse(xhr.responseText);
+            
+            // Check if this is a JSON response with mail_preview
+            if (response.success && response.mail_preview) {
+                // Close the followup modal if it's open
+                const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
+                if (followupModal) {
+                    followupModal.hide();
+                    document.getElementById('followupIssueForm').reset();
+                }
+                
+                // Update the GitHub tab with the new HTML
+                if (response.github_tab_html) {
+                    document.getElementById('github').innerHTML = response.github_tab_html;
+                }
+                
+                // Show mail confirmation modal (reuse existing mail modal from item_form.html)
+                if (typeof showMailConfirmationModal === 'function') {
+                    showMailConfirmationModal(response.mail_preview, response.item_id);
+                } else {
+                    console.error('showMailConfirmationModal function not found');
+                    // Fallback: show a toast notification
+                    showToast('success', 'GitHub issue created successfully. Mail preview not available.');
+                }
+                return;
+            }
+        } catch (e) {
+            // Not JSON, might be HTML response - handle as regular HTMX response
         }
-        // Clear the form
-        document.getElementById('followupIssueForm').reset();
+        
+        // Handle regular HTML response (no mail preview)
+        // Close the followup modal if it's open
+        const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
+        if (followupModal) {
+            followupModal.hide();
+            document.getElementById('followupIssueForm').reset();
+        }
+        
+        // Update the GitHub tab with the response
+        document.getElementById('github').innerHTML = xhr.responseText;
+        
+        // Show success toast
+        if (typeof showToast === 'function') {
+            showToast('success', 'GitHub issue created successfully');
+        }
+    } else {
+        // Handle errors
+        if (typeof showToast === 'function') {
+            const errorMsg = xhr.responseText || 'Failed to create GitHub issue';
+            showToast('error', errorMsg);
+        }
     }
+}
+
+// Keep the old function for compatibility (redirect to new handler)
+function handleFollowupIssueResponse(event) {
+    handleGitHubIssueCreation(event);
 }
 </script>
