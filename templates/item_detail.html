@@ -512,9 +512,6 @@
 </div>
 {% endblock %}
 
-<!-- Include mail confirmation modal -->
-{% include 'partials/mail_confirmation_modal.html' %}
-
 {% block extra_js %}
 <script>
     // Show success toast on various events
@@ -1024,4 +1021,8 @@
         });
     }
 </script>
+
+<!-- Include mail confirmation modal -->
+{% include 'partials/mail_confirmation_modal.html' %}
+
 {% endblock %}
