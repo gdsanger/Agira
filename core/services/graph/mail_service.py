@@ -182,6 +182,12 @@ def send_email(
             )
         sender = config.default_mail_sender
     
+    # Add issue ID prefix to subject if item is provided
+    # Format: [AGIRA-{id}] Original Subject
+    # This allows replies to be threaded back to the original item
+    if item is not None:
+        subject = f"[AGIRA-{item.id}] {subject}"
+    
     # Create ItemComment if item is provided (set to Queued initially)
     comment = None
     if item is not None:

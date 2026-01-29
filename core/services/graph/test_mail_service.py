@@ -274,7 +274,8 @@ class SendEmailTestCase(TestCase):
         self.assertEqual(comment.item, self.item)
         self.assertEqual(comment.author, self.user)
         self.assertEqual(comment.kind, CommentKind.EMAIL_OUT)
-        self.assertEqual(comment.subject, 'Test Email')
+        # Subject should include issue ID prefix
+        self.assertEqual(comment.subject, f'[AGIRA-{self.item.id}] Test Email')
         self.assertEqual(comment.body_html, '<p>Test body</p>')
         self.assertEqual(comment.delivery_status, EmailDeliveryStatus.SENT)
         self.assertIsNotNone(comment.sent_at)
@@ -308,6 +309,71 @@ class SendEmailTestCase(TestCase):
         comment = ItemComment.objects.first()
         self.assertEqual(comment.delivery_status, EmailDeliveryStatus.FAILED)
         self.assertIsNone(comment.sent_at)
+    
+    @patch('core.services.graph.mail_service.get_client')
+    def test_send_email_adds_issue_id_to_subject_when_item_provided(self, mock_get_client):
+        """Test that send_email adds [AGIRA-{id}] prefix to subject when item is provided."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='sender@test.com',
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        result = send_email(
+            subject='Test Email',
+            body='<p>Test body</p>',
+            to=['user@example.com'],
+            item=self.item
+        )
+        
+        self.assertTrue(result.success)
+        
+        # Verify payload has modified subject
+        call = mock_client.send_mail.call_args_list[0]
+        payload = call.args[1] if len(call.args) > 1 else call.kwargs.get('payload')
+        
+        # Subject should be [AGIRA-{item.id}] Test Email
+        expected_subject = f"[AGIRA-{self.item.id}] Test Email"
+        self.assertEqual(payload['message']['subject'], expected_subject)
+        
+        # Verify ItemComment also has the modified subject
+        comment = ItemComment.objects.first()
+        self.assertEqual(comment.subject, expected_subject)
+    
+    @patch('core.services.graph.mail_service.get_client')
+    def test_send_email_does_not_modify_subject_without_item(self, mock_get_client):
+        """Test that send_email does not modify subject when no item is provided."""
+        GraphAPIConfiguration.objects.create(
+            tenant_id='test-tenant',
+            client_id='test-client',
+            client_secret='test-secret',
+            default_mail_sender='sender@test.com',
+            enabled=True
+        )
+        
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        original_subject = 'Test Email'
+        result = send_email(
+            subject=original_subject,
+            body='<p>Test body</p>',
+            to=['user@example.com']
+        )
+        
+        self.assertTrue(result.success)
+        
+        # Verify payload has unmodified subject
+        call = mock_client.send_mail.call_args_list[0]
+        payload = call.args[1] if len(call.args) > 1 else call.kwargs.get('payload')
+        
+        # Subject should be unchanged
+        self.assertEqual(payload['message']['subject'], original_subject)
 
 
 class BuildEmailPayloadTestCase(TestCase):

@@ -13,6 +13,8 @@ from core.models import (
     ItemType,
     Item,
     ItemStatus,
+    ItemComment,
+    CommentKind,
     GraphAPIConfiguration,
 )
 from core.services.graph.email_ingestion_service import EmailIngestionService
@@ -378,3 +380,225 @@ class EmailIngestionServiceTest(TestCase):
         # Verify item type was created
         self.assertEqual(item_type.key, "feature")
         self.assertTrue(ItemType.objects.filter(key="feature").exists())
+
+
+class EmailReplyHandlingTestCase(TestCase):
+    """Test cases for email reply handling with issue ID extraction."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Clear any existing configuration
+        GraphAPIConfiguration.objects.all().delete()
+        # Clear cache
+        from django.core.cache import cache
+        cache.clear()
+        
+        # Create GraphAPI configuration
+        self.config = GraphAPIConfiguration.objects.create(
+            id=1,
+            enabled=True,
+            tenant_id="test-tenant",
+            client_id="test-client",
+            client_secret="test-secret",
+            default_mail_sender="support@test.com",
+        )
+        
+        # Create test project
+        self.project = Project.objects.create(
+            name="TestProject",
+            description="Test project",
+        )
+        
+        # Create item type
+        self.task_type = ItemType.objects.create(
+            key="task",
+            name="Task",
+            is_active=True,
+        )
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass",
+            name="Test User",
+        )
+        
+        # Create test item
+        self.item = Item.objects.create(
+            project=self.project,
+            type=self.task_type,
+            title="Test Item",
+            description="Test description",
+            requester=self.user,
+        )
+    
+    def test_extract_issue_id_from_subject_basic(self):
+        """Test extracting issue ID from basic subject."""
+        from core.services.graph.email_ingestion_service import extract_issue_id_from_subject
+        
+        issue_id = extract_issue_id_from_subject("[AGIRA-123] Test Subject")
+        self.assertEqual(issue_id, 123)
+    
+    def test_extract_issue_id_from_subject_with_reply(self):
+        """Test extracting issue ID from reply subject."""
+        from core.services.graph.email_ingestion_service import extract_issue_id_from_subject
+        
+        issue_id = extract_issue_id_from_subject("Re: [AGIRA-456] Original Subject")
+        self.assertEqual(issue_id, 456)
+    
+    def test_extract_issue_id_from_subject_no_id(self):
+        """Test that None is returned when no issue ID is present."""
+        from core.services.graph.email_ingestion_service import extract_issue_id_from_subject
+        
+        issue_id = extract_issue_id_from_subject("Regular Subject")
+        self.assertIsNone(issue_id)
+    
+    def test_extract_issue_id_from_subject_empty(self):
+        """Test that None is returned for empty subject."""
+        from core.services.graph.email_ingestion_service import extract_issue_id_from_subject
+        
+        issue_id = extract_issue_id_from_subject("")
+        self.assertIsNone(issue_id)
+    
+    def test_extract_issue_id_from_subject_multiple_matches(self):
+        """Test that first issue ID is extracted when multiple are present."""
+        from core.services.graph.email_ingestion_service import extract_issue_id_from_subject
+        
+        # Should extract the first one
+        issue_id = extract_issue_id_from_subject("[AGIRA-111] Fwd: [AGIRA-222] Test")
+        self.assertEqual(issue_id, 111)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_add_email_as_comment(self, mock_agent_service, mock_get_client):
+        """Test adding email as comment to existing item."""
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent_instance = Mock()
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Add email as comment
+        result_item = service._add_email_as_comment(
+            item=self.item,
+            sender_email="reply@example.com",
+            sender_name="Reply User",
+            subject="Re: [AGIRA-1] Original Subject",
+            body="This is a reply",
+            message_id="msg-123",
+        )
+        
+        # Verify item is returned
+        self.assertEqual(result_item.id, self.item.id)
+        
+        # Verify comment was created
+        comments = ItemComment.objects.filter(item=self.item)
+        self.assertEqual(comments.count(), 1)
+        
+        comment = comments.first()
+        self.assertEqual(comment.kind, CommentKind.EMAIL_IN)
+        self.assertEqual(comment.external_from, "reply@example.com")
+        self.assertEqual(comment.subject, "Re: [AGIRA-1] Original Subject")
+        self.assertEqual(comment.body, "This is a reply")
+        self.assertEqual(comment.message_id, "msg-123")
+        self.assertIsNotNone(comment.author)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_reply_creates_comment(self, mock_agent_service, mock_get_client):
+        """Test that processing a reply email creates a comment instead of new item."""
+        # Mock client
+        mock_client = Mock()
+        mock_client.get_inbox_messages.return_value = []
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent_instance = Mock()
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Create message with issue ID in subject
+        message = {
+            "id": "msg-456",
+            "subject": f"Re: [AGIRA-{self.item.id}] Test Item",
+            "from": {
+                "emailAddress": {
+                    "address": "reply@example.com",
+                    "name": "Reply User",
+                }
+            },
+            "body": {
+                "content": "This is my reply",
+                "contentType": "text",
+            },
+        }
+        
+        # Process the message
+        result_item = service._process_message(message)
+        
+        # Verify returned item is the existing one
+        self.assertEqual(result_item.id, self.item.id)
+        
+        # Verify no new item was created
+        self.assertEqual(Item.objects.count(), 1)
+        
+        # Verify comment was created
+        comments = ItemComment.objects.filter(item=self.item)
+        self.assertEqual(comments.count(), 1)
+        
+        comment = comments.first()
+        self.assertEqual(comment.kind, CommentKind.EMAIL_IN)
+        self.assertEqual(comment.external_from, "reply@example.com")
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_invalid_issue_id_creates_new_item(self, mock_agent_service, mock_get_client):
+        """Test that invalid issue ID falls back to creating new item."""
+        # Mock client
+        mock_client = Mock()
+        mock_client.get_inbox_messages.return_value = []
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent_instance = Mock()
+        mock_agent_instance.execute_agent.side_effect = [
+            "This is plain text",  # HTML to markdown
+            json.dumps({'project': 'TestProject', 'type': 'task'}),  # Classification
+        ]
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Create message with non-existent issue ID
+        message = {
+            "id": "msg-789",
+            "subject": "[AGIRA-99999] Non-existent Issue",
+            "from": {
+                "emailAddress": {
+                    "address": "newuser@example.com",
+                    "name": "New User",
+                }
+            },
+            "body": {
+                "content": "This references non-existent issue",
+                "contentType": "text",
+            },
+        }
+        
+        # Process the message
+        with patch.object(service, '_send_confirmation_email'):
+            result_item = service._process_message(message)
+        
+        # Verify new item was created
+        self.assertEqual(Item.objects.count(), 2)
+        self.assertNotEqual(result_item.id, self.item.id)
+        
+        # Verify no comment was created on original item
+        comments = ItemComment.objects.filter(item=self.item)
+        self.assertEqual(comments.count(), 0)
