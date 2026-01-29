@@ -212,5 +212,7 @@ __marimo__/
 data/
 agents/*
 !agents/create-mail-template.yml
+!agents/html-to-markdown-converter.yml
+!agents/mail-issue-classification-agent.yml
 *.yml.env
 db.sqlite3
