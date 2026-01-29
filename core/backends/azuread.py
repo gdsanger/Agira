@@ -8,9 +8,12 @@ It handles token validation, user mapping, and auto-provisioning.
 import logging
 import msal
 import jwt
+import time
 from typing import Optional, Dict, Any
+from urllib.parse import urlencode
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +147,6 @@ class AzureADAuth:
                 raise AzureADAuthError(f"Invalid token audience: {decoded.get('aud')}")
             
             # Validate expiration (exp claim is Unix timestamp)
-            import time
             if decoded.get("exp", 0) < time.time():
                 raise AzureADAuthError("Token has expired")
             
@@ -198,8 +200,12 @@ class AzureADAuth:
                 # Update email if changed
                 if user.email != email:
                     logger.info(f"Updating email for user {user.username}: {user.email} -> {email}")
-                    user.email = email
-                    user.save()
+                    try:
+                        user.email = email
+                        user.save()
+                    except IntegrityError:
+                        # Email already taken by another user - log warning but continue
+                        logger.warning(f"Cannot update email to {email} - already in use by another user")
                 
                 return user
             except User.DoesNotExist:
@@ -247,6 +253,9 @@ class AzureADAuth:
             
             return user
             
+        except AzureADAuthError:
+            # Re-raise AzureADAuthError without wrapping
+            raise
         except Exception as e:
             error_msg = f"Failed to get or create user: {str(e)}"
             logger.error(error_msg)
@@ -264,7 +273,9 @@ class AzureADAuth:
         """
         logout_url = f"{self.authority}/oauth2/v2.0/logout"
         if post_logout_redirect_uri:
-            logout_url += f"?post_logout_redirect_uri={post_logout_redirect_uri}"
+            # Properly encode the redirect URI
+            params = urlencode({'post_logout_redirect_uri': post_logout_redirect_uri})
+            logout_url += f"?{params}"
         
         logger.info("Generated Azure AD logout URL")
         return logout_url

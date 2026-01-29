@@ -33,6 +33,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
 from .services.mail import check_mail_trigger, prepare_mail_preview
+from .backends.azuread import AzureADAuth, AzureADAuthError
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -121,15 +122,17 @@ def logout_view(request):
     # If user was logged in via Azure AD and Azure AD is enabled, offer single logout
     if azure_ad_user and settings.AZURE_AD_ENABLED:
         # Redirect to Azure AD logout
-        from core.backends.azuread import AzureADAuth
         try:
             azure_ad = AzureADAuth()
             post_logout_uri = request.build_absolute_uri(reverse('login'))
             logout_url = azure_ad.get_logout_url(post_logout_uri)
             return redirect(logout_url)
+        except AzureADAuthError as e:
+            logger.warning(f"Azure AD logout failed: {str(e)}")
+            # Continue with local logout page
         except Exception as e:
-            # If Azure AD logout fails, just show logged out page
-            pass
+            logger.error(f"Unexpected error during Azure AD logout: {str(e)}", exc_info=True)
+            # Continue with local logout page
     
     return render(request, 'logged_out.html')
 

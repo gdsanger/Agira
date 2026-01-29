@@ -13,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 
@@ -46,10 +47,15 @@ def azuread_login(request):
         # Store state in session for validation in callback
         request.session['azure_ad_state'] = state
         
-        # Store next URL if provided
+        # Store next URL if provided (validate it's safe)
         next_url = request.GET.get('next', '')
         if next_url:
-            request.session['azure_ad_next'] = next_url
+            # Validate that next URL is safe (internal to this site)
+            allowed_hosts = {request.get_host()}
+            if url_has_allowed_host_and_scheme(next_url, allowed_hosts=allowed_hosts):
+                request.session['azure_ad_next'] = next_url
+            else:
+                logger.warning(f"Rejected unsafe next URL: {next_url}")
         
         # Get Azure AD auth handler
         azure_ad = AzureADAuth()
@@ -163,7 +169,16 @@ def azuread_callback(request):
         logger.info(f"Successfully logged in user via Azure AD: {user.username}")
         
         # Get next URL from session or default to dashboard
-        next_url = request.session.pop('azure_ad_next', 'dashboard')
+        next_url = request.session.pop('azure_ad_next', None)
+        
+        # Validate next URL is safe before redirecting
+        if next_url:
+            allowed_hosts = {request.get_host()}
+            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts=allowed_hosts):
+                logger.warning(f"Rejected unsafe next URL from session: {next_url}")
+                next_url = 'dashboard'
+        else:
+            next_url = 'dashboard'
         
         return redirect(next_url)
         
@@ -208,8 +223,11 @@ def azuread_logout(request):
             logger.info("Redirecting to Azure AD for single sign-out")
             return redirect(logout_url)
             
+        except AzureADAuthError as e:
+            logger.warning(f"Azure AD logout failed: {str(e)}")
+            # Continue with local logout even if Azure AD logout fails
         except Exception as e:
-            logger.error(f"Error during Azure AD logout: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error during Azure AD logout: {str(e)}", exc_info=True)
             # Continue with local logout even if Azure AD logout fails
     
     # Default: redirect to logged out page
