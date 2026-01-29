@@ -184,8 +184,6 @@ def example():
     
     def test_item_change_status(self):
         """Test changing item status."""
-        self.client.login(username='testuser', password='testpass')
-        
         url = reverse('item-change-status', args=[self.item.id])
         response = self.client.post(url, {'status': ItemStatus.TESTING})
         
@@ -197,8 +195,6 @@ def example():
     
     def test_item_add_comment(self):
         """Test adding a comment to an item."""
-        self.client.login(username='testuser', password='testpass')
-        
         url = reverse('item-add-comment', args=[self.item.id])
         response = self.client.post(url, {'body': 'New test comment'})
         
