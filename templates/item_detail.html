@@ -924,35 +924,56 @@
     let mailModalEventListenerAdded = false;
     
     function showMailConfirmationModal(mailPreview, itemId) {
-        // Populate modal with mail preview data
-        document.getElementById('mail-subject-preview').textContent = mailPreview.subject;
+        // Check if modal exists in DOM
+        const modalEl = document.getElementById('mailConfirmationModal');
+        if (!modalEl) {
+            console.error('Mail confirmation modal not found in DOM');
+            showToast('error', 'Fehler: Mail-Dialog nicht verfügbar');
+            return;
+        }
+        
+        // Populate modal with mail preview data - with null checks
+        const subjectPreview = document.getElementById('mail-subject-preview');
+        if (subjectPreview) {
+            subjectPreview.textContent = mailPreview.subject;
+        }
         
         // Set message HTML (sanitized by bleach on server-side in mail_trigger_service.py)
         // The server uses bleach.clean() with allowed_tags and allowed_attrs to prevent XSS
         const messagePreview = document.getElementById('mail-message-preview');
-        messagePreview.innerHTML = mailPreview.message;
+        if (messagePreview) {
+            messagePreview.innerHTML = mailPreview.message;
+        }
         
         // Set sender info
         const fromText = mailPreview.from_name 
             ? `${mailPreview.from_name} <${mailPreview.from_address || 'default'}>`
             : mailPreview.from_address || 'Standard-Absender';
-        document.getElementById('mail-from-preview').textContent = fromText;
+        const fromPreview = document.getElementById('mail-from-preview');
+        if (fromPreview) {
+            fromPreview.textContent = fromText;
+        }
         
         // Set recipient info
         const toText = 'Anfragender (aus Item)';
-        document.getElementById('mail-to-preview').textContent = toText;
+        const toPreview = document.getElementById('mail-to-preview');
+        if (toPreview) {
+            toPreview.textContent = toText;
+        }
         
         // Set CC if present
         const ccContainer = document.getElementById('mail-cc-container');
-        if (mailPreview.cc_address) {
-            document.getElementById('mail-cc-preview').textContent = mailPreview.cc_address;
-            ccContainer.style.display = 'block';
-        } else {
-            ccContainer.style.display = 'none';
+        const ccPreview = document.getElementById('mail-cc-preview');
+        if (ccContainer && ccPreview) {
+            if (mailPreview.cc_address) {
+                ccPreview.textContent = mailPreview.cc_address;
+                ccContainer.style.display = 'block';
+            } else {
+                ccContainer.style.display = 'none';
+            }
         }
         
         // Show the modal
-        const modalEl = document.getElementById('mailConfirmationModal');
         const modal = new bootstrap.Modal(modalEl);
         modal.show();
         
