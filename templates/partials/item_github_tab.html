@@ -239,6 +239,9 @@ function handleGitHubIssueCreation(event) {
                     document.getElementById('github').innerHTML = response.github_tab_html;
                 }
                 
+                // Ensure modal backdrop is removed
+                removeModalBackdrop();
+                
                 // Show mail confirmation modal (reuse existing mail modal from item_form.html)
                 if (typeof showMailConfirmationModal === 'function') {
                     showMailConfirmationModal(response.mail_preview, response.item_id);
@@ -264,6 +267,9 @@ function handleGitHubIssueCreation(event) {
         // Update the GitHub tab with the response
         document.getElementById('github').innerHTML = xhr.responseText;
         
+        // Ensure modal backdrop is removed
+        removeModalBackdrop();
+        
         // Show success toast
         if (typeof showToast === 'function') {
             showToast('success', 'GitHub issue created successfully');
@@ -275,6 +281,20 @@ function handleGitHubIssueCreation(event) {
             showToast('error', errorMsg);
         }
     }
+}
+
+// Helper function to remove modal backdrop
+function removeModalBackdrop() {
+    // Remove any lingering modal backdrops
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(backdrop => backdrop.remove());
+    
+    // Remove modal-open class from body
+    document.body.classList.remove('modal-open');
+    
+    // Reset body padding/overflow that Bootstrap may have set
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
 }
 
 // Keep the old function for compatibility (redirect to new handler)
