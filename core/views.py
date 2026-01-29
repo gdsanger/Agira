@@ -680,6 +680,9 @@ def item_detail(request, item_id):
     # Get all users for the follower selection dropdown
     users = User.objects.all().order_by('name')
     
+    # Get all projects for the move modal
+    projects = Project.objects.all().order_by('name')
+    
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
     
@@ -687,6 +690,7 @@ def item_detail(request, item_id):
         'item': item,
         'followers': followers,
         'users': users,
+        'projects': projects,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
     }
@@ -2314,6 +2318,165 @@ def item_send_status_mail(request, item_id):
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
         logger.error(f"Failed to send status mail for item {item_id}: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def item_move_project(request, item_id):
+    """Move item to a different project with optional email notification."""
+    from .services.graph.mail_service import send_email
+    from .services.mail import get_notification_recipients_for_item
+    from .services.mail.template_processor import process_template
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Extract parameters
+        target_project_id = data.get('target_project_id')
+        send_mail_to_requester = data.get('send_mail_to_requester', True)
+        
+        if not target_project_id:
+            return JsonResponse({'success': False, 'error': 'Target project is required'}, status=400)
+        
+        # Get target project
+        target_project = get_object_or_404(Project, id=target_project_id)
+        
+        # Check if the project is actually changing
+        if item.project.id == target_project.id:
+            return JsonResponse({'success': False, 'error': 'Item is already in the target project'}, status=400)
+        
+        # Store old project for logging
+        old_project = item.project
+        
+        with transaction.atomic():
+            # Update item project
+            item.project = target_project
+            
+            # Clear project-dependent fields that may not be valid in new project
+            # Clear nodes (they are project-specific)
+            item.nodes.clear()
+            
+            # Clear parent if it's in a different project
+            if item.parent and item.parent.project != target_project:
+                item.parent = None
+            
+            # Clear solution_release if it belongs to different project
+            if item.solution_release and item.solution_release.project != target_project:
+                item.solution_release = None
+            
+            # Clear organisation if not a client of the new project
+            if item.organisation:
+                project_clients = list(target_project.clients.all())
+                # Clear organisation if project has clients and organisation is not one of them,
+                # or if project has no clients at all
+                if not project_clients or item.organisation not in project_clients:
+                    item.organisation = None
+            
+            # Save the item
+            item.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log_activity(
+                actor=request.user,
+                action='item_moved',
+                target=item,
+                details={
+                    'from_project': old_project.name,
+                    'to_project': target_project.name,
+                },
+                client_ip=request.META.get('REMOTE_ADDR')
+            )
+        
+        # Send email notification if requested
+        mail_sent = False
+        mail_error = None
+        
+        if send_mail_to_requester:
+            try:
+                # Get the mail template with key 'moved'
+                template = MailTemplate.objects.filter(key='moved', is_active=True).first()
+                
+                if template and item.requester and item.requester.email:
+                    # Reload item with all necessary relations for template processing
+                    item = Item.objects.select_related(
+                        'project', 'requester', 'assigned_to', 'type', 'solution_release'
+                    ).prefetch_related(
+                        'requester__user_organisations__organisation'
+                    ).get(id=item.id)
+                    
+                    # Process template with updated item data
+                    processed = process_template(template, item)
+                    
+                    # Get recipients
+                    recipients = get_notification_recipients_for_item(item)
+                    
+                    if recipients['to']:
+                        # Send email
+                        result = send_email(
+                            subject=processed['subject'],
+                            body=processed['message'],
+                            to=[recipients['to']],
+                            body_is_html=True,
+                            cc=recipients['cc'] if recipients['cc'] else None,
+                            sender=template.from_address if template.from_address else None,
+                            item=item,
+                            author=request.user,
+                            visibility='Internal',
+                            client_ip=request.META.get('REMOTE_ADDR')
+                        )
+                        
+                        if result.success:
+                            mail_sent = True
+                            logger.info(
+                                f"Move notification email sent for item {item.id} "
+                                f"from project '{old_project.name}' to '{target_project.name}'"
+                            )
+                        else:
+                            mail_error = result.error
+                            logger.error(
+                                f"Failed to send move notification for item {item.id}: "
+                                f"Template: 'moved', Requester: {item.requester.email}, Error: {result.error}"
+                            )
+                    else:
+                        mail_error = "No recipient email available"
+                        logger.warning(f"No recipient email for move notification of item {item.id}")
+                elif not template:
+                    mail_error = "Mail template 'moved' not found or inactive"
+                    logger.warning("Mail template with key 'moved' not found or inactive")
+                elif not item.requester:
+                    mail_error = "Item has no requester"
+                elif not item.requester.email:
+                    mail_error = "Requester has no email address"
+                    
+            except Exception as e:
+                mail_error = str(e)
+                logger.error(
+                    f"Exception while sending move notification for item {item.id}: {str(e)}"
+                )
+        
+        # Prepare response
+        response_data = {
+            'success': True,
+            'message': f'Item moved to {target_project.name}',
+            'item_id': item.id,
+            'new_project_id': target_project.id,
+            'new_project_name': target_project.name,
+            'mail_sent': mail_sent,
+        }
+        
+        if mail_error:
+            response_data['mail_error'] = mail_error
+        
+        return JsonResponse(response_data)
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f"Failed to move item {item_id}: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

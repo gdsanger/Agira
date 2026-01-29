@@ -1,0 +1,166 @@
+<!-- Move Item Modal -->
+<div class="modal fade" id="moveItemModal" tabindex="-1" aria-labelledby="moveItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="moveItemModalLabel">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-arrow-left-right me-2" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-3.147 3.146a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 1 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"/>
+                    </svg>
+                    Item verschieben
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle me-2" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588z"/>
+                        <circle cx="8" cy="4.5" r="1"/>
+                    </svg>
+                    Beim Verschieben werden projektabhängige Felder (Nodes, Parent-Item, Release) zurückgesetzt, wenn sie nicht zum Zielprojekt passen.
+                </div>
+                
+                <form id="moveItemForm">
+                    <div class="mb-3">
+                        <label for="targetProject" class="form-label fw-bold">
+                            Zielprojekt <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="targetProject" name="target_project" required>
+                            <option value="">-- Projekt auswählen --</option>
+                            {% for proj in projects %}
+                                {% if proj.id != item.project.id %}
+                                    <option value="{{ proj.id }}">{{ proj.name }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="sendMailToRequester" name="send_mail" checked>
+                            <label class="form-check-label" for="sendMailToRequester">
+                                Mail an Requester senden
+                                {% if not item.requester or not item.requester.email %}
+                                    <small class="text-muted">(Requester hat keine E-Mail-Adresse)</small>
+                                {% endif %}
+                            </label>
+                        </div>
+                        {% if not item.requester or not item.requester.email %}
+                            <small class="text-muted">
+                                Hinweis: Es wird keine Mail versendet, da das Item keinen Requester mit E-Mail-Adresse hat.
+                            </small>
+                        {% endif %}
+                    </div>
+                    
+                    <div id="moveItemError" class="alert alert-danger d-none"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                    Abbrechen
+                </button>
+                <button type="button" class="btn btn-primary" id="confirmMoveItemBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle me-1" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>
+                    </svg>
+                    Verschieben
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const confirmMoveBtn = document.getElementById('confirmMoveItemBtn');
+    const moveItemForm = document.getElementById('moveItemForm');
+    const moveItemError = document.getElementById('moveItemError');
+    
+    // SVG icon for button
+    const checkIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle me-1" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/></svg>';
+    
+    if (confirmMoveBtn) {
+        confirmMoveBtn.addEventListener('click', function() {
+            const targetProjectId = document.getElementById('targetProject').value;
+            const sendMail = document.getElementById('sendMailToRequester').checked;
+            
+            // Validate
+            if (!targetProjectId) {
+                moveItemError.textContent = 'Bitte wählen Sie ein Zielprojekt aus.';
+                moveItemError.classList.remove('d-none');
+                return;
+            }
+            
+            moveItemError.classList.add('d-none');
+            
+            // Disable button
+            confirmMoveBtn.disabled = true;
+            confirmMoveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Verschiebe...';
+            
+            // Send request
+            fetch('{% url "item-move-project" item.id %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    target_project_id: targetProjectId,
+                    send_mail_to_requester: sendMail
+                })
+            })
+            .then(response => {
+                // Check if response is OK
+                if (!response.ok) {
+                    // Try to parse error JSON if available
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Server error');
+                    }).catch(() => {
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Show success message
+                    let message = data.message;
+                    if (data.mail_sent) {
+                        message += ' - E-Mail wurde versendet.';
+                    } else if (data.mail_error) {
+                        message += ' - E-Mail konnte nicht versendet werden: ' + data.mail_error;
+                    }
+                    
+                    showToast('success', 'Erfolg', message);
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('moveItemModal'));
+                    modal.hide();
+                    
+                    // Reload page after short delay
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    moveItemError.textContent = data.error || 'Ein Fehler ist aufgetreten.';
+                    moveItemError.classList.remove('d-none');
+                    confirmMoveBtn.disabled = false;
+                    confirmMoveBtn.innerHTML = checkIconSvg + 'Verschieben';
+                }
+            })
+            .catch(error => {
+                moveItemError.textContent = 'Fehler: ' + error.message;
+                moveItemError.classList.remove('d-none');
+                confirmMoveBtn.disabled = false;
+                confirmMoveBtn.innerHTML = checkIconSvg + 'Verschieben';
+            });
+        });
+    }
+});
+</script>
