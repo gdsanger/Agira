@@ -196,3 +196,13 @@ CACHES = {
 WEAVIATE_SEARCH_LIMIT = int(os.getenv('WEAVIATE_SEARCH_LIMIT', '25'))
 WEAVIATE_SEARCH_ALPHA = float(os.getenv('WEAVIATE_SEARCH_ALPHA', '0.5'))
 WEAVIATE_SEARCH_MIN_QUERY_LENGTH = int(os.getenv('WEAVIATE_SEARCH_MIN_QUERY_LENGTH', '2'))
+
+# Azure AD / MSAL Configuration
+AZURE_AD_ENABLED = os.getenv('AZURE_AD_ENABLED', 'False') == 'True'
+AZURE_AD_TENANT_ID = os.getenv('AZURE_AD_TENANT_ID', '')
+AZURE_AD_CLIENT_ID = os.getenv('AZURE_AD_CLIENT_ID', '')
+AZURE_AD_CLIENT_SECRET = os.getenv('AZURE_AD_CLIENT_SECRET', '')
+AZURE_AD_REDIRECT_URI = os.getenv('AZURE_AD_REDIRECT_URI', 'http://localhost:8000/auth/azuread/callback/')
+AZURE_AD_DEFAULT_ROLE = os.getenv('AZURE_AD_DEFAULT_ROLE', 'User')
+AZURE_AD_SCOPES = ['openid', 'profile', 'email', 'User.Read']
+AZURE_AD_AUTHORITY = f'https://login.microsoftonline.com/{AZURE_AD_TENANT_ID}' if AZURE_AD_TENANT_ID else ''

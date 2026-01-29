@@ -10,6 +10,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.urls import reverse
+from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import logging
 import os
@@ -86,15 +87,26 @@ def login_view(request):
             else:
                 # User account is inactive
                 error = 'Ihr Konto ist deaktiviert.'
-                return render(request, 'login.html', {'error': error, 'next': next_url})
+                return render(request, 'login.html', {
+                    'error': error, 
+                    'next': next_url,
+                    'azure_ad_enabled': settings.AZURE_AD_ENABLED
+                })
         else:
             # Invalid credentials
             error = 'Benutzername oder Passwort ist falsch.'
-            return render(request, 'login.html', {'error': error, 'next': next_url})
+            return render(request, 'login.html', {
+                'error': error, 
+                'next': next_url,
+                'azure_ad_enabled': settings.AZURE_AD_ENABLED
+            })
     
     # GET request - show login form
     next_url = request.GET.get('next', '')
-    return render(request, 'login.html', {'next': next_url})
+    return render(request, 'login.html', {
+        'next': next_url,
+        'azure_ad_enabled': settings.AZURE_AD_ENABLED
+    })
 
 def logout_view(request):
     """Logout view."""

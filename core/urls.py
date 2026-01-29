@@ -1,10 +1,17 @@
 from django.urls import path
 from . import views
+from . import views_azuread
 
 urlpatterns = [
     path('', views.home, name='home'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    
+    # Azure AD SSO authentication URLs
+    path('auth/azuread/login/', views_azuread.azuread_login, name='azuread-login'),
+    path('auth/azuread/callback/', views_azuread.azuread_callback, name='azuread-callback'),
+    path('auth/azuread/logout/', views_azuread.azuread_logout, name='azuread-logout'),
+    
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard/partials/in_progress_items/', views.dashboard_in_progress_items, name='dashboard-in-progress-items'),
     path('dashboard/partials/activity_stream/', views.dashboard_activity_stream, name='dashboard-activity-stream'),
