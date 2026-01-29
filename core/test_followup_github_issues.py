@@ -358,7 +358,7 @@ class FollowupGitHubIssueTestCase(TestCase):
             status=ItemStatus.BACKLOG,
         )
         
-        _append_followup_notes_to_item(item, 'Test notes', include_all_mappings=False)
+        _append_followup_notes_to_item(item, 'Test notes')
         
         # Check date format - should match DD.MM.YYYY pattern
         item.refresh_from_db()
@@ -391,7 +391,7 @@ class FollowupGitHubIssueTestCase(TestCase):
         )
         
         # Should not raise an error
-        _append_followup_notes_to_item(item, 'Notes for empty item', include_all_mappings=False)
+        _append_followup_notes_to_item(item, 'Notes for empty item')
         
         # Check that description was created correctly
         item.refresh_from_db()

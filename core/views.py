@@ -859,7 +859,7 @@ def item_create_github_issue(request, item_id):
             
             # Update item description BEFORE creating GitHub issue
             # This ensures the notes and existing issue references are included in the GitHub issue body
-            _append_followup_notes_to_item(item, notes, include_all_mappings=False)
+            _append_followup_notes_to_item(item, notes)
         
         # Store old status to detect changes
         old_status = item.status
@@ -938,7 +938,7 @@ def item_create_github_issue(request, item_id):
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
 
 
-def _append_followup_notes_to_item(item, notes, include_all_mappings=True):
+def _append_followup_notes_to_item(item, notes):
     """
     Append follow-up notes and issue/PR references to item description.
     
@@ -949,7 +949,6 @@ def _append_followup_notes_to_item(item, notes, include_all_mappings=True):
     Args:
         item: Item instance
         notes: User-provided notes for the follow-up
-        include_all_mappings: If True, includes all mappings. If False, only existing ones.
     """
     from datetime import datetime
     
@@ -998,6 +997,11 @@ def _update_issue_references(item):
     Args:
         item: Item instance
     """
+    import re
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
     # Refresh item to get the latest description
     item.refresh_from_db()
     
@@ -1006,16 +1010,23 @@ def _update_issue_references(item):
     issue_pr_refs = ", ".join([f"#{m.number}" for m in mappings])
     
     if not issue_pr_refs:
+        logger.warning(f"No issue/PR references found for item {item.id}, but _update_issue_references was called")
         return
     
     # Find and replace the references section
-    import re
-    pattern = r"### Siehe folgende Issues und PRs\n[^\n]+"
-    replacement = f"### Siehe folgende Issues und PRs\n{issue_pr_refs}"
+    # Pattern matches the header followed by the references on the next line(s)
+    # This handles cases where there might be whitespace or multiple lines of refs
+    pattern = r"(### Siehe folgende Issues und PRs\s*\n)([^\n#]*)"
+    replacement = rf"\g<1>{issue_pr_refs}"
     
     if re.search(pattern, item.description):
         item.description = re.sub(pattern, replacement, item.description)
         item.save(update_fields=['description'])
+    else:
+        logger.warning(
+            f"Could not find 'Siehe folgende Issues und PRs' section in item {item.id} description. "
+            f"The newly created issue may not be added to references."
+        )
 
 
 @login_required
