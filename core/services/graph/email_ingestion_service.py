@@ -175,6 +175,9 @@ class EmailIngestionService:
                     f"from email by {sender_email}"
                 )
                 
+                # Send auto-confirmation email if mail trigger exists
+                self._send_confirmation_email(item)
+                
                 # Mark message as processed
                 self.client.add_category_to_message(
                     user_upn=self.mailbox,
@@ -454,3 +457,58 @@ Email Body:
         alphabet = string.ascii_letters + string.digits + string.punctuation
         password = ''.join(secrets.choice(alphabet) for _ in range(length))
         return password
+    
+    def _send_confirmation_email(self, item: Item) -> None:
+        """
+        Send auto-confirmation email after item creation.
+        
+        Args:
+            item: Newly created Item instance
+        """
+        from core.services.mail.mail_trigger_service import (
+            check_mail_trigger,
+            prepare_mail_preview,
+            get_notification_recipients_for_item,
+        )
+        from core.services.graph.mail_service import send_email
+        
+        # Check if there's a mail trigger for this item's status and type
+        mapping = check_mail_trigger(item)
+        
+        if not mapping:
+            logger.debug(f"No mail trigger found for item {item.id} (status={item.status}, type={item.type.key})")
+            return
+        
+        # Get notification recipients
+        recipients = get_notification_recipients_for_item(item)
+        
+        if not recipients['to']:
+            logger.warning(f"No recipient email for item {item.id}, skipping confirmation email")
+            return
+        
+        try:
+            # Prepare mail preview
+            preview = prepare_mail_preview(item, mapping)
+            
+            # Send email
+            result = send_email(
+                subject=preview['subject'],
+                body=preview['message'],
+                to=[recipients['to']],
+                body_is_html=True,
+                cc=recipients['cc'] if recipients['cc'] else None,
+                sender=preview.get('from_address'),
+                item=item,
+                author=None,  # System-generated email
+                visibility="Internal",
+            )
+            
+            if result.success:
+                logger.info(f"Sent confirmation email for item {item.id} to {recipients['to']}")
+            else:
+                logger.error(f"Failed to send confirmation email for item {item.id}: {result.error}")
+                
+        except Exception as e:
+            logger.error(f"Error sending confirmation email for item {item.id}: {e}")
+            # Don't raise - email sending failure shouldn't prevent item creation
+
