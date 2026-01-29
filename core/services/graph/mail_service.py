@@ -39,6 +39,49 @@ class GraphSendResult:
 MAX_ATTACHMENT_SIZE_V1 = 3 * 1024 * 1024  # 3 MB
 
 
+def _normalize_email(email: str) -> str:
+    """
+    Normalize an email address for comparison.
+    
+    Args:
+        email: Email address to normalize
+        
+    Returns:
+        Normalized email address (trimmed and lowercase)
+    """
+    return email.strip().lower()
+
+
+def _is_blocked_system_recipient(email_addresses: List[str]) -> bool:
+    """
+    Check if any of the given email addresses matches the system's default address.
+    
+    This function prevents mail loops by blocking emails sent to Agira's own
+    default email address (which is used for email ingestion via Graph API).
+    
+    Args:
+        email_addresses: List of email addresses to check
+        
+    Returns:
+        True if any address matches the system default address, False otherwise
+    """
+    if not email_addresses:
+        return False
+    
+    config = get_graph_config()
+    if config is None or not config.default_mail_sender:
+        # No default address configured, so nothing to block
+        return False
+    
+    system_address = _normalize_email(config.default_mail_sender)
+    
+    for addr in email_addresses:
+        if _normalize_email(addr) == system_address:
+            return True
+    
+    return False
+
+
 def send_email(
     subject: str,
     body: str,
@@ -100,6 +143,36 @@ def send_email(
     config = get_graph_config()
     if config is None or not config.enabled:
         raise ServiceDisabled("Graph API service is not enabled")
+    
+    # Mail loop protection: Check if any recipient is the system default address
+    all_recipients = list(to)
+    if cc:
+        all_recipients.extend(cc)
+    if bcc:
+        all_recipients.extend(bcc)
+    
+    if _is_blocked_system_recipient(all_recipients):
+        # Log the blocked attempt with details
+        blocked_addresses = [
+            addr for addr in all_recipients 
+            if _normalize_email(addr) == _normalize_email(config.default_mail_sender)
+        ]
+        logger.warning(
+            f"Blocked mail to system default address (Agira self-mail protection). "
+            f"Subject: '{subject}', "
+            f"Default address: '{config.default_mail_sender}', "
+            f"Blocked recipients: {blocked_addresses}, "
+            f"All recipients (to/cc/bcc): {all_recipients}"
+        )
+        
+        # Return failure result without sending
+        return GraphSendResult(
+            sender=sender or config.default_mail_sender or "unknown",
+            to=to,
+            subject=subject,
+            success=False,
+            error="Email blocked: recipient list contains system default address (mail loop protection)",
+        )
     
     # Determine sender
     if sender is None:
