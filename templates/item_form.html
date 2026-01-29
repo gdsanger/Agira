@@ -219,9 +219,9 @@
                                 {% if item_followers %}
                                     <div class="d-flex flex-wrap gap-1 mb-2">
                                         {% for follower in item_followers %}
-                                            <span class="badge bg-secondary" data-user-id="{{ follower.id }}">
+                                            <span class="badge bg-secondary follower-badge-form" data-user-id="{{ follower.id }}">
                                                 {{ follower.name|default:follower.username }}
-                                                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.6rem; padding: 0.1rem;" onclick="removeFollowerForm({{ follower.id }})" aria-label="Remove"></button>
+                                                <button type="button" class="btn-close btn-close-white ms-1 remove-follower-btn-form" style="font-size: 0.6rem; padding: 0.1rem;" data-user-id="{{ follower.id }}" aria-label="Remove"></button>
                                             </span>
                                         {% endfor %}
                                     </div>
@@ -229,7 +229,7 @@
                             {% endwith %}
                         {% endif %}
                     </div>
-                    <select class="form-select form-select-sm" id="follower-select-form" onchange="addFollowerForm(this.value); this.value='';">
+                    <select class="form-select form-select-sm" id="follower-select-form">
                         <option value="">+ Add Follower...</option>
                         {% for user in users %}
                             <option value="{{ user.id }}" data-name="{{ user.name|default:user.username }}">{{ user.name|default:user.username }} ({{ user.email }})</option>
@@ -691,6 +691,30 @@ document.addEventListener('DOMContentLoaded', function() {
         addFollowerHiddenInput(badge.dataset.userId);
     });
     updateFollowerSelectForm();
+    
+    // Add event listener for follower select
+    const followerSelectForm = document.getElementById('follower-select-form');
+    if (followerSelectForm) {
+        followerSelectForm.addEventListener('change', function() {
+            if (this.value) {
+                addFollowerForm(this.value);
+                this.value = '';
+            }
+        });
+    }
+    
+    // Add event delegation for remove buttons
+    const followersDisplay = document.getElementById('followers-display-form');
+    if (followersDisplay) {
+        followersDisplay.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-follower-btn-form')) {
+                const userId = e.target.dataset.userId;
+                if (userId) {
+                    removeFollowerForm(parseInt(userId));
+                }
+            }
+        });
+    }
 });
 
 function updateFollowerSelectForm() {
@@ -753,7 +777,21 @@ function addFollowerForm(userId) {
     const badge = document.createElement('span');
     badge.className = 'badge bg-secondary';
     badge.dataset.userId = userId;
-    badge.innerHTML = `${userName} <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.6rem; padding: 0.1rem;" onclick="removeFollowerForm(${userId})" aria-label="Remove"></button>`;
+    
+    // Create text node for username (safe from XSS)
+    const userNameText = document.createTextNode(userName + ' ');
+    badge.appendChild(userNameText);
+    
+    // Create remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-close btn-close-white ms-1 remove-follower-btn-form';
+    removeBtn.style.fontSize = '0.6rem';
+    removeBtn.style.padding = '0.1rem';
+    removeBtn.setAttribute('aria-label', 'Remove');
+    removeBtn.dataset.userId = userId;
+    badge.appendChild(removeBtn);
+    
     badgesContainer.appendChild(badge);
     
     // Update select options

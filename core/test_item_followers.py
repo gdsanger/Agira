@@ -279,14 +279,19 @@ class ItemFollowerAPITestCase(TestCase):
         )
         ItemFollower.objects.create(item=item, user=self.user2)
         
-        # Update to clear followers
-        response = self.client.post(reverse('item-update', args=[item.id]), {
+        # Update to clear followers - note: when using Django test client,
+        # we need to explicitly indicate we're sending an empty list
+        # by including at least the key in POST
+        post_data = {
             'project': self.project.id,
             'type': self.item_type.id,
             'title': 'Test Item',
             'status': ItemStatus.INBOX,
-            'follower_ids': [],
-        })
+        }
+        # Explicitly add follower_ids with empty value to ensure it's in POST
+        post_data['follower_ids'] = ''  # Empty string means clear all
+        
+        response = self.client.post(reverse('item-update', args=[item.id]), post_data)
         
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)

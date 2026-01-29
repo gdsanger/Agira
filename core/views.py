@@ -3,7 +3,7 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -1777,6 +1777,46 @@ def _auto_generate_title_from_description(description, user=None):
         return ''
 
 
+def _update_item_followers(item, follower_ids):
+    """
+    Update followers for an item.
+    
+    Args:
+        item: Item instance to update followers for
+        follower_ids: List of user IDs to set as followers
+        
+    This function atomically replaces all followers with the provided list.
+    Validates that all user IDs are valid and prevents duplicates.
+    """
+    from core.models import ItemFollower
+    
+    if not follower_ids:
+        follower_ids = []
+    
+    with transaction.atomic():
+        # Remove existing followers
+        ItemFollower.objects.filter(item=item).delete()
+        
+        # Add new followers
+        seen_user_ids = set()
+        for user_id in follower_ids:
+            if not user_id or user_id in seen_user_ids:
+                continue
+                
+            try:
+                # Validate user ID is an integer
+                user_id_int = int(user_id)
+                # Try to get the user
+                user = User.objects.filter(id=user_id_int).first()
+                if user:
+                    ItemFollower.objects.create(item=item, user=user)
+                    seen_user_ids.add(user_id)
+                else:
+                    logger.warning(f"Invalid user ID {user_id} for item {item.id} followers")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid user ID format {user_id} for item {item.id} followers: {e}")
+
+
 @login_required
 def item_create(request):
     """Item create page view."""
@@ -1897,20 +1937,7 @@ def item_create(request):
         
         # Handle followers (ManyToMany, requires item to be saved first)
         follower_ids = request.POST.getlist('follower_ids')
-        if follower_ids:
-            from core.models import ItemFollower
-            # Remove any existing followers (for create, this should be none, but be safe)
-            ItemFollower.objects.filter(item=item).delete()
-            # Add new followers
-            seen_user_ids = set()
-            for user_id in follower_ids:
-                if user_id and user_id not in seen_user_ids:
-                    try:
-                        user = get_object_or_404(User, id=user_id)
-                        ItemFollower.objects.create(item=item, user=user)
-                        seen_user_ids.add(user_id)
-                    except Exception:
-                        pass  # Skip invalid user IDs
+        _update_item_followers(item, follower_ids)
         
         # Log activity
         activity_service = ActivityService()
@@ -2095,21 +2122,10 @@ def item_update(request, item_id):
                 item.nodes.clear()
         
         # Handle followers (ManyToMany, requires item to be saved first)
-        follower_ids = request.POST.getlist('follower_ids')
-        if follower_ids is not None:  # Check if follower_ids was provided in the request
-            from core.models import ItemFollower
-            # Remove existing followers
-            ItemFollower.objects.filter(item=item).delete()
-            # Add new followers
-            seen_user_ids = set()
-            for user_id in follower_ids:
-                if user_id and user_id not in seen_user_ids:
-                    try:
-                        user = get_object_or_404(User, id=user_id)
-                        ItemFollower.objects.create(item=item, user=user)
-                        seen_user_ids.add(user_id)
-                    except Exception:
-                        pass  # Skip invalid user IDs
+        # Only update if follower_ids was provided in the request
+        if 'follower_ids' in request.POST:
+            follower_ids = request.POST.getlist('follower_ids')
+            _update_item_followers(item, follower_ids)
         
         # Log activity
         activity_service = ActivityService()
