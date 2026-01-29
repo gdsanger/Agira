@@ -8,7 +8,8 @@ from django.contrib.auth import get_user_model
 from core.models import (
     Organisation, UserOrganisation, Project, ItemType, Item, 
     ItemStatus, Release, ItemComment, ExternalIssueMapping, 
-    ExternalIssueKind, AttachmentRole, Attachment, AttachmentLink
+    ExternalIssueKind, AttachmentRole, Attachment, AttachmentLink,
+    CommentKind
 )
 from core.services.activity import ActivityService
 
@@ -72,6 +73,7 @@ class ItemDetailViewTest(TestCase):
         )
         
         self.client = Client()
+        self.client.login(username='testuser', password='testpass')
     
     def test_item_detail_view_loads(self):
         """Test that item detail view loads successfully."""
@@ -101,6 +103,40 @@ class ItemDetailViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Test comment')
         self.assertContains(response, 'Add Comment')
+    
+    def test_item_comments_tab_with_ai_generated_markdown(self):
+        """Test that AI-generated comments with markdown are rendered correctly."""
+        # Create AI-generated comment with markdown content
+        markdown_content = """# AI Analysis
+
+This is an **AI-generated** comment with markdown:
+
+- Point 1
+- Point 2
+- Point 3
+
+```python
+def example():
+    return "code block"
+```
+"""
+        ItemComment.objects.create(
+            item=self.item,
+            author=self.user,
+            body=markdown_content,
+            kind=CommentKind.AI_GENERATED
+        )
+        
+        url = reverse('item-comments-tab', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that the markdown-viewer div is present for AI-generated comments
+        self.assertContains(response, 'markdown-viewer')
+        # Check that markdown is converted to HTML (heading tag should be present)
+        self.assertContains(response, '<h1>')
+        # Check that the AI Generated badge is present
+        self.assertContains(response, 'AI Generated')
     
     def test_item_activity_tab_loads(self):
         """Test that activity tab endpoint loads successfully."""
@@ -148,8 +184,6 @@ class ItemDetailViewTest(TestCase):
     
     def test_item_change_status(self):
         """Test changing item status."""
-        self.client.login(username='testuser', password='testpass')
-        
         url = reverse('item-change-status', args=[self.item.id])
         response = self.client.post(url, {'status': ItemStatus.TESTING})
         
@@ -161,8 +195,6 @@ class ItemDetailViewTest(TestCase):
     
     def test_item_add_comment(self):
         """Test adding a comment to an item."""
-        self.client.login(username='testuser', password='testpass')
-        
         url = reverse('item-add-comment', args=[self.item.id])
         response = self.client.post(url, {'body': 'New test comment'})
         
