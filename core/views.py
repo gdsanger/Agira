@@ -109,8 +109,28 @@ def login_view(request):
     })
 
 def logout_view(request):
-    """Logout view."""
+    """Logout view with Azure AD single sign-out support."""
+    # Check if user was logged in via Azure AD (has azure_ad_object_id)
+    azure_ad_user = False
+    if request.user.is_authenticated:
+        azure_ad_user = hasattr(request.user, 'azure_ad_object_id') and request.user.azure_ad_object_id
+    
+    # Log out from Agira
     auth_logout(request)
+    
+    # If user was logged in via Azure AD and Azure AD is enabled, offer single logout
+    if azure_ad_user and settings.AZURE_AD_ENABLED:
+        # Redirect to Azure AD logout
+        from core.backends.azuread import AzureADAuth
+        try:
+            azure_ad = AzureADAuth()
+            post_logout_uri = request.build_absolute_uri(reverse('login'))
+            logout_url = azure_ad.get_logout_url(post_logout_uri)
+            return redirect(logout_url)
+        except Exception as e:
+            # If Azure AD logout fails, just show logged out page
+            pass
+    
     return render(request, 'logged_out.html')
 
 @login_required
