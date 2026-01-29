@@ -205,5 +205,5 @@ AZURE_AD_CLIENT_ID = os.getenv('AZURE_AD_CLIENT_ID', '')
 AZURE_AD_CLIENT_SECRET = os.getenv('AZURE_AD_CLIENT_SECRET', '')
 AZURE_AD_REDIRECT_URI = os.getenv('AZURE_AD_REDIRECT_URI', 'http://localhost:8000/auth/azuread/callback/')
 AZURE_AD_DEFAULT_ROLE = os.getenv('AZURE_AD_DEFAULT_ROLE', 'User')
-AZURE_AD_SCOPES = ['openid', 'profile', 'email', 'User.Read']
+AZURE_AD_SCOPES = ['User.Read', 'email']  # openid, profile, offline_access are reserved and added automatically by MSAL
 AZURE_AD_AUTHORITY = f'https://login.microsoftonline.com/{AZURE_AD_TENANT_ID}' if AZURE_AD_TENANT_ID else ''
