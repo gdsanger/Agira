@@ -710,13 +710,17 @@ def item_lookup(request, item_id):
     Lightweight endpoint to check if an issue exists and is accessible.
     Returns JSON with status information.
     Used by the header Issue ID search feature.
+    
+    Note: This view currently follows the same authorization model as item_detail,
+    which allows any authenticated user to access any item. If more granular
+    permissions are implemented in the future, they should be added here as well.
     """
     try:
-        item = Item.objects.get(id=item_id)
+        # Use select_related to minimize queries, similar to item_detail
+        item = Item.objects.select_related('project').get(id=item_id)
         return JsonResponse({
             'exists': True,
             'id': item.id,
-            'title': item.title,
         })
     except Item.DoesNotExist:
         return JsonResponse({

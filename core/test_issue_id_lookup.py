@@ -95,7 +95,8 @@ class IssueIdLookupTestCase(TestCase):
         data = response.json()
         self.assertTrue(data['exists'])
         self.assertEqual(data['id'], self.item1.id)
-        self.assertEqual(data['title'], 'Test Item 1')
+        # Title is intentionally not included to minimize information disclosure
+        self.assertNotIn('title', data)
     
     def test_item_lookup_nonexistent_item(self):
         """Test lookup for a non-existent item"""
