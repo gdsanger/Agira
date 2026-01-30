@@ -76,16 +76,25 @@
                             {% endif %}
                         </div>
                     </div>
-                    {% if comment.subject %}
-                        <div class="mb-2"><strong>{{ comment.subject }}</strong></div>
-                    {% endif %}
                     {% if comment.kind == 'AIGenerated' %}
                         <!-- Render AI comments as markdown -->
+                        {% if comment.subject %}
+                            <div class="mb-2"><strong>{{ comment.subject }}</strong></div>
+                        {% endif %}
                         <div id="comment-body-{{ comment.id }}" class="markdown-viewer">{{ comment.body|render_markdown }}</div>
                     {% else %}
                         <div class="comment-body-wrapper" data-comment-id="{{ comment.id }}">
-                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap;" aria-live="polite">{{ comment.body }}</div>
-                            <div class="comment-expand-toggle" id="comment-toggle-{{ comment.id }}" style="display: none;">
+                            <!-- Always show subject if present -->
+                            {% if comment.subject %}
+                                <div class="mb-2"><strong>{{ comment.subject }}</strong></div>
+                            {% endif %}
+                            
+                            <!-- Body is hidden by default if there's a subject, shown when expanded -->
+                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap; {% if comment.subject %}display: none;{% endif %}">{{ comment.body }}</div>
+                            
+                            <!-- Show expand button if there's a subject (indicating email/content to expand) -->
+                            {% if comment.subject %}
+                            <div class="comment-expand-toggle" id="comment-toggle-{{ comment.id }}">
                                 <button type="button" 
                                         class="btn btn-sm btn-link p-0 comment-expand-btn" 
                                         data-comment-id="{{ comment.id }}"
@@ -95,6 +104,7 @@
                                     <span class="collapse-text" style="display: none;">weniger anzeigen</span>
                                 </button>
                             </div>
+                            {% endif %}
                         </div>
                         <div id="comment-edit-{{ comment.id }}" style="display: none;">
                             <textarea class="form-control mb-2" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
@@ -150,34 +160,15 @@
     position: relative;
 }
 
-.comment-body-text.truncated {
-    display: -webkit-box;
-    -webkit-line-clamp: 10;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
 .comment-expand-toggle {
     margin-top: 0.5rem;
 }
 </style>
 
 <script>
-// Initialize comment truncation on load
-document.addEventListener('DOMContentLoaded', function() {
-    initializeCommentTruncation();
-    attachCommentExpandListeners();
-});
-
-// Also initialize when HTMX swaps content
-document.body.addEventListener('htmx:afterSettle', function(event) {
-    if (event.detail.target.closest('#comments-list')) {
-        initializeCommentTruncation();
-    }
-});
-
 // Use event delegation for expand/collapse buttons
-function attachCommentExpandListeners() {
+// Only register the listener once using a flag
+if (!window.agiraCommentExpandListenerRegistered) {
     document.body.addEventListener('click', function(event) {
         const btn = event.target.closest('.comment-expand-btn');
         if (btn) {
@@ -185,39 +176,7 @@ function attachCommentExpandListeners() {
             toggleCommentExpand(commentId);
         }
     });
-}
-
-function initializeCommentTruncation() {
-    document.querySelectorAll('.comment-body-text').forEach(function(bodyElement) {
-        // Skip already initialized elements
-        if (bodyElement.dataset.truncationInitialized === 'true') {
-            return;
-        }
-        
-        const commentId = bodyElement.id.replace('comment-body-', '');
-        const toggleElement = document.getElementById('comment-toggle-' + commentId);
-        
-        if (!toggleElement) return; // Skip if no toggle element (e.g., AI comments)
-        
-        // Check if content is taller than 10 lines by comparing scroll height
-        // Temporarily show full content to measure
-        bodyElement.classList.remove('truncated');
-        const lineHeight = parseFloat(window.getComputedStyle(bodyElement).lineHeight);
-        const maxHeight = lineHeight * 10;
-        
-        if (bodyElement.scrollHeight > maxHeight + 5) { // +5px tolerance
-            // More than 10 visual lines - show truncated and show the toggle
-            bodyElement.classList.add('truncated');
-            toggleElement.style.display = 'block';
-        } else {
-            // 10 or fewer lines - show full text, hide toggle
-            bodyElement.classList.remove('truncated');
-            toggleElement.style.display = 'none';
-        }
-        
-        // Mark as initialized
-        bodyElement.dataset.truncationInitialized = 'true';
-    });
+    window.agiraCommentExpandListenerRegistered = true;
 }
 
 function toggleCommentExpand(commentId) {
@@ -226,15 +185,15 @@ function toggleCommentExpand(commentId) {
     const expandText = toggleBtn.querySelector('.expand-text');
     const collapseText = toggleBtn.querySelector('.collapse-text');
     
-    if (bodyElement.classList.contains('truncated')) {
-        // Expand
-        bodyElement.classList.remove('truncated');
+    if (bodyElement.style.display === 'none') {
+        // Expand - show body
+        bodyElement.style.display = 'block';
         expandText.style.display = 'none';
         collapseText.style.display = 'inline';
         toggleBtn.setAttribute('aria-expanded', 'true');
     } else {
-        // Collapse
-        bodyElement.classList.add('truncated');
+        // Collapse - hide body
+        bodyElement.style.display = 'none';
         expandText.style.display = 'inline';
         collapseText.style.display = 'none';
         toggleBtn.setAttribute('aria-expanded', 'false');
