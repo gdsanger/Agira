@@ -240,9 +240,10 @@ class OpenGitHubIssuesTestCase(TestCase):
         self.assertNotIn('#104', content)
         self.assertNotIn('Closed Item with Open Issue', content)
         
-        # Check that PRs are NOT displayed
-        self.assertNotIn('#105', content)
-        self.assertNotIn('/pull/105', content)
+        # Check that PRs ARE displayed in the PR column
+        # working_item has PR #105
+        self.assertIn('#105', content)
+        self.assertIn('/pull/105', content)
         
         # Check that GitHub links are present
         self.assertIn('https://github.com/testorg/testrepo/issues/101', content)
