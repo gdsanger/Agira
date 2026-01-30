@@ -172,4 +172,6 @@ urlpatterns = [
     path('embed/projects/<int:project_id>/issues/create/', views_embed.embed_issue_create_form, name='embed-issue-create-form'),
     path('embed/projects/<int:project_id>/issues/create/submit/', views_embed.embed_issue_create, name='embed-issue-create'),
     path('embed/issues/<int:issue_id>/comments/', views_embed.embed_issue_add_comment, name='embed-issue-add-comment'),
+    path('embed/issues/<int:issue_id>/upload-attachment/', views_embed.embed_issue_upload_attachment, name='embed-issue-upload-attachment'),
+    path('embed/issues/<int:issue_id>/attachments/', views_embed.embed_issue_attachments, name='embed-issue-attachments'),
 ]

@@ -704,14 +704,7 @@ class EmailReplyHandlingTestCase(TestCase):
     @patch('core.services.graph.email_ingestion_service.AgentService')
     def test_user_input_not_modified_on_followup(self, mock_agent_service, mock_get_client):
         """Test that user_input is not modified when processing follow-up emails."""
-        # Create an existing item with user_input
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@test.com',
-            password='testpass',
-            name='Test User',
-        )
-        
+        # Use the user created in setUp
         original_user_input = '<h1>Original Email</h1><p>Original content</p>'
         item = Item.objects.create(
             project=self.project,
@@ -719,13 +712,14 @@ class EmailReplyHandlingTestCase(TestCase):
             description='Original description',
             user_input=original_user_input,
             type=self.task_type,
-            requester=user,
+            requester=self.user,
             status=ItemStatus.INBOX,
         )
         
         # Mock client
         mock_client = Mock()
         mock_get_client.return_value = mock_client
+        mock_client.get_message_attachments.return_value = []  # No attachments
         
         # Mock agent service for HTML to markdown (for comment)
         mock_agent_instance = Mock()
@@ -744,6 +738,8 @@ class EmailReplyHandlingTestCase(TestCase):
                     'name': 'Test Sender',
                 }
             },
+            'toRecipients': [],
+            'ccRecipients': [],
             'body': {
                 'content': '<p>This is a follow-up reply</p>',
                 'contentType': 'html',
@@ -764,3 +760,316 @@ class EmailReplyHandlingTestCase(TestCase):
         comments = ItemComment.objects.filter(item=item)
         self.assertEqual(comments.count(), 1)
         self.assertEqual(comments.first().kind, CommentKind.EMAIL_IN)
+
+
+class EmailAttachmentProcessingTest(TestCase):
+    """Tests for email attachment processing."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create GraphAPI configuration
+        self.config = GraphAPIConfiguration.objects.create(
+            id=1,
+            enabled=True,
+            tenant_id="test-tenant",
+            client_id="test-client",
+            client_secret="test-secret",
+            default_mail_sender="support@test.com",
+        )
+        
+        # Create test organization
+        self.org = Organisation.objects.create(
+            name="Test Org",
+            mail_domains="test.com",
+        )
+        
+        # Create test project
+        self.project = Project.objects.create(
+            name="TestProject",
+            description="Test project",
+        )
+        
+        # Create item type
+        self.task_type = ItemType.objects.create(
+            key="task",
+            name="Task",
+            is_active=True,
+        )
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username="testuserattach",
+            email="test-attach@test.com",
+            password="testpass",
+            name="Test User Attach",
+        )
+        
+        # Create test item
+        self.item = Item.objects.create(
+            project=self.project,
+            title="Test Item",
+            description="Test description",
+            type=self.task_type,
+            requester=self.user,
+            status=ItemStatus.INBOX,
+        )
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_with_pdf_attachment(self, mock_agent_service, mock_get_client):
+        """Test processing email with PDF attachment."""
+        import base64
+        
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent = Mock()
+        mock_agent_service.return_value = mock_agent
+        mock_agent.execute_agent.side_effect = [
+            "Test body converted",  # HTML to Markdown
+            json.dumps({"project": "TestProject", "type": "task"}),  # Classification
+        ]
+        
+        # Create mock PDF content
+        pdf_content = b"%PDF-1.4 fake pdf content"
+        pdf_b64 = base64.b64encode(pdf_content).decode('utf-8')
+        
+        # Mock message with attachment
+        mock_message = {
+            "id": "msg123",
+            "subject": "Test with PDF",
+            "from": {
+                "emailAddress": {
+                    "address": "test@test.com",
+                    "name": "Test User"
+                }
+            },
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {
+                "contentType": "html",
+                "content": "<p>Test body</p>"
+            },
+            "hasAttachments": True,
+            "internetMessageId": "msg123@test.com",
+        }
+        
+        # Mock attachment response
+        mock_attachments = [{
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "document.pdf",
+            "contentType": "application/pdf",
+            "size": len(pdf_content),
+            "isInline": False,
+            "contentId": "",
+            "contentBytes": pdf_b64,
+        }]
+        
+        mock_client.get_message_attachments.return_value = mock_attachments
+        
+        # Create service and process message
+        service = EmailIngestionService()
+        result_item = service._process_message(mock_message)
+        
+        # Verify attachment was created
+        from core.models import Attachment, AttachmentLink, AttachmentRole
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get attachments for the created item
+        content_type = ContentType.objects.get_for_model(Item)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=result_item.id,
+            role=AttachmentRole.ITEM_FILE
+        )
+        
+        self.assertEqual(attachment_links.count(), 1)
+        attachment = attachment_links.first().attachment
+        self.assertEqual(attachment.original_name, "document.pdf")
+        self.assertEqual(attachment.content_type, "application/pdf")
+        self.assertEqual(attachment.size_bytes, len(pdf_content))
+        
+        # Verify file was stored
+        from core.services.storage import AttachmentStorageService
+        storage_service = AttachmentStorageService()
+        file_path = storage_service.get_file_path(attachment)
+        self.assertTrue(file_path.exists())
+        
+        # Verify content
+        content = storage_service.read_attachment(attachment)
+        self.assertEqual(content, pdf_content)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_with_inline_image(self, mock_agent_service, mock_get_client):
+        """Test processing email with inline image and CID rewrite."""
+        import base64
+        
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent = Mock()
+        mock_agent_service.return_value = mock_agent
+        mock_agent.execute_agent.side_effect = [
+            "Test body converted",  # HTML to Markdown
+            json.dumps({"project": "TestProject", "type": "task"}),  # Classification
+        ]
+        
+        # Create mock image content
+        image_content = b"\x89PNG\r\n\x1a\n fake png"
+        image_b64 = base64.b64encode(image_content).decode('utf-8')
+        
+        # Mock message with inline image
+        html_body = '<p>See image: <img src="cid:image001.png@test"></p>'
+        mock_message = {
+            "id": "msg124",
+            "subject": "Test with inline image",
+            "from": {
+                "emailAddress": {
+                    "address": "test@test.com",
+                    "name": "Test User"
+                }
+            },
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {
+                "contentType": "html",
+                "content": html_body
+            },
+            "hasAttachments": True,
+            "internetMessageId": "msg124@test.com",
+        }
+        
+        # Mock inline attachment with content ID
+        mock_attachments = [{
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "image001.png",
+            "contentType": "image/png",
+            "size": len(image_content),
+            "isInline": True,
+            "contentId": "<image001.png@test>",  # With angle brackets
+            "contentBytes": image_b64,
+        }]
+        
+        mock_client.get_message_attachments.return_value = mock_attachments
+        
+        # Create service and process message
+        service = EmailIngestionService()
+        result_item = service._process_message(mock_message)
+        
+        # Verify attachment was created with content_id
+        from core.models import Attachment, AttachmentLink, AttachmentRole
+        from django.contrib.contenttypes.models import ContentType
+        
+        content_type = ContentType.objects.get_for_model(Item)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=result_item.id,
+            role=AttachmentRole.ITEM_FILE
+        )
+        
+        self.assertEqual(attachment_links.count(), 1)
+        attachment = attachment_links.first().attachment
+        self.assertEqual(attachment.original_name, "image001.png")
+        self.assertEqual(attachment.content_id, "image001.png@test")  # Normalized (no angle brackets)
+        
+        # Verify HTML was rewritten in comment
+        comment = result_item.comments.first()
+        self.assertIsNotNone(comment)
+        self.assertIn(f'/items/attachments/{attachment.id}/view/', comment.body_original_html)
+        self.assertNotIn('cid:', comment.body_original_html)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_with_mixed_attachments(self, mock_agent_service, mock_get_client):
+        """Test processing email with both inline and regular attachments."""
+        import base64
+        
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent = Mock()
+        mock_agent_service.return_value = mock_agent
+        mock_agent.execute_agent.side_effect = [
+            "Test body converted",
+            json.dumps({"project": "TestProject", "type": "task"}),
+        ]
+        
+        # Create mock contents
+        pdf_content = b"%PDF-1.4 fake pdf"
+        image_content = b"\x89PNG fake"
+        
+        # Mock message
+        html_body = '<p>See image: <img src="cid:img1"></p>'
+        mock_message = {
+            "id": "msg125",
+            "subject": "Test with mixed attachments",
+            "from": {"emailAddress": {"address": "test@test.com", "name": "Test"}},
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {"contentType": "html", "content": html_body},
+            "hasAttachments": True,
+            "internetMessageId": "msg125@test.com",
+        }
+        
+        # Mock multiple attachments
+        mock_attachments = [
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": "document.pdf",
+                "contentType": "application/pdf",
+                "size": len(pdf_content),
+                "isInline": False,
+                "contentId": "",
+                "contentBytes": base64.b64encode(pdf_content).decode('utf-8'),
+            },
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": "image.png",
+                "contentType": "image/png",
+                "size": len(image_content),
+                "isInline": True,
+                "contentId": "<img1>",
+                "contentBytes": base64.b64encode(image_content).decode('utf-8'),
+            }
+        ]
+        
+        mock_client.get_message_attachments.return_value = mock_attachments
+        
+        # Process message
+        service = EmailIngestionService()
+        result_item = service._process_message(mock_message)
+        
+        # Verify both attachments were created
+        from core.models import AttachmentLink, AttachmentRole
+        from django.contrib.contenttypes.models import ContentType
+        
+        content_type = ContentType.objects.get_for_model(Item)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=result_item.id,
+            role=AttachmentRole.ITEM_FILE
+        )
+        
+        self.assertEqual(attachment_links.count(), 2)
+        
+        # Find each attachment
+        pdf_att = next((link.attachment for link in attachment_links if link.attachment.original_name == "document.pdf"), None)
+        img_att = next((link.attachment for link in attachment_links if link.attachment.original_name == "image.png"), None)
+        
+        self.assertIsNotNone(pdf_att)
+        self.assertIsNotNone(img_att)
+        
+        # Verify inline image has content_id
+        self.assertEqual(img_att.content_id, "img1")
+        self.assertEqual(pdf_att.content_id, "")
+        
+        # Verify HTML rewrite
+        comment = result_item.comments.first()
+        self.assertIn(f'/items/attachments/{img_att.id}/view/', comment.body_original_html)

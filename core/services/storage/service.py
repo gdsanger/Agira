@@ -104,7 +104,8 @@ class AttachmentStorageService:
         created_by: Optional[User] = None,
         compute_hash: bool = True,
         original_name: Optional[str] = None,
-        content_type: Optional[str] = None
+        content_type: Optional[str] = None,
+        content_id: Optional[str] = None
     ) -> Attachment:
         """
         Store an attachment file and create database records.
@@ -117,6 +118,7 @@ class AttachmentStorageService:
             compute_hash: Whether to compute SHA256 hash
             original_name: Original filename (extracted from file if not provided)
             content_type: MIME type (extracted from file if not provided)
+            content_id: Content-ID for inline email attachments (optional)
             
         Returns:
             Created Attachment instance
@@ -160,7 +162,8 @@ class AttachmentStorageService:
             size_bytes=size_bytes,
             sha256=sha256,
             storage_path='',  # Will be updated after we know the ID
-            is_deleted=False
+            is_deleted=False,
+            content_id=content_id or ''
         )
         
         # Build storage path using the attachment ID

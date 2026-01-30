@@ -664,6 +664,9 @@ class Attachment(models.Model):
     storage_path = models.CharField(max_length=1000)
     is_deleted = models.BooleanField(default=False)
     
+    # Email attachment metadata
+    content_id = models.CharField(max_length=500, blank=True, help_text="Content-ID for inline email attachments (e.g., 'image001.png@01D9...')")
+    
     # GitHub metadata fields for synced markdown files
     github_repo_path = models.CharField(max_length=1000, blank=True, help_text="Path in GitHub repository (e.g., docs/README.md)")
     github_sha = models.CharField(max_length=40, blank=True, help_text="GitHub blob SHA for version tracking")
@@ -675,6 +678,7 @@ class Attachment(models.Model):
             models.Index(fields=['created_at']),
             models.Index(fields=['sha256']),
             models.Index(fields=['github_repo_path']),
+            models.Index(fields=['content_id']),
         ]
 
     def __str__(self):
