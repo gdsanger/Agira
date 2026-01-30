@@ -445,3 +445,19 @@ class ItemMoveProjectTestCase(TestCase):
         # Verify item was NOT moved
         self.item.refresh_from_db()
         self.assertEqual(self.item.project.id, self.project_a.id)
+    
+    def test_move_item_with_invalid_json_fails(self):
+        """Test that invalid JSON returns proper error."""
+        url = f'/items/{self.item.id}/move-project/'
+        
+        response = self.client.post(
+            url,
+            data='invalid json {',
+            content_type='application/json'
+        )
+        
+        # Should return 400 with clear error message
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('Invalid JSON', response_data['error'])
