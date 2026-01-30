@@ -589,4 +589,30 @@ class TemplateProcessorTestCase(TestCase):
         self.assertIn('&lt;script&gt;', result['subject'])
         self.assertIn('&lt;script&gt;', result['message'])
         self.assertNotIn('<script>', result['message'])
+    
+    def test_solution_description_in_subject_plain_text(self):
+        """Test that solution_description in subject is plain text (no HTML tags)"""
+        # Set solution description with Markdown
+        self.item.solution_description = '**Fix**: See [link](http://example.com)'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-in-subject-template',
+            subject='Fix: {{ solution_description }}',
+            message='{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Subject should have plain text (no HTML tags)
+        self.assertNotIn('<strong>', result['subject'])
+        self.assertNotIn('<a href=', result['subject'])
+        self.assertNotIn('<p>', result['subject'])
+        # Should contain text content (without Markdown syntax or HTML tags)
+        self.assertIn('Fix', result['subject'])
+        self.assertIn('link', result['subject'])
+        
+        # Message should have HTML
+        self.assertIn('<strong>Fix</strong>', result['message'])
+        self.assertIn('<a href="http://example.com">link</a>', result['message'])
 

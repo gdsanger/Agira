@@ -1,91 +1,11 @@
 """Custom template filters for Agira."""
 from django import template
-from django.utils.safestring import mark_safe
-import markdown
-import bleach
-from bleach.css_sanitizer import CSSSanitizer
+from core.utils.html_sanitization import (
+    convert_markdown_to_html,
+    sanitize_html,
+)
 
 register = template.Library()
-
-# Allowed HTML tags and attributes for sanitization
-ALLOWED_TAGS = [
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'p', 'br', 'strong', 'em', 'u', 'strike',
-    'ul', 'ol', 'li',
-    'blockquote', 'code', 'pre',
-    'a', 'img',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
-    'div', 'span'
-]
-
-ALLOWED_ATTRIBUTES = {
-    'a': ['href', 'title', 'target', 'rel', 'style'],
-    'img': ['src', 'alt', 'title', 'width', 'height', 'style'],
-    'code': ['class', 'style'],
-    'pre': ['class', 'style'],
-    'div': ['class', 'style'],
-    'span': ['class', 'style'],
-    'p': ['style'],
-    'h1': ['style'],
-    'h2': ['style'],
-    'h3': ['style'],
-    'h4': ['style'],
-    'h5': ['style'],
-    'h6': ['style'],
-    'td': ['style'],
-    'th': ['style'],
-    'tr': ['style'],
-    'table': ['style'],
-    'thead': ['style'],
-    'tbody': ['style'],
-    'ul': ['style'],
-    'ol': ['style'],
-    'li': ['style'],
-    'strong': ['style'],
-    'em': ['style'],
-    'u': ['style'],
-    'strike': ['style'],
-    'blockquote': ['style'],
-}
-
-# CSS properties that are allowed in inline styles
-ALLOWED_CSS_PROPERTIES = [
-    'color', 'background-color', 'font-size', 'font-weight', 'font-family', 'font-style',
-    'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'vertical-align',
-    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-    'border', 'border-width', 'border-style', 'border-color', 'border-radius',
-    'border-top', 'border-right', 'border-bottom', 'border-left',
-    'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
-    'display', 'float', 'clear', 'text-transform'
-]
-
-# Create a CSS sanitizer for safe inline styles
-css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES)
-
-
-def _sanitize_html(html):
-    """
-    Helper function to sanitize HTML and prevent XSS attacks.
-    
-    Args:
-        html: HTML string to sanitize
-        
-    Returns:
-        Safe HTML string with dangerous elements stripped
-    """
-    if not html:
-        return ""
-    
-    sanitized_html = bleach.clean(
-        html,
-        tags=ALLOWED_TAGS,
-        attributes=ALLOWED_ATTRIBUTES,
-        css_sanitizer=css_sanitizer,
-        strip=True
-    )
-    
-    return mark_safe(sanitized_html)
 
 
 @register.filter
@@ -125,17 +45,7 @@ def render_markdown(text):
     Returns:
         Safe HTML string
     """
-    if not text:
-        return ""
-    
-    # Create a new markdown parser instance for thread safety
-    md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
-    
-    # Convert markdown to HTML
-    html = md_parser.convert(text)
-    
-    # Sanitize HTML to prevent XSS attacks
-    return _sanitize_html(html)
+    return convert_markdown_to_html(text)
 
 
 @register.filter
@@ -149,5 +59,5 @@ def safe_html(text):
     Returns:
         Safe HTML string with dangerous elements stripped
     """
-    return _sanitize_html(text)
+    return sanitize_html(text)
 
