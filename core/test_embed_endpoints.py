@@ -308,6 +308,21 @@ class EmbedEndpointTestCase(TestCase):
         
         self.assertEqual(response.status_code, 400)
 
+    def test_issue_create_title_too_long(self):
+        """Test issue creation fails with title exceeding max length"""
+        long_title = 'x' * 501  # Exceeds 500 character limit
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': long_title,
+                'type': self.item_type_bug.id,
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'must not exceed 500 characters', response.content)
+
     def test_issue_create_without_token(self):
         """Test issue creation fails without token"""
         response = self.client.post(

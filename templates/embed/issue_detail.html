@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="mb-3">
-    <a href="/embed/projects/{{ project.id }}/issues/?token={{ token }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{% url 'embed-project-issues' project.id %}?token={{ token }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left"></i> Back to List
     </a>
 </div>
@@ -59,9 +59,10 @@
         {% endif %}
         
         <!-- Add Comment Form -->
+        <!-- Note: CSRF protection is not used for embed endpoints. Security is provided by the embed token. -->
         <hr class="my-4">
         <h6>Add Comment</h6>
-        <form method="post" action="/embed/issues/{{ item.id }}/comments/?token={{ token }}">
+        <form method="post" action="{% url 'embed-issue-add-comment' item.id %}?token={{ token }}">
             <div class="mb-3">
                 <textarea name="body" class="form-control" rows="4" placeholder="Write your comment here..." required></textarea>
             </div>

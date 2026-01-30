@@ -10,6 +10,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from django.utils import timezone
+from django.urls import reverse
 
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
@@ -24,10 +25,10 @@ def validate_embed_token(token):
     
     Returns:
         OrganisationEmbedProject: The embed access object if valid and enabled
+        None: If token is found but access is disabled (caller must return 403)
         
     Raises:
         Http404: If token is invalid or not found
-        HttpResponseForbidden: If token is found but access is disabled
     """
     if not token:
         raise Http404("Token not provided")
@@ -40,8 +41,8 @@ def validate_embed_token(token):
         raise Http404("Invalid token")
     
     if not embed_access.is_enabled:
-        # Return 403 Forbidden for disabled access
-        return None  # Will be handled by caller
+        # Return None for disabled access - caller must return 403 Forbidden
+        return None
     
     return embed_access
 
@@ -169,6 +170,9 @@ def embed_issue_create(request, project_id):
     if not title:
         return HttpResponse("Title is required", status=400)
     
+    if len(title) > 500:
+        return HttpResponse("Title must not exceed 500 characters", status=400)
+    
     if not type_id:
         return HttpResponse("Type is required", status=400)
     
@@ -198,8 +202,9 @@ def embed_issue_create(request, project_id):
             summary=f"Created via embed portal: {title}",
         )
     
-    # Redirect to the issue detail page
-    return redirect(f'/embed/issues/{item.id}/?token={token}')
+    # Redirect to the issue detail page using reverse
+    redirect_url = reverse('embed-issue-detail', args=[item.id]) + f'?token={token}'
+    return redirect(redirect_url)
 
 
 @csrf_exempt
@@ -247,5 +252,6 @@ def embed_issue_add_comment(request, issue_id):
             summary=f"Added comment via embed portal",
         )
     
-    # Redirect back to issue detail
-    return redirect(f'/embed/issues/{issue_id}/?token={token}')
+    # Redirect back to issue detail using reverse
+    redirect_url = reverse('embed-issue-detail', args=[issue_id]) + f'?token={token}'
+    return redirect(redirect_url)
