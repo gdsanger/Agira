@@ -30,17 +30,19 @@ class OrganisationEmbedProjectInline(admin.TabularInline):
     fields = ['project', 'is_enabled', 'embed_token_display', 'updated_at']
     
     def embed_token_display(self, obj):
-        """Display masked token with copy button"""
+        """Display masked token for security"""
         if obj and obj.embed_token:
-            # Show first 8 and last 8 characters
-            masked = f"{obj.embed_token[:8]}...{obj.embed_token[-8:]}"
-            return format_html(
-                '<span title="{}">{}</span>',
-                obj.embed_token,
-                masked
-            )
+            return self._mask_token(obj.embed_token)
         return '-'
     embed_token_display.short_description = 'Embed Token'
+    
+    @staticmethod
+    def _mask_token(token):
+        """Mask a token showing first 8 and last 8 characters"""
+        if len(token) <= 16:
+            # For short tokens, just show asterisks
+            return '•' * min(len(token), 12)
+        return f"{token[:8]}...{token[-8:]}"
 
 
 class ChangeApprovalInline(admin.TabularInline):
@@ -583,14 +585,17 @@ class OrganisationEmbedProjectAdmin(admin.ModelAdmin):
     def embed_token_masked(self, obj):
         """Display masked token for list view"""
         if obj.embed_token:
-            # Show first 8 and last 8 characters
-            masked = f"{obj.embed_token[:8]}...{obj.embed_token[-8:]}"
-            return format_html(
-                '<span title="Click to copy full token" style="cursor: help;">{}</span>',
-                masked
-            )
+            return self._mask_token(obj.embed_token)
         return '-'
     embed_token_masked.short_description = 'Embed Token'
+    
+    @staticmethod
+    def _mask_token(token):
+        """Mask a token showing first 8 and last 8 characters"""
+        if len(token) <= 16:
+            # For short tokens, just show asterisks
+            return '•' * min(len(token), 12)
+        return f"{token[:8]}...{token[-8:]}"
     
     def rotate_token(self, request, queryset):
         """

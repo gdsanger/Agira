@@ -1,7 +1,7 @@
 """
 Tests for OrganisationEmbedProject admin functionality
 """
-from django.test import TestCase, RequestFactory
+from django.test import TestCase
 from django.contrib.admin.sites import AdminSite
 from django.contrib.messages.storage.fallback import FallbackStorage
 from core.models import Organisation, Project, OrganisationEmbedProject, User
