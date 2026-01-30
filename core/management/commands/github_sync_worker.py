@@ -35,7 +35,7 @@ RECENTLY_CLOSED_THRESHOLD_HOURS = 2
 
 
 class Command(BaseCommand):
-    help = 'Synchronize GitHub issues/PRs with Agira items and push to Weaviate (excludes markdown files)'
+    help = 'Synchronize GitHub issues/PRs with Agira items and push to Weaviate (syncs non-closed items and recently closed items)'
 
     def add_arguments(self, parser):
         """Add command arguments."""
@@ -101,17 +101,19 @@ class Command(BaseCommand):
         # Only process ISSUE kind (not PRs directly, they are linked via issues)
         queryset = queryset.filter(kind=ExternalIssueKind.ISSUE)
         
-        # Filter to only recently closed items to avoid GitHub API rate limits
-        # Only sync items that:
-        # 1. Are in CLOSED status
-        # 2. Were updated within the last N hours (configured by RECENTLY_CLOSED_THRESHOLD_HOURS)
+        # Filter to only relevant items to avoid GitHub API rate limits
+        # Sync items that:
+        # 1. Have status != CLOSED (always sync non-closed items), OR
+        # 2. Have status == CLOSED AND were updated within the last N hours
+        #    (to allow recently closed items to be finalized)
+        from django.db.models import Q
         queryset = queryset.filter(
-            item__status=ItemStatus.CLOSED,
-            item__updated_at__gte=time_threshold
+            Q(item__status__in=[s for s in ItemStatus.values if s != ItemStatus.CLOSED]) |
+            Q(item__status=ItemStatus.CLOSED, item__updated_at__gte=time_threshold)
         )
         
         self.stdout.write(
-            f"Filtering to items closed in the last {RECENTLY_CLOSED_THRESHOLD_HOURS} hours "
+            f"Filtering to non-closed items and items closed in the last {RECENTLY_CLOSED_THRESHOLD_HOURS} hours "
             f"(since {time_threshold.strftime('%Y-%m-%d %H:%M:%S')})"
         )
         
