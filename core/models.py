@@ -1057,7 +1057,7 @@ class OrganisationEmbedProject(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['organisation', 'project']
+        ordering = ['organisation_id', 'project_id']
         verbose_name = _('Organisation Embed Project')
         verbose_name_plural = _('Organisation Embed Projects')
         constraints = [
@@ -1078,8 +1078,21 @@ class OrganisationEmbedProject(models.Model):
         """
         Auto-generate embed_token if not set.
         Uses secrets.token_urlsafe for cryptographically secure, URL-safe tokens.
+        Includes retry mechanism in case of token collision (extremely unlikely).
         """
         if not self.embed_token:
             # Generate 48 bytes = 64 characters base64-encoded (URL-safe)
-            self.embed_token = secrets.token_urlsafe(48)
+            # Retry up to 3 times in the extremely unlikely event of a collision
+            from django.db import IntegrityError
+            max_retries = 3
+            for attempt in range(max_retries):
+                self.embed_token = secrets.token_urlsafe(48)
+                try:
+                    super().save(*args, **kwargs)
+                    return
+                except IntegrityError as e:
+                    if attempt == max_retries - 1 or 'embed_token' not in str(e):
+                        raise
+                    # Token collision, retry with new token
+                    continue
         super().save(*args, **kwargs)

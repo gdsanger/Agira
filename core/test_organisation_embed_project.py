@@ -207,7 +207,7 @@ class OrganisationEmbedProjectTestCase(TestCase):
         original_token = embed.embed_token
         
         # Clear token and save to regenerate
-        embed.embed_token = ''
+        embed.embed_token = None
         embed.save()
         
         # Should have a new token
