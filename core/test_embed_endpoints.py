@@ -255,6 +255,23 @@ class EmbedEndpointTestCase(TestCase):
         self.assertContains(response, self.item_type_bug.name)
         self.assertContains(response, self.item_type_feature.name)
 
+    def test_issue_create_form_shows_type_descriptions(self):
+        """Test that issue creation form includes type descriptions in data attributes"""
+        # Add description to item type
+        self.item_type_bug.description = 'Use this for reporting bugs and defects'
+        self.item_type_bug.save()
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/create/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that description is in the data-description attribute
+        self.assertContains(response, 'data-description="Use this for reporting bugs and defects"')
+        # Check that JavaScript for showing description is present
+        self.assertContains(response, 'type-description')
+
     def test_issue_create_form_without_token(self):
         """Test that missing token returns 404"""
         response = self.client.get(

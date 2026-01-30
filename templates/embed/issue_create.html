@@ -71,10 +71,15 @@
         const descriptionDiv = document.getElementById('type-description');
         
         if (description && description.trim() !== '') {
-            descriptionDiv.innerHTML = '<i class="bi bi-info-circle"></i> ' + description;
+            // Use textContent to prevent XSS
+            descriptionDiv.textContent = '';
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-info-circle';
+            descriptionDiv.appendChild(icon);
+            descriptionDiv.appendChild(document.createTextNode(' ' + description));
             descriptionDiv.style.display = 'block';
         } else {
-            descriptionDiv.innerHTML = '';
+            descriptionDiv.textContent = '';
             descriptionDiv.style.display = 'none';
         }
     });
