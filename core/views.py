@@ -635,23 +635,22 @@ def items_github_open(request):
     # Build list of issue data for display
     issues_data = []
     for mapping in open_issue_mappings:
-        # Get associated PRs for this item
-        prs = ExternalIssueMapping.objects.filter(
-            item=mapping.item,
-            kind=ExternalIssueKind.PR
-        ).order_by('number')
+        # Get associated PRs for this item from prefetched data
+        all_mappings = mapping.item.external_mappings.all()
+        prs = [m for m in all_mappings if m.kind == ExternalIssueKind.PR]
+        prs.sort(key=lambda x: x.number)  # Sort by PR number
         
         # Select PR according to rule: first non-merged, or first if all merged
         selected_pr = None
-        if prs.exists():
-            # Try to find first non-merged PR
+        if prs:
+            # Try to find first non-merged PR (prefer open over closed)
             for pr in prs:
                 if pr.state != 'merged':
                     selected_pr = pr
                     break
             # If all merged, use first PR
             if selected_pr is None:
-                selected_pr = prs.first()
+                selected_pr = prs[0]
         
         # Build PR data dict
         pr_data = None
