@@ -59,6 +59,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'core.middleware.EmbedFrameMiddleware',  # Must come before XFrameOptionsMiddleware
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
