@@ -108,7 +108,7 @@ class Command(BaseCommand):
         #    (to allow recently closed items to be finalized)
         from django.db.models import Q
         queryset = queryset.filter(
-            Q(item__status__in=[s for s in ItemStatus.values if s != ItemStatus.CLOSED]) |
+            ~Q(item__status=ItemStatus.CLOSED) |
             Q(item__status=ItemStatus.CLOSED, item__updated_at__gte=time_threshold)
         )
         
