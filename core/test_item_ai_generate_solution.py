@@ -251,7 +251,8 @@ Implement OAuth2 authentication using the following approach:
         self.assertEqual(response.status_code, 500)
         data = response.json()
         self.assertEqual(data['status'], 'error')
-        self.assertIn('AI service unavailable', data['message'])
+        # Generic error message is returned to user for security
+        self.assertIn('Failed to generate solution description', data['message'])
         
         # Verify item solution was NOT updated
         self.item.refresh_from_db()

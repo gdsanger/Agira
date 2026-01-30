@@ -1228,7 +1228,7 @@ def item_generate_solution_ai(request, item_id):
     from core.services.rag import build_context
     
     # Check user role
-    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+    if request.user.role != UserRole.AGENT:
         return JsonResponse({
             'status': 'error',
             'message': 'This feature is only available to users with Agent role'
@@ -1275,7 +1275,7 @@ Context from similar items and related information:
         
         # Update item solution_description
         item.solution_description = solution_description.strip()
-        item.save()
+        item.save(update_fields=['solution_description'])
         
         # Log activity - success
         activity_service = ActivityService()
@@ -1300,13 +1300,11 @@ Context from similar items and related information:
             summary=f'AI solution description generation failed: {str(e)}',
         )
         
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"AI solution description generation failed for item {item_id}: {str(e)}")
         
         return JsonResponse({
             'status': 'error',
-            'message': str(e)
+            'message': 'Failed to generate solution description. Please try again later.'
         }, status=500)
 
 
