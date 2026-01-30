@@ -592,3 +592,157 @@ class EmbedEndpointTestCase(TestCase):
         self.assertNotContains(response, 'Closed Issue')
         self.assertContains(response, 'Test Issue 1')  # Not closed
         self.assertContains(response, 'Test Issue 2')  # Not closed
+
+    def test_solution_description_indicator_shown(self):
+        """Test that solution description indicator is shown when solution_description exists"""
+        # Create an item with solution description
+        item_with_solution = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Issue with Solution',
+            description='Description',
+            solution_description='## Solution\n\nThis is the solution description.',
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check for the solution button/indicator
+        self.assertContains(response, 'bi-lightbulb')
+        self.assertContains(response, f'solutionModal{item_with_solution.id}')
+
+    def test_solution_description_indicator_not_shown_when_empty(self):
+        """Test that solution description indicator is NOT shown when solution_description is empty"""
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # item1 and item2 have no solution_description, so no modal should exist for them
+        self.assertNotContains(response, f'solutionModal{self.item1.id}')
+        self.assertNotContains(response, f'solutionModal{self.item2.id}')
+
+    def test_solution_description_indicator_not_shown_when_whitespace_only(self):
+        """Test that solution description indicator is NOT shown when solution_description is only whitespace"""
+        # Create an item with whitespace-only solution description
+        item_whitespace = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Issue with Whitespace Solution',
+            description='Description',
+            solution_description='   \n\t  ',
+            type=self.item_type_bug,
+            status=ItemStatus.INBOX
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Should NOT show modal for whitespace-only solution
+        self.assertNotContains(response, f'solutionModal{item_whitespace.id}')
+
+    def test_solution_description_modal_renders_markdown(self):
+        """Test that solution description modal renders markdown properly"""
+        # Create an item with markdown solution description
+        markdown_text = '''## Solution Overview
+
+This is a **bold** statement.
+
+* List item 1
+* List item 2
+
+[Link to example](https://example.com)
+'''
+        item_with_solution = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Issue with Markdown Solution',
+            description='Description',
+            solution_description=markdown_text,
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check modal exists
+        self.assertContains(response, f'solutionModal{item_with_solution.id}')
+        # Check that markdown is rendered to HTML
+        self.assertContains(response, '<h2>Solution Overview</h2>')
+        self.assertContains(response, '<strong>bold</strong>')
+        self.assertContains(response, '<ul>')
+        self.assertContains(response, '<li>List item 1</li>')
+
+    def test_solution_description_modal_sanitizes_html(self):
+        """Test that solution description modal sanitizes dangerous HTML/XSS attempts"""
+        # Create an item with malicious content
+        malicious_markdown = '''## Safe Content
+
+<script>alert('XSS')</script>
+
+[Click me](javascript:alert('XSS'))
+
+<img src="x" onerror="alert('XSS')">
+'''
+        item_with_xss = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Issue with XSS Attempt',
+            description='Description',
+            solution_description=malicious_markdown,
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that script tags are removed
+        self.assertNotContains(response, '<script>')
+        self.assertNotContains(response, "alert('XSS')")
+        # Check that javascript: URLs are removed
+        self.assertNotContains(response, 'javascript:')
+        # Check that onerror handlers are removed
+        self.assertNotContains(response, 'onerror=')
+        # But safe content should remain
+        self.assertContains(response, '<h2>Safe Content</h2>')
+
+    def test_solution_description_modal_title_and_structure(self):
+        """Test that solution description modal has correct structure"""
+        item_with_solution = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Test Issue with Solution',
+            description='Description',
+            solution_description='This is a simple solution.',
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check modal structure
+        self.assertContains(response, 'Solution Description')
+        self.assertContains(response, f'Issue #{item_with_solution.id}')
+        self.assertContains(response, 'Test Issue with Solution')
+        self.assertContains(response, 'This is a simple solution.')
