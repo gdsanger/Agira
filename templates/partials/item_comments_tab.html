@@ -83,7 +83,15 @@
                         <!-- Render AI comments as markdown -->
                         <div id="comment-body-{{ comment.id }}" class="markdown-viewer">{{ comment.body|render_markdown }}</div>
                     {% else %}
-                        <div id="comment-body-{{ comment.id }}" style="white-space: pre-wrap;">{{ comment.body }}</div>
+                        <div class="comment-body-wrapper" data-comment-id="{{ comment.id }}">
+                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap;">{{ comment.body }}</div>
+                            <div class="comment-expand-toggle" id="comment-toggle-{{ comment.id }}" style="display: none;">
+                                <button type="button" class="btn btn-sm btn-link p-0" onclick="toggleCommentExpand({{ comment.id }})">
+                                    <span class="expand-text">mehr anzeigen</span>
+                                    <span class="collapse-text" style="display: none;">weniger anzeigen</span>
+                                </button>
+                            </div>
+                        </div>
                         <div id="comment-edit-{{ comment.id }}" style="display: none;">
                             <textarea class="form-control mb-2" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
                             <button type="button" class="btn btn-sm btn-primary" onclick="saveComment({{ comment.id }})">Save</button>
@@ -132,3 +140,76 @@
         </div>
     </div>
 </div>
+
+<style>
+.comment-body-wrapper {
+    position: relative;
+}
+
+.comment-body-text.truncated {
+    display: -webkit-box;
+    -webkit-line-clamp: 10;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.comment-expand-toggle {
+    margin-top: 0.5rem;
+}
+</style>
+
+<script>
+// Initialize comment truncation on load
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCommentTruncation();
+});
+
+// Also initialize when HTMX swaps content
+document.body.addEventListener('htmx:afterSettle', function(event) {
+    if (event.detail.target.id === 'comments-list' || event.detail.target.closest('#comments-list')) {
+        initializeCommentTruncation();
+    }
+});
+
+function initializeCommentTruncation() {
+    document.querySelectorAll('.comment-body-text').forEach(function(bodyElement) {
+        const commentId = bodyElement.id.replace('comment-body-', '');
+        const toggleElement = document.getElementById('comment-toggle-' + commentId);
+        
+        if (!toggleElement) return; // Skip if no toggle element (e.g., AI comments)
+        
+        // Count lines by checking if the text has more than 10 newlines
+        const text = bodyElement.textContent;
+        const lines = text.split('\n');
+        
+        if (lines.length > 10) {
+            // More than 10 lines - show truncated and show the toggle
+            bodyElement.classList.add('truncated');
+            toggleElement.style.display = 'block';
+        } else {
+            // 10 or fewer lines - show full text, hide toggle
+            bodyElement.classList.remove('truncated');
+            toggleElement.style.display = 'none';
+        }
+    });
+}
+
+function toggleCommentExpand(commentId) {
+    const bodyElement = document.getElementById('comment-body-' + commentId);
+    const toggleElement = document.getElementById('comment-toggle-' + commentId);
+    const expandText = toggleElement.querySelector('.expand-text');
+    const collapseText = toggleElement.querySelector('.collapse-text');
+    
+    if (bodyElement.classList.contains('truncated')) {
+        // Expand
+        bodyElement.classList.remove('truncated');
+        expandText.style.display = 'none';
+        collapseText.style.display = 'inline';
+    } else {
+        // Collapse
+        bodyElement.classList.add('truncated');
+        expandText.style.display = 'inline';
+        collapseText.style.display = 'none';
+    }
+}
+</script>

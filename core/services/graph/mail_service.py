@@ -197,7 +197,7 @@ def send_email(
             visibility=visibility,
             kind=CommentKind.EMAIL_OUT,
             subject=subject,
-            body=body if not body_is_html else "",
+            body=body,  # Always store body content for display
             body_html=body if body_is_html else "",
             body_original_html=body if body_is_html else "",  # Store original HTML for forwarding
             external_from=sender,
