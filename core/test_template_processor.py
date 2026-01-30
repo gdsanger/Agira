@@ -338,3 +338,56 @@ class TemplateProcessorTestCase(TestCase):
         self.assertIn('&lt;script&gt;', result['message'])
         self.assertNotIn('<script>', result['message'])
         self.assertIn('Fixed the bug', result['message'])
+    
+    def test_process_template_with_non_prefixed_solution_description(self):
+        """Test that {{ solution_description }} (without issue. prefix) works"""
+        # Set solution description on item
+        self.item.solution_description = 'This is the solution without prefix'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-no-prefix-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        self.assertIn('This is the solution without prefix', result['message'])
+        self.assertNotIn('{{ solution_description }}', result['message'])
+    
+    def test_process_template_with_empty_non_prefixed_solution_description(self):
+        """Test that empty {{ solution_description }} is replaced with empty string"""
+        # Ensure solution description is empty
+        self.item.solution_description = ''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-no-prefix-empty-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ solution_description }} - End'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string, not placeholder
+        self.assertIn('Solution:  - End', result['message'])
+        self.assertNotIn('{{ solution_description }}', result['message'])
+    
+    def test_process_template_with_both_prefixed_and_non_prefixed(self):
+        """Test that both {{ issue.solution_description }} and {{ solution_description }} work in same template"""
+        # Set solution description on item
+        self.item.solution_description = 'Test solution'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-both-template',
+            subject='{{ issue.title }}',
+            message='Prefixed: {{ issue.solution_description }}, Non-prefixed: {{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Both should be replaced with the same value
+        self.assertIn('Prefixed: Test solution, Non-prefixed: Test solution', result['message'])
+        self.assertNotIn('{{', result['message'])
