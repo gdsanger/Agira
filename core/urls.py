@@ -45,6 +45,7 @@ urlpatterns = [
     path('items/ready/', views.items_ready, name='items-ready'),
     path('items/github/open/', views.items_github_open, name='items-github-open'),
     path('items/new/', views.item_create, name='item-create'),
+    path('items/lookup/<int:item_id>/', views.item_lookup, name='item-lookup'),
     path('items/<int:item_id>/', views.item_detail, name='item-detail'),
     path('items/<int:item_id>/edit/', views.item_edit, name='item-edit'),
     path('items/<int:item_id>/update/', views.item_update, name='item-update'),

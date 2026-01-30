@@ -705,6 +705,30 @@ def changes(request):
     return render(request, 'changes.html', context)
 
 @login_required
+def item_lookup(request, item_id):
+    """
+    Lightweight endpoint to check if an issue exists and is accessible.
+    Returns JSON with status information.
+    Used by the header Issue ID search feature.
+    
+    Note: This view currently follows the same authorization model as item_detail,
+    which allows any authenticated user to access any item. If more granular
+    permissions are implemented in the future, they should be added here as well.
+    """
+    try:
+        # Use select_related to minimize queries, similar to item_detail
+        item = Item.objects.select_related('project').get(id=item_id)
+        return JsonResponse({
+            'exists': True,
+            'id': item.id,
+        })
+    except Item.DoesNotExist:
+        return JsonResponse({
+            'exists': False,
+            'error': 'Es existiert kein Issue mit dieser ID.',
+        }, status=404)
+
+@login_required
 def item_detail(request, item_id):
     """Item detail page with tabs."""
     item = get_object_or_404(

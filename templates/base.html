@@ -67,6 +67,25 @@
             </form>
         </div>
         
+        <!-- Issue ID Search -->
+        {% if user.is_authenticated %}
+        <div class="topbar-issue-search mx-2">
+            <form id="issue-id-form" class="d-flex" role="search">
+                <div class="input-group input-group-sm">
+                    <input type="text" 
+                           id="issue-id-input"
+                           class="form-control" 
+                           placeholder="Issue-ID (z.B. AGIRA-129)" 
+                           aria-label="Issue-ID suchen"
+                           style="min-width: 180px;">
+                    <button class="btn btn-outline-primary" type="submit" aria-label="Issue öffnen">
+                        <i class="bi bi-arrow-right-circle"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+        
         <!-- Open GitHub Issues Status -->
         {% if user.is_authenticated %}
         <a href="{% url 'items-github-open' %}" class="topbar-github-issues d-flex align-items-center text-decoration-none mx-3">
@@ -300,6 +319,77 @@
             const toast = new bootstrap.Toast(toastEl);
             toast.show();
         }
+        
+        // Issue ID Search Handler
+        document.addEventListener('DOMContentLoaded', function() {
+            const issueForm = document.getElementById('issue-id-form');
+            if (issueForm) {
+                issueForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const input = document.getElementById('issue-id-input');
+                    let value = input.value.trim();
+                    
+                    // Validate empty input
+                    if (!value) {
+                        showToast('Bitte eine Issue-ID eingeben.', 'warning');
+                        return;
+                    }
+                    
+                    // Normalize and validate the input
+                    // Support both "129" and "AGIRA-129" formats
+                    let issueId = null;
+                    
+                    // Convert to uppercase for case-insensitive prefix matching
+                    const upperValue = value.toUpperCase();
+                    
+                    if (upperValue.startsWith('AGIRA-')) {
+                        // Remove prefix and get the ID part (use upperValue for consistency)
+                        const idPart = upperValue.substring(6);
+                        issueId = parseInt(idPart, 10);
+                    } else {
+                        // Try to parse as integer directly
+                        issueId = parseInt(value, 10);
+                    }
+                    
+                    // Validate that we got a valid integer
+                    if (isNaN(issueId) || issueId <= 0) {
+                        showToast('Ungültiges Format für die Issue-ID. Bitte eine Nummer oder AGIRA-Nummer eingeben (z.B. 129 oder AGIRA-129).', 'error');
+                        return;
+                    }
+                    
+                    // Check if the issue exists using the lookup endpoint
+                    fetch('/items/lookup/' + issueId + '/', {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            // Issue exists, navigate to it
+                            window.location.href = '/items/' + issueId + '/';
+                        } else if (response.status === 404) {
+                            // Issue not found - try to parse JSON, fallback to generic message
+                            return response.json().then(data => {
+                                showToast(data.error || 'Es existiert kein Issue mit dieser ID.', 'error');
+                            }).catch(() => {
+                                // JSON parse error, use generic message
+                                showToast('Es existiert kein Issue mit dieser ID.', 'error');
+                            });
+                        } else {
+                            // Other error (403, 500, etc.)
+                            showToast('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        // Network or other error
+                        console.error('Error looking up issue:', error);
+                        showToast('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.', 'error');
+                    });
+                });
+            }
+        });
     </script>
     
     {% block extra_js %}{% endblock %}
