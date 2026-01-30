@@ -12,11 +12,13 @@
 
 ## Latest Update (Issue #261)
 
-Added support for the non-prefixed version of the solution description variable:
-- **New:** `{{ solution_description }}` (without `issue.` prefix) 
-- **Existing:** `{{ issue.solution_description }}` (with `issue.` prefix)
+Added support for the non-prefixed version of the solution description variable for **backward compatibility**:
+- **Recommended:** `{{ issue.solution_description }}` (with `issue.` prefix - consistent with all other variables)
+- **Backward Compatibility:** `{{ solution_description }}` (without prefix - supported for existing templates)
 - **Both formats** work identically and can be used in the same template
 - This resolves the issue where `{{ solution_description }}` was not being replaced in emails
+
+**Note:** Only `solution_description` supports the non-prefixed format. All other variables (title, description, status, etc.) require the `{{ issue.* }}` prefix for consistency. The non-prefixed version is provided solely for backward compatibility with existing templates that may use this format.
 
 ## Changes Made
 
@@ -102,7 +104,6 @@ Your issue has been updated:
 Title: {{ issue.title }}
 Description: {{ issue.description }}
 Solution: {{ issue.solution_description }}
-Alternative: {{ solution_description }}
 Status: {{ issue.status }}
 Organisation: {{ issue.organisation }}
 Planned Release: {{ issue.solution_release }}
@@ -111,7 +112,7 @@ Best regards,
 {{ issue.project }} Team
 ```
 
-**Note:** Both `{{ issue.solution_description }}` and `{{ solution_description }}` work identically.
+**Note:** For backward compatibility, `{{ solution_description }}` (without `issue.` prefix) also works, but `{{ issue.solution_description }}` is recommended for consistency with other variables.
 
 ### Important: Data Requirements
 For variables to be replaced with actual values, the Item must have the corresponding data:
@@ -128,9 +129,9 @@ If data is missing, the variable is replaced with an empty string (not an error)
 If variables appear not to be working:
 
 1. **Check Template Syntax**
-   - Recommended: `{{ issue.variable }}` (with spaces - more readable)
+   - Recommended: `{{ issue.variable }}` (with spaces and prefix - more readable and consistent)
    - Also works: `{{issue.variable}}` (without spaces)
-   - For solution_description only: `{{ solution_description }}` also works (no prefix needed)
+   - Special case: `{{ solution_description }}` also works (backward compatibility only)
    - Does NOT work: `{issue.variable}` (single braces)
 
 2. **Check Data Availability**
