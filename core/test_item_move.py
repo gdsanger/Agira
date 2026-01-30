@@ -49,12 +49,14 @@ class ItemMoveProjectTestCase(TestCase):
             requester=self.user
         )
         
-        # Create mail template
-        self.mail_template = MailTemplate.objects.create(
+        # Get or create mail template
+        self.mail_template, _ = MailTemplate.objects.get_or_create(
             key='moved',
-            subject='Item moved: {{ issue.title }}',
-            message='Item {{ issue.title }} was moved to {{ issue.project }}',
-            is_active=True
+            defaults={
+                'subject': 'Item moved: {{ issue.title }}',
+                'message': 'Item {{ issue.title }} was moved to {{ issue.project }}',
+                'is_active': True
+            }
         )
         
         # Set up client
@@ -394,6 +396,7 @@ class ItemMoveProjectTestCase(TestCase):
     def test_move_item_logs_activity(self):
         """Test that moving an item logs an activity."""
         from core.models import Activity
+        from django.contrib.contenttypes.models import ContentType
         
         # Count activities before move
         activity_count_before = Activity.objects.count()
@@ -418,9 +421,17 @@ class ItemMoveProjectTestCase(TestCase):
         
         # Check the activity details
         latest_activity = Activity.objects.latest('created_at')
-        self.assertEqual(latest_activity.action, 'item_moved')
-        self.assertEqual(latest_activity.details['from_project'], self.project_a.name)
-        self.assertEqual(latest_activity.details['to_project'], self.project_b.name)
+        self.assertEqual(latest_activity.verb, 'item.moved')
+        self.assertEqual(latest_activity.actor, self.user)
+        
+        # Verify target is the item
+        item_ct = ContentType.objects.get_for_model(Item)
+        self.assertEqual(latest_activity.target_content_type, item_ct)
+        self.assertEqual(latest_activity.target_object_id, self.item.id)
+        
+        # Verify summary contains project names
+        self.assertIn(self.project_a.name, latest_activity.summary)
+        self.assertIn(self.project_b.name, latest_activity.summary)
     
     def test_move_item_with_invalid_project_id_fails(self):
         """Test that moving to a non-existent project returns proper error."""
