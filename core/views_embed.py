@@ -196,9 +196,13 @@ def embed_issue_create_form(request, project_id):
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
     # Get organization users for requester selection
-    from .models import User
+    from .models import User, UserOrganisation
+    org_user_ids = UserOrganisation.objects.filter(
+        organisation=embed_access.organisation
+    ).values_list('user_id', flat=True)
+    
     org_users = User.objects.filter(
-        organisation=embed_access.organisation,
+        id__in=org_user_ids,
         active=True
     ).order_by('name')
     
@@ -254,14 +258,17 @@ def embed_issue_create(request, project_id):
         return HttpResponse("Invalid item type", status=400)
     
     # Get requester user
-    from .models import User
+    from .models import User, UserOrganisation
     try:
-        requester = User.objects.get(
-            id=requester_id,
-            organisation=embed_access.organisation,
-            active=True
+        # Verify requester exists and belongs to the organization
+        user_org = UserOrganisation.objects.get(
+            user_id=requester_id,
+            organisation=embed_access.organisation
         )
-    except User.DoesNotExist:
+        requester = user_org.user
+        if not requester.active:
+            return HttpResponse("Requester is not active", status=400)
+    except UserOrganisation.DoesNotExist:
         return HttpResponse("Invalid requester", status=400)
     
     # Create the item
