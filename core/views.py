@@ -5910,3 +5910,145 @@ def mail_action_mapping_delete(request, id):
     except Exception as e:
         logger.error(f"Error deleting mail action mapping: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# Email Reply/Forward Views
+@login_required
+def email_prepare_reply(request, comment_id):
+    """Prepare reply data for an email comment."""
+    from core.services.mail.email_reply_service import prepare_reply
+    
+    try:
+        comment = get_object_or_404(ItemComment, id=comment_id)
+        
+        # Only allow reply for email comments
+        if comment.kind not in ['EmailIn', 'EmailOut']:
+            return JsonResponse({'success': False, 'error': 'Can only reply to email comments'}, status=400)
+        
+        # Prepare reply data
+        reply_data = prepare_reply(comment, current_user=request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'data': reply_data,
+        })
+    except Exception as e:
+        logger.error(f"Error preparing reply: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def email_prepare_reply_all(request, comment_id):
+    """Prepare reply-all data for an email comment."""
+    from core.services.mail.email_reply_service import prepare_reply_all
+    
+    try:
+        comment = get_object_or_404(ItemComment, id=comment_id)
+        
+        # Only allow reply for email comments
+        if comment.kind not in ['EmailIn', 'EmailOut']:
+            return JsonResponse({'success': False, 'error': 'Can only reply to email comments'}, status=400)
+        
+        # Prepare reply-all data
+        reply_data = prepare_reply_all(comment, current_user=request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'data': reply_data,
+        })
+    except Exception as e:
+        logger.error(f"Error preparing reply all: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def email_prepare_forward(request, comment_id):
+    """Prepare forward data for an email comment."""
+    from core.services.mail.email_reply_service import prepare_forward
+    
+    try:
+        comment = get_object_or_404(ItemComment, id=comment_id)
+        
+        # Only allow forward for email comments
+        if comment.kind not in ['EmailIn', 'EmailOut']:
+            return JsonResponse({'success': False, 'error': 'Can only forward email comments'}, status=400)
+        
+        # Prepare forward data
+        forward_data = prepare_forward(comment, current_user=request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'data': forward_data,
+        })
+    except Exception as e:
+        logger.error(f"Error preparing forward: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def email_send_reply(request):
+    """Send a reply/forward email from the compose modal."""
+    from core.services.graph.mail_service import send_email
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        
+        item_id = data.get('item_id')
+        to_addresses = data.get('to', [])
+        cc_addresses = data.get('cc', [])
+        subject = data.get('subject', '')
+        body = data.get('body', '')
+        in_reply_to = data.get('in_reply_to', '')
+        
+        # Validate inputs
+        if not item_id:
+            return JsonResponse({'success': False, 'error': 'Item ID is required'}, status=400)
+        
+        if not to_addresses or not isinstance(to_addresses, list):
+            return JsonResponse({'success': False, 'error': 'At least one recipient is required'}, status=400)
+        
+        if not subject:
+            return JsonResponse({'success': False, 'error': 'Subject is required'}, status=400)
+        
+        # Get item
+        item = get_object_or_404(Item, id=item_id)
+        
+        # Send email
+        result = send_email(
+            subject=subject,
+            body=body,
+            to=to_addresses,
+            cc=cc_addresses if cc_addresses else None,
+            body_is_html=True,
+            item=item,
+            author=request.user,
+            visibility='Internal',
+        )
+        
+        if result.success:
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='email.sent',
+                target=item,
+                actor=request.user,
+                summary=f"Sent email: {subject}",
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Email sent successfully'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result.error or 'Failed to send email'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f"Error sending email: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
