@@ -182,6 +182,9 @@ class EmailIngestionService:
         body_content = body_data.get("content", "")
         body_type = body_data.get("contentType", "text")  # "text" or "html"
         
+        # Store original body for user_input field (prioritize HTML over text)
+        original_body = body_content
+        
         # Convert HTML to Markdown if needed
         if body_type.lower() == "html":
             body_markdown = self._convert_html_to_markdown(body_content)
@@ -236,6 +239,7 @@ class EmailIngestionService:
                     project=project,
                     title=subject,
                     description=body_markdown,
+                    user_input=original_body,
                     type=item_type,
                     requester=user,
                     organisation=organisation,

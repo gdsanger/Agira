@@ -434,6 +434,7 @@ class Item(models.Model):
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
     title = models.CharField(max_length=500)
     description = models.TextField(blank=True)
+    user_input = models.TextField(blank=True, help_text=_('Original email text, not modified by AI'))
     solution_description = models.TextField(blank=True)
     type = models.ForeignKey(ItemType, on_delete=models.PROTECT, related_name='items')
     nodes = models.ManyToManyField(Node, blank=True, related_name='items')
