@@ -1240,6 +1240,100 @@ Context from similar items and related information:
 
 @login_required
 @require_POST
+def item_generate_solution_ai(request, item_id):
+    """
+    Generate solution description using AI and RAG.
+    
+    Uses RAG to gather context and then calls the create-user-description agent
+    to generate a solution description based on the item description.
+    
+    Only available to users with Agent role.
+    """
+    from core.services.rag import build_context
+    
+    # Check user role
+    if request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get current description
+        current_description = item.description or ""
+        
+        if not current_description.strip():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Item has no description. Please provide a description first.'
+            }, status=400)
+        
+        # Build RAG context
+        rag_context = build_context(
+            query=current_description,
+            project_id=str(item.project.id),
+            limit=10
+        )
+        
+        # Build input text for agent: description + RAG context
+        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        
+        agent_input = f"""Item Description:
+{current_description}
+
+---
+Context from similar items and related information:
+{context_text}
+"""
+        
+        # Execute the create-user-description agent
+        agent_service = AgentService()
+        solution_description = agent_service.execute_agent(
+            filename='create-user-description.yml',
+            input_text=agent_input,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update item solution_description
+        item.solution_description = solution_description.strip()
+        item.save(update_fields=['solution_description'])
+        
+        # Log activity - success
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.solution_description.ai_generated',
+            target=item,
+            actor=request.user,
+            summary='Solution description generated via AI (RAG + create-user-description agent)',
+        )
+        
+        return JsonResponse({
+            'status': 'ok'
+        })
+        
+    except Exception as e:
+        # Log activity - error
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.solution_description.ai_error',
+            target=item,
+            actor=request.user,
+            summary=f'AI solution description generation failed: {str(e)}',
+        )
+        
+        logger.error(f"AI solution description generation failed for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Failed to generate solution description. Please try again later.'
+        }, status=500)
+
+
+@login_required
+@require_POST
 def item_pre_review(request, item_id):
     """
     Generate a Pre-Review of an item using AI and RAG.
