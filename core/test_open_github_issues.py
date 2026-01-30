@@ -349,3 +349,204 @@ class OpenGitHubIssuesTestCase(TestCase):
         # Count should include the mixed item's open issue
         count = get_open_github_issues_count()
         self.assertEqual(count, 3)  # Original 2 + new open issue
+    
+    def test_pr_display_with_pr(self):
+        """Test that PR information is displayed when a PR exists"""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        issues_data = response.context['issues_data']
+        
+        # Find the working_item issue (issue #101)
+        issue_101 = None
+        for issue in issues_data:
+            if issue['issue_number'] == 101:
+                issue_101 = issue
+                break
+        
+        self.assertIsNotNone(issue_101)
+        
+        # Check that PR data is present (working_item has PR #105)
+        self.assertIn('pr', issue_101)
+        self.assertIsNotNone(issue_101['pr'])
+        self.assertEqual(issue_101['pr']['number'], 105)
+        self.assertEqual(issue_101['pr']['state'], 'open')
+        self.assertIn('https://github.com/testorg/testrepo/pull/105', issue_101['pr']['url'])
+    
+    def test_pr_display_without_pr(self):
+        """Test that 'No PR' marker is displayed when no PR exists"""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        issues_data = response.context['issues_data']
+        
+        # Find the testing_item issue (issue #102) - has no PR
+        issue_102 = None
+        for issue in issues_data:
+            if issue['issue_number'] == 102:
+                issue_102 = issue
+                break
+        
+        self.assertIsNotNone(issue_102)
+        
+        # Check that PR data is None
+        self.assertIn('pr', issue_102)
+        self.assertIsNone(issue_102['pr'])
+        
+        # Check that "No PR" is displayed in the HTML
+        content = response.content.decode('utf-8')
+        self.assertIn('No PR', content)
+    
+    def test_pr_selection_prefers_non_merged(self):
+        """Test that when multiple PRs exist, the first non-merged PR is selected"""
+        # Create an item with multiple PRs
+        multi_pr_item = Item.objects.create(
+            title="Item with Multiple PRs",
+            description="This item has multiple PRs",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            organisation=self.org,
+            requester=self.user,
+            assigned_to=self.user
+        )
+        
+        # Create open issue
+        issue_mapping = ExternalIssueMapping.objects.create(
+            item=multi_pr_item,
+            github_id=3001,
+            number=301,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/testorg/testrepo/issues/301'
+        )
+        
+        # Create first PR (merged)
+        pr1_mapping = ExternalIssueMapping.objects.create(
+            item=multi_pr_item,
+            github_id=3002,
+            number=302,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url='https://github.com/testorg/testrepo/pull/302'
+        )
+        
+        # Create second PR (open)
+        pr2_mapping = ExternalIssueMapping.objects.create(
+            item=multi_pr_item,
+            github_id=3003,
+            number=303,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testorg/testrepo/pull/303'
+        )
+        
+        # Create third PR (closed)
+        pr3_mapping = ExternalIssueMapping.objects.create(
+            item=multi_pr_item,
+            github_id=3004,
+            number=304,
+            kind=ExternalIssueKind.PR,
+            state='closed',
+            html_url='https://github.com/testorg/testrepo/pull/304'
+        )
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        issues_data = response.context['issues_data']
+        
+        # Find the issue #301
+        issue_301 = None
+        for issue in issues_data:
+            if issue['issue_number'] == 301:
+                issue_301 = issue
+                break
+        
+        self.assertIsNotNone(issue_301)
+        
+        # Should select PR #303 (first non-merged, which is the open one)
+        self.assertIsNotNone(issue_301['pr'])
+        self.assertEqual(issue_301['pr']['number'], 303)
+        self.assertEqual(issue_301['pr']['state'], 'open')
+    
+    def test_pr_selection_all_merged(self):
+        """Test that when all PRs are merged, the first PR is selected"""
+        # Create an item with multiple merged PRs
+        all_merged_item = Item.objects.create(
+            title="Item with All Merged PRs",
+            description="This item has only merged PRs",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            organisation=self.org,
+            requester=self.user,
+            assigned_to=self.user
+        )
+        
+        # Create open issue
+        issue_mapping = ExternalIssueMapping.objects.create(
+            item=all_merged_item,
+            github_id=4001,
+            number=401,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/testorg/testrepo/issues/401'
+        )
+        
+        # Create first merged PR
+        pr1_mapping = ExternalIssueMapping.objects.create(
+            item=all_merged_item,
+            github_id=4002,
+            number=402,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url='https://github.com/testorg/testrepo/pull/402'
+        )
+        
+        # Create second merged PR
+        pr2_mapping = ExternalIssueMapping.objects.create(
+            item=all_merged_item,
+            github_id=4003,
+            number=403,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url='https://github.com/testorg/testrepo/pull/403'
+        )
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        issues_data = response.context['issues_data']
+        
+        # Find the issue #401
+        issue_401 = None
+        for issue in issues_data:
+            if issue['issue_number'] == 401:
+                issue_401 = issue
+                break
+        
+        self.assertIsNotNone(issue_401)
+        
+        # Should select first PR #402 (all merged, so pick first)
+        self.assertIsNotNone(issue_401['pr'])
+        self.assertEqual(issue_401['pr']['number'], 402)
+        self.assertEqual(issue_401['pr']['state'], 'merged')
+    
+    def test_pr_display_in_html(self):
+        """Test that PR information is correctly rendered in HTML"""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('items-github-open'))
+        
+        content = response.content.decode('utf-8')
+        
+        # Check that PR column header is present
+        self.assertIn('Pull Request', content)
+        
+        # Check that PR #105 is displayed for issue #101
+        self.assertIn('#105', content)
+        self.assertIn('https://github.com/testorg/testrepo/pull/105', content)
+        
+        # Check that badge is displayed
+        self.assertIn('badge', content)
+        self.assertIn('open', content)

@@ -21,6 +21,7 @@
                 <th>Item Title</th>
                 <th>Item Link</th>
                 <th>GitHub Issue</th>
+                <th>Pull Request</th>
             </tr>
         </thead>
         <tbody>
@@ -42,10 +43,28 @@
                         <i class="bi bi-github"></i> View on GitHub
                     </a>
                 </td>
+                <td>
+                    {% if issue.pr %}
+                        <a href="{{ issue.pr.url }}" target="_blank" rel="noopener noreferrer" class="me-2">
+                            <strong>#{{ issue.pr.number }}</strong>
+                        </a>
+                        {% if issue.pr.state == 'open' %}
+                            <span class="badge bg-success">open</span>
+                        {% elif issue.pr.state == 'closed' %}
+                            <span class="badge bg-danger">closed</span>
+                        {% elif issue.pr.state == 'merged' %}
+                            <span class="badge bg-primary">merged</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ issue.pr.state }}</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">No PR</span>
+                    {% endif %}
+                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4" class="text-center text-muted py-4">
+                <td colspan="5" class="text-center text-muted py-4">
                     <div class="mb-2">
                         <i class="bi bi-github" style="font-size: 2rem;"></i>
                     </div>
