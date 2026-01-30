@@ -61,3 +61,19 @@ def safe_html(text):
     """
     return sanitize_html(text)
 
+
+@register.filter
+def trim(text):
+    """
+    Remove leading and trailing whitespace from text.
+    
+    Args:
+        text: Text string to trim
+        
+    Returns:
+        Trimmed string or empty string if input is None
+    """
+    if text is None:
+        return ""
+    return str(text).strip()
+

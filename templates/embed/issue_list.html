@@ -1,4 +1,5 @@
 {% extends "embed/base.html" %}
+{% load agira_filters %}
 
 {% block title %}Issues - {{ project.name }}{% endblock %}
 
@@ -80,19 +81,32 @@
                         Updated {% if current_sort == 'updated' %}<i class="bi bi-caret-{% if current_order == 'asc' %}up{% else %}down{% endif %}-fill"></i>{% endif %}
                     </a>
                 </th>
+                <th class="text-center" style="width: 80px;">Solution</th>
             </tr>
         </thead>
         <tbody>
             {% for item in items %}
-            <tr onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">
-                <td>{{ item.id }}</td>
-                <td>{{ item.title }}</td>
-                <td>{{ item.type.name }}</td>
-                <td>
+            <tr>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.id }}</td>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.title }}</td>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.type.name }}</td>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">
                     <span class="badge bg-secondary">{{ item.get_status_display }}</span>
                 </td>
-                <td>{{ item.assigned_to.name|default:"Unassigned" }}</td>
-                <td>{{ item.updated_at|date:"d.m.Y H:i" }}</td>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.assigned_to.name|default:"Unassigned" }}</td>
+                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.updated_at|date:"d.m.Y H:i" }}</td>
+                <td class="text-center">
+                    {% if item.solution_description|trim %}
+                    <button type="button" class="btn btn-sm btn-outline-info" 
+                            data-bs-toggle="modal" 
+                            data-bs-target="#solutionModal{{ item.id }}"
+                            title="View Solution Description"
+                            aria-label="View solution description for issue {{ item.id }}"
+                            onclick="event.stopPropagation();">
+                        <i class="bi bi-lightbulb"></i>
+                    </button>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -129,6 +143,34 @@
     </ul>
 </nav>
 {% endif %}
+
+<!-- Solution Description Modals -->
+{% for item in items %}
+{% if item.solution_description|trim %}
+<div class="modal fade" id="solutionModal{{ item.id }}" tabindex="-1" aria-labelledby="solutionModalLabel{{ item.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="solutionModalLabel{{ item.id }}">Solution Description</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <strong>Issue #{{ item.id }}:</strong> {{ item.title }}
+                </div>
+                <hr>
+                <div class="solution-content">
+                    {{ item.solution_description|render_markdown }}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
 
 {% else %}
 <div class="alert alert-info">
