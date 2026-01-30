@@ -1742,6 +1742,170 @@ def item_delete_attachment(request, attachment_id):
 
 
 @login_required
+@require_POST
+def item_upload_transcript(request, item_id):
+    """Upload a .docx meeting transcript and extract summary and tasks."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Verify this is a meeting item
+    if item.type.key.lower() != 'meeting':
+        return JsonResponse({
+            'success': False,
+            'error': 'This feature is only available for Meeting items.'
+        }, status=400)
+    
+    # Check for uploaded file
+    if 'file' not in request.FILES:
+        return JsonResponse({
+            'success': False,
+            'error': 'No file provided.'
+        }, status=400)
+    
+    uploaded_file = request.FILES['file']
+    
+    # Validate file extension
+    if not uploaded_file.name.lower().endswith('.docx'):
+        return JsonResponse({
+            'success': False,
+            'error': 'Only .docx files are supported. Please upload a Word document.'
+        }, status=400)
+    
+    try:
+        # Store attachment
+        storage_service = AttachmentStorageService()
+        attachment = storage_service.store_attachment(
+            file=uploaded_file,
+            target=item,
+            role=AttachmentRole.ITEM_FILE,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        
+        # Log attachment upload
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='attachment.uploaded',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f"Uploaded transcript: {attachment.original_name}",
+        )
+        
+        # Extract text from DOCX
+        from docx import Document
+        import io
+        
+        file_content = storage_service.read_attachment(attachment)
+        docx_file = io.BytesIO(file_content)
+        doc = Document(docx_file)
+        
+        # Extract all paragraphs
+        transcript_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
+        
+        if not transcript_text.strip():
+            return JsonResponse({
+                'success': False,
+                'error': 'The uploaded document appears to be empty.'
+            }, status=400)
+        
+        # Execute AI agent
+        agent_service = AgentService()
+        agent_response = agent_service.execute_agent(
+            filename='get-meeting-details.yml',
+            input_text=transcript_text,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Parse JSON response
+        try:
+            import json
+            # Remove markdown code blocks if present
+            clean_response = agent_response.strip()
+            if clean_response.startswith('```'):
+                # Extract JSON from markdown code block
+                lines = clean_response.split('\n')
+                clean_response = '\n'.join([line for line in lines if not line.startswith('```')])
+            
+            result = json.loads(clean_response)
+            
+            # Validate required fields
+            if 'Summary' not in result:
+                raise ValueError("Agent response missing 'Summary' field")
+            if 'Tasks' not in result or not isinstance(result['Tasks'], list):
+                # Allow missing or empty Tasks array
+                result['Tasks'] = []
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse agent response: {e}\nResponse: {agent_response}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to process the transcript. The AI response was invalid.'
+            }, status=500)
+        
+        # Update meeting description with summary
+        with transaction.atomic():
+            item.description = result['Summary']
+            item.save()
+            
+            # Log description update
+            activity_service.log(
+                verb='item.updated',
+                target=item,
+                actor=request.user if request.user.is_authenticated else None,
+                summary="Updated description from meeting transcript",
+            )
+            
+            # Create task items
+            tasks_created = 0
+            for task_data in result['Tasks']:
+                if 'Title' not in task_data:
+                    logger.warning(f"Skipping task without Title: {task_data}")
+                    continue
+                
+                # Get Task item type
+                try:
+                    task_type = ItemType.objects.get(key='task')
+                except ItemType.DoesNotExist:
+                    logger.error("ItemType 'task' not found in database")
+                    continue
+                
+                # Create child task item
+                task_item = Item.objects.create(
+                    project=item.project,
+                    parent=item,
+                    type=task_type,
+                    title=task_data['Title'],
+                    description=task_data.get('Description', ''),
+                    status=ItemStatus.INBOX,
+                    assigned_to=request.user if request.user.is_authenticated else None,
+                    requester=None,
+                )
+                
+                # Log task creation
+                activity_service.log(
+                    verb='item.created',
+                    target=task_item,
+                    actor=request.user if request.user.is_authenticated else None,
+                    summary=f"Created from meeting transcript",
+                )
+                
+                tasks_created += 1
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Transcript processed successfully. Created {tasks_created} task(s).',
+            'summary': result['Summary'],
+            'tasks_created': tasks_created
+        })
+        
+    except Exception as e:
+        logger.error(f"Transcript processing failed for item {item_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to process transcript: {str(e)}'
+        }, status=500)
+
+
+@login_required
 def item_view_attachment(request, attachment_id):
     """View an attachment (for viewable file types)."""
     try:

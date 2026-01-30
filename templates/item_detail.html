@@ -239,6 +239,30 @@
                                 <strong>Description:</strong>
                                 {% if user.is_authenticated and user.role == 'Agent' %}
                                 <div class="d-flex gap-2">
+                                    {% if item.type.key == 'meeting' %}
+                                    <button 
+                                        type="button"
+                                        class="btn btn-sm btn-outline-warning"
+                                        onclick="document.getElementById('transcript-file-input').click()"
+                                        id="upload-transcript-btn"
+                                        title="Upload a .docx meeting transcript to extract summary and tasks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-file-earmark-arrow-up me-1" viewBox="0 0 16 16">
+                                            <path d="M8.5 11.5a.5.5 0 0 1-1 0V7.707L6.354 8.854a.5.5 0 1 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 7.707V11.5z"/>
+                                            <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                                        </svg>
+                                        Transkript importieren
+                                        <span id="transcript-upload-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </span>
+                                    </button>
+                                    <input 
+                                        type="file" 
+                                        id="transcript-file-input" 
+                                        name="file"
+                                        accept=".docx"
+                                        style="display: none;"
+                                        onchange="uploadTranscript()">
+                                    {% endif %}
                                     <button 
                                         type="button"
                                         class="btn btn-sm btn-outline-info"
@@ -850,6 +874,61 @@
                 showToast('error', 'An error occurred while deleting the item');
             });
         }
+    }
+    
+    // Upload transcript for meeting items
+    function uploadTranscript() {
+        const fileInput = document.getElementById('transcript-file-input');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            return;
+        }
+        
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.docx')) {
+            showToast('error', 'Bitte nur .docx Dateien hochladen');
+            fileInput.value = '';
+            return;
+        }
+        
+        // Show spinner
+        const spinner = document.getElementById('transcript-upload-spinner');
+        const uploadBtn = document.getElementById('upload-transcript-btn');
+        spinner.style.display = 'inline-block';
+        uploadBtn.disabled = true;
+        
+        // Create FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        // Upload file
+        fetch('{% url 'item-upload-transcript' item.id %}', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(data => {
+            spinner.style.display = 'none';
+            uploadBtn.disabled = false;
+            fileInput.value = '';
+            
+            if (data.success) {
+                showToast('success', data.message || 'Transkript erfolgreich verarbeitet!');
+                // Reload page to show updated description and tasks
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast('error', data.error || 'Fehler beim Verarbeiten des Transkripts');
+            }
+        })
+        .catch(error => {
+            spinner.style.display = 'none';
+            uploadBtn.disabled = false;
+            fileInput.value = '';
+            showToast('error', 'Netzwerkfehler beim Hochladen');
+            console.error('Upload error:', error);
+        });
     }
     
     // Pre-Review functions

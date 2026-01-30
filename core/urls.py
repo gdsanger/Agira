@@ -63,6 +63,7 @@ urlpatterns = [
     path('items/comments/<int:comment_id>/email/prepare-forward/', views.email_prepare_forward, name='email-prepare-forward'),
     path('items/email/send/', views.email_send_reply, name='email-send-reply'),
     path('items/<int:item_id>/upload-attachment/', views.item_upload_attachment, name='item-upload-attachment'),
+    path('items/<int:item_id>/upload-transcript/', views.item_upload_transcript, name='item-upload-transcript'),
     path('items/attachments/<int:attachment_id>/delete/', views.item_delete_attachment, name='item-delete-attachment'),
     path('items/attachments/<int:attachment_id>/view/', views.item_view_attachment, name='item-view-attachment'),
     path('items/attachments/<int:attachment_id>/download/', views.item_download_attachment, name='item-download-attachment'),
