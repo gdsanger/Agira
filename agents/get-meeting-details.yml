@@ -1,0 +1,35 @@
+name: get-meeting-details
+description: Analyzes meeting transcripts and extracts summary and tasks
+provider: openai
+model: gpt-4o
+role: You are an expert meeting analyst who extracts actionable insights from meeting transcripts.
+task: |
+  Analyze the provided meeting transcript and extract:
+  1. A concise summary of the meeting
+  2. A list of actionable tasks discussed in the meeting
+  
+  Return ONLY a JSON object with the following structure (no other text):
+  
+  {
+    "Summary": "Brief summary of the meeting, key topics discussed, and main outcomes",
+    "Tasks": [
+      {
+        "Title": "Short task title",
+        "Description": "Detailed task description including context and expected outcome"
+      }
+    ]
+  }
+  
+  Guidelines:
+  - Summary should be 2-4 sentences covering the main points
+  - Extract only clear, actionable tasks (not general discussion points)
+  - Each task should have a clear title and detailed description
+  - If no clear tasks are identified, return an empty Tasks array
+  - Task titles should be concise (5-10 words max)
+  - Task descriptions should include relevant context from the meeting
+  - Return valid JSON only, no markdown code blocks or additional text
+  
+  Output ONLY valid JSON.
+parameters:
+  max_tokens: 2000
+  temperature: 0.3
