@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import views_azuread
+from . import views_embed
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -164,4 +165,11 @@ urlpatterns = [
     
     # Generic Attachment URLs (for global search results and direct links)
     path('attachments/<int:attachment_id>/', views.attachment_view, name='attachment-view'),
+    
+    # Embed Portal URLs (token-based external access)
+    path('embed/projects/<int:project_id>/issues/', views_embed.embed_project_issues, name='embed-project-issues'),
+    path('embed/issues/<int:issue_id>/', views_embed.embed_issue_detail, name='embed-issue-detail'),
+    path('embed/projects/<int:project_id>/issues/create/', views_embed.embed_issue_create_form, name='embed-issue-create-form'),
+    path('embed/projects/<int:project_id>/issues/create/submit/', views_embed.embed_issue_create, name='embed-issue-create'),
+    path('embed/issues/<int:issue_id>/comments/', views_embed.embed_issue_add_comment, name='embed-issue-add-comment'),
 ]

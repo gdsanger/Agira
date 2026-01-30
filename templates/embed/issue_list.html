@@ -1,0 +1,51 @@
+{% extends "embed/base.html" %}
+
+{% block title %}Issues - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <h2 class="h4">Issues</h2>
+    </div>
+    <div class="col-auto">
+        <a href="{% url 'embed-issue-create-form' project.id %}?token={{ token }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> New Issue
+        </a>
+    </div>
+</div>
+
+{% if items %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Assigned To</th>
+                <th>Updated</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">
+                <td>{{ item.id }}</td>
+                <td>{{ item.title }}</td>
+                <td>{{ item.type.name }}</td>
+                <td>
+                    <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+                </td>
+                <td>{{ item.assigned_to.name|default:"Unassigned" }}</td>
+                <td>{{ item.updated_at|date:"d.m.Y H:i" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> No issues found. <a href="{% url 'embed-issue-create-form' project.id %}?token={{ token }}">Create the first issue</a>
+</div>
+{% endif %}
+{% endblock %}

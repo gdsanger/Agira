@@ -1,0 +1,52 @@
+{% extends "embed/base.html" %}
+
+{% block title %}Create Issue - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{% url 'embed-project-issues' project.id %}?token={{ token }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to List
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="h5 mb-0">Create New Issue</h2>
+    </div>
+    <div class="card-body">
+        <!-- Note: CSRF protection is not used for embed endpoints. Security is provided by the embed token. -->
+        <form method="post" action="{% url 'embed-issue-create' project.id %}?token={{ token }}">
+            <div class="mb-3">
+                <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                <input type="text" name="title" id="title" class="form-control" required maxlength="500">
+            </div>
+            
+            <div class="mb-3">
+                <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
+                <select name="type" id="type" class="form-select" required>
+                    <option value="">Select type...</option>
+                    {% for item_type in item_types %}
+                    <option value="{{ item_type.id }}">{{ item_type.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="description" class="form-label">Description</label>
+                <textarea name="description" id="description" class="form-control" rows="6"></textarea>
+            </div>
+            
+            <input type="hidden" name="token" value="{{ token }}">
+            
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create Issue
+                </button>
+                <a href="{% url 'embed-project-issues' project.id %}?token={{ token }}" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
