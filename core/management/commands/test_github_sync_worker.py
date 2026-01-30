@@ -98,6 +98,10 @@ class GitHubSyncWorkerTestCase(TestCase):
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_syncs_issue_mappings(self, mock_service_class):
         """Test that command syncs issue mappings."""
+        # Set item to Closed status so it gets synced
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
         # Mock GitHub service
         mock_service = MagicMock()
         mock_service.is_enabled.return_value = True
@@ -139,6 +143,10 @@ class GitHubSyncWorkerTestCase(TestCase):
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_updates_item_status_when_issue_closed(self, mock_service_class):
         """Test that command updates Item status when issue is closed."""
+        # Set item to Closed status so it gets synced
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
         # Mock GitHub service
         mock_service = MagicMock()
         mock_service.is_enabled.return_value = True
@@ -174,12 +182,16 @@ class GitHubSyncWorkerTestCase(TestCase):
         # Reload item
         self.item.refresh_from_db()
         
-        # Verify status was updated
-        self.assertEqual(self.item.status, ItemStatus.TESTING)
+        # Verify status remains CLOSED (since it was already closed, shouldn't be updated to TESTING)
+        self.assertEqual(self.item.status, ItemStatus.CLOSED)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_links_prs_from_timeline(self, mock_service_class):
         """Test that command links PRs found in timeline."""
+        # Set item to Closed status so it gets synced
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
         # Mock GitHub service
         mock_service = MagicMock()
         mock_service.is_enabled.return_value = True
@@ -250,6 +262,10 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service_class
     ):
         """Test that command pushes to Weaviate when status changes."""
+        # Set item to Closed status so it gets synced
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
         # Mock Weaviate as available
         mock_weaviate_available.return_value = True
         mock_upsert.return_value = 'test-uuid-123'
@@ -293,13 +309,17 @@ class GitHubSyncWorkerTestCase(TestCase):
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_handles_batch_processing(self, mock_service_class):
         """Test that command processes mappings in batches."""
-        # Create multiple mappings
+        # Set the existing item to Closed
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Create multiple mappings with Closed status
         for i in range(5):
             item = Item.objects.create(
                 project=self.project,
                 title=f'Test Bug {i}',
                 type=self.item_type,
-                status=ItemStatus.WORKING,
+                status=ItemStatus.CLOSED,  # Set to Closed so they get synced
             )
             ExternalIssueMapping.objects.create(
                 item=item,
@@ -343,6 +363,10 @@ class GitHubSyncWorkerTestCase(TestCase):
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_dry_run_mode(self, mock_service_class):
         """Test that dry-run mode doesn't make changes."""
+        # Set item to Closed status so it would get synced
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
         # Mock GitHub service
         mock_service = MagicMock()
         mock_service.is_enabled.return_value = True
@@ -383,7 +407,11 @@ class GitHubSyncWorkerTestCase(TestCase):
     @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_filters_by_project(self, mock_service_class):
         """Test that command can filter by project ID."""
-        # Create another project and item
+        # Set item to Closed status
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Create another project and item with Closed status
         other_project = Project.objects.create(
             name='Other Project',
             github_owner='otherowner',
@@ -393,6 +421,7 @@ class GitHubSyncWorkerTestCase(TestCase):
             project=other_project,
             title='Other Bug',
             type=self.item_type,
+            status=ItemStatus.CLOSED,
         )
         other_mapping = ExternalIssueMapping.objects.create(
             item=other_item,
@@ -471,10 +500,68 @@ class GitHubSyncWorkerTestCase(TestCase):
         self.assertEqual(self.item.status, ItemStatus.CLOSED)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
-    def test_command_skips_all_github_calls_for_closed_items(self, mock_service_class):
-        """Test that command skips ALL GitHub API calls for items with Closed status."""
-        # Set item to Closed status
+    def test_command_only_syncs_recently_closed_items(self, mock_service_class):
+        """Test that command only syncs items closed in the last 2 hours."""
+        from datetime import timedelta
+        
+        # Set item to Closed status and updated recently
         self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Create another closed item updated more than 2 hours ago
+        old_item = Item.objects.create(
+            project=self.project,
+            title='Old Closed Bug',
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+        )
+        old_mapping = ExternalIssueMapping.objects.create(
+            item=old_item,
+            github_id=99999,
+            number=999,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/999',
+        )
+        # Manually set updated_at to more than 2 hours ago
+        old_time = timezone.now() - timedelta(hours=3)
+        Item.objects.filter(id=old_item.id).update(updated_at=old_time)
+        
+        # Mock GitHub service
+        mock_service = MagicMock()
+        mock_service.is_enabled.return_value = True
+        mock_service.is_configured.return_value = True
+        mock_service._get_repo_info.return_value = ('testowner', 'testrepo')
+        mock_service.sync_mapping.return_value = self.mapping
+        mock_service_class.return_value = mock_service
+        
+        # Mock GitHub client
+        mock_client = MagicMock()
+        mock_client.get_issue_timeline.return_value = []
+        mock_client.get_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'state': 'closed',
+        }
+        mock_service._get_client.return_value = mock_client
+        
+        # Mock Weaviate
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
+            out = StringIO()
+            call_command('github_sync_worker', stdout=out)
+        
+        output = out.getvalue()
+        
+        # Should only sync the recent item (self.item), not the old item
+        self.assertIn('Found 1 issue mappings to sync', output)
+        self.assertIn('Issue #42', output)  # Recent item
+        self.assertNotIn('Issue #999', output)  # Old item should not be synced
+    
+    @patch('core.management.commands.github_sync_worker.GitHubService')
+    def test_command_does_not_sync_non_closed_items(self, mock_service_class):
+        """Test that command does not sync items that are not in Closed status."""
+        # Set item to Working status (not Closed)
+        self.item.status = ItemStatus.WORKING
         self.item.save()
         
         # Mock GitHub service
@@ -490,23 +577,15 @@ class GitHubSyncWorkerTestCase(TestCase):
         
         output = out.getvalue()
         
+        # Should not sync any items
+        self.assertIn('Found 0 issue mappings to sync', output)
+        
         # Verify no GitHub API calls were made
         mock_service.sync_mapping.assert_not_called()
-        mock_service._get_repo_info.assert_not_called()
-        mock_service._get_client.assert_not_called()
-        mock_service.upsert_mapping_from_github.assert_not_called()
-        
-        # Verify item status remains Closed
-        self.item.refresh_from_db()
-        self.assertEqual(self.item.status, ItemStatus.CLOSED)
-        
-        # Verify output shows item was skipped
-        self.assertIn('Skipped', output)
-        self.assertIn(f'Item #{self.item.id}', output)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
-    def test_command_logs_skipped_closed_items(self, mock_service_class):
-        """Test that command logs when items are skipped due to Closed status."""
+    def test_command_shows_time_threshold_in_output(self, mock_service_class):
+        """Test that command shows the time threshold in output."""
         # Set item to Closed status
         self.item.status = ItemStatus.CLOSED
         self.item.save()
@@ -517,44 +596,10 @@ class GitHubSyncWorkerTestCase(TestCase):
         mock_service.is_configured.return_value = True
         mock_service_class.return_value = mock_service
         
-        # Mock Weaviate
-        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
-            with self.assertLogs('core.management.commands.github_sync_worker', level='INFO') as cm:
-                out = StringIO()
-                call_command('github_sync_worker', stdout=out)
-                
-                # Verify log message contains the right information
-                log_messages = '\n'.join(cm.output)
-                self.assertIn('Skipping sync', log_messages)
-                self.assertIn(f'Item #{self.item.id}', log_messages)
-                self.assertIn(f'Issue #{self.mapping.number}', log_messages)
-                self.assertIn('Closed', log_messages)
-    
-    @patch('core.management.commands.github_sync_worker.GitHubService')
-    def test_command_updates_status_for_non_closed_items(self, mock_service_class):
-        """Test that command still updates status for items not in Closed status."""
-        # Set item to Working status (not Closed)
-        self.item.status = ItemStatus.WORKING
-        self.item.save()
-        
-        # Mock GitHub service
-        mock_service = MagicMock()
-        mock_service.is_enabled.return_value = True
-        mock_service.is_configured.return_value = True
-        mock_service._get_repo_info.return_value = ('testowner', 'testrepo')
-        mock_service.sync_mapping.side_effect = self._mock_sync_mapping_close
-        mock_service_class.return_value = mock_service
-        
         # Mock GitHub client
         mock_client = MagicMock()
         mock_client.get_issue_timeline.return_value = []
-        mock_client.get_issue.return_value = {
-            'id': 12345,
-            'number': 42,
-            'title': 'Test Issue',
-            'body': 'Test body',
-            'state': 'closed',
-        }
+        mock_client.get_issue.return_value = {'id': 12345, 'number': 42, 'state': 'closed'}
         mock_service._get_client.return_value = mock_client
         
         # Mock Weaviate
@@ -562,11 +607,11 @@ class GitHubSyncWorkerTestCase(TestCase):
             out = StringIO()
             call_command('github_sync_worker', stdout=out)
         
-        # Reload item
-        self.item.refresh_from_db()
+        output = out.getvalue()
         
-        # Verify status was updated to Testing
-        self.assertEqual(self.item.status, ItemStatus.TESTING)
+        # Verify time threshold is shown in output
+        self.assertIn('Filtering to items closed in the last 2 hours', output)
+
 
 
 class GitHubSyncWorkerHelperMethodsTestCase(TestCase):

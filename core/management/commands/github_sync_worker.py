@@ -6,9 +6,11 @@ updates Item statuses, links PRs, and pushes content to Weaviate.
 """
 
 import logging
+from datetime import timedelta
 from typing import Optional, Dict, Any, List
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from core.models import (
     ExternalIssueMapping,
@@ -26,6 +28,10 @@ from core.services.weaviate.service import (
 from core.services.weaviate import is_available
 
 logger = logging.getLogger(__name__)
+
+# Time threshold for filtering recently closed items
+# Only items closed within this time window will be synced to avoid rate limits
+RECENTLY_CLOSED_THRESHOLD_HOURS = 2
 
 
 class Command(BaseCommand):
@@ -82,6 +88,9 @@ class Command(BaseCommand):
         self.stdout.write("Syncing GitHub Issues and Pull Requests")
         self.stdout.write("=" * 60)
 
+        # Calculate time threshold for recently closed items
+        time_threshold = timezone.now() - timedelta(hours=RECENTLY_CLOSED_THRESHOLD_HOURS)
+        
         # Build queryset
         queryset = ExternalIssueMapping.objects.select_related('item', 'item__project')
         
@@ -91,6 +100,20 @@ class Command(BaseCommand):
         
         # Only process ISSUE kind (not PRs directly, they are linked via issues)
         queryset = queryset.filter(kind=ExternalIssueKind.ISSUE)
+        
+        # Filter to only recently closed items to avoid GitHub API rate limits
+        # Only sync items that:
+        # 1. Are in CLOSED status
+        # 2. Were updated within the last N hours (configured by RECENTLY_CLOSED_THRESHOLD_HOURS)
+        queryset = queryset.filter(
+            item__status=ItemStatus.CLOSED,
+            item__updated_at__gte=time_threshold
+        )
+        
+        self.stdout.write(
+            f"Filtering to items closed in the last {RECENTLY_CLOSED_THRESHOLD_HOURS} hours "
+            f"(since {time_threshold.strftime('%Y-%m-%d %H:%M:%S')})"
+        )
         
         total = queryset.count()
         self.stdout.write(f"Found {total} issue mappings to sync")
@@ -183,21 +206,6 @@ class Command(BaseCommand):
         }
 
         item = mapping.item
-        
-        # Early exit: Skip synchronization for items with Closed status
-        # Items in Closed status are functionally complete and should not be synced
-        # to avoid unnecessary GitHub API calls
-        if item.status == ItemStatus.CLOSED:
-            logger.info(
-                f"Skipping sync for Item #{item.id} (ExternalIssueMapping #{mapping.id}, "
-                f"Issue #{mapping.number}) - Item status is Closed"
-            )
-            self.stdout.write(
-                self.style.WARNING(
-                    f"  Issue #{mapping.number}: Skipped (Item #{item.id} is Closed)"
-                )
-            )
-            return result
         
         old_mapping_state = mapping.state
         old_item_status = item.status
