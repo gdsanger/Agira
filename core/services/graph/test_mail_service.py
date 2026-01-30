@@ -276,8 +276,8 @@ class SendEmailTestCase(TestCase):
         self.assertEqual(comment.kind, CommentKind.EMAIL_OUT)
         # Subject should include issue ID prefix
         self.assertEqual(comment.subject, f'[AGIRA-{self.item.id}] Test Email')
-        # Body should now be stored for display
-        self.assertEqual(comment.body, '<p>Test body</p>')
+        # Body should store plain text (HTML tags stripped for display)
+        self.assertEqual(comment.body, 'Test body')
         self.assertEqual(comment.body_html, '<p>Test body</p>')
         self.assertEqual(comment.delivery_status, EmailDeliveryStatus.SENT)
         self.assertIsNotNone(comment.sent_at)
