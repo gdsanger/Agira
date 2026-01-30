@@ -9,7 +9,7 @@ from .models import (
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
-    ExternalIssueKind, MailTemplate
+    ExternalIssueKind, MailTemplate, OrganisationEmbedProject
 )
 from core.services.github.service import GitHubService
 from core.services.integrations.base import IntegrationError
@@ -20,6 +20,27 @@ class UserOrganisationInline(admin.TabularInline):
     model = UserOrganisation
     extra = 1
     autocomplete_fields = ['organisation']
+
+
+class OrganisationEmbedProjectInline(admin.TabularInline):
+    model = OrganisationEmbedProject
+    extra = 0
+    autocomplete_fields = ['project']
+    readonly_fields = ['embed_token_display', 'created_at', 'updated_at']
+    fields = ['project', 'is_enabled', 'embed_token_display', 'updated_at']
+    
+    def embed_token_display(self, obj):
+        """Display masked token with copy button"""
+        if obj and obj.embed_token:
+            # Show first 8 and last 8 characters
+            masked = f"{obj.embed_token[:8]}...{obj.embed_token[-8:]}"
+            return format_html(
+                '<span title="{}">{}</span>',
+                obj.embed_token,
+                masked
+            )
+        return '-'
+    embed_token_display.short_description = 'Embed Token'
 
 
 class ChangeApprovalInline(admin.TabularInline):
@@ -50,7 +71,7 @@ class ItemCommentInline(admin.TabularInline):
 class OrganisationAdmin(admin.ModelAdmin):
     list_display = ['name']
     search_fields = ['name']
-    inlines = [UserOrganisationInline]
+    inlines = [UserOrganisationInline, OrganisationEmbedProjectInline]
 
 
 @admin.register(ItemType)
@@ -542,3 +563,50 @@ class MailTemplateAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(OrganisationEmbedProject)
+class OrganisationEmbedProjectAdmin(admin.ModelAdmin):
+    list_display = ['organisation', 'project', 'is_enabled', 'embed_token_masked', 'updated_at']
+    list_filter = ['is_enabled', 'organisation', 'updated_at']
+    search_fields = ['organisation__name', 'project__name', 'embed_token']
+    autocomplete_fields = ['organisation', 'project']
+    readonly_fields = ['embed_token', 'created_at', 'updated_at']
+    actions = ['rotate_token']
+    
+    fieldsets = (
+        (None, {'fields': ('organisation', 'project', 'is_enabled')}),
+        ('Token', {'fields': ('embed_token',)}),
+        ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+    
+    def embed_token_masked(self, obj):
+        """Display masked token for list view"""
+        if obj.embed_token:
+            # Show first 8 and last 8 characters
+            masked = f"{obj.embed_token[:8]}...{obj.embed_token[-8:]}"
+            return format_html(
+                '<span title="Click to copy full token" style="cursor: help;">{}</span>',
+                masked
+            )
+        return '-'
+    embed_token_masked.short_description = 'Embed Token'
+    
+    def rotate_token(self, request, queryset):
+        """
+        Admin action to rotate (regenerate) embed tokens.
+        Generates a new token for each selected embed access.
+        """
+        count = 0
+        for embed in queryset:
+            # Clear the token to trigger auto-generation on save
+            embed.embed_token = None
+            embed.save()
+            count += 1
+        
+        self.message_user(
+            request,
+            f"Successfully rotated {count} embed token(s). Old tokens are now invalid.",
+            level=messages.SUCCESS
+        )
+    rotate_token.short_description = "Rotate embed token (invalidates old token)"
