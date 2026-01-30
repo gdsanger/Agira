@@ -1,6 +1,19 @@
 {% extends "embed/base.html" %}
+{% load agira_filters %}
 
 {% block title %}{{ item.title }} - {{ project.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .jump-to-comments-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="mb-3">
@@ -8,6 +21,11 @@
         <i class="bi bi-arrow-left"></i> Back to List
     </a>
 </div>
+
+<!-- Jump to Comments Button (Fixed) -->
+<a href="#comments" class="btn btn-primary jump-to-comments-btn">
+    <i class="bi bi-chat-dots"></i> Jump to Comments
+</a>
 
 <div class="card mb-4">
     <div class="card-header">
@@ -21,17 +39,29 @@
                 <p class="mb-1"><strong>Status:</strong> <span class="badge bg-secondary">{{ item.get_status_display }}</span></p>
             </div>
             <div class="col-md-6">
+                <p class="mb-1"><strong>Requester:</strong> {{ item.requester.name|default:"Unknown" }}</p>
                 <p class="mb-1"><strong>Assigned To:</strong> {{ item.assigned_to.name|default:"Unassigned" }}</p>
                 <p class="mb-1"><strong>Created:</strong> {{ item.created_at|date:"d.m.Y H:i" }}</p>
                 <p class="mb-1"><strong>Updated:</strong> {{ item.updated_at|date:"d.m.Y H:i" }}</p>
             </div>
         </div>
         
+        {% if item.solution_description %}
+        <div class="alert alert-success d-flex justify-content-between align-items-center" role="alert">
+            <div>
+                <i class="bi bi-check-circle-fill"></i> <strong>Solution Available</strong>
+            </div>
+            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#solutionModal">
+                <i class="bi bi-eye"></i> View Solution
+            </button>
+        </div>
+        {% endif %}
+        
         {% if item.description %}
         <div class="mt-3">
             <h6>Description</h6>
             <div class="border-start border-3 ps-3">
-                {{ item.description|linebreaks }}
+                {{ item.description|render_markdown }}
             </div>
         </div>
         {% endif %}
@@ -39,7 +69,7 @@
 </div>
 
 <!-- Comments Section -->
-<div class="card">
+<div class="card" id="comments">
     <div class="card-header">
         <h3 class="h6 mb-0">Comments</h3>
     </div>
@@ -73,4 +103,26 @@
         </form>
     </div>
 </div>
+
+<!-- Solution Description Modal -->
+{% if item.solution_description %}
+<div class="modal fade" id="solutionModal" tabindex="-1" aria-labelledby="solutionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="solutionModalLabel">
+                    <i class="bi bi-check-circle"></i> Solution Description
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {{ item.solution_description|render_markdown }}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

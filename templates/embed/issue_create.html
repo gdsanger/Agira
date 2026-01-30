@@ -32,8 +32,20 @@
             </div>
             
             <div class="mb-3">
+                <label for="requester" class="form-label">Requester <span class="text-danger">*</span></label>
+                <select name="requester" id="requester" class="form-select" required>
+                    <option value="">Select requester...</option>
+                    {% for user in org_users %}
+                    <option value="{{ user.id }}">{{ user.name }} ({{ user.email }})</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Select the person who is requesting this issue</div>
+            </div>
+            
+            <div class="mb-3">
                 <label for="description" class="form-label">Description</label>
                 <textarea name="description" id="description" class="form-control" rows="6"></textarea>
+                <div class="form-text">Supports Markdown formatting</div>
             </div>
             
             <input type="hidden" name="token" value="{{ token }}">
