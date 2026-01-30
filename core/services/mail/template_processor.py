@@ -27,6 +27,7 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     - {{ issue.title }} - Item title
     - {{ issue.description }} - Item description
     - {{ issue.solution_description }} - Solution description (or empty if not set)
+    - {{ solution_description }} - Solution description (backward compatibility alias, use {{ issue.solution_description }} for consistency)
     - {{ issue.status }} - Item status (display name)
     - {{ issue.type }} - Item type name
     - {{ issue.project }} - Project name
@@ -74,6 +75,9 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
         '{{ issue.title }}': html.escape(item.title or ''),
         '{{ issue.description }}': html.escape(item.description or ''),
         '{{ issue.solution_description }}': html.escape(item.solution_description or ''),
+        # Special case: Support non-prefixed {{ solution_description }} for backward compatibility
+        # This addresses Issue #261 where users were using the non-prefixed format
+        '{{ solution_description }}': html.escape(item.solution_description or ''),
         '{{ issue.status }}': html.escape(item.get_status_display() or ''),
         '{{ issue.type }}': html.escape(item.type.name if item.type else ''),
         '{{ issue.project }}': html.escape(item.project.name if item.project else ''),

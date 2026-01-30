@@ -1,13 +1,24 @@
-# Mail Template Variable Replacement - Issue #112 Final Resolution
+# Mail Template Variable Replacement - Issue #112 & #134 Final Resolution
 
 ## Summary
 
-**Issue #112 has been fully resolved.** All three variables are now correctly implemented and tested:
+**Issue #112 and #134 have been fully resolved.** All variables are now correctly implemented and tested:
 
 1. ✅ `{{ issue.description }}` - Replaces with full item description
 2. ✅ `{{ issue.solution_description }}` - Replaces with solution description (Issue #134)
-3. ✅ `{{ issue.organisation }}` - Replaces with requester's **primary** organisation name  
-4. ✅ `{{ issue.solution_release }}` - Replaces with "Name - Version X.X.X - Planned: YYYY-MM-DD"
+3. ✅ `{{ solution_description }}` - Alias without prefix (Issue #134, #261)
+4. ✅ `{{ issue.organisation }}` - Replaces with requester's **primary** organisation name  
+5. ✅ `{{ issue.solution_release }}` - Replaces with "Name - Version X.X.X - Planned: YYYY-MM-DD"
+
+## Latest Update (Issue #261)
+
+Added support for the non-prefixed version of the solution description variable for **backward compatibility**:
+- **Recommended:** `{{ issue.solution_description }}` (with `issue.` prefix - consistent with all other variables)
+- **Backward Compatibility:** `{{ solution_description }}` (without prefix - supported for existing templates)
+- **Both formats** work identically and can be used in the same template
+- This resolves the issue where `{{ solution_description }}` was not being replaced in emails
+
+**Note:** Only `solution_description` supports the non-prefixed format. All other variables (title, description, status, etc.) require the `{{ issue.* }}` prefix for consistency. The non-prefixed version is provided solely for backward compatibility with existing templates that may use this format.
 
 ## Changes Made
 
@@ -33,8 +44,8 @@ This file contains the `process_template()` function that handles all variable r
 
 ### Unit Tests
 - **File:** `core/test_template_processor.py`
-- **Tests:** 12/12 passing ✅
-- **Coverage:** All three variables + edge cases
+- **Tests:** 18/18 passing ✅
+- **Coverage:** All variables + edge cases + non-prefixed format
 
 ### Integration Test
 Created comprehensive integration test simulating real-world usage:
@@ -101,11 +112,13 @@ Best regards,
 {{ issue.project }} Team
 ```
 
+**Note:** For backward compatibility, `{{ solution_description }}` (without `issue.` prefix) also works, but `{{ issue.solution_description }}` is recommended for consistency with other variables.
+
 ### Important: Data Requirements
 For variables to be replaced with actual values, the Item must have the corresponding data:
 
 - `{{ issue.description }}` → Item must have `description` field set
-- `{{ issue.solution_description }}` → Item must have `solution_description` field set
+- `{{ issue.solution_description }}` or `{{ solution_description }}` → Item must have `solution_description` field set
 - `{{ issue.organisation }}` → Item's requester must have a **primary organisation** set via UserOrganisation
 - `{{ issue.solution_release }}` → Item must have `solution_release` foreign key set to a Release object
 
@@ -116,13 +129,14 @@ If data is missing, the variable is replaced with an empty string (not an error)
 If variables appear not to be working:
 
 1. **Check Template Syntax**
-   - Recommended: `{{ issue.variable }}` (with spaces - more readable)
+   - Recommended: `{{ issue.variable }}` (with spaces and prefix - more readable and consistent)
    - Also works: `{{issue.variable}}` (without spaces)
+   - Special case: `{{ solution_description }}` also works (backward compatibility only)
    - Does NOT work: `{issue.variable}` (single braces)
 
 2. **Check Data Availability**
    - For description: `item.description` must be set
-   - For solution description: `item.solution_description` must be set
+   - For solution description: `item.solution_description` must be set (works with both `{{ issue.solution_description }}` and `{{ solution_description }}`)
    - For organisation: `item.requester` must exist AND have a primary organisation
    - For release: `item.solution_release` must be set
 
