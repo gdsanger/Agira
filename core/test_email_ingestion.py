@@ -609,3 +609,158 @@ class EmailReplyHandlingTestCase(TestCase):
         # Verify no comment was created on original item
         comments = ItemComment.objects.filter(item=self.item)
         self.assertEqual(comments.count(), 0)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_user_input_stored_with_html_body(self, mock_agent_service, mock_get_client):
+        """Test that user_input field is populated with original HTML body."""
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent_instance = Mock()
+        mock_agent_instance.execute_agent.side_effect = [
+            "Converted markdown",  # HTML to Markdown conversion
+            json.dumps({'project': 'TestProject', 'type': 'task'}),  # Classification
+        ]
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Create message with HTML body
+        html_body = '<h1>Test Header</h1><p>This is the original HTML content</p>'
+        message = {
+            'id': 'msg-html-test',
+            'subject': 'Test HTML Email',
+            'from': {
+                'emailAddress': {
+                    'address': 'sender@test.com',
+                    'name': 'Test Sender',
+                }
+            },
+            'body': {
+                'content': html_body,
+                'contentType': 'html',
+            },
+            'isRead': False,
+        }
+        
+        # Process message
+        with patch.object(service, '_send_confirmation_email'):
+            item = service._process_message(message)
+        
+        # Verify user_input contains original HTML
+        self.assertIsNotNone(item)
+        self.assertEqual(item.user_input, html_body)
+        self.assertEqual(item.description, "Converted markdown")
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_user_input_stored_with_text_body(self, mock_agent_service, mock_get_client):
+        """Test that user_input field is populated with text body when no HTML."""
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service for classification
+        mock_agent_instance = Mock()
+        mock_agent_instance.execute_agent.return_value = json.dumps({
+            'project': 'TestProject',
+            'type': 'task'
+        })
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Create message with text body
+        text_body = 'This is plain text email content'
+        message = {
+            'id': 'msg-text-test',
+            'subject': 'Test Text Email',
+            'from': {
+                'emailAddress': {
+                    'address': 'sender@test.com',
+                    'name': 'Test Sender',
+                }
+            },
+            'body': {
+                'content': text_body,
+                'contentType': 'text',
+            },
+            'isRead': False,
+        }
+        
+        # Process message
+        with patch.object(service, '_send_confirmation_email'):
+            item = service._process_message(message)
+        
+        # Verify user_input contains original text
+        self.assertIsNotNone(item)
+        self.assertEqual(item.user_input, text_body)
+        self.assertEqual(item.description, text_body)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_user_input_not_modified_on_followup(self, mock_agent_service, mock_get_client):
+        """Test that user_input is not modified when processing follow-up emails."""
+        # Create an existing item with user_input
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass',
+            name='Test User',
+        )
+        
+        original_user_input = '<h1>Original Email</h1><p>Original content</p>'
+        item = Item.objects.create(
+            project=self.project,
+            title='Original Item',
+            description='Original description',
+            user_input=original_user_input,
+            type=self.task_type,
+            requester=user,
+            status=ItemStatus.INBOX,
+        )
+        
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service for HTML to markdown (for comment)
+        mock_agent_instance = Mock()
+        mock_agent_instance.execute_agent.return_value = "Follow-up in markdown"
+        mock_agent_service.return_value = mock_agent_instance
+        
+        service = EmailIngestionService()
+        
+        # Create follow-up message (with issue ID in subject)
+        followup_message = {
+            'id': 'msg-followup',
+            'subject': f'Re: [AGIRA-{item.id}] Original Item',
+            'from': {
+                'emailAddress': {
+                    'address': 'sender@test.com',
+                    'name': 'Test Sender',
+                }
+            },
+            'body': {
+                'content': '<p>This is a follow-up reply</p>',
+                'contentType': 'html',
+            },
+            'isRead': False,
+        }
+        
+        # Process follow-up message
+        result = service._process_message(followup_message)
+        
+        # Reload item from database
+        item.refresh_from_db()
+        
+        # Verify user_input was NOT changed
+        self.assertEqual(item.user_input, original_user_input)
+        
+        # Verify a comment was created instead
+        comments = ItemComment.objects.filter(item=item)
+        self.assertEqual(comments.count(), 1)
+        self.assertEqual(comments.first().kind, CommentKind.EMAIL_IN)
