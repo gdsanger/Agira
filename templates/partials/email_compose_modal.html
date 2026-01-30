@@ -1,0 +1,316 @@
+<!-- Email Compose Modal -->
+<div class="modal fade" id="emailComposeModal" tabindex="-1" aria-labelledby="emailComposeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="emailComposeModalLabel">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-envelope me-2" viewBox="0 0 16 16">
+                        <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2zm13 2.383-4.758 2.855L15 11.114v-5.73zm-.034 6.878-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.739zM1 11.114l4.758-2.876L1 5.383v5.73z"/>
+                    </svg>
+                    <span id="emailModalAction">Email erstellen</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="emailComposeForm">
+                    <input type="hidden" id="emailItemId" name="item_id">
+                    <input type="hidden" id="emailInReplyTo" name="in_reply_to">
+                    
+                    <div class="mb-3">
+                        <label for="emailTo" class="form-label fw-bold">An: *</label>
+                        <input type="text" class="form-control" id="emailTo" name="to" 
+                               placeholder="empfaenger@beispiel.de; anderer@beispiel.de" required>
+                        <small class="text-muted">Mehrere Empfänger mit Semikolon (;) oder Komma (,) trennen</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="emailCc" class="form-label fw-bold">Cc:</label>
+                        <input type="text" class="form-control" id="emailCc" name="cc" 
+                               placeholder="kopie@beispiel.de">
+                        <small class="text-muted">Mehrere Empfänger mit Semikolon (;) oder Komma (,) trennen</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="emailSubject" class="form-label fw-bold">Betreff: *</label>
+                        <input type="text" class="form-control" id="emailSubject" name="subject" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="emailBody" class="form-label fw-bold">Nachricht: *</label>
+                        <textarea class="form-control" id="emailBody" name="body" rows="15"></textarea>
+                    </div>
+                    
+                    <div id="emailValidationError" class="alert alert-danger" style="display: none;"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                    Abbrechen
+                </button>
+                <button type="button" class="btn btn-primary" id="sendEmailBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send me-1" viewBox="0 0 16 16">
+                        <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/>
+                    </svg>
+                    <span id="sendEmailBtnText">E-Mail senden</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize TinyMCE for email body
+let emailTinyMCE = null;
+
+function initEmailComposeTinyMCE() {
+    if (emailTinyMCE) {
+        return; // Already initialized
+    }
+    
+    tinymce.init({
+        selector: '#emailBody',
+        height: 400,
+        plugins: [
+            'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+            'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+            'insertdatetime', 'media', 'table', 'help', 'wordcount'
+        ],
+        toolbar: 'undo redo | blocks | bold italic underline strikethrough | ' +
+                'alignleft aligncenter alignright alignjustify | ' +
+                'bullist numlist outdent indent | removeformat | code',
+        menubar: false,
+        skin: 'oxide-dark',
+        content_css: 'dark',
+        branding: false,
+        setup: function(editor) {
+            emailTinyMCE = editor;
+        }
+    });
+}
+
+// Email address validation
+function validateEmailAddress(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+}
+
+function parseEmailAddresses(emailString) {
+    if (!emailString || emailString.trim() === '') {
+        return [];
+    }
+    
+    // Split by semicolon or comma
+    const addresses = emailString.split(/[;,]/).map(addr => addr.trim()).filter(addr => addr !== '');
+    return addresses;
+}
+
+function validateEmailForm() {
+    const to = document.getElementById('emailTo').value;
+    const subject = document.getElementById('emailSubject').value;
+    const errorDiv = document.getElementById('emailValidationError');
+    
+    // Check required fields
+    if (!to.trim()) {
+        errorDiv.textContent = 'Bitte geben Sie mindestens einen Empfänger ein.';
+        errorDiv.style.display = 'block';
+        return false;
+    }
+    
+    if (!subject.trim()) {
+        errorDiv.textContent = 'Bitte geben Sie einen Betreff ein.';
+        errorDiv.style.display = 'block';
+        return false;
+    }
+    
+    // Validate To addresses
+    const toAddresses = parseEmailAddresses(to);
+    for (let addr of toAddresses) {
+        if (!validateEmailAddress(addr)) {
+            errorDiv.textContent = `Ungültige E-Mail-Adresse im "An"-Feld: ${addr}`;
+            errorDiv.style.display = 'block';
+            return false;
+        }
+    }
+    
+    // Validate CC addresses if provided
+    const cc = document.getElementById('emailCc').value;
+    if (cc.trim()) {
+        const ccAddresses = parseEmailAddresses(cc);
+        for (let addr of ccAddresses) {
+            if (!validateEmailAddress(addr)) {
+                errorDiv.textContent = `Ungültige E-Mail-Adresse im "Cc"-Feld: ${addr}`;
+                errorDiv.style.display = 'block';
+                return false;
+            }
+        }
+    }
+    
+    errorDiv.style.display = 'none';
+    return true;
+}
+
+// Open compose modal for reply/forward
+function openEmailComposeModal(action, commentId, itemId) {
+    // Initialize TinyMCE if not already done
+    initEmailComposeTinyMCE();
+    
+    const modal = new bootstrap.Modal(document.getElementById('emailComposeModal'));
+    const actionLabel = document.getElementById('emailModalAction');
+    const sendBtn = document.getElementById('sendEmailBtnText');
+    
+    // Set action label
+    if (action === 'reply') {
+        actionLabel.textContent = 'Antworten';
+        sendBtn.textContent = 'Antwort senden';
+    } else if (action === 'reply-all') {
+        actionLabel.textContent = 'Allen antworten';
+        sendBtn.textContent = 'Antwort senden';
+    } else if (action === 'forward') {
+        actionLabel.textContent = 'Weiterleiten';
+        sendBtn.textContent = 'Weiterleiten';
+    }
+    
+    // Fetch email data from server
+    let endpoint = '';
+    if (action === 'reply') {
+        endpoint = `/items/comments/${commentId}/email/prepare-reply/`;
+    } else if (action === 'reply-all') {
+        endpoint = `/items/comments/${commentId}/email/prepare-reply-all/`;
+    } else if (action === 'forward') {
+        endpoint = `/items/comments/${commentId}/email/prepare-forward/`;
+    }
+    
+    fetch(endpoint)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const emailData = data.data;
+                
+                // Populate form
+                document.getElementById('emailItemId').value = itemId;
+                document.getElementById('emailTo').value = emailData.to.join('; ');
+                document.getElementById('emailCc').value = emailData.cc.join('; ');
+                document.getElementById('emailSubject').value = emailData.subject;
+                document.getElementById('emailInReplyTo').value = emailData.in_reply_to || '';
+                
+                // Set body content in TinyMCE (wait for it to be ready)
+                if (emailTinyMCE) {
+                    emailTinyMCE.setContent(emailData.body);
+                } else {
+                    // Fallback to textarea
+                    document.getElementById('emailBody').value = emailData.body;
+                }
+                
+                // Clear validation error
+                document.getElementById('emailValidationError').style.display = 'none';
+                
+                // Show modal
+                modal.show();
+            } else {
+                alert('Fehler beim Laden der E-Mail-Daten: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error loading email data:', error);
+            alert('Fehler beim Laden der E-Mail-Daten');
+        });
+}
+
+// Send email
+document.addEventListener('DOMContentLoaded', function() {
+    const sendBtn = document.getElementById('sendEmailBtn');
+    
+    if (sendBtn) {
+        sendBtn.addEventListener('click', function() {
+            // Validate form
+            if (!validateEmailForm()) {
+                return;
+            }
+            
+            // Get form data
+            const itemId = document.getElementById('emailItemId').value;
+            const to = parseEmailAddresses(document.getElementById('emailTo').value);
+            const cc = parseEmailAddresses(document.getElementById('emailCc').value);
+            const subject = document.getElementById('emailSubject').value;
+            const inReplyTo = document.getElementById('emailInReplyTo').value;
+            
+            // Get body from TinyMCE
+            let body = '';
+            if (emailTinyMCE) {
+                body = emailTinyMCE.getContent();
+            } else {
+                body = document.getElementById('emailBody').value;
+            }
+            
+            // Disable send button
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Wird gesendet...';
+            
+            // Send email
+            fetch('/items/email/send/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    to: to,
+                    cc: cc,
+                    subject: subject,
+                    body: body,
+                    in_reply_to: inReplyTo
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('emailComposeModal'));
+                    modal.hide();
+                    
+                    // Show success message
+                    alert('E-Mail erfolgreich gesendet!');
+                    
+                    // Reload comments if on item detail page
+                    const commentsTab = document.getElementById('comments-list');
+                    if (commentsTab) {
+                        location.reload(); // Simple reload to show new comment
+                    }
+                } else {
+                    alert('Fehler beim Senden der E-Mail: ' + (data.error || 'Unbekannter Fehler'));
+                }
+            })
+            .catch(error => {
+                console.error('Error sending email:', error);
+                alert('Fehler beim Senden der E-Mail');
+            })
+            .finally(() => {
+                // Re-enable send button
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send me-1" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/></svg><span id="sendEmailBtnText">E-Mail senden</span>';
+            });
+        });
+    }
+});
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>

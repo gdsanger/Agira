@@ -199,8 +199,10 @@ def send_email(
             subject=subject,
             body=body if not body_is_html else "",
             body_html=body if body_is_html else "",
+            body_original_html=body if body_is_html else "",  # Store original HTML for forwarding
             external_from=sender,
-            external_to=", ".join(to),  # Store as comma-separated string
+            external_to="; ".join(to),  # Store as semicolon-separated string
+            external_cc="; ".join(cc) if cc else "",  # Store CC recipients
             delivery_status=EmailDeliveryStatus.QUEUED,
         )
         logger.info(f"Created ItemComment {comment.id} for outbound email")
