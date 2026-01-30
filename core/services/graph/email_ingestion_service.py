@@ -850,13 +850,13 @@ Email Body:
         conversation_id = message.get("conversationId", "")
         
         try:
+            # Get or create user first (outside the transaction to avoid conflicts)
+            user, _ = self._get_or_create_user_and_org(
+                email=sender_email,
+                name=sender_name,
+            )
+            
             with transaction.atomic():
-                # Get or create user
-                user, _ = self._get_or_create_user_and_org(
-                    email=sender_email,
-                    name=sender_name,
-                )
-                
                 # Process attachments (before creating comment so we can rewrite inline images)
                 content_id_map = self._process_attachments(
                     message_id=message_id,
