@@ -67,19 +67,24 @@ class EmbedFrameMiddlewareTestCase(TestCase):
     @override_settings(EMBED_ALLOWED_ORIGINS='https://app.ebner-vermietung.de')
     def test_embed_endpoint_csp_includes_allowed_origin(self):
         """Test that CSP includes the configured allowed origin"""
-        # Need to reload middleware for settings change
-        from importlib import reload
-        from core import middleware
-        reload(middleware)
-        
-        response = self.client.get(
-            f'/embed/projects/{self.project.id}/issues/',
-            {'token': self.valid_token}
-        )
-        
-        self.assertEqual(response.status_code, 200)
-        csp = response.get('Content-Security-Policy', '')
-        self.assertIn('https://app.ebner-vermietung.de', csp)
+        # Mock os.getenv to return our test value
+        from unittest.mock import patch
+        with patch('core.middleware.os.getenv') as mock_getenv:
+            mock_getenv.return_value = 'https://app.ebner-vermietung.de'
+            
+            # Reload middleware to pick up the mocked value
+            from importlib import reload
+            from core import middleware
+            reload(middleware)
+            
+            response = self.client.get(
+                f'/embed/projects/{self.project.id}/issues/',
+                {'token': self.valid_token}
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            csp = response.get('Content-Security-Policy', '')
+            self.assertIn('https://app.ebner-vermietung.de', csp)
 
     def test_non_embed_endpoint_has_frame_protection(self):
         """Test that non-embed endpoints still have X-Frame-Options"""
@@ -131,3 +136,34 @@ class EmbedFrameMiddlewareTestCase(TestCase):
         # Should have CSP frame-ancestors
         csp = response.get('Content-Security-Policy', '')
         self.assertIn('frame-ancestors', csp)
+
+    def test_csp_headers_are_preserved(self):
+        """Test that existing CSP headers are preserved and frame-ancestors is appended"""
+        from unittest.mock import patch
+        from django.test import RequestFactory
+        from core.middleware import EmbedFrameMiddleware
+        from django.http import HttpResponse
+        
+        # Create a request for an embed endpoint
+        factory = RequestFactory()
+        request = factory.get('/embed/projects/1/issues/')
+        
+        # Create a response with an existing CSP header
+        def get_response(req):
+            response = HttpResponse()
+            response['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'"
+            response['X-Frame-Options'] = 'DENY'
+            return response
+        
+        # Process through middleware
+        middleware = EmbedFrameMiddleware(get_response)
+        response = middleware.process_response(request, get_response(request))
+        
+        # Check that frame-ancestors was added
+        csp = response.get('Content-Security-Policy', '')
+        self.assertIn('frame-ancestors', csp)
+        # Check that existing directives are preserved
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("script-src 'self' 'unsafe-inline'", csp)
+        # Check that X-Frame-Options was removed
+        self.assertNotIn('X-Frame-Options', response)

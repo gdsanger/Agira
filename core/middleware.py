@@ -52,11 +52,25 @@ class EmbedFrameMiddleware(MiddlewareMixin):
             
             # Set Content-Security-Policy frame-ancestors to allow specific origins
             # This is the modern, standards-compliant way to control iframe embedding
+            frame_ancestors = None
             if self.allowed_origins:
                 origins_str = ' '.join(self.allowed_origins)
-                response['Content-Security-Policy'] = f"frame-ancestors {origins_str}"
+                frame_ancestors = f"frame-ancestors {origins_str}"
             else:
                 # If no origins configured, allow all (fallback)
-                response['Content-Security-Policy'] = "frame-ancestors *"
+                frame_ancestors = "frame-ancestors *"
+            
+            # Check if CSP header already exists and append to it
+            existing_csp = response.get('Content-Security-Policy', '')
+            if existing_csp:
+                # Append frame-ancestors to existing CSP
+                # Remove any existing frame-ancestors directive first
+                csp_parts = [part.strip() for part in existing_csp.split(';') if part.strip()]
+                csp_parts = [part for part in csp_parts if not part.startswith('frame-ancestors')]
+                csp_parts.append(frame_ancestors)
+                response['Content-Security-Policy'] = '; '.join(csp_parts)
+            else:
+                # No existing CSP, just set frame-ancestors
+                response['Content-Security-Policy'] = frame_ancestors
         
         return response
