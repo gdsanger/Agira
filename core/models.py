@@ -178,6 +178,7 @@ class Organisation(models.Model):
 class ItemType(models.Model):
     key = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, help_text='Description shown to customers when creating issues in the embed portal')
     is_active = models.BooleanField(default=True)
 
     class Meta:

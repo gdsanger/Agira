@@ -24,9 +24,8 @@
                 <label for="status" class="form-label">Status</label>
                 <select name="status" id="status" class="form-select">
                     <option value="">All Statuses</option>
-                    {% for status_key, status_label in status_choices %}
-                    <option value="{{ status_key }}" {% if status_key == current_status %}selected{% endif %}>{{ status_label }}</option>
-                    {% endfor %}
+                    <option value="closed" {% if current_status == 'closed' %}selected{% endif %}>Closed</option>
+                    <option value="not_closed" {% if current_status == 'not_closed' %}selected{% endif %}>Not Closed</option>
                 </select>
             </div>
             

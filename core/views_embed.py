@@ -78,7 +78,10 @@ def embed_project_issues(request, project_id):
     
     # Apply status filter
     if status_filter:
-        items = items.filter(status=status_filter)
+        if status_filter == 'closed':
+            items = items.filter(status=ItemStatus.CLOSED)
+        elif status_filter == 'not_closed':
+            items = items.exclude(status=ItemStatus.CLOSED)
     
     # Apply type filter
     if type_filter:
@@ -118,9 +121,6 @@ def embed_project_issues(request, project_id):
     # Get all item types for filter dropdown
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
-    # Get status choices
-    status_choices = ItemStatus.choices
-    
     context = {
         'project': embed_access.project,
         'items': page_obj,
@@ -128,7 +128,6 @@ def embed_project_issues(request, project_id):
         'organisation': embed_access.organisation,
         'token': token,
         'item_types': item_types,
-        'status_choices': status_choices,
         'current_status': status_filter,
         'current_type': type_filter,
         'current_search': search_query,
