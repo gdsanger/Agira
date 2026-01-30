@@ -421,3 +421,43 @@ class ItemMoveProjectTestCase(TestCase):
         self.assertEqual(latest_activity.action, 'item_moved')
         self.assertEqual(latest_activity.details['from_project'], self.project_a.name)
         self.assertEqual(latest_activity.details['to_project'], self.project_b.name)
+    
+    def test_move_item_with_invalid_project_id_fails(self):
+        """Test that moving to a non-existent project returns proper error."""
+        url = f'/items/{self.item.id}/move-project/'
+        data = {
+            'target_project_id': 99999,  # Non-existent project ID
+            'send_mail_to_requester': False
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        # Should return 404 with clear error message
+        self.assertEqual(response.status_code, 404)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('not found', response_data['error'].lower())
+        
+        # Verify item was NOT moved
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.project.id, self.project_a.id)
+    
+    def test_move_item_with_invalid_json_fails(self):
+        """Test that invalid JSON returns proper error."""
+        url = f'/items/{self.item.id}/move-project/'
+        
+        response = self.client.post(
+            url,
+            data='invalid json {',
+            content_type='application/json'
+        )
+        
+        # Should return 400 with clear error message
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('Invalid JSON', response_data['error'])

@@ -3,7 +3,7 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -2638,9 +2638,23 @@ def item_move_project(request, item_id):
         
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Http404:
+        return JsonResponse({'success': False, 'error': 'Target project not found'}, status=404)
+    except ValidationError as e:
+        logger.warning(f"Validation error moving item {item_id}: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except IntegrityError as e:
+        logger.error(f"Database integrity error moving item {item_id}: {str(e)}")
+        return JsonResponse({
+            'success': False, 
+            'error': 'Failed to move item due to database constraints. Please contact support.'
+        }, status=500)
     except Exception as e:
-        logger.error(f"Failed to move item {item_id}: {str(e)}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        logger.error(f"Failed to move item {item_id}: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False, 
+            'error': 'An unexpected error occurred while moving the item. Please try again or contact support.'
+        }, status=500)
 
 
 @login_required
