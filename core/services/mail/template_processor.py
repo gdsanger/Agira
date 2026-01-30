@@ -7,9 +7,106 @@ template variables with actual values from Item instances.
 
 import html
 from typing import TYPE_CHECKING
+import markdown
+import bleach
+from bleach.css_sanitizer import CSSSanitizer
+from django.utils.safestring import mark_safe
 
 if TYPE_CHECKING:
     from core.models import Item, MailTemplate
+
+
+# Allowed HTML tags and attributes for sanitization
+# (used when converting Markdown to HTML for solution_description)
+ALLOWED_TAGS = [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'strong', 'em', 'u', 'strike',
+    'ul', 'ol', 'li',
+    'blockquote', 'code', 'pre',
+    'a', 'img',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'
+]
+
+ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'title', 'target', 'rel', 'style'],
+    'img': ['src', 'alt', 'title', 'width', 'height', 'style'],
+    'code': ['class', 'style'],
+    'pre': ['class', 'style'],
+    'div': ['class', 'style'],
+    'span': ['class', 'style'],
+    'p': ['style'],
+    'h1': ['style'],
+    'h2': ['style'],
+    'h3': ['style'],
+    'h4': ['style'],
+    'h5': ['style'],
+    'h6': ['style'],
+    'td': ['style'],
+    'th': ['style'],
+    'tr': ['style'],
+    'table': ['style'],
+    'thead': ['style'],
+    'tbody': ['style'],
+    'ul': ['style'],
+    'ol': ['style'],
+    'li': ['style'],
+    'strong': ['style'],
+    'em': ['style'],
+    'u': ['style'],
+    'strike': ['style'],
+    'blockquote': ['style'],
+}
+
+# CSS properties that are allowed in inline styles
+ALLOWED_CSS_PROPERTIES = [
+    'color', 'background-color', 'font-size', 'font-weight', 'font-family', 'font-style',
+    'text-align', 'text-decoration', 'line-height', 'letter-spacing', 'vertical-align',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'border', 'border-width', 'border-style', 'border-color', 'border-radius',
+    'border-top', 'border-right', 'border-bottom', 'border-left',
+    'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
+    'display', 'float', 'clear', 'text-transform'
+]
+
+# Create a CSS sanitizer for safe inline styles
+css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES)
+
+
+def _convert_markdown_to_html(text):
+    """
+    Convert Markdown text to sanitized HTML.
+    
+    This function is specifically used for the solution_description field which
+    contains Markdown content that needs to be rendered as HTML in email templates.
+    
+    Args:
+        text: Markdown-formatted text
+        
+    Returns:
+        Safe HTML string (marked as safe to prevent double-escaping)
+    """
+    if not text:
+        return ""
+    
+    # Create a new markdown parser instance for thread safety
+    md_parser = markdown.Markdown(extensions=['extra', 'fenced_code'])
+    
+    # Convert markdown to HTML
+    html_content = md_parser.convert(text)
+    
+    # Sanitize HTML to prevent XSS attacks
+    sanitized_html = bleach.clean(
+        html_content,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        css_sanitizer=css_sanitizer,
+        strip=True
+    )
+    
+    # Mark as safe to prevent double-escaping in email templates
+    return mark_safe(sanitized_html)
 
 
 def process_template(template: "MailTemplate", item: "Item") -> dict:
@@ -17,6 +114,11 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     Process a mail template by replacing template variables with item data.
     
     User-provided data is HTML-escaped to prevent XSS vulnerabilities.
+    
+    Special handling for solution_description:
+    - The solution_description field contains Markdown content
+    - It is converted from Markdown to HTML before being inserted into email templates
+    - The HTML output is sanitized but NOT escaped (to preserve HTML tags)
     
     Note: To avoid N+1 queries when processing multiple items, callers should
     prefetch related data using:
@@ -26,8 +128,8 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     Supported variables:
     - {{ issue.title }} - Item title
     - {{ issue.description }} - Item description
-    - {{ issue.solution_description }} - Solution description (or empty if not set)
-    - {{ solution_description }} - Solution description (backward compatibility alias, use {{ issue.solution_description }} for consistency)
+    - {{ issue.solution_description }} - Solution description converted from Markdown to HTML
+    - {{ solution_description }} - Solution description (backward compatibility alias, converted from Markdown to HTML)
     - {{ issue.status }} - Item status (display name)
     - {{ issue.type }} - Item type name
     - {{ issue.project }} - Project name
@@ -71,13 +173,18 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
             parts.append(f"Planned: {date_str}")
         solution_release_info = ' - '.join(parts)
     
+    # Convert solution_description from Markdown to HTML
+    # This field contains Markdown content that needs to be rendered as HTML in emails
+    solution_description_html = _convert_markdown_to_html(item.solution_description or '')
+    
     replacements = {
         '{{ issue.title }}': html.escape(item.title or ''),
         '{{ issue.description }}': html.escape(item.description or ''),
-        '{{ issue.solution_description }}': html.escape(item.solution_description or ''),
+        # solution_description is converted from Markdown to HTML (not escaped)
+        '{{ issue.solution_description }}': solution_description_html,
         # Special case: Support non-prefixed {{ solution_description }} for backward compatibility
         # This addresses Issue #261 where users were using the non-prefixed format
-        '{{ solution_description }}': html.escape(item.solution_description or ''),
+        '{{ solution_description }}': solution_description_html,
         '{{ issue.status }}': html.escape(item.get_status_display() or ''),
         '{{ issue.type }}': html.escape(item.type.name if item.type else ''),
         '{{ issue.project }}': html.escape(item.project.name if item.project else ''),
