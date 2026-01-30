@@ -90,7 +90,7 @@
                             {% endif %}
                             
                             <!-- Body is hidden by default if there's a subject, shown when expanded -->
-                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap; {% if comment.subject %}display: none;{% endif %}" aria-live="polite">{{ comment.body }}</div>
+                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap; {% if comment.subject %}display: none;{% endif %}">{{ comment.body }}</div>
                             
                             <!-- Show expand button if there's a subject (indicating email/content to expand) -->
                             {% if comment.subject %}
@@ -167,13 +167,17 @@
 
 <script>
 // Use event delegation for expand/collapse buttons
-document.body.addEventListener('click', function(event) {
-    const btn = event.target.closest('.comment-expand-btn');
-    if (btn) {
-        const commentId = btn.dataset.commentId;
-        toggleCommentExpand(commentId);
-    }
-});
+// Only register the listener once using a flag
+if (!window.agiraCommentExpandListenerRegistered) {
+    document.body.addEventListener('click', function(event) {
+        const btn = event.target.closest('.comment-expand-btn');
+        if (btn) {
+            const commentId = btn.dataset.commentId;
+            toggleCommentExpand(commentId);
+        }
+    });
+    window.agiraCommentExpandListenerRegistered = true;
+}
 
 function toggleCommentExpand(commentId) {
     const bodyElement = document.getElementById('comment-body-' + commentId);
