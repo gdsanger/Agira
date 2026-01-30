@@ -57,11 +57,11 @@
         </div>
         {% endif %}
         
-        {% if item.description %}
+        {% if item.user_input %}
         <div class="mt-3">
-            <h6>Description</h6>
+            <h6>Customer Request</h6>
             <div class="border-start border-3 ps-3">
-                {{ item.description|render_markdown }}
+                {{ item.user_input|linebreaks }}
             </div>
         </div>
         {% endif %}

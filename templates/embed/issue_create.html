@@ -26,9 +26,10 @@
                 <select name="type" id="type" class="form-select" required>
                     <option value="">Select type...</option>
                     {% for item_type in item_types %}
-                    <option value="{{ item_type.id }}">{{ item_type.name }}</option>
+                    <option value="{{ item_type.id }}" data-description="{{ item_type.description|default:'' }}">{{ item_type.name }}</option>
                     {% endfor %}
                 </select>
+                <div id="type-description" class="form-text mt-2"></div>
             </div>
             
             <div class="mb-3">
@@ -61,4 +62,26 @@
         </form>
     </div>
 </div>
+
+<script>
+    // Show issue type description when selected
+    document.getElementById('type').addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const description = selectedOption.getAttribute('data-description');
+        const descriptionDiv = document.getElementById('type-description');
+        
+        if (description && description.trim() !== '') {
+            // Use textContent to prevent XSS
+            descriptionDiv.textContent = '';
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-info-circle';
+            descriptionDiv.appendChild(icon);
+            descriptionDiv.appendChild(document.createTextNode(' ' + description));
+            descriptionDiv.style.display = 'block';
+        } else {
+            descriptionDiv.textContent = '';
+            descriptionDiv.style.display = 'none';
+        }
+    });
+</script>
 {% endblock %}

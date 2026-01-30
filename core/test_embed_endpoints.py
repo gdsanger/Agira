@@ -77,6 +77,17 @@ class EmbedEndpointTestCase(TestCase):
             status=ItemStatus.WORKING
         )
         
+        # Create item with user_input for testing
+        self.item_with_user_input = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Issue with User Input',
+            description='Internal technical description',
+            user_input='Customer request text',
+            type=self.item_type_bug,
+            status=ItemStatus.INBOX
+        )
+        
         # Create item for project2
         self.item_other_project = Item.objects.create(
             project=self.project2,
@@ -179,7 +190,9 @@ class EmbedEndpointTestCase(TestCase):
         
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.item1.title)
-        self.assertContains(response, self.item1.description)
+        # Description should NOT be shown in detail view
+        self.assertNotContains(response, 'Description')
+        self.assertNotContains(response, self.item1.description)
 
     def test_issue_detail_shows_only_public_comments(self):
         """Test that issue detail shows only public comments"""
@@ -191,6 +204,20 @@ class EmbedEndpointTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Public comment')
         self.assertNotContains(response, 'Internal comment')
+
+    def test_issue_detail_shows_user_input(self):
+        """Test that issue detail shows user_input instead of description"""
+        response = self.client.get(
+            f'/embed/issues/{self.item_with_user_input.id}/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Should show user_input
+        self.assertContains(response, 'Customer request text')
+        self.assertContains(response, 'Customer Request')
+        # Should NOT show internal description
+        self.assertNotContains(response, 'Internal technical description')
 
     def test_issue_detail_wrong_project(self):
         """Test that token cannot access issue from different project"""
@@ -227,6 +254,23 @@ class EmbedEndpointTestCase(TestCase):
         self.assertContains(response, 'Create New Issue')
         self.assertContains(response, self.item_type_bug.name)
         self.assertContains(response, self.item_type_feature.name)
+
+    def test_issue_create_form_shows_type_descriptions(self):
+        """Test that issue creation form includes type descriptions in data attributes"""
+        # Add description to item type
+        self.item_type_bug.description = 'Use this for reporting bugs and defects'
+        self.item_type_bug.save()
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/create/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that description is in the data-description attribute
+        self.assertContains(response, 'data-description="Use this for reporting bugs and defects"')
+        # Check that JavaScript for showing description is present
+        self.assertContains(response, 'type-description')
 
     def test_issue_create_form_without_token(self):
         """Test that missing token returns 404"""
@@ -502,3 +546,49 @@ class EmbedEndpointTestCase(TestCase):
             {'token': token2}
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_status_filter_closed(self):
+        """Test status filter for closed issues"""
+        # Create a closed issue
+        closed_item = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Closed Issue',
+            description='This is closed',
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        # Filter for closed issues
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token, 'status': 'closed'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Closed Issue')
+        self.assertNotContains(response, 'Test Issue 1')  # Not closed
+        self.assertNotContains(response, 'Test Issue 2')  # Not closed
+
+    def test_status_filter_not_closed(self):
+        """Test status filter for non-closed issues"""
+        # Create a closed issue
+        closed_item = Item.objects.create(
+            project=self.project1,
+            organisation=self.org1,
+            title='Closed Issue',
+            description='This is closed',
+            type=self.item_type_bug,
+            status=ItemStatus.CLOSED
+        )
+        
+        # Filter for not closed issues
+        response = self.client.get(
+            f'/embed/projects/{self.project1.id}/issues/',
+            {'token': self.valid_token, 'status': 'not_closed'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Closed Issue')
+        self.assertContains(response, 'Test Issue 1')  # Not closed
+        self.assertContains(response, 'Test Issue 2')  # Not closed
