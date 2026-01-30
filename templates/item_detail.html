@@ -278,6 +278,18 @@
                             </div>
                         </div>
                         <div class="mb-3">
+                            <strong>Original Mail Text (unverändert):</strong>
+                            <div class="mt-2">
+                                {% if item.user_input %}
+                                    <div class="markdown-viewer">
+                                        {{ item.user_input|render_markdown }}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Solution:</strong>
                             <div class="mt-2">
                                 {% if item.solution_description %}

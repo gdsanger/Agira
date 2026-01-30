@@ -1955,6 +1955,7 @@ def item_create(request):
         # Get title and description
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', '')
+        user_input = request.POST.get('user_input', '')
         
         # Auto-generate title from description if title is empty
         if not title and description:
@@ -1965,6 +1966,7 @@ def item_create(request):
             project=project,
             title=title,
             description=description,
+            user_input=user_input,
             solution_description=request.POST.get('solution_description', ''),
             type=item_type,
             status=request.POST.get('status', ItemStatus.INBOX),
@@ -2117,6 +2119,7 @@ def item_update(request, item_id):
         # Get title and description
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', item.description)
+        user_input = request.POST.get('user_input', item.user_input)
         
         # Auto-generate title from description if title is empty
         if not title and description:
@@ -2134,6 +2137,7 @@ def item_update(request, item_id):
             # Temporarily set description to extract content without breadcrumb
             item.description = posted_description
         
+        item.user_input = user_input
         item.solution_description = request.POST.get('solution_description', item.solution_description)
         item.status = request.POST.get('status', item.status)
         

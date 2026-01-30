@@ -8,20 +8,24 @@
 <style>
 /* Prevent Toast Editor from growing infinitely */
 #description-editor,
+#user-input-editor,
 #solution-editor {
     max-height: 400px;
     overflow: hidden;
 }
 
 #description-editor .toastui-editor-defaultUI,
+#user-input-editor .toastui-editor-defaultUI,
 #solution-editor .toastui-editor-defaultUI {
     max-height: 400px !important;
     overflow: hidden !important;
 }
 
 #description-editor .toastui-editor-md-container,
+#user-input-editor .toastui-editor-md-container,
 #solution-editor .toastui-editor-md-container,
 #description-editor .toastui-editor-preview,
+#user-input-editor .toastui-editor-preview,
 #solution-editor .toastui-editor-preview {
     overflow-x: auto !important;
     overflow-y: auto !important;
@@ -32,6 +36,7 @@
 
 /* Ensure the editor wraps long lines and allows horizontal scrolling if needed */
 #description-editor .toastui-editor-contents,
+#user-input-editor .toastui-editor-contents,
 #solution-editor .toastui-editor-contents {
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -39,6 +44,7 @@
 }
 
 #description-editor .toastui-editor-contents pre,
+#user-input-editor .toastui-editor-contents pre,
 #solution-editor .toastui-editor-contents pre {
     overflow-x: auto;
     white-space: pre;
@@ -101,6 +107,18 @@
                     </div>
                     
 
+                </div>
+            </div>
+            
+            <!-- User Input (Original Mail Text) with Markdown Editor -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Original Mail Text (unverändert)</h5>
+                    <small class="text-muted">Enthält den ursprünglichen Nachrichtentext der eingegangenen E-Mail. Dieses Feld wird nicht automatisch durch KI verändert.</small>
+                </div>
+                <div class="card-body">
+                    <div id="user-input-editor"></div>
+                    <input type="hidden" id="user_input" name="user_input">
                 </div>
             </div>
             
@@ -370,6 +388,25 @@ const descriptionEditor = new toastui.Editor({
 document.querySelector('#description-editor .toastui-editor-defaultUI').style.maxHeight = '400px';
 document.querySelector('#description-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
+// Initialize ToastUI Editor for User Input (Original Mail Text)
+const userInputEditor = new toastui.Editor({
+    el: document.querySelector('#user-input-editor'),
+    height: '400px',
+    initialEditType: 'markdown',
+    previewStyle: 'vertical',
+    {% if item and item.user_input %}
+    initialValue: '{{ item.user_input|escapejs }}',
+    {% else %}
+    initialValue: '',
+    {% endif %}
+    theme: 'dark',
+    usageStatistics: false
+});
+
+// Force editor to respect height constraints and enable proper scrolling
+document.querySelector('#user-input-editor .toastui-editor-defaultUI').style.maxHeight = '400px';
+document.querySelector('#user-input-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
+
 // Initialize ToastUI Editor for Solution Description
 const solutionEditor = new toastui.Editor({
     el: document.querySelector('#solution-editor'),
@@ -392,6 +429,7 @@ document.querySelector('#solution-editor .toastui-editor-defaultUI').style.overf
 // Sync editor content to hidden fields on form submit
 document.getElementById('itemForm').addEventListener('submit', function() {
     document.getElementById('description').value = descriptionEditor.getMarkdown();
+    document.getElementById('user_input').value = userInputEditor.getMarkdown();
     document.getElementById('solution_description').value = solutionEditor.getMarkdown();
 });
 
