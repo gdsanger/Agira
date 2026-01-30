@@ -95,6 +95,15 @@ class EmbedEndpointTestCase(TestCase):
             name='Test User'
         )
         
+        # Associate user with org1 for requester selection
+        from core.models import UserOrganisation
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org1,
+            role='User',
+            is_primary=True
+        )
+        
         # Create some comments on item1
         self.comment1 = ItemComment.objects.create(
             item=self.item1,
@@ -247,6 +256,7 @@ class EmbedEndpointTestCase(TestCase):
                 'title': 'New External Issue',
                 'description': 'Created via embed portal',
                 'type': self.item_type_bug.id,
+                'requester': self.user.id,
             }
         )
         
@@ -267,7 +277,7 @@ class EmbedEndpointTestCase(TestCase):
         self.assertEqual(new_item.type, self.item_type_bug)
         self.assertEqual(new_item.status, ItemStatus.INBOX)
         self.assertEqual(new_item.organisation, self.org1)
-        self.assertIsNone(new_item.requester)  # External requester
+        self.assertEqual(new_item.requester, self.user)
 
     def test_issue_create_missing_title(self):
         """Test issue creation fails without title"""
@@ -303,6 +313,21 @@ class EmbedEndpointTestCase(TestCase):
                 'token': self.valid_token,
                 'title': 'Invalid Type Issue',
                 'type': 99999,
+                'requester': self.user.id,
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+
+    def test_issue_create_missing_requester(self):
+        """Test issue creation fails without requester"""
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'No Requester Issue',
+                'description': 'Missing requester',
+                'type': self.item_type_bug.id,
             }
         )
         
@@ -317,6 +342,7 @@ class EmbedEndpointTestCase(TestCase):
                 'token': self.valid_token,
                 'title': long_title,
                 'type': self.item_type_bug.id,
+                'requester': self.user.id,
             }
         )
         

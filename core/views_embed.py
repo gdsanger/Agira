@@ -49,8 +49,8 @@ def validate_embed_token(token):
 
 def embed_project_issues(request, project_id):
     """
-    List all issues for a project (read-only).
-    GET /embed/projects/<project_id>/issues/?token=...
+    List all issues for a project with filtering, search, sorting, and pagination.
+    GET /embed/projects/<project_id>/issues/?token=...&status=...&type=...&search=...&sort=...&order=...&page=...
     """
     token = request.GET.get('token')
     embed_access = validate_embed_token(token)
@@ -67,13 +67,73 @@ def embed_project_issues(request, project_id):
         project=embed_access.project
     ).select_related(
         'type', 'assigned_to', 'requester'
-    ).order_by('-updated_at')
+    )
+    
+    # Get filter parameters
+    status_filter = request.GET.get('status', '')
+    type_filter = request.GET.get('type', '')
+    search_query = request.GET.get('search', '')
+    sort_field = request.GET.get('sort', 'updated')
+    sort_order = request.GET.get('order', 'desc')
+    
+    # Apply status filter
+    if status_filter:
+        items = items.filter(status=status_filter)
+    
+    # Apply type filter
+    if type_filter:
+        try:
+            type_id = int(type_filter)
+            items = items.filter(type_id=type_id)
+        except (ValueError, TypeError):
+            pass
+    
+    # Apply search
+    if search_query:
+        from django.db.models import Q
+        items = items.filter(
+            Q(title__icontains=search_query) | Q(description__icontains=search_query)
+        )
+    
+    # Apply sorting
+    sort_mapping = {
+        'id': 'id',
+        'title': 'title',
+        'status': 'status',
+        'updated': 'updated_at',
+    }
+    
+    sort_db_field = sort_mapping.get(sort_field, 'updated_at')
+    if sort_order == 'asc':
+        items = items.order_by(sort_db_field)
+    else:
+        items = items.order_by(f'-{sort_db_field}')
+    
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(items, 25)  # 25 items per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    # Get all item types for filter dropdown
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+    
+    # Get status choices
+    status_choices = ItemStatus.choices
     
     context = {
         'project': embed_access.project,
-        'items': items,
+        'items': page_obj,
+        'page_obj': page_obj,
         'organisation': embed_access.organisation,
         'token': token,
+        'item_types': item_types,
+        'status_choices': status_choices,
+        'current_status': status_filter,
+        'current_type': type_filter,
+        'current_search': search_query,
+        'current_sort': sort_field,
+        'current_order': sort_order,
     }
     return render(request, 'embed/issue_list.html', context)
 
@@ -135,10 +195,22 @@ def embed_issue_create_form(request, project_id):
     # Get active item types for the form
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
+    # Get organization users for requester selection
+    from .models import User, UserOrganisation
+    org_user_ids = UserOrganisation.objects.filter(
+        organisation=embed_access.organisation
+    ).values_list('user_id', flat=True)
+    
+    org_users = User.objects.filter(
+        id__in=org_user_ids,
+        active=True
+    ).order_by('name')
+    
     context = {
         'project': embed_access.project,
         'organisation': embed_access.organisation,
         'item_types': item_types,
+        'org_users': org_users,
         'token': token,
     }
     return render(request, 'embed/issue_create.html', context)
@@ -165,6 +237,7 @@ def embed_issue_create(request, project_id):
     title = request.POST.get('title', '').strip()
     description = request.POST.get('description', '').strip()
     type_id = request.POST.get('type')
+    requester_id = request.POST.get('requester')
     
     # Validation
     if not title:
@@ -176,10 +249,27 @@ def embed_issue_create(request, project_id):
     if not type_id:
         return HttpResponse("Type is required", status=400)
     
+    if not requester_id:
+        return HttpResponse("Requester is required", status=400)
+    
     try:
         item_type = ItemType.objects.get(id=type_id, is_active=True)
     except ItemType.DoesNotExist:
         return HttpResponse("Invalid item type", status=400)
+    
+    # Get requester user
+    from .models import User, UserOrganisation
+    try:
+        # Verify requester exists and belongs to the organization
+        user_org = UserOrganisation.objects.get(
+            user_id=requester_id,
+            organisation=embed_access.organisation
+        )
+        requester = user_org.user
+        if not requester.active:
+            return HttpResponse("Requester is not active", status=400)
+    except UserOrganisation.DoesNotExist:
+        return HttpResponse("Invalid requester", status=400)
     
     # Create the item
     with transaction.atomic():
@@ -190,7 +280,7 @@ def embed_issue_create(request, project_id):
             description=description,
             type=item_type,
             status=ItemStatus.INBOX,
-            requester=None,  # External requester
+            requester=requester,
         )
         
         # Log activity
@@ -201,10 +291,80 @@ def embed_issue_create(request, project_id):
             actor=None,
             summary=f"Created via embed portal: {title}",
         )
+        
+        # Send confirmation email to requester
+        _send_requester_confirmation_email(item, requester)
     
     # Redirect to the issue detail page using reverse
     redirect_url = reverse('embed-issue-detail', args=[item.id]) + f'?token={token}'
     return redirect(redirect_url)
+
+
+def _send_requester_confirmation_email(item, requester):
+    """
+    Send confirmation email to requester using activity-assigned template.
+    
+    Args:
+        item: Created Item instance
+        requester: User who requested the item
+    """
+    from .models import MailTemplate
+    from .services.mail.template_processor import process_template
+    from .services.graph.client import get_client
+    from .services.exceptions import ServiceDisabled, ServiceNotConfigured, ServiceError
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get the activity-assigned template
+        template = MailTemplate.objects.get(key='activity-assigned')
+        
+        # Process template with item data
+        processed = process_template(template, item)
+        
+        # Prepare email payload for Graph API
+        payload = {
+            "message": {
+                "subject": processed['subject'],
+                "body": {
+                    "contentType": "HTML",
+                    "content": processed['message']
+                },
+                "toRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": requester.email
+                        }
+                    }
+                ]
+            },
+            "saveToSentItems": True
+        }
+        
+        # Add CC if specified in template
+        if template.cc_address:
+            cc_addresses = [addr.strip() for addr in template.cc_address.split(',') if addr.strip()]
+            if cc_addresses:
+                payload["message"]["ccRecipients"] = [
+                    {"emailAddress": {"address": addr}} for addr in cc_addresses
+                ]
+        
+        # Send email via Graph API
+        client = get_client()
+        sender_upn = template.from_address if template.from_address else requester.email
+        client.send_mail(sender_upn, payload)
+        
+        logger.info(f"Sent confirmation email to requester {requester.email} for item {item.id}")
+        
+    except MailTemplate.DoesNotExist:
+        logger.warning(f"activity-assigned template not found, skipping email for item {item.id}")
+    except (ServiceDisabled, ServiceNotConfigured) as e:
+        logger.warning(f"Email service not configured, skipping email for item {item.id}: {e}")
+    except ServiceError as e:
+        logger.error(f"Failed to send confirmation email for item {item.id}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error sending confirmation email for item {item.id}: {e}")
 
 
 @csrf_exempt
