@@ -334,8 +334,7 @@ class TemplateProcessorTestCase(TestCase):
         
         result = process_template(template, self.item)
         
-        # HTML should be escaped
-        self.assertIn('&lt;script&gt;', result['message'])
+        # HTML should be escaped/stripped by sanitization
         self.assertNotIn('<script>', result['message'])
         self.assertIn('Fixed the bug', result['message'])
     
@@ -388,6 +387,232 @@ class TemplateProcessorTestCase(TestCase):
         
         result = process_template(template, self.item)
         
-        # Both should be replaced with the same value
-        self.assertIn('Prefixed: Test solution, Non-prefixed: Test solution', result['message'])
+        # Both should be replaced with the same HTML value (wrapped in <p>)
+        self.assertIn('Prefixed: <p>Test solution</p>, Non-prefixed: <p>Test solution</p>', result['message'])
         self.assertNotIn('{{', result['message'])
+    
+    def test_solution_description_markdown_bold_conversion(self):
+        """Test that Markdown bold syntax is converted to HTML"""
+        # Set solution description with Markdown bold
+        self.item.solution_description = '**Fix**'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-bold-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should convert **Fix** to <strong>Fix</strong>
+        self.assertIn('<strong>Fix</strong>', result['message'])
+        self.assertNotIn('**Fix**', result['message'])
+    
+    def test_solution_description_markdown_list_conversion(self):
+        """Test that Markdown list syntax is converted to HTML"""
+        # Set solution description with Markdown list (needs blank line before list)
+        self.item.solution_description = '''**Fix**
+
+- Schritt 1
+- Schritt 2'''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-list-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should convert to HTML list
+        self.assertIn('<strong>Fix</strong>', result['message'])
+        self.assertIn('<ul>', result['message'])
+        self.assertIn('<li>Schritt 1</li>', result['message'])
+        self.assertIn('<li>Schritt 2</li>', result['message'])
+        self.assertIn('</ul>', result['message'])
+        # Should not contain raw Markdown
+        self.assertNotIn('- Schritt', result['message'])
+    
+    def test_solution_description_markdown_link_conversion(self):
+        """Test that Markdown link syntax is converted to HTML"""
+        # Set solution description with Markdown link
+        self.item.solution_description = 'See [documentation](https://example.com)'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-link-template',
+            subject='{{ issue.title }}',
+            message='{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should convert to HTML link
+        self.assertIn('<a href="https://example.com">documentation</a>', result['message'])
+        self.assertNotIn('[documentation]', result['message'])
+    
+    def test_solution_description_markdown_heading_conversion(self):
+        """Test that Markdown heading syntax is converted to HTML"""
+        # Set solution description with Markdown heading
+        self.item.solution_description = '## Solution Steps'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-heading-template',
+            subject='{{ issue.title }}',
+            message='{{ issue.solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should convert ## to <h2>
+        self.assertIn('<h2>Solution Steps</h2>', result['message'])
+        self.assertNotIn('##', result['message'])
+    
+    def test_solution_description_markdown_code_conversion(self):
+        """Test that Markdown code syntax is converted to HTML"""
+        # Set solution description with Markdown code
+        self.item.solution_description = 'Run `npm install` to fix'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-code-template',
+            subject='{{ issue.title }}',
+            message='{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should convert to HTML code
+        self.assertIn('<code>npm install</code>', result['message'])
+        # Backticks should be removed
+        self.assertNotIn('`npm install`', result['message'])
+    
+    def test_solution_description_markdown_complex_example(self):
+        """Test complex Markdown example from issue reproduction"""
+        # Exact example from the issue (needs blank line before list)
+        self.item.solution_description = '''**Fix**
+
+- Schritt 1
+- Schritt 2'''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-complex-template',
+            subject='{{ issue.title }}',
+            message='<h1>Solution</h1>{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have HTML, not Markdown
+        self.assertIn('<h1>Solution</h1>', result['message'])
+        self.assertIn('<strong>Fix</strong>', result['message'])
+        self.assertIn('<ul>', result['message'])
+        self.assertIn('<li>Schritt 1</li>', result['message'])
+        self.assertIn('<li>Schritt 2</li>', result['message'])
+        # Should NOT have Markdown syntax
+        self.assertNotIn('**Fix**', result['message'])
+        self.assertNotIn('- Schritt', result['message'])
+    
+    def test_solution_description_empty_markdown(self):
+        """Test that empty solution description returns empty string"""
+        # Empty solution description
+        self.item.solution_description = ''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-empty-template',
+            subject='{{ issue.title }}',
+            message='Start {{ solution_description }} End'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string between Start and End
+        self.assertIn('Start  End', result['message'])
+    
+    def test_solution_description_none_markdown(self):
+        """Test that None solution description returns empty string"""
+        # Set to empty string instead of None (field has NOT NULL constraint)
+        self.item.solution_description = ''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-none-template',
+            subject='{{ issue.title }}',
+            message='Start {{ issue.solution_description }} End'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string between Start and End
+        self.assertIn('Start  End', result['message'])
+    
+    def test_solution_description_xss_protection(self):
+        """Test that XSS attempts in Markdown are sanitized"""
+        # Attempt XSS via Markdown
+        self.item.solution_description = '<script>alert("XSS")</script>**Bold text**'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-markdown-xss-template',
+            subject='{{ issue.title }}',
+            message='{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Script tags should be removed (even if text content remains, the dangerous tags are gone)
+        self.assertNotIn('<script>', result['message'])
+        self.assertNotIn('</script>', result['message'])
+        # Valid Markdown should be converted
+        self.assertIn('<strong>Bold text</strong>', result['message'])
+    
+    def test_other_template_variables_still_escaped(self):
+        """Test that other template variables are still HTML-escaped"""
+        # Set title with HTML
+        self.item.title = 'Test <script>alert("XSS")</script> Bug'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='other-variables-escaped-template',
+            subject='{{ issue.title }}',
+            message='Title: {{ issue.title }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Title should be escaped
+        self.assertIn('&lt;script&gt;', result['subject'])
+        self.assertIn('&lt;script&gt;', result['message'])
+        self.assertNotIn('<script>', result['message'])
+    
+    def test_solution_description_in_subject_plain_text(self):
+        """Test that solution_description in subject is plain text (no HTML tags)"""
+        # Set solution description with Markdown
+        self.item.solution_description = '**Fix**: See [link](http://example.com)'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-in-subject-template',
+            subject='Fix: {{ solution_description }}',
+            message='{{ solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Subject should have plain text (no HTML tags)
+        self.assertNotIn('<strong>', result['subject'])
+        self.assertNotIn('<a href=', result['subject'])
+        self.assertNotIn('<p>', result['subject'])
+        # Should contain text content (without Markdown syntax or HTML tags)
+        self.assertIn('Fix', result['subject'])
+        self.assertIn('link', result['subject'])
+        
+        # Message should have HTML
+        self.assertIn('<strong>Fix</strong>', result['message'])
+        self.assertIn('<a href="http://example.com">link</a>', result['message'])
+
