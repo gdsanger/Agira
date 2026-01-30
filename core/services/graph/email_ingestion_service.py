@@ -246,6 +246,39 @@ class EmailIngestionService:
                     f"Created item {item.id} in project '{project.name}' "
                     f"from email by {sender_email}"
                 )
+                
+                # Extract email metadata for comment
+                to_recipients = message.get("toRecipients", [])
+                to_addresses = [r.get("emailAddress", {}).get("address", "") for r in to_recipients]
+                external_to = "; ".join([addr for addr in to_addresses if addr])
+                
+                cc_recipients = message.get("ccRecipients", [])
+                cc_addresses = [r.get("emailAddress", {}).get("address", "") for r in cc_recipients]
+                external_cc = "; ".join([addr for addr in cc_addresses if addr])
+                
+                body_data = message.get("body", {})
+                body_original_html = body_data.get("content", "") if body_data.get("contentType", "").lower() == "html" else ""
+                
+                internet_message_id = message.get("internetMessageId", "")
+                
+                # Add incoming email as comment to the newly created item
+                ItemComment.objects.create(
+                    item=item,
+                    author=user,
+                    visibility=CommentVisibility.PUBLIC,
+                    kind=CommentKind.EMAIL_IN,
+                    subject=subject,
+                    body=body_markdown,
+                    external_from=sender_email,
+                    external_to=external_to,
+                    external_cc=external_cc,
+                    body_original_html=body_original_html,
+                    message_id=internet_message_id or message_id,
+                )
+                
+                logger.info(
+                    f"Added incoming email as comment to new item {item.id}"
+                )
             
             # After transaction commits successfully, send confirmation email
             # This is done outside the transaction to avoid holding locks
@@ -633,6 +666,24 @@ Email Body:
         """
         message_id = message.get("id")
         
+        # Extract To recipients
+        to_recipients = message.get("toRecipients", [])
+        to_addresses = [r.get("emailAddress", {}).get("address", "") for r in to_recipients]
+        external_to = "; ".join([addr for addr in to_addresses if addr])
+        
+        # Extract CC recipients
+        cc_recipients = message.get("ccRecipients", [])
+        cc_addresses = [r.get("emailAddress", {}).get("address", "") for r in cc_recipients]
+        external_cc = "; ".join([addr for addr in cc_addresses if addr])
+        
+        # Get original HTML body
+        body_data = message.get("body", {})
+        body_original_html = body_data.get("content", "") if body_data.get("contentType", "").lower() == "html" else ""
+        
+        # Get In-Reply-To header for threading
+        internet_message_id = message.get("internetMessageId", "")
+        conversation_id = message.get("conversationId", "")
+        
         try:
             with transaction.atomic():
                 # Get or create user
@@ -650,7 +701,10 @@ Email Body:
                     subject=subject,
                     body=body,
                     external_from=sender_email,
-                    message_id=message_id,
+                    external_to=external_to,
+                    external_cc=external_cc,
+                    body_original_html=body_original_html,
+                    message_id=internet_message_id or message_id,
                 )
                 
                 logger.info(

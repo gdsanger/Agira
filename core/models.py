@@ -636,7 +636,9 @@ class ItemComment(models.Model):
     body = models.TextField()
     body_html = models.TextField(blank=True)
     external_from = models.EmailField(blank=True)
-    external_to = models.EmailField(blank=True)
+    external_to = models.TextField(blank=True)  # Changed to TextField to support multiple recipients
+    external_cc = models.TextField(blank=True)  # New field for CC recipients
+    body_original_html = models.TextField(blank=True)  # Store original HTML for reply/forward
     message_id = models.CharField(max_length=255, blank=True)
     in_reply_to = models.CharField(max_length=255, blank=True)
     delivery_status = models.CharField(max_length=20, choices=EmailDeliveryStatus.choices, default=EmailDeliveryStatus.DRAFT)
