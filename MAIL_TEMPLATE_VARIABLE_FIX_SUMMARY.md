@@ -5,8 +5,9 @@
 **Issue #112 has been fully resolved.** All three variables are now correctly implemented and tested:
 
 1. ✅ `{{ issue.description }}` - Replaces with full item description
-2. ✅ `{{ issue.organisation }}` - Replaces with requester's **primary** organisation name  
-3. ✅ `{{ issue.solution_release }}` - Replaces with "Name - Version X.X.X - Planned: YYYY-MM-DD"
+2. ✅ `{{ issue.solution_description }}` - Replaces with solution description (Issue #134)
+3. ✅ `{{ issue.organisation }}` - Replaces with requester's **primary** organisation name  
+4. ✅ `{{ issue.solution_release }}` - Replaces with "Name - Version X.X.X - Planned: YYYY-MM-DD"
 
 ## Changes Made
 
@@ -91,6 +92,7 @@ Your issue has been updated:
 
 Title: {{ issue.title }}
 Description: {{ issue.description }}
+Solution: {{ issue.solution_description }}
 Status: {{ issue.status }}
 Organisation: {{ issue.organisation }}
 Planned Release: {{ issue.solution_release }}
@@ -103,6 +105,7 @@ Best regards,
 For variables to be replaced with actual values, the Item must have the corresponding data:
 
 - `{{ issue.description }}` → Item must have `description` field set
+- `{{ issue.solution_description }}` → Item must have `solution_description` field set
 - `{{ issue.organisation }}` → Item's requester must have a **primary organisation** set via UserOrganisation
 - `{{ issue.solution_release }}` → Item must have `solution_release` foreign key set to a Release object
 
@@ -119,6 +122,7 @@ If variables appear not to be working:
 
 2. **Check Data Availability**
    - For description: `item.description` must be set
+   - For solution description: `item.solution_description` must be set
    - For organisation: `item.requester` must exist AND have a primary organisation
    - For release: `item.solution_release` must be set
 

@@ -939,10 +939,10 @@ class MailTemplate(models.Model):
     )
     subject = models.CharField(
         max_length=500,
-        help_text="Email subject line. Use {{ issue.variable }} placeholders (e.g., {{ issue.title }}, {{ issue.description }})."
+        help_text="Email subject line. Use {{ issue.variable }} placeholders (e.g., {{ issue.title }}, {{ issue.description }}, {{ issue.solution_description }})."
     )
     message = models.TextField(
-        help_text="Email content (Markdown or HTML). Use {{ issue.variable }} placeholders (e.g., {{ issue.organisation }}, {{ issue.solution_release }})."
+        help_text="Email content (Markdown or HTML). Use {{ issue.variable }} placeholders (e.g., {{ issue.organisation }}, {{ issue.solution_release }}, {{ issue.solution_description }})."
     )
     from_name = models.CharField(
         max_length=255,
