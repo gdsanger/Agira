@@ -26,6 +26,7 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     Supported variables:
     - {{ issue.title }} - Item title
     - {{ issue.description }} - Item description
+    - {{ issue.solution_description }} - Solution description (or empty if not set)
     - {{ issue.status }} - Item status (display name)
     - {{ issue.type }} - Item type name
     - {{ issue.project }} - Project name
@@ -72,6 +73,7 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     replacements = {
         '{{ issue.title }}': html.escape(item.title or ''),
         '{{ issue.description }}': html.escape(item.description or ''),
+        '{{ issue.solution_description }}': html.escape(item.solution_description or ''),
         '{{ issue.status }}': html.escape(item.get_status_display() or ''),
         '{{ issue.type }}': html.escape(item.type.name if item.type else ''),
         '{{ issue.project }}': html.escape(item.project.name if item.project else ''),

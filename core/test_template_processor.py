@@ -285,3 +285,56 @@ class TemplateProcessorTestCase(TestCase):
         # Should include name and version
         self.assertIn('Sprint 42 - Version 1.5.0', result['message'])
         self.assertNotIn('Planned:', result['message'])
+    
+    def test_process_template_with_solution_description(self):
+        """Test that solution description is replaced correctly"""
+        # Set solution description on item
+        self.item.solution_description = 'This is the solution to fix the bug'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ issue.solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        self.assertIn('This is the solution to fix the bug', result['message'])
+    
+    def test_process_template_with_empty_solution_description(self):
+        """Test that empty solution description is replaced with empty string"""
+        # Ensure solution description is empty
+        self.item.solution_description = ''
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-empty-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ issue.solution_description }} - End'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string, not null or placeholder
+        self.assertIn('Solution:  - End', result['message'])
+        self.assertNotIn('{{ issue.solution_description }}', result['message'])
+    
+    def test_process_template_with_html_in_solution_description(self):
+        """Test that HTML in solution description is escaped"""
+        # Set solution description with HTML
+        self.item.solution_description = '<script>alert("XSS")</script>Fixed the bug'
+        self.item.save()
+        
+        template = MailTemplate.objects.create(
+            key='solution-description-html-template',
+            subject='{{ issue.title }}',
+            message='Solution: {{ issue.solution_description }}'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # HTML should be escaped
+        self.assertIn('&lt;script&gt;', result['message'])
+        self.assertNotIn('<script>', result['message'])
+        self.assertIn('Fixed the bug', result['message'])
