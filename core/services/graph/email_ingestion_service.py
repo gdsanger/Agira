@@ -10,9 +10,12 @@ import json
 import re
 import secrets
 import string
+import base64
+from io import BytesIO
 from typing import Optional, Dict, Any, List, Tuple
 from django.db import transaction
 from django.utils import timezone
+from django.urls import reverse
 
 from core.models import (
     Item,
@@ -26,11 +29,13 @@ from core.models import (
     ItemComment,
     CommentKind,
     CommentVisibility,
+    Attachment,
 )
 from core.services.config import get_graph_config
 from core.services.exceptions import ServiceNotConfigured, ServiceDisabled, ServiceError
 from core.services.graph.client import get_client
 from core.services.agents.agent_service import AgentService
+from core.services.storage import AttachmentStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +100,7 @@ class EmailIngestionService:
         self.client = get_client()
         self.agent_service = AgentService()
         self.mailbox = self.config.default_mail_sender
+        self.storage_service = AttachmentStorageService()
     
     def process_inbox(self, max_messages: int = 50, dry_run: bool = False) -> Dict[str, Any]:
         """
@@ -251,6 +257,13 @@ class EmailIngestionService:
                     f"from email by {sender_email}"
                 )
                 
+                # Process attachments (before creating comment so we can rewrite inline images)
+                content_id_map = self._process_attachments(
+                    message_id=message_id,
+                    item=item,
+                    user=user,
+                )
+                
                 # Extract email metadata for comment
                 to_recipients = message.get("toRecipients", [])
                 to_addresses = [r.get("emailAddress", {}).get("address", "") for r in to_recipients]
@@ -262,6 +275,13 @@ class EmailIngestionService:
                 
                 body_data = message.get("body", {})
                 body_original_html = body_data.get("content", "") if body_data.get("contentType", "").lower() == "html" else ""
+                
+                # Rewrite inline images in HTML body
+                if body_original_html and content_id_map:
+                    body_original_html = self._rewrite_inline_images(
+                        body_original_html,
+                        content_id_map
+                    )
                 
                 internet_message_id = message.get("internetMessageId", "")
                 
@@ -337,6 +357,147 @@ class EmailIngestionService:
             logger.warning(f"Failed to convert HTML to Markdown: {e}, using original content")
             # Fallback: return HTML as-is
             return html_content
+    
+    def _process_attachments(
+        self,
+        message_id: str,
+        item: Item,
+        user: User,
+    ) -> Dict[str, Attachment]:
+        """
+        Process all attachments for an email message.
+        
+        Args:
+            message_id: Graph API message ID
+            item: Item to attach files to
+            user: User who created the item (for attachment metadata)
+            
+        Returns:
+            Dictionary mapping content_id to Attachment for inline attachments
+        """
+        content_id_map = {}
+        
+        try:
+            # Fetch attachments from Graph API
+            attachments = self.client.get_message_attachments(
+                user_upn=self.mailbox,
+                message_id=message_id,
+            )
+            
+            logger.info(f"Processing {len(attachments)} attachments for message {message_id}")
+            
+            for att_data in attachments:
+                try:
+                    # Extract attachment metadata
+                    att_type = att_data.get("@odata.type", "")
+                    name = att_data.get("name", "unnamed")
+                    content_type = att_data.get("contentType", "application/octet-stream")
+                    size = att_data.get("size", 0)
+                    is_inline = att_data.get("isInline", False)
+                    content_id = att_data.get("contentId", "")
+                    
+                    # Only process FileAttachment types (skip ItemAttachment, Reference, etc.)
+                    if att_type != "#microsoft.graph.fileAttachment":
+                        logger.debug(f"Skipping attachment type {att_type}: {name}")
+                        continue
+                    
+                    # Get attachment content (base64 encoded)
+                    content_bytes_b64 = att_data.get("contentBytes", "")
+                    if not content_bytes_b64:
+                        logger.warning(f"Attachment {name} has no content, skipping")
+                        continue
+                    
+                    # Decode base64 content
+                    content_bytes = base64.b64decode(content_bytes_b64)
+                    file_obj = BytesIO(content_bytes)
+                    file_obj.name = name
+                    
+                    # Normalize content_id (remove angle brackets if present)
+                    if content_id:
+                        content_id = content_id.strip('<>')
+                    
+                    # Check for duplicate by content_id (for idempotency)
+                    if content_id:
+                        existing = Attachment.objects.filter(
+                            content_id=content_id,
+                            links__target_object_id=item.id,
+                            links__target_content_type__model='item'
+                        ).first()
+                        
+                        if existing:
+                            logger.info(f"Attachment with content_id {content_id} already exists, skipping")
+                            content_id_map[content_id] = existing
+                            continue
+                    
+                    # Store attachment
+                    attachment = self.storage_service.store_attachment(
+                        file=file_obj,
+                        target=item,
+                        created_by=user,
+                        original_name=name,
+                        content_type=content_type,
+                        content_id=content_id,
+                        compute_hash=True,
+                    )
+                    
+                    logger.info(
+                        f"Stored attachment: {name} "
+                        f"(size={size}, inline={is_inline}, content_id={content_id})"
+                    )
+                    
+                    # Map content_id to attachment for inline image processing
+                    if content_id and is_inline:
+                        content_id_map[content_id] = attachment
+                        
+                except Exception as e:
+                    logger.error(f"Error processing attachment {att_data.get('name', 'unknown')}: {e}")
+                    # Continue processing other attachments
+                    
+        except Exception as e:
+            logger.error(f"Error fetching attachments for message {message_id}: {e}")
+        
+        return content_id_map
+    
+    def _rewrite_inline_images(
+        self,
+        html_content: str,
+        content_id_map: Dict[str, Attachment],
+    ) -> str:
+        """
+        Rewrite HTML content to replace cid: references with attachment URLs.
+        
+        Args:
+            html_content: Original HTML content with cid: references
+            content_id_map: Mapping of content_id to Attachment objects
+            
+        Returns:
+            HTML content with cid: references replaced by attachment URLs
+        """
+        if not content_id_map:
+            return html_content
+        
+        # Pattern to match src="cid:..." or src='cid:...'
+        # This captures both single and double quotes
+        pattern = r'src=["\']cid:([^"\']+)["\']'
+        
+        def replace_cid(match):
+            cid = match.group(1).strip()
+            
+            # Try to find attachment by content_id
+            if cid in content_id_map:
+                attachment = content_id_map[cid]
+                # Generate URL to view/download the attachment
+                url = reverse('item-view-attachment', args=[attachment.id])
+                return f'src="{url}"'
+            else:
+                # Content ID not found, leave as-is
+                logger.warning(f"Content ID {cid} referenced but not found in attachments")
+                return match.group(0)
+        
+        # Replace all cid: references
+        rewritten_html = re.sub(pattern, replace_cid, html_content, flags=re.IGNORECASE)
+        
+        return rewritten_html
     
     def _get_or_create_user_and_org(
         self,
@@ -695,6 +856,20 @@ Email Body:
                     email=sender_email,
                     name=sender_name,
                 )
+                
+                # Process attachments (before creating comment so we can rewrite inline images)
+                content_id_map = self._process_attachments(
+                    message_id=message_id,
+                    item=item,
+                    user=user,
+                )
+                
+                # Rewrite inline images in HTML body
+                if body_original_html and content_id_map:
+                    body_original_html = self._rewrite_inline_images(
+                        body_original_html,
+                        content_id_map
+                    )
                 
                 # Create comment with email content
                 comment = ItemComment.objects.create(

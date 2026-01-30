@@ -11,12 +11,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from django.utils import timezone
 from django.urls import reverse
+from django.contrib.contenttypes.models import ContentType
 
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
-    ItemStatus, CommentVisibility, CommentKind
+    ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole
 )
 from .services.activity import ActivityService
+from .services.storage import AttachmentStorageService
 
 
 def validate_embed_token(token):
@@ -166,9 +168,20 @@ def embed_issue_detail(request, issue_id):
         visibility=CommentVisibility.PUBLIC
     ).order_by('created_at')
     
+    # Get attachments for this item
+    content_type_obj = ContentType.objects.get_for_model(Item)
+    attachment_links = AttachmentLink.objects.filter(
+        target_content_type=content_type_obj,
+        target_object_id=item.id,
+        role=AttachmentRole.ITEM_FILE
+    ).select_related('attachment')
+    
+    attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    
     context = {
         'item': item,
         'comments': comments,
+        'attachments': attachments,
         'project': embed_access.project,
         'organisation': embed_access.organisation,
         'token': token,
@@ -414,3 +427,99 @@ def embed_issue_add_comment(request, issue_id):
     # Redirect back to issue detail using reverse
     redirect_url = reverse('embed-issue-detail', args=[issue_id]) + f'?token={token}'
     return redirect(redirect_url)
+
+
+@csrf_exempt
+@require_POST
+def embed_issue_upload_attachment(request, issue_id):
+    """
+    Upload an attachment to an issue via the embed portal.
+    POST /embed/issues/<issue_id>/upload-attachment/?token=...
+    """
+    token = request.POST.get('token') or request.GET.get('token')
+    embed_access = validate_embed_token(token)
+    
+    if embed_access is None:
+        return HttpResponseForbidden("Access disabled")
+    
+    # Get the issue and verify it belongs to the embedded project
+    item = get_object_or_404(Item, id=issue_id)
+    
+    # Security check: ensure item belongs to the embedded project
+    if item.project.id != embed_access.project.id:
+        raise Http404("Issue not found")
+    
+    # Get uploaded file
+    if 'file' not in request.FILES:
+        return HttpResponse("No file provided", status=400)
+    
+    uploaded_file = request.FILES['file']
+    
+    try:
+        # Store attachment using the storage service
+        storage_service = AttachmentStorageService()
+        attachment = storage_service.store_attachment(
+            file=uploaded_file,
+            target=item,
+            role=AttachmentRole.ITEM_FILE,
+            created_by=None,  # Anonymous upload from embed portal
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='attachment.uploaded',
+            target=item,
+            actor=None,
+            summary=f"File uploaded via embed portal: {uploaded_file.name}",
+        )
+        
+        # Return success response (for AJAX)
+        return JsonResponse({
+            'success': True,
+            'message': 'File uploaded successfully',
+            'attachment_id': attachment.id,
+            'filename': attachment.original_name,
+        })
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error uploading attachment to item {issue_id}: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def embed_issue_attachments(request, issue_id):
+    """
+    Get attachments list for an issue (for HTMX refresh).
+    GET /embed/issues/<issue_id>/attachments/?token=...
+    """
+    token = request.GET.get('token')
+    embed_access = validate_embed_token(token)
+    
+    if embed_access is None:
+        return HttpResponseForbidden("Access disabled")
+    
+    # Get the issue and verify it belongs to the embedded project
+    item = get_object_or_404(Item, id=issue_id)
+    
+    # Security check: ensure item belongs to the embedded project
+    if item.project.id != embed_access.project.id:
+        raise Http404("Issue not found")
+    
+    # Get attachments for this item
+    content_type = ContentType.objects.get_for_model(Item)
+    attachment_links = AttachmentLink.objects.filter(
+        target_content_type=content_type,
+        target_object_id=item.id,
+        role=AttachmentRole.ITEM_FILE
+    ).select_related('attachment')
+    
+    attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    
+    return render(request, 'embed/partials/attachments_list.html', {
+        'attachments': attachments,
+    })

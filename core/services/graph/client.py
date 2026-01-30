@@ -240,7 +240,7 @@ class GraphClient:
         # Build query parameters
         params = {
             "$top": str(min(top, 999)),  # Max 999 per request
-            "$select": "id,subject,from,toRecipients,body,receivedDateTime,hasAttachments,isRead,categories",
+            "$select": "id,subject,from,toRecipients,ccRecipients,body,receivedDateTime,hasAttachments,isRead,categories,internetMessageId,conversationId",
             "$orderby": "receivedDateTime desc",
         }
         
@@ -337,6 +337,43 @@ class GraphClient:
         logger.info(f"Moving message {message_id} to folder {destination_folder_id}")
         self.request("POST", url, json=payload)
         logger.debug("Message moved successfully")
+    
+    def get_message_attachments(
+        self,
+        user_upn: str,
+        message_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all attachments for a message.
+        
+        Args:
+            user_upn: User Principal Name
+            message_id: Message ID
+            
+        Returns:
+            List of attachment dictionaries with metadata and content
+            
+        Raises:
+            ServiceError: If the request fails
+            
+        Example:
+            >>> client = get_client()
+            >>> attachments = client.get_message_attachments("support@company.com", "AAMkAD...")
+            >>> for att in attachments:
+            ...     print(f"Name: {att['name']}, Size: {att['size']}, IsInline: {att.get('isInline', False)}")
+        """
+        url = f"/users/{user_upn}/messages/{message_id}/attachments"
+        
+        logger.info(f"Fetching attachments for message {message_id}")
+        
+        response = self.request("GET", url)
+        
+        if response and "value" in response:
+            attachments = response["value"]
+            logger.info(f"Retrieved {len(attachments)} attachments from message {message_id}")
+            return attachments
+        
+        return []
 
 
 def get_client() -> GraphClient:

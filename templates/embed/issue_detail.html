@@ -1,5 +1,6 @@
 {% extends "embed/base.html" %}
 {% load agira_filters %}
+{% load static %}
 
 {% block title %}{{ item.title }} - {{ project.name }}{% endblock %}
 
@@ -12,7 +13,44 @@
         z-index: 1000;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
+    
+    /* Upload drop zone styles */
+    .upload-drop-zone {
+        border: 2px dashed #cbd5e1;
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: #f8fafc;
+    }
+    
+    .upload-drop-zone:hover {
+        border-color: #6366f1;
+        background: #f1f5f9;
+        transform: scale(1.02);
+    }
+    
+    .upload-drop-zone.drag-over {
+        border-color: #6366f1;
+        background: #eef2ff;
+        transform: scale(1.02);
+    }
+    
+    .progress {
+        height: 1.5rem;
+    }
+    
+    .progress-bar {
+        transition: width 0.3s ease;
+    }
+    
+    .progress-bar-animated {
+        animation: progress-bar-stripes 1s linear infinite;
+    }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+<script src="{% static 'js/multi-file-upload.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -65,6 +103,40 @@
             </div>
         </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Attachments Section -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="h6 mb-0">Attachments</h3>
+    </div>
+    <div class="card-body">
+        <!-- Upload Zone -->
+        <div class="upload-drop-zone mb-3" 
+             data-upload-url="{% url 'embed-issue-upload-attachment' item.id %}?token={{ token }}"
+             data-refresh-url="{% url 'embed-issue-attachments' item.id %}?token={{ token }}"
+             data-refresh-target="#attachments-list"
+             data-max-file-size="26214400"
+             data-upload-zone="true">
+            <i class="bi bi-cloud-arrow-up" style="font-size: 2rem; color: #6c757d;"></i>
+            <p class="mb-1">Drag & drop files here</p>
+            <p class="text-muted small mb-2">or click to select files</p>
+            <p class="text-muted small">Support for multiple files • Maximum 25 MB per file</p>
+            <input type="file" class="d-none" multiple>
+            <input type="hidden" name="token" value="{{ token }}">
+        </div>
+        
+        <!-- Upload Queue -->
+        <div id="upload-queue" class="mb-3" style="display: none;">
+            <h6 class="mb-2">Upload Queue</h6>
+            <div id="upload-items"></div>
+        </div>
+        
+        <!-- Attachments List -->
+        <div id="attachments-list">
+            {% include "embed/partials/attachments_list.html" %}
+        </div>
     </div>
 </div>
 
