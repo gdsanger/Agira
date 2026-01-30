@@ -630,16 +630,43 @@ def items_github_open(request):
         kind=ExternalIssueKind.ISSUE,
     ).exclude(
         state='closed'
-    ).select_related('item', 'item__project').order_by('-number')
+    ).select_related('item', 'item__project').prefetch_related('item__external_mappings').order_by('-number')
     
     # Build list of issue data for display
     issues_data = []
     for mapping in open_issue_mappings:
+        # Get associated PRs for this item from prefetched data
+        all_mappings = mapping.item.external_mappings.all()
+        prs = [m for m in all_mappings if m.kind == ExternalIssueKind.PR]
+        prs.sort(key=lambda x: x.number)  # Sort by PR number
+        
+        # Select PR according to rule: first non-merged, or first if all merged
+        selected_pr = None
+        if prs:
+            # Try to find first non-merged PR (prefer open over closed)
+            for pr in prs:
+                if pr.state != 'merged':
+                    selected_pr = pr
+                    break
+            # If all merged, use first PR
+            if selected_pr is None:
+                selected_pr = prs[0]
+        
+        # Build PR data dict
+        pr_data = None
+        if selected_pr:
+            pr_data = {
+                'number': selected_pr.number,
+                'url': selected_pr.html_url,
+                'state': selected_pr.state,
+            }
+        
         issues_data.append({
             'issue_number': mapping.number,
             'item_title': mapping.item.title,
             'item_id': mapping.item.id,
             'github_url': mapping.html_url,
+            'pr': pr_data,
         })
     
     context = {
