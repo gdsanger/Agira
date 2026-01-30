@@ -2638,6 +2638,8 @@ def item_move_project(request, item_id):
         
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Http404:
+        return JsonResponse({'success': False, 'error': 'Target project not found'}, status=404)
     except Exception as e:
         logger.error(f"Failed to move item {item_id}: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
