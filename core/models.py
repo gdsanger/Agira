@@ -7,6 +7,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
+import secrets
 
 
 # Enums as TextChoices
@@ -1024,3 +1025,61 @@ class MailActionMapping(models.Model):
         template_key = self.mail_template.key if self.mail_template else 'Unknown'
         active_str = 'active' if self.is_active else 'inactive'
         return f"{status_display} + {type_name} → {template_key} ({active_str})"
+
+
+class OrganisationEmbedProject(models.Model):
+    """
+    Defines embed access for a specific organisation-project combination.
+    Allows external iFrame embedding based on a generated token.
+    """
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='embed_projects',
+        help_text=_('Organisation that has embed access')
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='embed_accesses',
+        help_text=_('Project that can be embedded')
+    )
+    is_enabled = models.BooleanField(
+        default=True,
+        help_text=_('Whether this embed access is currently enabled')
+    )
+    embed_token = models.CharField(
+        max_length=128,
+        unique=True,
+        help_text=_('Cryptographically secure token for embed access')
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['organisation', 'project']
+        verbose_name = _('Organisation Embed Project')
+        verbose_name_plural = _('Organisation Embed Projects')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'project'],
+                name='unique_organisation_project_embed'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['embed_token']),
+            models.Index(fields=['is_enabled']),
+        ]
+
+    def __str__(self):
+        return f"{self.organisation.name} - {self.project.name} ({'enabled' if self.is_enabled else 'disabled'})"
+
+    def save(self, *args, **kwargs):
+        """
+        Auto-generate embed_token if not set.
+        Uses secrets.token_urlsafe for cryptographically secure, URL-safe tokens.
+        """
+        if not self.embed_token:
+            # Generate 48 bytes = 64 characters base64-encoded (URL-safe)
+            self.embed_token = secrets.token_urlsafe(48)
+        super().save(*args, **kwargs)
