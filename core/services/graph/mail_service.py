@@ -9,10 +9,12 @@ Version 1: Send Only (no inbound fetching or threading)
 
 import logging
 import base64
+import re
 from dataclasses import dataclass
 from typing import List, Optional, TYPE_CHECKING
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
+from django.utils.html import strip_tags
 
 from core.services.config import get_graph_config
 from core.services.exceptions import ServiceNotConfigured, ServiceDisabled, ServiceError
@@ -191,13 +193,17 @@ def send_email(
     # Create ItemComment if item is provided (set to Queued initially)
     comment = None
     if item is not None:
+        # For HTML emails, store plain text in body field for display
+        # and keep HTML in body_html/body_original_html for forwarding
+        display_body = strip_tags(body) if body_is_html else body
+        
         comment = ItemComment.objects.create(
             item=item,
             author=author,
             visibility=visibility,
             kind=CommentKind.EMAIL_OUT,
             subject=subject,
-            body=body if not body_is_html else "",
+            body=display_body,  # Plain text for display
             body_html=body if body_is_html else "",
             body_original_html=body if body_is_html else "",  # Store original HTML for forwarding
             external_from=sender,

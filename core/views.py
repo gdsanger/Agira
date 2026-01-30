@@ -766,7 +766,7 @@ def item_detail(request, item_id):
 def item_comments_tab(request, item_id):
     """HTMX endpoint to load comments tab."""
     item = get_object_or_404(Item, id=item_id)
-    comments = item.comments.select_related('author').order_by('created_at')
+    comments = item.comments.select_related('author').order_by('-created_at')
     
     context = {
         'item': item,
