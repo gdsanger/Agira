@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import views_azuread
 from . import views_embed
+from . import views_items
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -39,13 +40,13 @@ urlpatterns = [
     path('projects/attachments/<int:attachment_id>/view/', views.project_view_attachment, name='project-view-attachment'),
     path('projects/attachments/<int:attachment_id>/download/', views.project_download_attachment, name='project-download-attachment'),
     path('projects/<int:id>/import-github-issues/', views.project_import_github_issues, name='project-import-github-issues'),
-    path('items/inbox/', views.items_inbox, name='items-inbox'),
-    path('items/backlog/', views.items_backlog, name='items-backlog'),
-    path('items/working/', views.items_working, name='items-working'),
-    path('items/testing/', views.items_testing, name='items-testing'),
-    path('items/planning/', views.items_planning, name='items-planning'),
-    path('items/specification/', views.items_specification, name='items-specification'),
-    path('items/ready/', views.items_ready, name='items-ready'),
+    path('items/inbox/', views_items.ItemsInboxView.as_view(), name='items-inbox'),
+    path('items/backlog/', views_items.ItemsBacklogView.as_view(), name='items-backlog'),
+    path('items/working/', views_items.ItemsWorkingView.as_view(), name='items-working'),
+    path('items/testing/', views_items.ItemsTestingView.as_view(), name='items-testing'),
+    path('items/planning/', views_items.ItemsPlanningView.as_view(), name='items-planning'),
+    path('items/specification/', views_items.ItemsSpecificationView.as_view(), name='items-specification'),
+    path('items/ready/', views_items.ItemsReadyView.as_view(), name='items-ready'),
     path('items/github/open/', views.items_github_open, name='items-github-open'),
     path('items/new/', views.item_create, name='item-create'),
     path('items/lookup/<int:item_id>/', views.item_lookup, name='item-lookup'),

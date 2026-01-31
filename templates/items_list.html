@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load django_tables2 %}
+{% load i18n %}
+
+{% block title %}{{ page_title }} - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h1>{{ page_title }}</h1>
+            <p class="text-muted">{{ page_description }}</p>
+        </div>
+        <div>
+            <a href="{% url 'item-create' %}" class="btn btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                    <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                </svg>
+                New Item
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Form -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                {{ filter.form.q }}
+            </div>
+            <div class="col-md-2">
+                {{ filter.form.project }}
+            </div>
+            <div class="col-md-2">
+                {{ filter.form.type }}
+            </div>
+            <div class="col-md-2">
+                {{ filter.form.organisation }}
+            </div>
+            <div class="col-md-2">
+                {{ filter.form.requester }}
+            </div>
+            <div class="col-md-2">
+                {{ filter.form.assigned_to }}
+            </div>
+            <div class="col-md-12">
+                <button type="submit" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-funnel" viewBox="0 0 16 16">
+                        <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5v-2zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2h-11z"/>
+                    </svg>
+                    Apply Filters
+                </button>
+                {% if request.GET %}
+                <a href="{{ request.path }}" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                    Clear Filters
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="table-responsive">
+    {% render_table table %}
+</div>
+
+<!-- Empty state message (if no results) -->
+{% if not table.page.object_list %}
+<div class="text-center text-muted py-5">
+    <div class="mb-3">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-inbox" viewBox="0 0 16 16">
+            <path d="M4.98 4a.5.5 0 0 0-.39.188L1.54 8H6a.5.5 0 0 1 .5.5 1.5 1.5 0 1 0 3 0A.5.5 0 0 1 10 8h4.46l-3.05-3.812A.5.5 0 0 0 11.02 4H4.98zm9.954 5H10.45a2.5 2.5 0 0 1-4.9 0H1.066l.32 2.562a.5.5 0 0 0 .497.438h12.234a.5.5 0 0 0 .496-.438L14.933 9zM3.809 3.563A1.5 1.5 0 0 1 4.981 3h6.038a1.5 1.5 0 0 1 1.172.563l3.7 4.625a.5.5 0 0 1 .105.374l-.39 3.124A1.5 1.5 0 0 1 14.117 13H1.883a1.5 1.5 0 0 1-1.489-1.314l-.39-3.124a.5.5 0 0 1 .106-.374l3.7-4.625z"/>
+        </svg>
+    </div>
+    <h5>No items found</h5>
+    {% if request.GET %}
+    <p>Try adjusting your search filters</p>
+    {% else %}
+    <p>No items in this status yet</p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
