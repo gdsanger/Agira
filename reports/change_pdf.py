@@ -15,6 +15,9 @@ from reportlab.lib.enums import TA_LEFT
 
 from core.services.reporting.styles import get_report_styles
 
+# Constants
+MAX_COMMENT_LENGTH = 50  # Maximum length for approval comments in table
+
 
 def build_change_pdf(change, output):
     """
@@ -86,16 +89,16 @@ def build_change_pdf(change, output):
     story.append(Paragraph("<b>Description:</b>", styles['ReportBody']))
     # Handle multi-line descriptions
     for line in description.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line.strip() or '—', styles['ReportBody']))
+        line_text = line.strip() if line.strip() else '—'
+        story.append(Paragraph(line_text, styles['ReportBody']))
     story.append(Spacer(1, 5 * mm))
     
     # Risk Description
     risk_description = change.risk_description if change.risk_description else 'Not provided'
     story.append(Paragraph("<b>Risk Description:</b>", styles['ReportBody']))
     for line in risk_description.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line.strip() or '—', styles['ReportBody']))
+        line_text = line.strip() if line.strip() else '—'
+        story.append(Paragraph(line_text, styles['ReportBody']))
     story.append(Spacer(1, 8 * mm))
     
     # --- 4. IMPLEMENTATION / PLAN SECTION ---
@@ -118,24 +121,24 @@ def build_change_pdf(change, output):
     mitigation = change.mitigation if change.mitigation else 'Not provided'
     story.append(Paragraph("<b>Mitigation Plan:</b>", styles['ReportBody']))
     for line in mitigation.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line.strip() or '—', styles['ReportBody']))
+        line_text = line.strip() if line.strip() else '—'
+        story.append(Paragraph(line_text, styles['ReportBody']))
     story.append(Spacer(1, 5 * mm))
     
     # Rollback Plan
     rollback_plan = change.rollback_plan if change.rollback_plan else 'Not provided'
     story.append(Paragraph("<b>Rollback Plan:</b>", styles['ReportBody']))
     for line in rollback_plan.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line.strip() or '—', styles['ReportBody']))
+        line_text = line.strip() if line.strip() else '—'
+        story.append(Paragraph(line_text, styles['ReportBody']))
     story.append(Spacer(1, 5 * mm))
     
     # Communication Plan
     communication_plan = change.communication_plan if change.communication_plan else 'Not provided'
     story.append(Paragraph("<b>Communication Plan:</b>", styles['ReportBody']))
     for line in communication_plan.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line.strip() or '—', styles['ReportBody']))
+        line_text = line.strip() if line.strip() else '—'
+        story.append(Paragraph(line_text, styles['ReportBody']))
     story.append(Spacer(1, 8 * mm))
     
     # --- 5. APPROVALS / REVIEW / AUDIT TRAIL SECTION ---
@@ -150,7 +153,7 @@ def build_change_pdf(change, output):
             status = approval.get_status_display() or '—'
             is_required = 'Yes' if approval.is_required else 'No'
             approved_at = approval.approved_at.strftime('%Y-%m-%d %H:%M') if approval.approved_at else '—'
-            comment = approval.comment[:50] + '...' if approval.comment and len(approval.comment) > 50 else (approval.comment or '—')
+            comment = approval.comment[:MAX_COMMENT_LENGTH] + '...' if approval.comment and len(approval.comment) > MAX_COMMENT_LENGTH else (approval.comment or '—')
             
             approval_data.append([
                 approver_name,

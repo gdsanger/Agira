@@ -5285,7 +5285,6 @@ def change_print(request, id):
 
 
 @login_required
-
 @require_http_methods(["POST"])
 def change_add_approver(request, id):
     """Add an approver to a change."""
