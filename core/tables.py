@@ -32,14 +32,14 @@ class ItemTable(tables.Table):
     type = tables.Column(
         verbose_name='Type',
         orderable=True,
-        accessor='type.name'
+        accessor='type__name'
     )
     
     # Project column
     project = tables.Column(
         verbose_name='Project',
         orderable=True,
-        accessor='project.name',
+        accessor='project__name',
         attrs={'td': {'class': 'small'}}
     )
     
@@ -47,7 +47,7 @@ class ItemTable(tables.Table):
     organisation = tables.Column(
         verbose_name='Organisation',
         orderable=True,
-        accessor='organisation.name',
+        accessor='organisation__name',
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
@@ -56,7 +56,7 @@ class ItemTable(tables.Table):
     requester = tables.Column(
         verbose_name='Requester',
         orderable=True,
-        accessor='requester.username',
+        accessor='requester__username',
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
@@ -65,7 +65,7 @@ class ItemTable(tables.Table):
     assigned_to = tables.Column(
         verbose_name='Assigned To',
         orderable=True,
-        accessor='assigned_to.username',
+        accessor='assigned_to__username',
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
@@ -120,7 +120,7 @@ class ItemTable(tables.Table):
         """
         if record.organisation:
             return record.organisation.name
-        return format_html('<span class="text-muted">—</span>')
+        return format_html('<span class="text-muted">{}</span>', '—')
     
     def render_requester(self, value, record):
         """
@@ -128,7 +128,7 @@ class ItemTable(tables.Table):
         """
         if record.requester:
             return record.requester.username
-        return format_html('<span class="text-muted">—</span>')
+        return format_html('<span class="text-muted">{}</span>', '—')
     
     def render_assigned_to(self, value, record):
         """
@@ -136,4 +136,4 @@ class ItemTable(tables.Table):
         """
         if record.assigned_to:
             return record.assigned_to.username
-        return format_html('<span class="text-muted">—</span>')
+        return format_html('<span class="text-muted">{}</span>', '—')
