@@ -446,7 +446,9 @@ class EmailIngestionService:
                     )
                     
                     # Map content_id to attachment for inline image processing
-                    if content_id and is_inline:
+                    # Note: We map ANY attachment with a content_id, not just those marked as inline,
+                    # because Microsoft Graph may not always set isInline correctly
+                    if content_id:
                         content_id_map[content_id] = attachment
                         
                 except Exception as e:
