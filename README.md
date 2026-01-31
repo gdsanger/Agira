@@ -175,6 +175,28 @@ Agira ist ein **Arbeitswerkzeug**, kein Framework, kein Methodenzwang.
 
 ---
 
+## Management Commands
+
+### Backfill Item Relations
+
+To migrate existing parent-child relationships from the `Item.parent` field to `ItemRelation` entries:
+
+```bash
+# Dry-run mode (shows what would be created without making changes)
+python manage.py backfill_item_relations --dry-run
+
+# Actually create the relations
+python manage.py backfill_item_relations
+```
+
+This command:
+- Creates `ItemRelation` entries with `type=Related` for all items with a `parent` field set
+- Is **idempotent** - running multiple times won't create duplicates
+- Only creates relations that don't already exist
+- Provides detailed output showing which relations were created, skipped, or had errors
+
+---
+
 ## Leitgedanke
 
 > *Agira soll nicht vorschreiben, wie gearbeitet wird –  
