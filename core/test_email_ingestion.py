@@ -1073,3 +1073,97 @@ class EmailAttachmentProcessingTest(TestCase):
         # Verify HTML rewrite
         comment = result_item.comments.first()
         self.assertIn(f'/items/attachments/{img_att.id}/view/', comment.body_original_html)
+    
+    @patch('core.services.graph.email_ingestion_service.get_client')
+    @patch('core.services.graph.email_ingestion_service.AgentService')
+    def test_process_message_with_inline_image_without_inline_flag(self, mock_agent_service, mock_get_client):
+        """Test processing email with inline image that doesn't have isInline flag set.
+        
+        This tests the real-world scenario where Microsoft Graph API may not set
+        the isInline flag correctly, but the image still has a content_id and is
+        referenced in the HTML body via cid:.
+        """
+        import base64
+        
+        # Mock client
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock agent service
+        mock_agent = Mock()
+        mock_agent_service.return_value = mock_agent
+        mock_agent.execute_agent.side_effect = [
+            "Test body converted",  # HTML to Markdown
+            json.dumps({"project": "TestProject", "type": "task"}),  # Classification
+        ]
+        
+        # Create mock image content
+        image_content = b"\x89PNG\r\n\x1a\n fake png"
+        image_b64 = base64.b64encode(image_content).decode('utf-8')
+        
+        # Mock message with inline image (real-world example from issue)
+        html_body = '''<html><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head><body><div>Inline Image:</div><div style="direction:ltr"><img src="cid:DE1F58BA-DAB3-4CC6-8443-E12842830866" alt="image.png" id="id-DE1F58BA-DAB3-4CC6-8443-E12842830866" width="1024" style="width:1024px; max-width:100%"></div></body></html>'''
+        
+        mock_message = {
+            "id": "msg126",
+            "subject": "Test with inline image without flag",
+            "from": {
+                "emailAddress": {
+                    "address": "test@test.com",
+                    "name": "Test User"
+                }
+            },
+            "toRecipients": [],
+            "ccRecipients": [],
+            "body": {
+                "contentType": "html",
+                "content": html_body
+            },
+            "hasAttachments": True,
+            "internetMessageId": "msg126@test.com",
+        }
+        
+        # Mock inline attachment WITHOUT isInline flag set (or set to False)
+        # but WITH a content_id that matches the cid: reference in HTML
+        mock_attachments = [{
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "image.png",
+            "contentType": "image/png",
+            "size": len(image_content),
+            "isInline": False,  # This is the key difference - flag is False but has content_id
+            "contentId": "<DE1F58BA-DAB3-4CC6-8443-E12842830866>",  # With angle brackets
+            "contentBytes": image_b64,
+        }]
+        
+        mock_client.get_message_attachments.return_value = mock_attachments
+        
+        # Create service and process message
+        service = EmailIngestionService()
+        result_item = service._process_message(mock_message)
+        
+        # Verify attachment was created with content_id
+        from core.models import Attachment, AttachmentLink, AttachmentRole
+        from django.contrib.contenttypes.models import ContentType
+        
+        content_type = ContentType.objects.get_for_model(Item)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=result_item.id,
+            role=AttachmentRole.ITEM_FILE
+        )
+        
+        self.assertEqual(attachment_links.count(), 1)
+        attachment = attachment_links.first().attachment
+        self.assertEqual(attachment.original_name, "image.png")
+        # Verify content_id is normalized (no angle brackets)
+        self.assertEqual(attachment.content_id, "DE1F58BA-DAB3-4CC6-8443-E12842830866")
+        
+        # Verify HTML was rewritten in comment even though isInline was False
+        comment = result_item.comments.first()
+        self.assertIsNotNone(comment)
+        # Should have attachment URL
+        self.assertIn(f'/items/attachments/{attachment.id}/view/', comment.body_original_html)
+        # Should NOT have cid: reference anymore
+        self.assertNotIn('cid:DE1F58BA-DAB3-4CC6-8443-E12842830866', comment.body_original_html)
+        self.assertNotIn('cid:', comment.body_original_html)
