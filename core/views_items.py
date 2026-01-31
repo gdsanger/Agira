@@ -159,7 +159,10 @@ class ItemsReadyView(StatusItemListView):
 
 
 class ItemsPlanningView(StatusItemListView):
-    """Items Planning - items in planning phase."""
+    """Items Planning - items in planning phase.
+    
+    Note: Uses ItemStatus.PLANING (not PLANNING) to match model definition.
+    """
     item_status = ItemStatus.PLANING
     page_title = "Items - Planning"
     page_description = "Items in planning phase"
