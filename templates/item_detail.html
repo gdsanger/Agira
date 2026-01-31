@@ -93,6 +93,18 @@
     background-color: #2a2a2a;
     font-weight: bold;
 }
+/* Incoming project warning banner */
+.incoming-warning {
+    background-color: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    color: #856404;
+}
+.incoming-warning strong {
+    color: #856404;
+}
 </style>
 {% endblock %}
 
@@ -147,6 +159,16 @@
 
 <!-- Hidden CSRF token for delete operation -->
 {% csrf_token %}
+
+<!-- Incoming Project Warning Banner -->
+{% if item.project.name == 'Incoming' %}
+<div class="incoming-warning">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-exclamation-triangle-fill me-2" viewBox="0 0 16 16" style="vertical-align: text-bottom;">
+        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+    </svg>
+    <strong>Achtung: Incoming-Projekt!</strong> Dieses Item befindet sich im Projekt "Incoming" und muss in das richtige Projekt verschoben werden, bevor es bearbeitet werden kann.
+</div>
+{% endif %}
 
 <!-- Tab Navigation -->
 <ul class="nav nav-tabs mb-4" id="itemTabs" role="tablist">
@@ -230,121 +252,175 @@
                         <h5 class="mb-0">Details</h5>
                     </div>
                     <div class="card-body">
-                        <div class="mb-3">
-                            <strong>Title:</strong>
-                            <div class="mt-2">{{ item.title }}</div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <strong>Description:</strong>
-                                {% if user.is_authenticated and user.role == 'Agent' %}
-                                <div class="d-flex gap-2">
-                                    {% if item.type.key == 'meeting' %}
-                                    <button 
-                                        type="button"
-                                        class="btn btn-sm btn-outline-warning"
-                                        onclick="document.getElementById('transcript-file-input').click()"
-                                        id="upload-transcript-btn"
-                                        title="Upload a .docx meeting transcript to extract summary and tasks">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-file-earmark-arrow-up me-1" viewBox="0 0 16 16">
-                                            <path d="M8.5 11.5a.5.5 0 0 1-1 0V7.707L6.354 8.854a.5.5 0 1 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 7.707V11.5z"/>
-                                            <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
-                                        </svg>
-                                        Transkript importieren
-                                        <span id="transcript-upload-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
-                                        </span>
-                                    </button>
-                                    <input 
-                                        type="file" 
-                                        id="transcript-file-input" 
-                                        name="file"
-                                        accept=".docx"
-                                        style="display: none;"
-                                        onchange="uploadTranscript()">
-                                    {% endif %}
-                                    <button 
-                                        type="button"
-                                        class="btn btn-sm btn-outline-info"
-                                        hx-post="{% url 'item-optimize-description-ai' item.id %}"
-                                        hx-swap="none"
-                                        hx-indicator="#ai-optimize-spinner"
-                                        hx-disabled-elt="this"
-                                        title="Optimize description using AI and RAG for better GitHub issue quality">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-stars me-1" viewBox="0 0 16 16">
-                                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
-                                        </svg>
-                                        AI: Description optimieren (GitHub)
-                                        <span id="ai-optimize-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
-                                            <span class="visually-hidden">Loading...</span>
-                                        </span>
-                                    </button>
-                                    <button 
-                                        type="button"
-                                        class="btn btn-sm btn-outline-success"
-                                        onclick="triggerPreReview()"
-                                        id="pre-review-btn"
-                                        title="Run Pre-Review with AI agent to analyze this item">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-search me-1" viewBox="0 0 16 16">
-                                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-                                        </svg>
-                                        AI: Pre-Review
-                                    </button>
-                                </div>
-                                {% endif %}
-                            </div>
-                            <div class="mt-2">
-                                {% if item.description %}
-                                    <div class="markdown-viewer">
-                                        {{ item.description|render_markdown }}
-                                    </div>
-                                {% else %}
-                                    <span class="text-muted">—</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Original Mail Text (unverändert):</strong>
-                            <div class="mt-2">
-                                {% if item.user_input %}
-                                    <div class="markdown-viewer">
-                                        {{ item.user_input|render_markdown }}
-                                    </div>
-                                {% else %}
-                                    <span class="text-muted">—</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <strong>Solution:</strong>
-                                {% if user.is_authenticated and user.role == 'Agent' %}
+                        <!-- Detail Content Tabs -->
+                        <ul class="nav nav-tabs mb-3" id="detailContentTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
                                 <button 
-                                    type="button"
-                                    class="btn btn-sm btn-outline-primary"
-                                    hx-post="{% url 'item-generate-solution-ai' item.id %}"
-                                    hx-swap="none"
-                                    hx-indicator="#ai-generate-solution-spinner"
-                                    hx-disabled-elt="this"
-                                    title="Generate solution description using AI and RAG based on item description">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-stars me-1" viewBox="0 0 16 16">
-                                        <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
-                                    </svg>
-                                    AI: Generate
-                                    <span id="ai-generate-solution-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </span>
+                                    class="nav-link active" 
+                                    id="description-content-tab" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#description-content" 
+                                    type="button" 
+                                    role="tab"
+                                    onclick="saveActiveDetailTab('{{ item.id }}', 'description')">
+                                    Description
                                 </button>
-                                {% endif %}
-                            </div>
-                            <div class="mt-2">
-                                {% if item.solution_description %}
-                                    <div class="markdown-viewer">
-                                        {{ item.solution_description|render_markdown }}
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button 
+                                    class="nav-link" 
+                                    id="original-mail-content-tab" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#original-mail-content" 
+                                    type="button" 
+                                    role="tab"
+                                    onclick="saveActiveDetailTab('{{ item.id }}', 'original-mail')">
+                                    Original Mail Text
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button 
+                                    class="nav-link" 
+                                    id="solution-content-tab" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#solution-content" 
+                                    type="button" 
+                                    role="tab"
+                                    onclick="saveActiveDetailTab('{{ item.id }}', 'solution')">
+                                    Solution
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Detail Tab Content -->
+                        <div class="tab-content" id="detailContentTabContent">
+                            <!-- Description Tab -->
+                            <div class="tab-pane fade show active" id="description-content" role="tabpanel">
+                                <div class="mb-3">
+                                    <strong>Title:</strong>
+                                    <div class="mt-2">{{ item.title }}</div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <strong>Description:</strong>
+                                        {% if user.is_authenticated and user.role == 'Agent' and item.project.name != 'Incoming' %}
+                                        <div class="d-flex gap-2">
+                                            {% if item.type.key == 'meeting' %}
+                                            <button 
+                                                type="button"
+                                                class="btn btn-sm btn-outline-warning"
+                                                onclick="document.getElementById('transcript-file-input').click()"
+                                                id="upload-transcript-btn"
+                                                title="Upload a .docx meeting transcript to extract summary and tasks">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-file-earmark-arrow-up me-1" viewBox="0 0 16 16">
+                                                    <path d="M8.5 11.5a.5.5 0 0 1-1 0V7.707L6.354 8.854a.5.5 0 1 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 7.707V11.5z"/>
+                                                    <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                                                </svg>
+                                                Transkript importieren
+                                                <span id="transcript-upload-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status" style="display: none;">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </span>
+                                            </button>
+                                            <input 
+                                                type="file" 
+                                                id="transcript-file-input" 
+                                                name="file"
+                                                accept=".docx"
+                                                style="display: none;"
+                                                onchange="uploadTranscript()">
+                                            {% endif %}
+                                            <button 
+                                                type="button"
+                                                class="btn btn-sm btn-outline-info"
+                                                hx-post="{% url 'item-optimize-description-ai' item.id %}"
+                                                hx-swap="none"
+                                                hx-indicator="#ai-optimize-spinner"
+                                                hx-disabled-elt="this"
+                                                title="Optimize description using AI and RAG for better GitHub issue quality">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-stars me-1" viewBox="0 0 16 16">
+                                                    <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
+                                                </svg>
+                                                AI: Description optimieren (GitHub)
+                                                <span id="ai-optimize-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </span>
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                class="btn btn-sm btn-outline-success"
+                                                onclick="triggerPreReview()"
+                                                id="pre-review-btn"
+                                                title="Run Pre-Review with AI agent to analyze this item">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-search me-1" viewBox="0 0 16 16">
+                                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                                                </svg>
+                                                AI: Pre-Review
+                                            </button>
+                                        </div>
+                                        {% endif %}
                                     </div>
-                                {% else %}
-                                    <span class="text-muted">—</span>
-                                {% endif %}
+                                    <div class="mt-2">
+                                        {% if item.description %}
+                                            <div class="markdown-viewer">
+                                                {{ item.description|render_markdown }}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Original Mail Text Tab -->
+                            <div class="tab-pane fade" id="original-mail-content" role="tabpanel">
+                                <div class="mb-3">
+                                    <strong>Original Mail Text (unverändert):</strong>
+                                    <div class="mt-2">
+                                        {% if item.user_input %}
+                                            <div class="markdown-viewer">
+                                                {{ item.user_input|render_markdown }}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Solution Tab -->
+                            <div class="tab-pane fade" id="solution-content" role="tabpanel">
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <strong>Solution:</strong>
+                                        {% if user.is_authenticated and user.role == 'Agent' and item.project.name != 'Incoming' %}
+                                        <button 
+                                            type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            hx-post="{% url 'item-generate-solution-ai' item.id %}"
+                                            hx-swap="none"
+                                            hx-indicator="#ai-generate-solution-spinner"
+                                            hx-disabled-elt="this"
+                                            title="Generate solution description using AI and RAG based on item description">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-stars me-1" viewBox="0 0 16 16">
+                                                <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69A1.734 1.734 0 0 0 2.31 4.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.1z"/>
+                                            </svg>
+                                            AI: Generate
+                                            <span id="ai-generate-solution-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </span>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mt-2">
+                                        {% if item.solution_description %}
+                                            <div class="markdown-viewer">
+                                                {{ item.solution_description|render_markdown }}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -431,7 +507,30 @@
                         </div>
                         <div class="mb-3">
                             <strong>Solution Release:</strong>
-                            <div>{% if item.solution_release %}{{ item.solution_release.version }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                            <div class="mt-2" id="release-field-container">
+                                <select 
+                                    class="form-select form-select-sm" 
+                                    id="release-select"
+                                    name="solution_release"
+                                    hx-post="{% url 'item-update-release' item.id %}"
+                                    hx-trigger="change"
+                                    hx-swap="none"
+                                    hx-indicator="#release-save-indicator">
+                                    <option value="">None</option>
+                                    {% for release in releases %}
+                                    <option value="{{ release.id }}" {% if item.solution_release and item.solution_release.id == release.id %}selected{% endif %}>
+                                        {{ release.version }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <small id="release-save-indicator" class="htmx-indicator text-success" style="display: none;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-check-circle me-1" viewBox="0 0 16 16">
+                                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                        <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>
+                                    </svg>
+                                    Gespeichert
+                                </small>
+                            </div>
                         </div>
                         <div class="mb-3">
                             <strong>Node:</strong>
@@ -1379,6 +1478,48 @@
             showToast('error', 'Network error while updating followers');
         });
     }
+    
+    // Detail content tab persistence
+    function saveActiveDetailTab(itemId, tabName) {
+        localStorage.setItem(`item:${itemId}:activeDetailTab`, tabName);
+    }
+    
+    function loadActiveDetailTab() {
+        const itemId = {{ item.id|escapejs }};
+        const savedTab = localStorage.getItem(`item:${itemId}:activeDetailTab`);
+        
+        if (savedTab) {
+            // Activate the saved tab
+            const tabButton = document.getElementById(`${savedTab}-content-tab`);
+            const tabPane = document.getElementById(`${savedTab}-content`);
+            
+            if (tabButton && tabPane) {
+                // Remove active from default tab
+                document.getElementById('description-content-tab').classList.remove('active');
+                document.getElementById('description-content').classList.remove('show', 'active');
+                
+                // Activate saved tab
+                tabButton.classList.add('active');
+                tabPane.classList.add('show', 'active');
+            }
+        }
+    }
+    
+    // Load saved tab on page load
+    document.addEventListener('DOMContentLoaded', loadActiveDetailTab);
+    
+    // Show release save indicator
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.pathInfo.requestPath.includes('update-release')) {
+            const indicator = document.getElementById('release-save-indicator');
+            if (indicator && event.detail.successful) {
+                indicator.style.display = 'inline';
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                }, 2000);
+            }
+        }
+    });
 </script>
 
 <!-- Include mail confirmation modal -->

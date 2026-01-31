@@ -50,6 +50,7 @@ urlpatterns = [
     path('items/<int:item_id>/', views.item_detail, name='item-detail'),
     path('items/<int:item_id>/edit/', views.item_edit, name='item-edit'),
     path('items/<int:item_id>/update/', views.item_update, name='item-update'),
+    path('items/<int:item_id>/update-release/', views.item_update_release, name='item-update-release'),
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
     path('items/<int:item_id>/move-project/', views.item_move_project, name='item-move-project'),
