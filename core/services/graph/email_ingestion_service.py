@@ -535,8 +535,8 @@ class EmailIngestionService:
         pattern = r'!\[([^\]]*)\]\(cid:([^)]+)\)'
         
         def replace_cid(match):
-            alt_text = match.group(1).strip()
-            cid = match.group(2).strip()
+            alt_text = match.group(1)  # Don't strip - preserve whitespace in alt text
+            cid = match.group(2).strip()  # Strip only the CID
             
             # Try to find attachment by content_id
             if cid in content_id_map:
@@ -550,7 +550,8 @@ class EmailIngestionService:
                 return match.group(0)
         
         # Replace all cid: references
-        rewritten_markdown = re.sub(pattern, replace_cid, markdown_content, flags=re.IGNORECASE)
+        # Note: Content IDs are case-sensitive, so we don't use re.IGNORECASE
+        rewritten_markdown = re.sub(pattern, replace_cid, markdown_content)
         
         return rewritten_markdown
     
