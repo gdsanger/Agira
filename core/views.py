@@ -337,12 +337,12 @@ def project_items_tab(request, id):
     
     # Start with all items for this project
     items = Item.objects.filter(project=project).select_related(
-        'type', 'assigned_to'
+        'type', 'assigned_to', 'solution_release'
     ).order_by('-updated_at')
     
     # Get filter parameters
     search_query = request.GET.get('q', '').strip()
-    status_filter = request.GET.getlist('status')
+    status_filter_type = request.GET.get('status_filter', 'not_closed')  # Default to not_closed
     type_filter = request.GET.getlist('type')
     
     # Convert type_filter to integers for proper comparison
@@ -359,9 +359,11 @@ def project_items_tab(request, id):
             Q(title__icontains=search_query) | Q(description__icontains=search_query)
         )
     
-    # Apply status filter
-    if status_filter:
-        items = items.filter(status__in=status_filter)
+    # Apply status filter - simplified to closed vs not closed
+    if status_filter_type == 'closed':
+        items = items.filter(status=ItemStatus.CLOSED)
+    else:  # not_closed (default)
+        items = items.exclude(status=ItemStatus.CLOSED)
     
     # Apply type filter
     if type_filter_ints:
@@ -378,15 +380,19 @@ def project_items_tab(request, id):
     # Get all status choices
     status_choices = ItemStatus.choices
     
+    # Get project releases for solution_release dropdown
+    project_releases = project.releases.all().order_by('-update_date', 'name')
+    
     context = {
         'project': project,
         'page_obj': page_obj,
         'search_query': search_query,
-        'selected_statuses': status_filter,
+        'status_filter_type': status_filter_type,
         'selected_types': type_filter_ints,
         'item_types': item_types,
         'status_choices': status_choices,
         'closed_status_value': ItemStatus.CLOSED,  # Pass the constant to template
+        'project_releases': project_releases,
     }
     return render(request, 'partials/project_items_tab.html', context)
 
@@ -3191,6 +3197,8 @@ def project_add_release(request, id):
         name = request.POST.get('name')
         version = request.POST.get('version')
         release_type = request.POST.get('type')
+        status = request.POST.get('status', ReleaseStatus.PLANNED)
+        risk = request.POST.get('risk', RiskLevel.NORMAL)
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -3199,17 +3207,82 @@ def project_add_release(request, id):
         if release_type and release_type not in ReleaseType.values:
             return JsonResponse({'success': False, 'error': f'Invalid release type. Must be one of: {", ".join(ReleaseType.values)}'}, status=400)
         
+        # Validate status
+        if status and status not in ReleaseStatus.values:
+            return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
+        
+        # Validate risk
+        if risk and risk not in RiskLevel.values:
+            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        
         release = Release.objects.create(
             project=project,
             name=name,
             version=version,
             type=release_type if release_type else None,
-            status=ReleaseStatus.PLANNED
+            status=status,
+            risk=risk
         )
         
         return JsonResponse({'success': True, 'message': 'Release created successfully', 'release_id': release.id})
     except ValidationError as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+def project_update_release(request, id, release_id):
+    """Update a release."""
+    project = get_object_or_404(Project, id=id)
+    release = get_object_or_404(Release, id=release_id, project=project)
+    
+    try:
+        name = request.POST.get('name')
+        version = request.POST.get('version')
+        release_type = request.POST.get('type')
+        status = request.POST.get('status')
+        risk = request.POST.get('risk')
+        
+        if not name or not version:
+            return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
+        
+        # Validate release type if provided
+        if release_type and release_type not in ReleaseType.values:
+            return JsonResponse({'success': False, 'error': f'Invalid release type. Must be one of: {", ".join(ReleaseType.values)}'}, status=400)
+        
+        # Validate status
+        if status and status not in ReleaseStatus.values:
+            return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
+        
+        # Validate risk
+        if risk and risk not in RiskLevel.values:
+            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        
+        # Update release fields
+        release.name = name
+        release.version = version
+        release.type = release_type if release_type else None
+        release.status = status if status else release.status
+        release.risk = risk if risk else release.risk
+        release.save()
+        
+        return JsonResponse({'success': True, 'message': 'Release updated successfully'})
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+def project_delete_release(request, id, release_id):
+    """Delete a release."""
+    project = get_object_or_404(Project, id=id)
+    release = get_object_or_404(Release, id=release_id, project=project)
+    
+    try:
+        release.delete()
+        return JsonResponse({'success': True, 'message': 'Release deleted successfully'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
@@ -3229,9 +3302,14 @@ def project_attachments_tab(request, id):
     
     attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
     
+    # Pagination - 10 items per page
+    paginator = Paginator(attachments, 10)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
     context = {
         'project': project,
-        'attachments': attachments,
+        'page_obj': page_obj,
     }
     return render(request, 'partials/project_attachments_tab.html', context)
 
