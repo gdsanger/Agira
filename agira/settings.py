@@ -48,6 +48,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_filters',
+    'django_tables2',
     'core',
 ]
 
@@ -208,3 +210,10 @@ AZURE_AD_REDIRECT_URI = os.getenv('AZURE_AD_REDIRECT_URI', 'http://localhost:800
 AZURE_AD_DEFAULT_ROLE = os.getenv('AZURE_AD_DEFAULT_ROLE', 'User')
 AZURE_AD_SCOPES = ['User.Read', 'email']  # openid, profile, offline_access are reserved and added automatically by MSAL
 AZURE_AD_AUTHORITY = f'https://login.microsoftonline.com/{AZURE_AD_TENANT_ID}' if AZURE_AD_TENANT_ID else ''
+
+# django-tables2 configuration
+DJANGO_TABLES2_TEMPLATE = "django_tables2/bootstrap5.html"
+
+# Pagination settings
+ITEMS_PER_PAGE = 25
+
