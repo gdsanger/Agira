@@ -799,24 +799,29 @@ def item_update_release(request, item_id):
     """HTMX endpoint to update item release field."""
     item = get_object_or_404(Item, id=item_id)
     
+    # Track old value for activity log
+    old_release = item.solution_release
+    old_value = old_release.version if old_release else 'None'
+    
     release_id = request.POST.get('solution_release')
     
     try:
         if release_id:
             release = get_object_or_404(Release, id=release_id)
             item.solution_release = release
+            new_value = release.version
         else:
             item.solution_release = None
+            new_value = 'None'
         
         item.save()
         
         # Log activity
-        from core.services.activity import ActivityService
         ActivityService.log_item_field_change(
             item=item,
             field_name='solution_release',
-            old_value=None,  # We don't track old value here
-            new_value=release.version if release_id else 'None',
+            old_value=old_value,
+            new_value=new_value,
             user=request.user
         )
         

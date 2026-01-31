@@ -1485,7 +1485,7 @@
     }
     
     function loadActiveDetailTab() {
-        const itemId = {{ item.id }};
+        const itemId = {{ item.id|escapejs }};
         const savedTab = localStorage.getItem(`item:${itemId}:activeDetailTab`);
         
         if (savedTab) {
