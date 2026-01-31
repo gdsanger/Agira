@@ -1128,7 +1128,8 @@ class ReportDocument(models.Model):
     pdf_file = models.FileField(upload_to='reports/%Y/%m/%d/')
     sha256 = models.CharField(max_length=64, help_text="SHA256 hash of the PDF for integrity verification")
     metadata_json = models.TextField(
-        blank=True, 
+        blank=True,
+        null=True,
         help_text="Additional metadata (template version, etc.)"
     )
     
