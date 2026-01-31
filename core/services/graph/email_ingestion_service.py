@@ -283,6 +283,13 @@ class EmailIngestionService:
                         content_id_map
                     )
                 
+                # Rewrite inline images in markdown body
+                if content_id_map:
+                    body_markdown = self._rewrite_markdown_inline_images(
+                        body_markdown,
+                        content_id_map
+                    )
+                
                 internet_message_id = message.get("internetMessageId", "")
                 
                 # Add incoming email as comment to the newly created item
@@ -500,6 +507,53 @@ class EmailIngestionService:
         rewritten_html = re.sub(pattern, replace_cid, html_content, flags=re.IGNORECASE)
         
         return rewritten_html
+    
+    def _rewrite_markdown_inline_images(
+        self,
+        markdown_content: str,
+        content_id_map: Dict[str, Attachment],
+    ) -> str:
+        """
+        Rewrite Markdown content to replace cid: references with attachment URLs.
+        
+        Matches patterns like:
+        - ![alt text](cid:CONTENT-ID)
+        - ![](cid:CONTENT-ID)
+        
+        Args:
+            markdown_content: Original Markdown content with cid: references
+            content_id_map: Mapping of content_id to Attachment objects
+            
+        Returns:
+            Markdown content with cid: references replaced by attachment URLs
+        """
+        if not content_id_map:
+            return markdown_content
+        
+        # Pattern to match ![...](cid:...)
+        # Captures the alt text and the content ID
+        pattern = r'!\[([^\]]*)\]\(cid:([^)]+)\)'
+        
+        def replace_cid(match):
+            alt_text = match.group(1)  # Don't strip - preserve whitespace in alt text
+            cid = match.group(2).strip()  # Strip only the CID
+            
+            # Try to find attachment by content_id
+            if cid in content_id_map:
+                attachment = content_id_map[cid]
+                # Generate URL to view/download the attachment
+                url = reverse('item-view-attachment', args=[attachment.id])
+                return f'![{alt_text}]({url})'
+            else:
+                # Content ID not found, leave as-is
+                logger.warning(f"Content ID {cid} referenced in markdown but not found in attachments")
+                return match.group(0)
+        
+        # Replace all cid: references
+        # Note: Content IDs are case-sensitive, so we don't use re.IGNORECASE
+        rewritten_markdown = re.sub(pattern, replace_cid, markdown_content)
+        
+        return rewritten_markdown
     
     def _get_or_create_user_and_org(
         self,
@@ -870,6 +924,13 @@ Email Body:
                 if body_original_html and content_id_map:
                     body_original_html = self._rewrite_inline_images(
                         body_original_html,
+                        content_id_map
+                    )
+                
+                # Rewrite inline images in markdown body
+                if content_id_map:
+                    body = self._rewrite_markdown_inline_images(
+                        body,
                         content_id_map
                     )
                 

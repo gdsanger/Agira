@@ -915,7 +915,7 @@ class EmailAttachmentProcessingTest(TestCase):
         mock_agent = Mock()
         mock_agent_service.return_value = mock_agent
         mock_agent.execute_agent.side_effect = [
-            "Test body converted",  # HTML to Markdown
+            "Test body with image: ![image001.png](cid:image001.png@test)",  # HTML to Markdown with cid reference
             json.dumps({"project": "TestProject", "type": "task"}),  # Classification
         ]
         
@@ -982,6 +982,10 @@ class EmailAttachmentProcessingTest(TestCase):
         self.assertIsNotNone(comment)
         self.assertIn(f'/items/attachments/{attachment.id}/view/', comment.body_original_html)
         self.assertNotIn('cid:', comment.body_original_html)
+        
+        # Verify Markdown body was also rewritten
+        self.assertIn(f'/items/attachments/{attachment.id}/view/', comment.body)
+        self.assertNotIn('cid:', comment.body)
     
     @patch('core.services.graph.email_ingestion_service.get_client')
     @patch('core.services.graph.email_ingestion_service.AgentService')
@@ -1093,7 +1097,7 @@ class EmailAttachmentProcessingTest(TestCase):
         mock_agent = Mock()
         mock_agent_service.return_value = mock_agent
         mock_agent.execute_agent.side_effect = [
-            "Test body converted",  # HTML to Markdown
+            "Test with inline image: ![image.png](cid:DE1F58BA-DAB3-4CC6-8443-E12842830866)",  # HTML to Markdown with cid
             json.dumps({"project": "TestProject", "type": "task"}),  # Classification
         ]
         
@@ -1167,3 +1171,8 @@ class EmailAttachmentProcessingTest(TestCase):
         # Should NOT have cid: reference anymore
         self.assertNotIn('cid:DE1F58BA-DAB3-4CC6-8443-E12842830866', comment.body_original_html)
         self.assertNotIn('cid:', comment.body_original_html)
+        
+        # Verify Markdown body was also rewritten
+        self.assertIn(f'/items/attachments/{attachment.id}/view/', comment.body)
+        self.assertNotIn('cid:', comment.body)
+
