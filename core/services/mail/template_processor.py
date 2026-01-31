@@ -37,7 +37,8 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     - {{ issue.status }} - Item status (display name)
     - {{ issue.type }} - Item type name
     - {{ issue.project }} - Project name
-    - {{ issue.requester }} - Requester name (or empty if not set)
+    - {{ issue.requester }} - Requester full name (or empty if not set)
+    - {{ issue.requester_first_name }} - Requester first name only (substring before first whitespace, or empty if not set)
     - {{ issue.assigned_to }} - Assigned user name (or empty if not set)
     - {{ issue.organisation }} - Requester's primary organisation name (or empty if not set)
     - {{ issue.solution_release }} - Solution release info with name, version and date (or empty if not set)
@@ -77,6 +78,16 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
             parts.append(f"Planned: {date_str}")
         solution_release_info = ' - '.join(parts)
     
+    # Extract first name from requester's full name for personalized greetings
+    # Used in status-change emails to show "Hallo Max" instead of "Hallo Max Mustermann"
+    requester_first_name = ''
+    if item.requester and item.requester.name:
+        # Trim whitespace and split on any whitespace character(s)
+        full_name_trimmed = item.requester.name.strip()
+        if full_name_trimmed:
+            # Get first part before any whitespace
+            requester_first_name = full_name_trimmed.split(maxsplit=1)[0]
+    
     # Convert solution_description from Markdown to HTML for message body
     # For subjects, we need plain text (HTML tags look unprofessional in subject lines)
     solution_description_html = convert_markdown_to_html(item.solution_description or '')
@@ -95,6 +106,7 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
         '{{ issue.type }}': html.escape(item.type.name if item.type else ''),
         '{{ issue.project }}': html.escape(item.project.name if item.project else ''),
         '{{ issue.requester }}': html.escape(item.requester.name if item.requester else ''),
+        '{{ issue.requester_first_name }}': html.escape(requester_first_name),
         '{{ issue.assigned_to }}': html.escape(item.assigned_to.name if item.assigned_to else ''),
         '{{ issue.organisation }}': html.escape(requester_org),
         '{{ issue.solution_release }}': html.escape(solution_release_info),
@@ -111,6 +123,7 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
         '{{ issue.type }}': html.escape(item.type.name if item.type else ''),
         '{{ issue.project }}': html.escape(item.project.name if item.project else ''),
         '{{ issue.requester }}': html.escape(item.requester.name if item.requester else ''),
+        '{{ issue.requester_first_name }}': html.escape(requester_first_name),
         '{{ issue.assigned_to }}': html.escape(item.assigned_to.name if item.assigned_to else ''),
         '{{ issue.organisation }}': html.escape(requester_org),
         '{{ issue.solution_release }}': html.escape(solution_release_info),
