@@ -543,7 +543,7 @@ class GitHubIssueCreationTestCase(TestCase):
     @patch('core.services.github.client.GitHubClient.create_issue')
     @patch.object(ItemAdmin, 'message_user')
     def test_admin_action_changes_testing_to_working(self, mock_message_user, mock_create_issue):
-        """Test that admin action changes TESTING status to WORKING (valid transition)."""
+        """Test that admin action changes TESTING status to WORKING."""
         # Create Copilot user for local assignment
         copilot_user = self._create_copilot_user()
         
@@ -567,7 +567,7 @@ class GitHubIssueCreationTestCase(TestCase):
         queryset = Item.objects.filter(id=item.id)
         self.admin.create_github_issue(self.request, queryset)
         
-        # Verify item status changed to WORKING (valid transition from TESTING)
+        # Verify item status changed to WORKING
         item.refresh_from_db()
         self.assertEqual(item.status, ItemStatus.WORKING)
         self.assertEqual(item.assigned_to, copilot_user)

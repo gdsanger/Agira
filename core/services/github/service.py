@@ -261,22 +261,11 @@ class GitHubService(IntegrationBase):
                 
                 # Change status to WORKING if requested and not already WORKING
                 if change_status_to_working and locked_item.status != ItemStatus.WORKING:
-                    # Use workflow guard to ensure valid transition
-                    from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
-                    guard = ItemWorkflowGuard()
-                    
-                    # Check if transition is valid
-                    allowed_transitions = guard.VALID_TRANSITIONS.get(locked_item.status, [])
-                    if ItemStatus.WORKING in allowed_transitions:
-                        locked_item.status = ItemStatus.WORKING
-                        logger.info(
-                            f"Changed item {item.id} status from {old_status} to WORKING"
-                        )
-                    else:
-                        logger.warning(
-                            f"Cannot change item {item.id} status from {locked_item.status} to WORKING: "
-                            f"invalid transition. Allowed: {allowed_transitions}"
-                        )
+                    old_status = locked_item.status
+                    locked_item.status = ItemStatus.WORKING
+                    logger.info(
+                        f"Changed item {item.id} status from {old_status} to WORKING"
+                    )
                 
                 locked_item.save()
             
@@ -295,16 +284,12 @@ class GitHubService(IntegrationBase):
             
             # Even without Copilot user, we can still change the status if requested
             if change_status_to_working and item.status != ItemStatus.WORKING:
-                from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
-                guard = ItemWorkflowGuard()
-                
-                allowed_transitions = guard.VALID_TRANSITIONS.get(item.status, [])
-                if ItemStatus.WORKING in allowed_transitions:
-                    item.status = ItemStatus.WORKING
-                    item.save()
-                    logger.info(
-                        f"Changed item {item.id} status from {old_status} to WORKING"
-                    )
+                old_status = item.status
+                item.status = ItemStatus.WORKING
+                item.save()
+                logger.info(
+                    f"Changed item {item.id} status from {old_status} to WORKING"
+                )
         
         # Create mapping
         state = self._map_state(github_issue, 'issue')

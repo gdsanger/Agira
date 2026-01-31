@@ -61,11 +61,23 @@ class ItemWorkflowGuardTestCase(TestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.BACKLOG)
     
-    def test_transition_invalid(self):
-        """Test invalid state transition raises error"""
-        # Try to transition from Inbox to Testing (not allowed)
-        with self.assertRaises(ValidationError):
-            self.guard.transition(self.item, ItemStatus.TESTING, self.user)
+    def test_transition_any_status_allowed(self):
+        """Test that any status transition is now allowed"""
+        # Transition from Inbox to Testing (previously not allowed)
+        result = self.guard.transition(self.item, ItemStatus.TESTING, self.user)
+        
+        self.assertEqual(result.status, ItemStatus.TESTING)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.TESTING)
+    
+    def test_transition_from_closed(self):
+        """Test that closed items can now transition to other statuses"""
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        
+        # Should now be able to transition from Closed to Working
+        result = self.guard.transition(self.item, ItemStatus.WORKING, self.user)
+        self.assertEqual(result.status, ItemStatus.WORKING)
     
     def test_transition_same_status(self):
         """Test transition to same status is allowed"""
@@ -128,21 +140,6 @@ class ItemWorkflowGuardTestCase(TestCase):
         with self.assertRaises(ValidationError):
             self.guard.classify_inbox(self.item, 'start', self.user)
     
-    def test_transition_skip_validation(self):
-        """Test transition with skip_validation bypasses rules"""
-        # This should normally fail (Inbox -> Testing not allowed)
-        # But with skip_validation=True it should work
-        result = self.guard.transition(
-            self.item, 
-            ItemStatus.TESTING, 
-            self.user,
-            skip_validation=True
-        )
-        
-        self.assertEqual(result.status, ItemStatus.TESTING)
-        self.item.refresh_from_db()
-        self.assertEqual(self.item.status, ItemStatus.TESTING)
-    
     def test_valid_transitions_from_backlog(self):
         """Test valid transitions from Backlog"""
         self.item.status = ItemStatus.BACKLOG
@@ -152,11 +149,11 @@ class ItemWorkflowGuardTestCase(TestCase):
         result = self.guard.transition(self.item, ItemStatus.WORKING, self.user)
         self.assertEqual(result.status, ItemStatus.WORKING)
     
-    def test_closed_has_no_transitions(self):
-        """Test that closed items cannot transition"""
-        self.item.status = ItemStatus.CLOSED
+    def test_backlog_to_any_status(self):
+        """Test that Backlog can transition to any status including non-adjacent ones"""
+        self.item.status = ItemStatus.BACKLOG
         self.item.save()
         
-        # Try to transition from Closed (should fail)
-        with self.assertRaises(ValidationError):
-            self.guard.transition(self.item, ItemStatus.WORKING, self.user)
+        # Should now allow Backlog -> Ready for Release (previously not allowed)
+        result = self.guard.transition(self.item, ItemStatus.READY_FOR_RELEASE, self.user)
+        self.assertEqual(result.status, ItemStatus.READY_FOR_RELEASE)

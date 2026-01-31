@@ -1,8 +1,8 @@
 """
 Item Workflow Guard
 
-Manages state transitions for Items following workflow rules.
-Ensures valid transitions and logs activities.
+Manages state transitions for Items.
+Logs status changes as activities.
 """
 
 import logging
@@ -20,23 +20,13 @@ class ItemWorkflowGuard:
     """
     Workflow guard for Item state transitions.
     
-    Enforces valid state transitions and logs activities.
+    Logs status change activities.
     Light implementation focusing on inbox classification.
     
     Example:
         >>> guard = ItemWorkflowGuard()
         >>> guard.classify_inbox(item, 'backlog', user)
     """
-    
-    # Define valid transitions from each status
-    VALID_TRANSITIONS = {
-        ItemStatus.INBOX: [ItemStatus.BACKLOG, ItemStatus.WORKING, ItemStatus.CLOSED],
-        ItemStatus.BACKLOG: [ItemStatus.WORKING, ItemStatus.CLOSED],
-        ItemStatus.WORKING: [ItemStatus.TESTING, ItemStatus.BACKLOG, ItemStatus.CLOSED],
-        ItemStatus.TESTING: [ItemStatus.READY_FOR_RELEASE, ItemStatus.WORKING, ItemStatus.CLOSED],
-        ItemStatus.READY_FOR_RELEASE: [ItemStatus.CLOSED, ItemStatus.TESTING],
-        ItemStatus.CLOSED: [],  # Closed is final state
-    }
     
     def __init__(self):
         self.activity_service = ActivityService()
@@ -45,8 +35,7 @@ class ItemWorkflowGuard:
         self,
         item: Item,
         to_status: str,
-        actor: Optional[User] = None,
-        skip_validation: bool = False
+        actor: Optional[User] = None
     ) -> Item:
         """
         Transition an item to a new status.
@@ -55,13 +44,12 @@ class ItemWorkflowGuard:
             item: The item to transition
             to_status: Target status (must be valid ItemStatus choice)
             actor: User performing the transition
-            skip_validation: If True, bypass transition validation (use with caution)
             
         Returns:
             Updated item instance
             
         Raises:
-            ValidationError: If transition is not allowed
+            ValidationError: If status is not a valid choice
             
         Example:
             >>> guard.transition(item, ItemStatus.WORKING, user)
@@ -76,10 +64,6 @@ class ItemWorkflowGuard:
         if from_status == to_status:
             logger.info(f"Item {item.id} already in status {to_status}")
             return item
-        
-        # Validate transition is allowed (unless skipped)
-        if not skip_validation:
-            self._validate_transition(from_status, to_status)
         
         # Update status
         old_status = from_status
@@ -149,26 +133,3 @@ class ItemWorkflowGuard:
         
         # Perform transition
         return self.transition(item, target_status, actor)
-    
-    def _validate_transition(self, from_status: str, to_status: str) -> None:
-        """
-        Validate that a transition is allowed.
-        
-        Args:
-            from_status: Current status
-            to_status: Target status
-            
-        Raises:
-            ValidationError: If transition is not allowed
-        """
-        allowed_transitions = self.VALID_TRANSITIONS.get(from_status, [])
-        
-        if to_status not in allowed_transitions:
-            allowed_str = ', '.join(allowed_transitions) if allowed_transitions else 'None'
-            raise ValidationError(
-                _("Invalid transition: %(from_status)s → %(to_status)s. Allowed: %(allowed)s") % {
-                    'from_status': from_status,
-                    'to_status': to_status,
-                    'allowed': allowed_str
-                }
-            )
