@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+    <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
             <h1>{{ page_title }}</h1>
             <p class="text-muted">{{ page_description }}</p>
@@ -23,47 +23,103 @@
     </div>
 </div>
 
-<!-- Filter Form -->
+<!-- Filter Section -->
 <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-funnel"></i> Filters
+        </h5>
+        {% if request.GET %}
+        <a href="{{ request.path }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle"></i> Clear All Filters
+        </a>
+        {% endif %}
+    </div>
     <div class="card-body">
         <form method="get" class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_q" class="form-label">Search</label>
                 {{ filter.form.q }}
             </div>
-            <div class="col-md-2">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_project" class="form-label">Project</label>
                 {{ filter.form.project }}
             </div>
-            <div class="col-md-2">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_type" class="form-label">Type</label>
                 {{ filter.form.type }}
             </div>
-            <div class="col-md-2">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_organisation" class="form-label">Organisation</label>
                 {{ filter.form.organisation }}
             </div>
-            <div class="col-md-2">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_requester" class="form-label">Requester</label>
                 {{ filter.form.requester }}
             </div>
-            <div class="col-md-2">
+            <div class="col-md-6 col-lg-4">
+                <label for="id_assigned_to" class="form-label">Assigned To</label>
                 {{ filter.form.assigned_to }}
             </div>
-            <div class="col-md-12">
+            <div class="col-12">
                 <button type="submit" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-funnel" viewBox="0 0 16 16">
-                        <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5v-2zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2h-11z"/>
-                    </svg>
-                    Apply Filters
+                    <i class="bi bi-check-lg"></i> Apply Filters
                 </button>
-                {% if request.GET %}
-                <a href="{{ request.path }}" class="btn btn-outline-secondary">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16">
-                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-                    </svg>
-                    Clear Filters
-                </a>
-                {% endif %}
             </div>
         </form>
     </div>
+</div>
+
+<!-- Active Filters Display -->
+{% if request.GET %}
+<div class="mb-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="badge bg-secondary">Active Filters:</span>
+        {% if filter.form.q.value %}
+        <span class="badge bg-info">
+            Search: "{{ filter.form.q.value }}"
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'q' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+        {% if filter.form.project.value %}
+        <span class="badge bg-info">
+            Project: {{ filter.form.project.value }}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'project' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+        {% if filter.form.type.value %}
+        <span class="badge bg-info">
+            Type: {{ filter.form.type.value }}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'type' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+        {% if filter.form.organisation.value %}
+        <span class="badge bg-info">
+            Organisation: {{ filter.form.organisation.value }}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'organisation' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+        {% if filter.form.requester.value %}
+        <span class="badge bg-info">
+            Requester: {{ filter.form.requester.value }}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'requester' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+        {% if filter.form.assigned_to.value %}
+        <span class="badge bg-info">
+            Assigned To: {{ filter.form.assigned_to.value }}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'assigned_to' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" class="text-white text-decoration-none ms-1">×</a>
+        </span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Results Count -->
+<div class="mb-2">
+    <p class="text-muted">
+        Showing {{ table.page.start_index }} - {{ table.page.end_index }} of {{ table.paginator.count }} items
+    </p>
 </div>
 
 <!-- Table -->
@@ -75,9 +131,7 @@
 {% if not table.page.object_list %}
 <div class="text-center text-muted py-5">
     <div class="mb-3">
-        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-inbox" viewBox="0 0 16 16">
-            <path d="M4.98 4a.5.5 0 0 0-.39.188L1.54 8H6a.5.5 0 0 1 .5.5 1.5 1.5 0 1 0 3 0A.5.5 0 0 1 10 8h4.46l-3.05-3.812A.5.5 0 0 0 11.02 4H4.98zm9.954 5H10.45a2.5 2.5 0 0 1-4.9 0H1.066l.32 2.562a.5.5 0 0 0 .497.438h12.234a.5.5 0 0 0 .496-.438L14.933 9zM3.809 3.563A1.5 1.5 0 0 1 4.981 3h6.038a1.5 1.5 0 0 1 1.172.563l3.7 4.625a.5.5 0 0 1 .105.374l-.39 3.124A1.5 1.5 0 0 1 14.117 13H1.883a1.5 1.5 0 0 1-1.489-1.314l-.39-3.124a.5.5 0 0 1 .106-.374l3.7-4.625z"/>
-        </svg>
+        <i class="bi bi-inbox" style="font-size: 4rem;"></i>
     </div>
     <h5>No items found</h5>
     {% if request.GET %}
