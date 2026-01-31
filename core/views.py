@@ -817,12 +817,12 @@ def item_update_release(request, item_id):
         item.save()
         
         # Log activity
-        ActivityService.log_item_field_change(
-            item=item,
-            field_name='solution_release',
-            old_value=old_value,
-            new_value=new_value,
-            user=request.user
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.field_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Changed solution_release from {old_value} to {new_value}'
         )
         
         return HttpResponse(status=200)
