@@ -345,17 +345,17 @@ class ItemDetailWorkflowTest(TestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.WORKING)
     
-    def test_invalid_status_transition(self):
-        """Test an invalid status transition (Backlog -> ReadyForRelease)."""
+    def test_any_status_transition_allowed(self):
+        """Test that any status transition is now allowed (Backlog -> ReadyForRelease)."""
         url = reverse('item-change-status', args=[self.item.id])
         response = self.client.post(url, {'status': ItemStatus.READY_FOR_RELEASE})
         
-        # Should return 400 error for invalid transition
-        self.assertEqual(response.status_code, 400)
+        # Should now return 200 as any transition is allowed
+        self.assertEqual(response.status_code, 200)
         
-        # Status should not change
+        # Status should change
         self.item.refresh_from_db()
-        self.assertEqual(self.item.status, ItemStatus.BACKLOG)
+        self.assertEqual(self.item.status, ItemStatus.READY_FOR_RELEASE)
 
 
 class ItemCRUDTest(TestCase):

@@ -290,18 +290,25 @@ Validations that should be considered for future implementation:
    - Ensure planned_start <= planned_end
    - Ensure executed_at is within reasonable bounds
 
-4. **Status Transition Validation**
-   - Define allowed status transitions (e.g., cannot go directly from Inbox to Closed)
-
-5. **Approval Requirement Validation**
+4. **Approval Requirement Validation**
    - Ensure required approvals are obtained before deploying a change
 
-6. **File Size Limits** for Attachment
+5. **File Size Limits** for Attachment
    - Prevent extremely large file uploads
 
-7. **GitHub Integration Validation**
+6. **GitHub Integration Validation**
    - Verify GitHub repository exists when set
    - Validate GitHub webhook configuration
+
+## Status Transition (Removed)
+
+**Note**: As of January 2026, status transition validation has been removed from the Item model. 
+Items can now transition between any valid status values without restriction. The ItemWorkflowGuard 
+still logs status changes but no longer enforces transition rules.
+
+Previously, there was a VALID_TRANSITIONS matrix that restricted which status changes were allowed 
+(e.g., preventing direct transitions from INBOX to TESTING). This restriction has been removed to 
+provide more flexibility in workflow management.
 
 ## Testing Validation Rules
 
