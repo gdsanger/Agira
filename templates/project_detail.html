@@ -275,6 +275,7 @@
                                 <th>Status</th>
                                 <th>Risk</th>
                                 <th>Updated</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -314,6 +315,19 @@
                                     {% endif %}
                                 </td>
                                 <td>{% if release.update_date %}{{ release.update_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary me-1" 
+                                            onclick="editRelease({{ release.id }}, '{{ release.name|escapejs }}', '{{ release.version|escapejs }}', '{{ release.type }}', '{{ release.status }}', '{{ release.risk }}')">
+                                        Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            hx-post="{% url 'project-delete-release' project.id release.id %}"
+                                            hx-confirm="Are you sure you want to delete this release?"
+                                            hx-swap="none"
+                                            hx-on::after-request="handleReleaseDeleteResponse(event)">
+                                        Delete
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -626,6 +640,49 @@ function handleClientResponse(event) {
     } else {
         showToast('error', 'Error', 'Operation failed');
     }
+}
+
+// Handle release delete response
+function handleReleaseDeleteResponse(event) {
+    const xhr = event.detail.xhr;
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Success', response.message || 'Release deleted successfully');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', 'Error', response.error || 'Failed to delete release');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        showToast('error', 'Error', 'Failed to delete release');
+    }
+}
+
+// Edit release function
+function editRelease(id, name, version, type, status, risk) {
+    const modal = new bootstrap.Modal(document.getElementById('editReleaseModal'));
+    const form = document.getElementById('editReleaseForm');
+    
+    // Set form action URL
+    form.setAttribute('hx-post', `/projects/{{ project.id }}/releases/${id}/update/`);
+    
+    // Populate form fields
+    document.getElementById('editReleaseId').value = id;
+    document.getElementById('editReleaseName').value = name;
+    document.getElementById('editReleaseVersion').value = version;
+    document.getElementById('editReleaseType').value = type || '';
+    document.getElementById('editReleaseStatus').value = status || 'Planned';
+    document.getElementById('editReleaseRisk').value = risk || 'Normal';
+    
+    // Show modal
+    modal.show();
 }
 
 function deleteProjectAttachment(attachmentId) {
