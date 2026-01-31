@@ -2629,7 +2629,7 @@ def item_send_status_mail(request, item_id):
     """Send status change email for an item."""
     from .services.graph.mail_service import send_email
     from .services.mail import get_notification_recipients_for_item
-    import bleach
+    from core.utils.html_sanitization import sanitize_html
     
     item = get_object_or_404(Item, id=item_id)
     
@@ -2652,12 +2652,9 @@ def item_send_status_mail(request, item_id):
         if not subject or not message:
             return JsonResponse({'success': False, 'error': 'Subject and message are required'}, status=400)
         
-        # Sanitize HTML message to prevent script injection
-        # Allow common HTML tags but strip dangerous ones
-        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-                       'ul', 'ol', 'li', 'blockquote', 'a', 'span', 'div', 'table', 'tr', 'td', 'th']
-        allowed_attrs = {'a': ['href', 'title'], 'span': ['style'], 'div': ['style']}
-        message = bleach.clean(message, tags=allowed_tags, attributes=allowed_attrs, strip=True)
+        # Sanitize HTML message to prevent XSS attacks while preserving formatting
+        # Uses centralized sanitization with support for inline styles and CSS properties
+        message = sanitize_html(message)
         
         if not to_address:
             # Try to get recipient from requester
@@ -6432,6 +6429,7 @@ def email_prepare_forward(request, comment_id):
 def email_send_reply(request):
     """Send a reply/forward email from the compose modal."""
     from core.services.graph.mail_service import send_email
+    from core.utils.html_sanitization import sanitize_html
     import json
     
     try:
@@ -6457,10 +6455,13 @@ def email_send_reply(request):
         # Get item
         item = get_object_or_404(Item, id=item_id)
         
+        # Sanitize HTML body to prevent XSS attacks while preserving formatting
+        sanitized_body = sanitize_html(body)
+        
         # Send email
         result = send_email(
             subject=subject,
-            body=body,
+            body=sanitized_body,
             to=to_addresses,
             cc=cc_addresses if cc_addresses else None,
             body_is_html=True,
