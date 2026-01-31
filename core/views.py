@@ -5256,6 +5256,35 @@ def change_delete(request, id):
 
 
 @login_required
+def change_print(request, id):
+    """Generate and return PDF report for a change."""
+    from io import BytesIO
+    from reports.change_pdf import build_change_pdf
+    
+    # Get the change with all related data
+    change = get_object_or_404(
+        Change.objects.select_related(
+            'project', 'created_by', 'release'
+        ).prefetch_related('approvals__approver', 'organisations'),
+        id=id
+    )
+    
+    # Create PDF in memory
+    buffer = BytesIO()
+    build_change_pdf(change, buffer)
+    
+    # Get PDF bytes
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    # Create response with PDF
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="change_{id}.pdf"'
+    
+    return response
+
+
+@login_required
 
 @require_http_methods(["POST"])
 def change_add_approver(request, id):
