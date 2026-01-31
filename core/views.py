@@ -775,6 +775,9 @@ def item_detail(request, item_id):
     # Get all projects for the move modal
     projects = Project.objects.all().order_by('name')
     
+    # Get all releases for the inline edit
+    releases = Release.objects.all().order_by('-version')
+    
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
     
@@ -783,10 +786,43 @@ def item_detail(request, item_id):
         'followers': followers,
         'users': users,
         'projects': projects,
+        'releases': releases,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
     }
     return render(request, 'item_detail.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_update_release(request, item_id):
+    """HTMX endpoint to update item release field."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    release_id = request.POST.get('solution_release')
+    
+    try:
+        if release_id:
+            release = get_object_or_404(Release, id=release_id)
+            item.solution_release = release
+        else:
+            item.solution_release = None
+        
+        item.save()
+        
+        # Log activity
+        from core.services.activity import ActivityService
+        ActivityService.log_item_field_change(
+            item=item,
+            field_name='solution_release',
+            old_value=None,  # We don't track old value here
+            new_value=release.version if release_id else 'None',
+            user=request.user
+        )
+        
+        return HttpResponse(status=200)
+    except Exception as e:
+        return HttpResponse(status=400)
 
 
 @login_required
