@@ -21,7 +21,7 @@ A new template variable has been added to the mail template processor:
 
 This variable extracts the first name from the requester's full name using the following logic:
 1. Trim leading and trailing whitespace from the full name
-2. Split on any whitespace character(s) (`\s+` pattern)
+2. Split on any whitespace character(s) using Python's `split(maxsplit=1)` method
 3. Take the first part (substring before the first whitespace)
 
 ### Examples
@@ -120,7 +120,7 @@ All template variables for status-change emails:
 
 ### Automated Tests
 
-8 new test cases have been added in `core/test_template_processor.py`:
+9 new test cases have been added in `core/test_template_processor.py`:
 
 1. `test_requester_first_name_extraction_normal_name` - "Max Mustermann" → "Max"
 2. `test_requester_first_name_single_name` - "Madonna" → "Madonna"
@@ -178,7 +178,7 @@ Simply use `{{ issue.requester_first_name }}` when creating new status-change ma
 ### Implementation Notes
 
 - Uses Python's `str.split(maxsplit=1)[0]` for efficient first-word extraction
-- Handles all Unicode whitespace via `\s+` pattern (spaces, tabs, newlines, etc.)
+- Handles all Unicode whitespace characters (spaces, tabs, newlines, etc.)
 - No global side effects - only affects template rendering
 - No database migrations needed (variable is processed at runtime)
 - No changes to the MailTemplate or MailActionMapping models
