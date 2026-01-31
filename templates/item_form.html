@@ -110,44 +110,85 @@
                 </div>
             </div>
             
-            <!-- User Input (Original Mail Text) with Markdown Editor -->
+            <!-- Content Tabs for Edit Mode -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <h5 class="mb-0">Original Mail Text (unverändert)</h5>
-                    <small class="text-muted">Enthält den ursprünglichen Nachrichtentext der eingegangenen E-Mail. Dieses Feld wird nicht automatisch durch KI verändert.</small>
+                    <h5 class="mb-0">Content</h5>
                 </div>
                 <div class="card-body">
-                    <div id="user-input-editor"></div>
-                    <input type="hidden" id="user_input" name="user_input">
-                </div>
-            </div>
-            
-            <!-- Description with Markdown Editor -->
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Description</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ai-optimize-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16">
-                            <path d="M5 2V0H3v2H1v2h2v2h2V4h2V2H5zm6 9V9H9v2H7v2h2v2h2v-2h2v-2h-2zm1.5-6.5v-2h-3v2h-2v3h2v2h3v-2h2v-3h-2z"/>
-                            <path d="M4.5 11.5v-1h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5zm-1-4v-1a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
-                        </svg>
-                        Optimize Text
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div id="description-editor"></div>
-                    <input type="hidden" id="description" name="description">
-                </div>
-            </div>
-            
-            <!-- Solution Description with Markdown Editor -->
-            <div class="card mb-3">
-                <div class="card-header">
-                    <h5 class="mb-0">Solution Description</h5>
-                </div>
-                <div class="card-body">
-                    <div id="solution-editor"></div>
-                    <input type="hidden" id="solution_description" name="solution_description">
+                    <!-- Content Tabs -->
+                    <ul class="nav nav-tabs mb-3" id="editContentTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button 
+                                class="nav-link active" 
+                                id="edit-description-tab" 
+                                data-bs-toggle="tab" 
+                                data-bs-target="#edit-description" 
+                                type="button" 
+                                role="tab"
+                                onclick="saveActiveDetailTab('{% if item %}{{ item.id }}{% else %}new{% endif %}', 'description')">
+                                Description
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button 
+                                class="nav-link" 
+                                id="edit-user-input-tab" 
+                                data-bs-toggle="tab" 
+                                data-bs-target="#edit-user-input" 
+                                type="button" 
+                                role="tab"
+                                onclick="saveActiveDetailTab('{% if item %}{{ item.id }}{% else %}new{% endif %}', 'user-input')">
+                                Original Mail Text
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button 
+                                class="nav-link" 
+                                id="edit-solution-tab" 
+                                data-bs-toggle="tab" 
+                                data-bs-target="#edit-solution" 
+                                type="button" 
+                                role="tab"
+                                onclick="saveActiveDetailTab('{% if item %}{{ item.id }}{% else %}new{% endif %}', 'solution')">
+                                Solution
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="editContentTabContent">
+                        <!-- Description Tab -->
+                        <div class="tab-pane fade show active" id="edit-description" role="tabpanel">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="mb-0">Description</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="ai-optimize-btn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                                        <path d="M5 2V0H3v2H1v2h2v2h2V4h2V2H5zm6 9V9H9v2H7v2h2v2h2v-2h2v-2h-2zm1.5-6.5v-2h-3v2h-2v3h2v2h3v-2h2v-3h-2z"/>
+                                        <path d="M4.5 11.5v-1h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5zm-1-4v-1a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+                                    </svg>
+                                    Optimize Text
+                                </button>
+                            </div>
+                            <div id="description-editor"></div>
+                            <input type="hidden" id="description" name="description">
+                        </div>
+                        
+                        <!-- Original Mail Text Tab -->
+                        <div class="tab-pane fade" id="edit-user-input" role="tabpanel">
+                            <h6 class="mb-3">Original Mail Text (unverändert)</h6>
+                            <small class="text-muted d-block mb-3">Enthält den ursprünglichen Nachrichtentext der eingegangenen E-Mail. Dieses Feld wird nicht automatisch durch KI verändert.</small>
+                            <div id="user-input-editor"></div>
+                            <input type="hidden" id="user_input" name="user_input">
+                        </div>
+                        
+                        <!-- Solution Tab -->
+                        <div class="tab-pane fade" id="edit-solution" role="tabpanel">
+                            <h6 class="mb-3">Solution Description</h6>
+                            <div id="solution-editor"></div>
+                            <input type="hidden" id="solution_description" name="solution_description">
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -859,6 +900,45 @@ function removeFollowerForm(userId) {
     // Update select options
     updateFollowerSelectForm();
 }
+
+// Detail content tab persistence for edit mode
+function saveActiveDetailTab(itemId, tabName) {
+    localStorage.setItem(`item:${itemId}:activeDetailTab`, tabName);
+}
+
+function loadActiveDetailTabEdit() {
+    const itemId = '{% if item %}{{ item.id }}{% else %}new{% endif %}';
+    const savedTab = localStorage.getItem(`item:${itemId}:activeDetailTab`);
+    
+    if (savedTab) {
+        // Map tab names to edit mode tab IDs
+        const tabMap = {
+            'description': 'edit-description',
+            'user-input': 'edit-user-input',
+            'original-mail': 'edit-user-input',  // Map old name to new
+            'solution': 'edit-solution'
+        };
+        
+        const mappedTab = tabMap[savedTab] || savedTab;
+        
+        // Activate the saved tab
+        const tabButton = document.getElementById(`${mappedTab}-tab`);
+        const tabPane = document.getElementById(mappedTab);
+        
+        if (tabButton && tabPane) {
+            // Remove active from default tab
+            document.getElementById('edit-description-tab').classList.remove('active');
+            document.getElementById('edit-description').classList.remove('show', 'active');
+            
+            // Activate saved tab
+            tabButton.classList.add('active');
+            tabPane.classList.add('show', 'active');
+        }
+    }
+}
+
+// Load saved tab on page load
+document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 </script>
 
 <!-- Include mail confirmation modal -->
