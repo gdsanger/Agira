@@ -153,6 +153,10 @@
                             <i class="bi bi-file-text sidebar-icon"></i>
                             <span class="sidebar-text">Specification</span>
                         </a>
+                        <a href="{% url 'items-ready' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-ready' %}active{% endif %}">
+                            <i class="bi bi-check-circle sidebar-icon"></i>
+                            <span class="sidebar-text">Ready for Release</span>
+                        </a>
                     </div>
                 </div>
                 
