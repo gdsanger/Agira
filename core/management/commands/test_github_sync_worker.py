@@ -500,6 +500,44 @@ class GitHubSyncWorkerTestCase(TestCase):
         self.assertEqual(self.item.status, ItemStatus.CLOSED)
     
     @patch('core.management.commands.github_sync_worker.GitHubService')
+    def test_command_does_not_update_status_for_ready_for_release_items(self, mock_service_class):
+        """Test that command does not update status for items already in Ready for Release status."""
+        # Set item to Ready for Release status
+        self.item.status = ItemStatus.READY_FOR_RELEASE
+        self.item.save()
+        
+        # Mock GitHub service
+        mock_service = MagicMock()
+        mock_service.is_enabled.return_value = True
+        mock_service.is_configured.return_value = True
+        mock_service._get_repo_info.return_value = ('testowner', 'testrepo')
+        mock_service.sync_mapping.side_effect = self._mock_sync_mapping_close
+        mock_service_class.return_value = mock_service
+        
+        # Mock GitHub client
+        mock_client = MagicMock()
+        mock_client.get_issue_timeline.return_value = []
+        mock_client.get_issue.return_value = {
+            'id': 12345,
+            'number': 42,
+            'title': 'Test Issue',
+            'body': 'Test body',
+            'state': 'closed',
+        }
+        mock_service._get_client.return_value = mock_client
+        
+        # Mock Weaviate
+        with patch('core.management.commands.github_sync_worker.is_available', return_value=False):
+            out = StringIO()
+            call_command('github_sync_worker', stdout=out)
+        
+        # Reload item
+        self.item.refresh_from_db()
+        
+        # Verify status was NOT updated (remains Ready for Release)
+        self.assertEqual(self.item.status, ItemStatus.READY_FOR_RELEASE)
+    
+    @patch('core.management.commands.github_sync_worker.GitHubService')
     def test_command_filters_correctly_by_status_and_time(self, mock_service_class):
         """Test that command syncs non-closed items and recently closed items, but not old closed items."""
         from datetime import timedelta

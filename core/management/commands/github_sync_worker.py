@@ -228,9 +228,10 @@ class Command(BaseCommand):
         # Skip status update if:
         # - Item is already TESTING (no need to update)
         # - Item is CLOSED (preserve final state - closed items should not be reopened)
+        # - Item is READY_FOR_RELEASE (preserve manually set higher status)
         should_update_status = (
             mapping.state == 'closed' and
-            item.status not in (ItemStatus.TESTING, ItemStatus.CLOSED)
+            item.status not in (ItemStatus.TESTING, ItemStatus.CLOSED, ItemStatus.READY_FOR_RELEASE)
         )
         if should_update_status:
             if not dry_run:
