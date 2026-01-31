@@ -583,3 +583,90 @@ class ItemAutoPopulateTest(TestCase):
         # Check that context has no default values
         self.assertIsNone(response.context['default_requester'])
         self.assertIsNone(response.context['default_organisation'])
+    
+    def test_item_detail_has_releases_context(self):
+        """Test that item detail view includes releases in context."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('releases', response.context)
+        self.assertIn(self.release, response.context['releases'])
+    
+    def test_item_detail_shows_incoming_warning_for_incoming_project(self):
+        """Test that incoming warning is shown for items in Incoming project."""
+        # Create Incoming project
+        incoming_project = Project.objects.create(
+            name='Incoming',
+            description='Incoming items'
+        )
+        incoming_project.clients.add(self.org)
+        
+        # Create item in Incoming project
+        incoming_item = Item.objects.create(
+            project=incoming_project,
+            title='Incoming Item',
+            description='Test description',
+            type=self.item_type,
+            organisation=self.org,
+            status=ItemStatus.NEW
+        )
+        
+        url = reverse('item-detail', args=[incoming_item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Incoming-Projekt')
+        self.assertContains(response, 'Achtung')
+    
+    def test_item_detail_no_incoming_warning_for_normal_project(self):
+        """Test that incoming warning is not shown for normal projects."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Incoming-Projekt')
+    
+    def test_item_detail_has_content_tabs(self):
+        """Test that item detail view has content tabs for Description, Original Mail, and Solution."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        # Check for tab navigation
+        self.assertContains(response, 'description-content-tab')
+        self.assertContains(response, 'original-mail-content-tab')
+        self.assertContains(response, 'solution-content-tab')
+        # Check for tab content areas
+        self.assertContains(response, 'id="description-content"')
+        self.assertContains(response, 'id="original-mail-content"')
+        self.assertContains(response, 'id="solution-content"')
+    
+    def test_item_update_release_endpoint(self):
+        """Test that the update release endpoint works correctly."""
+        # Create another release
+        new_release = Release.objects.create(
+            project=self.project,
+            name='Release 2.0',
+            version='2.0.0'
+        )
+        
+        url = reverse('item-update-release', args=[self.item.id])
+        response = self.client.post(url, {'solution_release': new_release.id})
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that item was updated
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.solution_release, new_release)
+    
+    def test_item_update_release_can_clear_release(self):
+        """Test that release can be cleared to None."""
+        url = reverse('item-update-release', args=[self.item.id])
+        response = self.client.post(url, {'solution_release': ''})
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that item release was cleared
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.solution_release)
