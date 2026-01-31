@@ -1101,3 +1101,43 @@ class OrganisationEmbedProject(models.Model):
                     # Token collision, retry with new token
                     continue
         super().save(*args, **kwargs)
+
+
+class ReportDocument(models.Model):
+    """
+    Stores generated PDF reports with their context snapshot for audit purposes.
+    
+    This model provides:
+    - Persistence of generated PDF reports
+    - Context snapshot for reproducibility
+    - SHA256 hash for integrity verification
+    - Link to the object the report is about
+    """
+    report_key = models.CharField(max_length=100, help_text="Report type identifier (e.g., 'change.v1')")
+    object_type = models.CharField(max_length=100, help_text="Type of object this report is for (e.g., 'change')")
+    object_id = models.CharField(max_length=100, help_text="ID of the object")
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='created_reports'
+    )
+    context_json = models.TextField(help_text="Snapshot of the data used to generate this report")
+    pdf_file = models.FileField(upload_to='reports/%Y/%m/%d/')
+    sha256 = models.CharField(max_length=64, help_text="SHA256 hash of the PDF for integrity verification")
+    metadata_json = models.TextField(
+        blank=True, 
+        help_text="Additional metadata (template version, etc.)"
+    )
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['report_key', 'object_type', 'object_id']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.report_key} for {self.object_type} #{self.object_id}"
