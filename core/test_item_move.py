@@ -50,11 +50,13 @@ class ItemMoveProjectTestCase(TestCase):
         )
         
         # Create mail template
-        self.mail_template = MailTemplate.objects.create(
+        self.mail_template, _ = MailTemplate.objects.get_or_create(
             key='moved',
-            subject='Item moved: {{ issue.title }}',
-            message='Item {{ issue.title }} was moved to {{ issue.project }}',
-            is_active=True
+            defaults={
+                'subject': 'Item moved: {{ issue.title }}',
+                'message': 'Item {{ issue.title }} was moved to {{ issue.project }}',
+                'is_active': True
+            }
         )
         
         # Set up client
@@ -418,9 +420,10 @@ class ItemMoveProjectTestCase(TestCase):
         
         # Check the activity details
         latest_activity = Activity.objects.latest('created_at')
-        self.assertEqual(latest_activity.action, 'item_moved')
-        self.assertEqual(latest_activity.details['from_project'], self.project_a.name)
-        self.assertEqual(latest_activity.details['to_project'], self.project_b.name)
+        self.assertEqual(latest_activity.verb, 'item.moved')
+        self.assertEqual(latest_activity.actor, self.user)
+        self.assertIn(self.project_a.name, latest_activity.summary)
+        self.assertIn(self.project_b.name, latest_activity.summary)
     
     def test_move_item_with_invalid_project_id_fails(self):
         """Test that moving to a non-existent project returns proper error."""

@@ -2734,15 +2734,11 @@ def item_move_project(request, item_id):
             
             # Log activity
             activity_service = ActivityService()
-            activity_service.log_activity(
-                actor=request.user,
-                action='item_moved',
+            activity_service.log(
+                verb='item.moved',
                 target=item,
-                details={
-                    'from_project': old_project.name,
-                    'to_project': target_project.name,
-                },
-                client_ip=request.META.get('REMOTE_ADDR')
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f"Moved from {old_project.name} to {target_project.name}",
             )
         
         # Send email notification if requested
