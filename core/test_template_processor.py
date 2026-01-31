@@ -616,3 +616,170 @@ class TemplateProcessorTestCase(TestCase):
         self.assertIn('<strong>Fix</strong>', result['message'])
         self.assertIn('<a href="http://example.com">link</a>', result['message'])
 
+    
+    def test_requester_first_name_extraction_normal_name(self):
+        """Test that first name is extracted correctly from 'Max Mustermann'"""
+        # Set requester with normal two-part name
+        self.requester.name = 'Max Mustermann'
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='first-name-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should extract "Max" as first name
+        self.assertEqual(result['subject'], 'Hallo Max')
+        self.assertIn('<p>Hallo Max,</p>', result['message'])
+    
+    def test_requester_first_name_single_name(self):
+        """Test that single name 'Madonna' remains unchanged"""
+        # Set requester with single name (no whitespace)
+        self.requester.name = 'Madonna'
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='single-name-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should use entire name since there's no whitespace
+        self.assertEqual(result['subject'], 'Hallo Madonna')
+        self.assertIn('<p>Hallo Madonna,</p>', result['message'])
+    
+    def test_requester_first_name_multiple_whitespace(self):
+        """Test that first name is extracted correctly with multiple whitespaces"""
+        # Set requester with leading/trailing whitespace and multiple spaces
+        self.requester.name = '  Anna   Maria  Muster '
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='whitespace-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should trim and extract "Anna" as first name
+        self.assertEqual(result['subject'], 'Hallo Anna')
+        self.assertIn('<p>Hallo Anna,</p>', result['message'])
+    
+    def test_requester_first_name_empty_string(self):
+        """Test that empty requester name results in empty first name"""
+        # Set requester with empty name
+        self.requester.name = ''
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='empty-name-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string
+        self.assertEqual(result['subject'], 'Hallo ')
+        self.assertIn('<p>Hallo ,</p>', result['message'])
+    
+    def test_requester_first_name_no_requester(self):
+        """Test that missing requester results in empty first name"""
+        # Create item without requester
+        item = Item.objects.create(
+            project=self.project,
+            title='No Requester Item',
+            type=self.item_type,
+            status=ItemStatus.INBOX
+        )
+        
+        template = MailTemplate.objects.create(
+            key='no-requester-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, item)
+        
+        # Should have empty string
+        self.assertEqual(result['subject'], 'Hallo ')
+        self.assertIn('<p>Hallo ,</p>', result['message'])
+    
+    def test_requester_first_name_with_tabs_and_newlines(self):
+        """Test that first name extraction handles tabs and newlines as whitespace"""
+        # Set requester with various whitespace characters
+        self.requester.name = 'John\t\nDoe'
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='tab-newline-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should extract "John" (before tab/newline)
+        self.assertEqual(result['subject'], 'Hallo John')
+        self.assertIn('<p>Hallo John,</p>', result['message'])
+    
+    def test_requester_first_name_html_escaping(self):
+        """Test that first name is HTML-escaped to prevent XSS"""
+        # Set requester with HTML in name
+        self.requester.name = '<script>alert("XSS")</script> Max'
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='xss-first-name-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should escape HTML in first name
+        self.assertIn('&lt;script&gt;', result['subject'])
+        self.assertNotIn('<script>', result['message'])
+    
+    def test_requester_full_name_still_works(self):
+        """Test that {{ issue.requester }} still returns full name"""
+        # Set requester with full name
+        self.requester.name = 'Max Mustermann'
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='full-name-template',
+            subject='{{ issue.requester }}',
+            message='<p>Full: {{ issue.requester }}, First: {{ issue.requester_first_name }}</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have full name in subject
+        self.assertEqual(result['subject'], 'Max Mustermann')
+        # Should have both full and first name in message
+        self.assertIn('<p>Full: Max Mustermann, First: Max</p>', result['message'])
+    
+    def test_requester_first_name_only_whitespace(self):
+        """Test that name with only whitespace results in empty first name"""
+        # Set requester with only whitespace
+        self.requester.name = '   \t\n  '
+        self.requester.save()
+        
+        template = MailTemplate.objects.create(
+            key='whitespace-only-template',
+            subject='Hallo {{ issue.requester_first_name }}',
+            message='<p>Hallo {{ issue.requester_first_name }},</p>'
+        )
+        
+        result = process_template(template, self.item)
+        
+        # Should have empty string after trim
+        self.assertEqual(result['subject'], 'Hallo ')
+        self.assertIn('<p>Hallo ,</p>', result['message'])
