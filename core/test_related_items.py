@@ -92,9 +92,14 @@ class RelatedItemsTabTest(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
+        # Check that Child Item 1 appears in the table (it has an ItemRelation)
         self.assertContains(response, 'Child Item 1')
-        # Child Item 2 should not appear because it doesn't have an ItemRelation
-        self.assertNotContains(response, 'Child Item 2')
+        # Verify it's in the actual table, not just the modal
+        content = response.content.decode()
+        self.assertIn('<a href="/items/2/" class="text-decoration-none"><strong>Child Item 1</strong></a>', content)
+        # Child Item 2 should not be in the table (no ItemRelation with type=Related)
+        # But it may be in the dropdown for adding relations
+        self.assertNotIn('<a href="/items/3/" class="text-decoration-none"><strong>Child Item 2</strong></a>', content)
     
     def test_related_items_tab_shows_all_relations(self):
         """Test that the related items tab shows all relations in the management section."""
