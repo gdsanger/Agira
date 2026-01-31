@@ -242,7 +242,9 @@ function submitEditRelation() {
 }
 
 function deleteRelation(relationId, toItemTitle) {
-    if (!confirm(`Are you sure you want to delete the relation to "${toItemTitle}"?`)) {
+    // Sanitize the title for display in confirmation
+    const safeTitle = toItemTitle.replace(/[<>]/g, '');
+    if (!confirm('Are you sure you want to delete the relation to "' + safeTitle + '"?')) {
         return;
     }
     

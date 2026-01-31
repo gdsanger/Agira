@@ -1049,7 +1049,7 @@ def item_relation_update(request, item_id, relation_id):
             verb='item.relation.updated',
             target=item,
             actor=request.user,
-            summary=f'Updated relation from {old_relation_type} to {old_to_item.title} → {relation_type} to {relation.to_item.title}'
+            summary=f'Updated relation to {relation.to_item.title}: {old_relation_type} → {relation.relation_type}'
         )
         
         return JsonResponse({'status': 'ok'})
