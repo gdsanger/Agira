@@ -236,7 +236,7 @@ def example():
             description='Test description',
             type=self.item_type,
             organisation=self.org,
-            status=ItemStatus.NEW
+            status=ItemStatus.INBOX
         )
         
         url = reverse('item-detail', args=[incoming_item.id])
