@@ -137,3 +137,127 @@ class ItemTable(tables.Table):
         if record.assigned_to:
             return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
+
+
+class RelatedItemsTable(tables.Table):
+    """
+    Table for displaying related (child) items.
+    Shows items that have a relation from the parent item with type='Related'.
+    """
+    
+    # Updated at column
+    updated_at = tables.DateTimeColumn(
+        verbose_name='Updated',
+        format='Y-m-d H:i',
+        attrs={
+            'td': {'class': 'text-muted small'},
+        }
+    )
+    
+    # Title column with link to detail view
+    title = tables.Column(
+        verbose_name='Title',
+        orderable=True,
+        attrs={'td': {'class': 'item-title-cell'}}
+    )
+    
+    # Type column
+    type = tables.Column(
+        verbose_name='Type',
+        orderable=True,
+        accessor='type__name'
+    )
+    
+    # Status column
+    status = tables.Column(
+        verbose_name='Status',
+        orderable=True
+    )
+    
+    # Assigned to column
+    assigned_to = tables.Column(
+        verbose_name='Assigned To',
+        orderable=True,
+        accessor='assigned_to__username',
+        attrs={'td': {'class': 'small'}},
+        empty_values=()
+    )
+    
+    class Meta:
+        model = Item
+        template_name = 'django_tables2/bootstrap5.html'
+        fields = ('updated_at', 'title', 'type', 'status', 'assigned_to')
+        attrs = {
+            'class': 'table table-hover',
+            'thead': {'class': 'table-light'}
+        }
+        order_by = '-updated_at'
+    
+    def render_title(self, record):
+        """
+        Render title column with link to detail view and truncated description.
+        """
+        url = reverse('item-detail', kwargs={'item_id': record.id})
+        title_html = format_html(
+            '<a href="{}" class="text-decoration-none"><strong>{}</strong></a>',
+            url,
+            record.title
+        )
+        
+        if record.description:
+            # Truncate description to 15 words
+            words = record.description.split()
+            truncated = ' '.join(words[:15])
+            if len(words) > 15:
+                truncated += '...'
+            desc_html = format_html(
+                '<br><small class="text-muted">{}</small>',
+                truncated
+            )
+            return format_html('{}{}', title_html, desc_html)
+        
+        return title_html
+    
+    def render_type(self, record):
+        """
+        Render type column as a badge.
+        """
+        return format_html(
+            '<span class="badge bg-secondary">{}</span>',
+            record.type.name
+        )
+    
+    def render_status(self, value):
+        """
+        Render status column as a badge with emoji.
+        """
+        from .models import ItemStatus
+        status_dict = dict(ItemStatus.choices)
+        display_text = status_dict.get(value, value)
+        
+        # Color mapping for status badges
+        status_colors = {
+            'Inbox': 'bg-info',
+            'Backlog': 'bg-secondary',
+            'Working': 'bg-warning',
+            'Testing': 'bg-primary',
+            'ReadyForRelease': 'bg-success',
+            'Planing': 'bg-info',
+            'Specification': 'bg-info',
+            'Closed': 'bg-dark',
+        }
+        color = status_colors.get(value, 'bg-secondary')
+        
+        return format_html(
+            '<span class="badge {}">{}</span>',
+            color,
+            display_text
+        )
+    
+    def render_assigned_to(self, value, record):
+        """
+        Render assigned_to column with em dash for empty values.
+        """
+        if record.assigned_to:
+            return record.assigned_to.username
+        return format_html('<span class="text-muted">{}</span>', '—')

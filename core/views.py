@@ -910,6 +910,198 @@ def item_github_tab(request, item_id):
 
 
 @login_required
+def item_related_items_tab(request, item_id):
+    """HTMX endpoint to load related items tab."""
+    from django_tables2 import RequestConfig
+    from .tables import RelatedItemsTable
+    from .filters import RelatedItemsFilter
+    from .models import ItemRelation, RelationType
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get related items where current item is the parent (from_item)
+    # and relation_type is 'Related'
+    related_item_ids = ItemRelation.objects.filter(
+        from_item=item,
+        relation_type=RelationType.RELATED
+    ).values_list('to_item_id', flat=True)
+    
+    # Get the actual items
+    queryset = Item.objects.filter(
+        id__in=related_item_ids
+    ).select_related(
+        'project', 'type', 'assigned_to'
+    )
+    
+    # Apply filters
+    filterset = RelatedItemsFilter(request.GET, queryset=queryset)
+    
+    # Create table
+    table = RelatedItemsTable(filterset.qs)
+    RequestConfig(request, paginate={'per_page': 25}).configure(table)
+    
+    # Get all items in same project for relation creation (excluding current item)
+    available_items = Item.objects.filter(
+        project=item.project
+    ).exclude(id=item.id).order_by('title')
+    
+    # Get existing relations for this item (all types, not just Related)
+    existing_relations = ItemRelation.objects.filter(
+        from_item=item
+    ).select_related('to_item').order_by('-id')
+    
+    context = {
+        'item': item,
+        'table': table,
+        'filter': filterset,
+        'available_items': available_items,
+        'existing_relations': existing_relations,
+        'relation_types': RelationType.choices,
+    }
+    return render(request, 'partials/item_related_items_tab.html', context)
+
+
+@login_required
+@require_POST
+def item_relation_create(request, item_id):
+    """Create a new item relation."""
+    from .models import ItemRelation, RelationType
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    to_item_id = request.POST.get('to_item')
+    relation_type = request.POST.get('relation_type')
+    
+    try:
+        to_item = get_object_or_404(Item, id=to_item_id)
+        
+        # Validate that items are in the same project
+        if to_item.project != item.project:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Items must be in the same project'
+            }, status=400)
+        
+        # Create the relation
+        ItemRelation.objects.create(
+            from_item=item,
+            to_item=to_item,
+            relation_type=relation_type
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.relation.created',
+            target=item,
+            actor=request.user,
+            summary=f'Created {relation_type} relation to {to_item.title}'
+        )
+        
+        return JsonResponse({'status': 'ok'})
+        
+    except IntegrityError:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This relation already exists'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error creating item relation: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def item_relation_update(request, item_id, relation_id):
+    """Update an existing item relation."""
+    from .models import ItemRelation
+    
+    item = get_object_or_404(Item, id=item_id)
+    relation = get_object_or_404(ItemRelation, id=relation_id, from_item=item)
+    
+    to_item_id = request.POST.get('to_item')
+    relation_type = request.POST.get('relation_type')
+    
+    try:
+        old_to_item = relation.to_item
+        old_relation_type = relation.relation_type
+        
+        if to_item_id:
+            to_item = get_object_or_404(Item, id=to_item_id)
+            if to_item.project != item.project:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Items must be in the same project'
+                }, status=400)
+            relation.to_item = to_item
+        
+        if relation_type:
+            relation.relation_type = relation_type
+        
+        relation.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.relation.updated',
+            target=item,
+            actor=request.user,
+            summary=f'Updated relation from {old_relation_type} to {old_to_item.title} → {relation_type} to {relation.to_item.title}'
+        )
+        
+        return JsonResponse({'status': 'ok'})
+        
+    except IntegrityError:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This relation already exists'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error updating item relation: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def item_relation_delete(request, item_id, relation_id):
+    """Delete an item relation."""
+    from .models import ItemRelation
+    
+    item = get_object_or_404(Item, id=item_id)
+    relation = get_object_or_404(ItemRelation, id=relation_id, from_item=item)
+    
+    try:
+        to_item_title = relation.to_item.title
+        relation_type = relation.relation_type
+        
+        relation.delete()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.relation.deleted',
+            target=item,
+            actor=request.user,
+            summary=f'Deleted {relation_type} relation to {to_item_title}'
+        )
+        
+        return JsonResponse({'status': 'ok'})
+        
+    except Exception as e:
+        logger.error(f"Error deleting item relation: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
 
 @require_POST
 def item_link_github(request, item_id):

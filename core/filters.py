@@ -75,3 +75,58 @@ class ItemFilter(django_filters.FilterSet):
                 Q(title__icontains=value) | Q(description__icontains=value)
             )
         return queryset
+
+
+class RelatedItemsFilter(django_filters.FilterSet):
+    """
+    FilterSet for related (child) items.
+    Supports filtering by search query, type, status, and assigned_to.
+    """
+    # Search filter (title or description)
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Search',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by title or description...'
+        })
+    )
+    
+    # Type filter
+    type = django_filters.ModelChoiceFilter(
+        queryset=ItemType.objects.all().order_by('name'),
+        label='Type',
+        empty_label='All Types',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Status filter
+    status = django_filters.ChoiceFilter(
+        choices=Item._meta.get_field('status').choices,
+        label='Status',
+        empty_label='All Statuses',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Assigned to filter
+    assigned_to = django_filters.ModelChoiceFilter(
+        queryset=User.objects.filter(active=True).order_by('username'),
+        label='Assigned To',
+        empty_label='All Assignees',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        model = Item
+        fields = ['q', 'type', 'status', 'assigned_to']
+    
+    def filter_search(self, queryset, name, value):
+        """
+        Filter items by search query in title or description.
+        """
+        if value:
+            from django.db.models import Q
+            return queryset.filter(
+                Q(title__icontains=value) | Q(description__icontains=value)
+            )
+        return queryset

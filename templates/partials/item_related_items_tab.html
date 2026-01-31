@@ -1,0 +1,270 @@
+{% load render_table from django_tables2 %}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Related Items</h5>
+        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addRelationModal">
+            ➕ Add Relation
+        </button>
+    </div>
+    <div class="card-body">
+        <!-- Filter Form -->
+        <form method="get" class="mb-3">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    {{ filter.form.q }}
+                </div>
+                <div class="col-md-2">
+                    {{ filter.form.type }}
+                </div>
+                <div class="col-md-2">
+                    {{ filter.form.status }}
+                </div>
+                <div class="col-md-2">
+                    {{ filter.form.assigned_to }}
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-outline-primary w-100">Filter</button>
+                </div>
+            </div>
+        </form>
+        
+        <!-- Related Items Table -->
+        {% if table.data %}
+            {% render_table table %}
+        {% else %}
+            <div class="text-center text-muted py-4">
+                <div class="mb-2">🔗</div>
+                <div>No related items</div>
+                <small>Add a relation to see child items here</small>
+            </div>
+        {% endif %}
+        
+        <hr class="my-4">
+        
+        <!-- All Relations Section -->
+        <h6 class="mb-3">All Relations</h6>
+        {% if existing_relations %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>To Item</th>
+                            <th>Relation Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for relation in existing_relations %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'item-detail' relation.to_item.id %}" class="text-decoration-none">
+                                    {{ relation.to_item.title }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ relation.get_relation_type_display }}</span>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" 
+                                        onclick="editRelation({{ relation.id }}, {{ relation.to_item.id }}, '{{ relation.relation_type }}')"
+                                        title="Edit relation">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="deleteRelation({{ relation.id }}, '{{ relation.to_item.title|escapejs }}')"
+                                        title="Delete relation">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center text-muted py-3">
+                <small>No relations yet</small>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Relation Modal -->
+<div class="modal fade" id="addRelationModal" tabindex="-1" aria-labelledby="addRelationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addRelationModalLabel">Add Relation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addRelationForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="toItemSelect" class="form-label">To Item</label>
+                        <select class="form-select" id="toItemSelect" name="to_item" required>
+                            <option value="">Select an item...</option>
+                            {% for avail_item in available_items %}
+                                <option value="{{ avail_item.id }}">{{ avail_item.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="relationTypeSelect" class="form-label">Relation Type</label>
+                        <select class="form-select" id="relationTypeSelect" name="relation_type" required>
+                            {% for value, label in relation_types %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddRelation()">Add Relation</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Relation Modal -->
+<div class="modal fade" id="editRelationModal" tabindex="-1" aria-labelledby="editRelationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editRelationModalLabel">Edit Relation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editRelationForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="editRelationId" name="relation_id">
+                    <div class="mb-3">
+                        <label for="editToItemSelect" class="form-label">To Item</label>
+                        <select class="form-select" id="editToItemSelect" name="to_item" required>
+                            <option value="">Select an item...</option>
+                            {% for avail_item in available_items %}
+                                <option value="{{ avail_item.id }}">{{ avail_item.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRelationTypeSelect" class="form-label">Relation Type</label>
+                        <select class="form-select" id="editRelationTypeSelect" name="relation_type" required>
+                            {% for value, label in relation_types %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditRelation()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitAddRelation() {
+    const form = document.getElementById('addRelationForm');
+    const formData = new FormData(form);
+    
+    fetch("{% url 'item-relation-create' item.id %}", {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addRelationModal'));
+            modal.hide();
+            // Reload the tab
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while adding the relation');
+    });
+}
+
+function editRelation(relationId, toItemId, relationType) {
+    document.getElementById('editRelationId').value = relationId;
+    document.getElementById('editToItemSelect').value = toItemId;
+    document.getElementById('editRelationTypeSelect').value = relationType;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editRelationModal'));
+    modal.show();
+}
+
+function submitEditRelation() {
+    const relationId = document.getElementById('editRelationId').value;
+    const form = document.getElementById('editRelationForm');
+    const formData = new FormData(form);
+    
+    fetch("{% url 'item-relation-update' item.id 0 %}".replace('/0/', `/${relationId}/`), {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editRelationModal'));
+            modal.hide();
+            // Reload the tab
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the relation');
+    });
+}
+
+function deleteRelation(relationId, toItemTitle) {
+    if (!confirm(`Are you sure you want to delete the relation to "${toItemTitle}"?`)) {
+        return;
+    }
+    
+    fetch("{% url 'item-relation-delete' item.id 0 %}".replace('/0/', `/${relationId}/`), {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            // Reload the tab
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting the relation');
+    });
+}
+</script>
