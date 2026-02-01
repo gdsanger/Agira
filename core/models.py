@@ -446,6 +446,7 @@ class Item(models.Model):
     status = models.CharField(max_length=20, choices=ItemStatus.choices, default=ItemStatus.INBOX)
     solution_release = models.ForeignKey(Release, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
     changes = models.ManyToManyField(Change, blank=True, related_name='items')
+    intern = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-updated_at']
