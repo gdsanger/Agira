@@ -173,6 +173,15 @@ class EmbedItemFilter(django_filters.FilterSet):
         model = Item
         fields = ['q', 'status', 'type']
     
+    def __init__(self, *args, **kwargs):
+        """
+        Override init to track if status parameter was explicitly provided.
+        """
+        super().__init__(*args, **kwargs)
+        # Store whether status was in the original request data
+        # self.data is the QueryDict passed to the filter
+        self._status_was_provided = 'status' in (self.data or {})
+    
     def filter_search(self, queryset, name, value):
         """
         Filter items by search query in title or description.
@@ -188,20 +197,47 @@ class EmbedItemFilter(django_filters.FilterSet):
         """
         Filter items by status.
         Supports 'closed' and 'not_closed' as special values.
+        
+        Default behavior (when 'status' param not in request):
+        - Excludes closed items (status != closed)
+        
+        Explicit filter behavior (when 'status' param is in request):
+        - If value is empty (''), shows all items (user explicitly chose "All Statuses")
+        - If value is 'closed', shows only closed items
+        - If value is 'not_closed', excludes closed items
         """
         from .models import ItemStatus
+        
+        # Check if status parameter was provided in the original request
+        # If not provided at all, apply default filter (exclude closed)
+        if not self._status_was_provided:
+            return queryset.exclude(status=ItemStatus.CLOSED)
+        
+        # If status parameter was provided, respect the explicit choice
         if value == 'closed':
             return queryset.filter(status=ItemStatus.CLOSED)
         elif value == 'not_closed':
             return queryset.exclude(status=ItemStatus.CLOSED)
+        
+        # Empty value ('') means "All Statuses" - show everything
         return queryset
     
     @cached_property
     def qs(self):
         """
-        Override queryset to always exclude intern items for security.
+        Override queryset to always exclude intern items for security and apply default status filter.
         This is fail-safe - no matter what filters are applied, intern items are excluded.
+        Also applies default filter to exclude closed items when no status filter is provided.
         Uses @cached_property for efficient caching.
         """
+        from .models import ItemStatus
+        
         parent_qs = super().qs
-        return parent_qs.filter(intern=False)
+        # Always exclude intern items for security
+        parent_qs = parent_qs.filter(intern=False)
+        
+        # Apply default status filter if no status parameter was provided
+        if not self._status_was_provided:
+            parent_qs = parent_qs.exclude(status=ItemStatus.CLOSED)
+        
+        return parent_qs

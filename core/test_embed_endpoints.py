@@ -918,3 +918,123 @@ class EmbedInternalItemsSecurityTestCase(TestCase):
         self.assertContains(response, 'Public Item')
         # Internal item should NOT be visible
         self.assertNotContains(response, 'Internal Item - SECRET')
+
+
+class EmbedDefaultFilterTestCase(TestCase):
+    """Test default status filter behavior in embed portal"""
+
+    def setUp(self):
+        """Set up test data"""
+        # Create organisations and projects
+        self.org = Organisation.objects.create(name='Test Org')
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test project'
+        )
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='bug',
+            name='Bug',
+            is_active=True
+        )
+        
+        # Create embed access
+        self.embed_access = OrganisationEmbedProject.objects.create(
+            organisation=self.org,
+            project=self.project,
+            is_enabled=True
+        )
+        self.token = self.embed_access.embed_token
+        
+        # Create open item (not closed)
+        self.open_item = Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Open Item',
+            description='This is open',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            intern=False
+        )
+        
+        # Create another open item with different status
+        self.working_item = Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Working Item',
+            description='This is being worked on',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            intern=False
+        )
+        
+        # Create closed item
+        self.closed_item = Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Closed Item',
+            description='This is closed',
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            intern=False
+        )
+        
+        self.client = Client()
+
+    def test_default_filter_excludes_closed_items(self):
+        """Test that without status filter, closed items are excluded by default"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Open items should be visible
+        self.assertContains(response, 'Open Item')
+        self.assertContains(response, 'Working Item')
+        # Closed item title should NOT be in the table
+        # Check that the table doesn't contain a link to the closed item
+        self.assertNotContains(response, f'/embed/issues/{self.closed_item.id}/?token=')
+
+    def test_explicit_status_filter_overrides_default(self):
+        """Test that explicit status filter overrides default behavior"""
+        # Explicitly filter for closed items
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token, 'status': 'closed'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Only closed item should be visible
+        self.assertContains(response, f'/embed/issues/{self.closed_item.id}/?token=')
+        self.assertNotContains(response, f'/embed/issues/{self.open_item.id}/?token=')
+        self.assertNotContains(response, f'/embed/issues/{self.working_item.id}/?token=')
+
+    def test_explicit_all_statuses_shows_everything(self):
+        """Test that explicitly selecting 'All Statuses' (empty status) shows all items"""
+        # Explicitly set status to empty string (All Statuses)
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token, 'status': ''}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # All items should be visible when explicitly selecting "All Statuses"
+        self.assertContains(response, f'/embed/issues/{self.open_item.id}/?token=')
+        self.assertContains(response, f'/embed/issues/{self.working_item.id}/?token=')
+        self.assertContains(response, f'/embed/issues/{self.closed_item.id}/?token=')
+
+    def test_explicit_not_closed_filter_excludes_closed(self):
+        """Test that explicit 'not_closed' filter works correctly"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token, 'status': 'not_closed'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Open items should be visible
+        self.assertContains(response, f'/embed/issues/{self.open_item.id}/?token=')
+        self.assertContains(response, f'/embed/issues/{self.working_item.id}/?token=')
+        # Closed item should NOT be visible
+        self.assertNotContains(response, f'/embed/issues/{self.closed_item.id}/?token=')
