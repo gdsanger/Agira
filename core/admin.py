@@ -69,6 +69,15 @@ class ItemCommentInline(admin.TabularInline):
     can_delete = False
 
 
+class IssueOpenQuestionInline(admin.TabularInline):
+    model = IssueOpenQuestion
+    extra = 0
+    fields = ['question', 'status', 'answer_type', 'source', 'answered_by', 'answered_at']
+    readonly_fields = ['answered_at', 'created_at', 'updated_at']
+    autocomplete_fields = ['answered_by', 'standard_answer']
+    can_delete = False
+
+
 # Model Admin Classes
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
@@ -631,15 +640,6 @@ class IssueStandardAnswerAdmin(admin.ModelAdmin):
         (None, {'fields': ('key', 'label', 'text')}),
         ('Settings', {'fields': ('is_active', 'sort_order')}),
     )
-
-
-class IssueOpenQuestionInline(admin.TabularInline):
-    model = IssueOpenQuestion
-    extra = 0
-    fields = ['question', 'status', 'answer_type', 'source', 'answered_by', 'answered_at']
-    readonly_fields = ['answered_at', 'created_at', 'updated_at']
-    autocomplete_fields = ['answered_by', 'standard_answer']
-    can_delete = False
 
 
 @admin.register(IssueOpenQuestion)
