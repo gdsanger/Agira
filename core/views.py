@@ -837,6 +837,39 @@ def item_update_release(request, item_id):
 
 
 @login_required
+@require_http_methods(["POST"])
+def item_update_intern(request, item_id):
+    """HTMX endpoint to update item intern field."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Track old value for activity log
+    old_value = item.intern
+    
+    # Get the new value from POST data
+    intern_value = request.POST.get('intern')
+    
+    try:
+        # Convert to boolean (checkbox sends 'on' when checked, nothing when unchecked)
+        item.intern = intern_value == 'on' or intern_value == 'true'
+        new_value = item.intern
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.field_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Changed intern from {old_value} to {new_value}'
+        )
+        
+        return HttpResponse(status=200)
+    except Exception as e:
+        return HttpResponse(status=400)
+
+
+@login_required
 def item_comments_tab(request, item_id):
     """HTMX endpoint to load comments tab."""
     item = get_object_or_404(Item, id=item_id)
@@ -2688,6 +2721,9 @@ def item_update(request, item_id):
         item.user_input = user_input
         item.solution_description = request.POST.get('solution_description', item.solution_description)
         item.status = request.POST.get('status', item.status)
+        
+        # Update boolean fields
+        item.intern = request.POST.get('intern') == 'on' or request.POST.get('intern') == 'true'
         
         # Update foreign key fields
         project_id = request.POST.get('project')
