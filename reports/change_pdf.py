@@ -171,7 +171,28 @@ def build_change_pdf(change, output):
     
     story.append(Spacer(1, 8 * mm))
     
-    # --- 6. ORGANISATIONS SECTION ---
+    # --- 6. ITEMS SECTION ---
+    # Get associated items using the same logic as the UI
+    items = change.get_associated_items()
+    if items:
+        story.append(Paragraph("Items", styles['ReportHeading']))
+        story.append(Spacer(1, 3 * mm))
+        
+        item_data = [['Item ID', 'Type', 'Title']]
+        for item in items:
+            item_data.append([
+                str(item.id),
+                item.type.name if item.type else '—',
+                item.title or '—'
+            ])
+        
+        # Column widths: ID (30mm) + Type (40mm) + Title (100mm) = 170mm (matches page width)
+        item_table = Table(item_data, colWidths=[30 * mm, 40 * mm, 100 * mm])
+        item_table.setStyle(_get_data_table_style())
+        story.append(item_table)
+        story.append(Spacer(1, 8 * mm))
+    
+    # --- 7. ORGANISATIONS SECTION ---
     organisations = change.organisations.all()
     if organisations:
         story.append(Paragraph("Assigned Organisations", styles['ReportHeading']))
@@ -186,7 +207,7 @@ def build_change_pdf(change, output):
         story.append(org_table)
         story.append(Spacer(1, 8 * mm))
     
-    # --- 7. ATTACHMENTS / REFERENCES SECTION ---
+    # --- 8. ATTACHMENTS / REFERENCES SECTION ---
     # Note: We only list metadata, not embed binary data
     story.append(Paragraph("Attachments & References", styles['ReportHeading']))
     story.append(Spacer(1, 3 * mm))

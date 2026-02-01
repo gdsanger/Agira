@@ -411,6 +411,34 @@ class Change(models.Model):
 
     def __str__(self):
         return f"{self.project.name} - {self.title}"
+    
+    def get_associated_items(self):
+        """
+        Get all items associated with this change.
+        Includes:
+        - Items directly linked to the change via M2M relationship
+        - Items from the associated release (via Item.solution_release)
+        
+        Returns deduplicated QuerySet ordered by ID.
+        """
+        item_ids = set()
+        
+        # Get items directly associated with the change
+        direct_item_ids = set(self.items.values_list('id', flat=True))
+        item_ids.update(direct_item_ids)
+        
+        # Get items from the associated release
+        # Using release_id directly avoids an extra database query
+        if self.release_id is not None:
+            release_item_ids = set(
+                Item.objects.filter(solution_release_id=self.release_id).values_list('id', flat=True)
+            )
+            item_ids.update(release_item_ids)
+        
+        # Return deduplicated queryset ordered by ID
+        if item_ids:
+            return Item.objects.filter(id__in=item_ids).select_related('project', 'type').order_by('id')
+        return Item.objects.none()
 
 
 class ChangeApproval(models.Model):
