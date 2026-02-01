@@ -21,12 +21,14 @@ class IssueStandardAnswerModelTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
-        self.answer = IssueStandardAnswer.objects.create(
+        self.answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='test_answer',
-            label='Test Answer',
-            text='This is a test answer',
-            is_active=True,
-            sort_order=10
+            defaults={
+                'label': 'Test Answer',
+                'text': 'This is a test answer',
+                'is_active': True,
+                'sort_order': 10
+            }
         )
     
     def test_create_standard_answer(self):
@@ -41,15 +43,20 @@ class IssueStandardAnswerModelTest(TestCase):
     
     def test_ordering(self):
         """Test default ordering by sort_order"""
-        answer2 = IssueStandardAnswer.objects.create(
+        answer2, _ = IssueStandardAnswer.objects.get_or_create(
             key='answer2',
-            label='Answer 2',
-            text='Text 2',
-            sort_order=5
+            defaults={
+                'label': 'Answer 2',
+                'text': 'Text 2',
+                'sort_order': 5
+            }
         )
         
-        answers = list(IssueStandardAnswer.objects.all())
+        # Filter to only our test answers
+        answers = list(IssueStandardAnswer.objects.filter(key__in=['answer2', 'test_answer']))
+        self.assertEqual(len(answers), 2)
         self.assertEqual(answers[0].key, 'answer2')  # Lower sort_order first
+        self.assertEqual(answers[1].key, 'test_answer')
         self.assertEqual(answers[1].key, 'test_answer')
 
 
@@ -76,10 +83,12 @@ class IssueOpenQuestionModelTest(TestCase):
             status=ItemStatus.INBOX
         )
         
-        self.standard_answer = IssueStandardAnswer.objects.create(
+        self.standard_answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='copilot_decides',
-            label='Copilot decides',
-            text='Copilot kann das selbst entscheiden'
+            defaults={
+                'label': 'Copilot decides',
+                'text': 'Copilot kann das selbst entscheiden'
+            }
         )
         
         self.question = IssueOpenQuestion.objects.create(
@@ -348,10 +357,12 @@ class OpenQuestionsAPITest(TestCase):
             status=ItemStatus.INBOX
         )
         
-        self.standard_answer = IssueStandardAnswer.objects.create(
+        self.standard_answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='copilot_decides',
-            label='Copilot decides',
-            text='Copilot kann das selbst entscheiden'
+            defaults={
+                'label': 'Copilot decides',
+                'text': 'Copilot kann das selbst entscheiden'
+            }
         )
         
         self.question = IssueOpenQuestion.objects.create(
