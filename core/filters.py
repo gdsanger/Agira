@@ -175,12 +175,15 @@ class EmbedItemFilter(django_filters.FilterSet):
     
     def __init__(self, *args, **kwargs):
         """
-        Override init to track if status parameter was explicitly provided.
+        Override init to apply default status filter when no explicit status is provided.
         """
+        # If data is provided and status is not in it, set default to 'not_closed'
+        if args and args[0] is not None:
+            data = args[0].copy() if hasattr(args[0], 'copy') else args[0]
+            if 'status' not in data:
+                data['status'] = 'not_closed'
+                args = (data,) + args[1:]
         super().__init__(*args, **kwargs)
-        # Store whether status was in the original request data
-        # self.data is the QueryDict passed to the filter
-        self._status_was_provided = 'status' in (self.data or {})
     
     def filter_search(self, queryset, name, value):
         """
@@ -198,22 +201,15 @@ class EmbedItemFilter(django_filters.FilterSet):
         Filter items by status.
         Supports 'closed' and 'not_closed' as special values.
         
-        Default behavior (when 'status' param not in request):
-        - Excludes closed items (status != closed)
+        Default behavior: 'not_closed' (via initial parameter) to exclude closed items
         
-        Explicit filter behavior (when 'status' param is in request):
+        Explicit filter behavior:
         - If value is empty (''), shows all items (user explicitly chose "All Statuses")
         - If value is 'closed', shows only closed items
-        - If value is 'not_closed', excludes closed items
+        - If value is 'not_closed', excludes closed items (default)
         """
         from .models import ItemStatus
         
-        # Check if status parameter was provided in the original request
-        # If not provided at all, apply default filter (exclude closed)
-        if not self._status_was_provided:
-            return queryset.exclude(status=ItemStatus.CLOSED)
-        
-        # If status parameter was provided, respect the explicit choice
         if value == 'closed':
             return queryset.filter(status=ItemStatus.CLOSED)
         elif value == 'not_closed':
@@ -225,19 +221,10 @@ class EmbedItemFilter(django_filters.FilterSet):
     @cached_property
     def qs(self):
         """
-        Override queryset to always exclude intern items for security and apply default status filter.
+        Override queryset to always exclude intern items for security.
         This is fail-safe - no matter what filters are applied, intern items are excluded.
-        Also applies default filter to exclude closed items when no status filter is provided.
         Uses @cached_property for efficient caching.
         """
-        from .models import ItemStatus
-        
         parent_qs = super().qs
         # Always exclude intern items for security
-        parent_qs = parent_qs.filter(intern=False)
-        
-        # Apply default status filter if no status parameter was provided
-        if not self._status_was_provided:
-            parent_qs = parent_qs.exclude(status=ItemStatus.CLOSED)
-        
-        return parent_qs
+        return parent_qs.filter(intern=False)
