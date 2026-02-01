@@ -312,7 +312,10 @@ class MultiFileUpload {
             });
             
             xhr.open('POST', this.uploadUrl);
-            xhr.setRequestHeader('X-CSRFToken', this.csrfToken);
+            // Only set CSRF token header if token is available (not needed for embed endpoints)
+            if (this.csrfToken) {
+                xhr.setRequestHeader('X-CSRFToken', this.csrfToken);
+            }
             xhr.send(formData);
         });
     }
@@ -398,6 +401,11 @@ function initializeUploadZone(zone) {
         return;
     }
 
+    // Auto-generate ID for zone if missing
+    if (!zone.id) {
+        zone.id = 'upload-zone-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+
     const dropZoneId = zone.id;
     const fileInput = zone.querySelector('input[type="file"]');
     const uploadUrl = zone.dataset.uploadUrl;
@@ -405,16 +413,21 @@ function initializeUploadZone(zone) {
     const refreshTarget = zone.dataset.refreshTarget;
     const componentKey = zone.dataset.componentKey || dropZoneId;
     const maxFileSize = parseInt(zone.dataset.maxFileSize, 10) || 25 * 1024 * 1024;
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    // CSRF token is optional - embed endpoints use token in URL instead
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-    if (!dropZoneId || !fileInput || !uploadUrl || !csrfToken) {
+    if (!dropZoneId || !fileInput || !uploadUrl) {
         console.error('Upload zone missing required configuration', {
             dropZoneId,
             fileInput: !!fileInput,
-            uploadUrl,
-            csrfToken: !!csrfToken
+            uploadUrl
         });
         return;
+    }
+
+    // Auto-generate ID for file input if missing
+    if (!fileInput.id) {
+        fileInput.id = 'file-input-' + dropZoneId;
     }
 
     window.multiFileUploadInstances = window.multiFileUploadInstances || {};

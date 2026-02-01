@@ -113,7 +113,8 @@
     </div>
     <div class="card-body">
         <!-- Upload Zone -->
-        <div class="upload-drop-zone mb-3" 
+        <div id="embed-issue-upload-drop-zone"
+             class="upload-drop-zone mb-3" 
              data-upload-url="{% url 'embed-issue-upload-attachment' item.id %}?token={{ token }}"
              data-refresh-url="{% url 'embed-issue-attachments' item.id %}?token={{ token }}"
              data-refresh-target="#attachments-list"
@@ -123,15 +124,12 @@
             <p class="mb-1">Drag & drop files here</p>
             <p class="text-muted small mb-2">or click to select files</p>
             <p class="text-muted small">Support for multiple files • Maximum 25 MB per file</p>
-            <input type="file" class="d-none" multiple>
+            <input type="file" id="embed-issue-file-input" class="d-none" multiple>
             <input type="hidden" name="token" value="{{ token }}">
         </div>
         
-        <!-- Upload Queue -->
-        <div id="upload-queue" class="mb-3" style="display: none;">
-            <h6 class="mb-2">Upload Queue</h6>
-            <div id="upload-items"></div>
-        </div>
+        <!-- Upload Progress Container -->
+        <div id="upload-progress-container"></div>
         
         <!-- Attachments List -->
         <div id="attachments-list">
