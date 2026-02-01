@@ -3423,7 +3423,7 @@ def project_add_release(request, id):
         version = request.POST.get('version')
         release_type = request.POST.get('type')
         status = request.POST.get('status', ReleaseStatus.PLANNED)
-        risk = request.POST.get('risk', RiskLevel.NORMAL)
+        planned_date_str = request.POST.get('planned_date')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -3436,9 +3436,14 @@ def project_add_release(request, id):
         if status and status not in ReleaseStatus.values:
             return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
         
-        # Validate risk
-        if risk and risk not in RiskLevel.values:
-            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        # Parse planned_date if provided
+        planned_date = None
+        if planned_date_str:
+            try:
+                from datetime import datetime
+                planned_date = datetime.strptime(planned_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
         
         release = Release.objects.create(
             project=project,
@@ -3446,7 +3451,7 @@ def project_add_release(request, id):
             version=version,
             type=release_type if release_type else None,
             status=status,
-            risk=risk
+            planned_date=planned_date
         )
         
         return JsonResponse({'success': True, 'message': 'Release created successfully', 'release_id': release.id})
@@ -3467,7 +3472,7 @@ def project_update_release(request, id, release_id):
         version = request.POST.get('version')
         release_type = request.POST.get('type')
         status = request.POST.get('status')
-        risk = request.POST.get('risk')
+        planned_date_str = request.POST.get('planned_date')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -3480,16 +3485,23 @@ def project_update_release(request, id, release_id):
         if status and status not in ReleaseStatus.values:
             return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
         
-        # Validate risk
-        if risk and risk not in RiskLevel.values:
-            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        # Parse planned_date if provided
+        if planned_date_str:
+            try:
+                from datetime import datetime
+                planned_date = datetime.strptime(planned_date_str, '%Y-%m-%d').date()
+                release.planned_date = planned_date
+            except ValueError:
+                return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        elif planned_date_str == '':
+            # Empty string means clear the date
+            release.planned_date = None
         
         # Update release fields
         release.name = name
         release.version = version
         release.type = release_type if release_type else None
         release.status = status if status else release.status
-        release.risk = risk if risk else release.risk
         release.save()
         
         return JsonResponse({'success': True, 'message': 'Release updated successfully'})
