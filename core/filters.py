@@ -201,5 +201,7 @@ class EmbedItemFilter(django_filters.FilterSet):
         Override queryset to always exclude intern items for security.
         This is fail-safe - no matter what filters are applied, intern items are excluded.
         """
-        parent_qs = super().qs
-        return parent_qs.filter(intern=False)
+        if not hasattr(self, '_qs'):
+            parent_qs = super().qs
+            self._qs = parent_qs.filter(intern=False)
+        return self._qs

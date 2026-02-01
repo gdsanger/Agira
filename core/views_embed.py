@@ -12,13 +12,19 @@ from django.db import transaction
 from django.utils import timezone
 from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
+from datetime import timedelta
+
+from django_tables2 import RequestConfig
 
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
-    ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole
+    ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole,
+    Release
 )
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+from .tables import EmbedItemTable
+from .filters import EmbedItemFilter
 
 
 def validate_embed_token(token):
@@ -55,11 +61,6 @@ def embed_project_issues(request, project_id):
     Uses django-tables2 and django-filter.
     GET /embed/projects/<project_id>/issues/?token=...&status=...&type=...&q=...
     """
-    from django_tables2 import RequestConfig
-    from .tables import EmbedItemTable
-    from .filters import EmbedItemFilter
-    from datetime import timedelta
-    
     token = request.GET.get('token')
     embed_access = validate_embed_token(token)
     
