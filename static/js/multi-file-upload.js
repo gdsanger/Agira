@@ -161,7 +161,7 @@ class MultiFileUpload {
     }
     
     generateId() {
-        return 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        return generateUniqueId('upload');
     }
     
     createProgressElement(uploadItem) {
@@ -312,7 +312,10 @@ class MultiFileUpload {
             });
             
             xhr.open('POST', this.uploadUrl);
-            xhr.setRequestHeader('X-CSRFToken', this.csrfToken);
+            // Only set CSRF token header if token is available (not needed for embed endpoints)
+            if (this.csrfToken) {
+                xhr.setRequestHeader('X-CSRFToken', this.csrfToken);
+            }
             xhr.send(formData);
         });
     }
@@ -393,9 +396,23 @@ class MultiFileUpload {
     }
 }
 
+/**
+ * Generate a unique ID with a given prefix
+ * @param {string} prefix - The prefix for the ID
+ * @returns {string} A unique ID in the format: prefix-timestamp-randomstring
+ */
+function generateUniqueId(prefix) {
+    return prefix + '-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+}
+
 function initializeUploadZone(zone) {
     if (!zone || zone.dataset.uploadInitialized === 'true') {
         return;
+    }
+
+    // Auto-generate ID for zone if missing
+    if (!zone.id) {
+        zone.id = generateUniqueId('upload-zone');
     }
 
     const dropZoneId = zone.id;
@@ -405,16 +422,22 @@ function initializeUploadZone(zone) {
     const refreshTarget = zone.dataset.refreshTarget;
     const componentKey = zone.dataset.componentKey || dropZoneId;
     const maxFileSize = parseInt(zone.dataset.maxFileSize, 10) || 25 * 1024 * 1024;
+    // CSRF token is optional - embed endpoints use token in URL instead
+    // Will be undefined for embed contexts, which is expected and handled correctly
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-    if (!dropZoneId || !fileInput || !uploadUrl || !csrfToken) {
+    if (!dropZoneId || !fileInput || !uploadUrl) {
         console.error('Upload zone missing required configuration', {
             dropZoneId,
             fileInput: !!fileInput,
-            uploadUrl,
-            csrfToken: !!csrfToken
+            uploadUrl
         });
         return;
+    }
+
+    // Auto-generate ID for file input if missing
+    if (!fileInput.id) {
+        fileInput.id = generateUniqueId('file-input');
     }
 
     window.multiFileUploadInstances = window.multiFileUploadInstances || {};
