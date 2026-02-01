@@ -423,7 +423,7 @@ function initializeUploadZone(zone) {
     const componentKey = zone.dataset.componentKey || dropZoneId;
     const maxFileSize = parseInt(zone.dataset.maxFileSize, 10) || 25 * 1024 * 1024;
     // CSRF token is optional - embed endpoints use token in URL instead
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
     if (!dropZoneId || !fileInput || !uploadUrl) {
         console.error('Upload zone missing required configuration', {
