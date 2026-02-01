@@ -518,3 +518,85 @@ class OpenQuestionsAPITest(TestCase):
         data = response.json()
         self.assertFalse(data['success'])
         self.assertIn('Answer text is required', data['error'])
+    
+    def test_answered_questions_synced_to_description(self):
+        """Test that answered questions are appended to item description"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Store original description
+        original_description = self.item.description
+        
+        # Answer the question
+        url = reverse('item-open-question-answer', kwargs={'question_id': self.question.id})
+        payload = {
+            'action': 'answer',
+            'answer_type': 'standard_answer',
+            'standard_answer_id': self.standard_answer.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify description was updated
+        self.item.refresh_from_db()
+        self.assertIn('## Offene Fragen', self.item.description)
+        self.assertIn('[x]', self.item.description)
+        self.assertIn(self.question.question, self.item.description)
+        self.assertIn(self.standard_answer.text, self.item.description)
+        
+        # Create another question and answer it
+        question2 = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Second question?',
+            source=OpenQuestionSource.AI_AGENT
+        )
+        
+        url2 = reverse('item-open-question-answer', kwargs={'question_id': question2.id})
+        payload2 = {
+            'action': 'answer',
+            'answer_type': 'free_text',
+            'answer_text': 'Custom answer for second question'
+        }
+        
+        response2 = self.client.post(
+            url2,
+            data=json.dumps(payload2),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response2.status_code, 200)
+        
+        # Verify both questions are in description
+        self.item.refresh_from_db()
+        self.assertIn(question2.question, self.item.description)
+        self.assertIn('Custom answer for second question', self.item.description)
+    
+    def test_dismissed_questions_synced_to_description(self):
+        """Test that dismissed questions are also added to description"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Dismiss the question
+        url = reverse('item-open-question-answer', kwargs={'question_id': self.question.id})
+        payload = {
+            'action': 'dismiss'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify description was updated
+        self.item.refresh_from_db()
+        self.assertIn('## Offene Fragen', self.item.description)
+        self.assertIn('[x]', self.item.description)
+        self.assertIn(self.question.question, self.item.description)
+

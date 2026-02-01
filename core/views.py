@@ -1440,6 +1440,62 @@ def _update_issue_references(item):
         )
 
 
+def _sync_answered_questions_to_description(item):
+    """
+    Update the item description to include answered questions at the bottom.
+    
+    This ensures Copilot can see the answered questions in the issue context.
+    The section is dynamically regenerated each time to reflect current state.
+    
+    Args:
+        item: Item instance
+    """
+    import re
+    
+    # Get all answered or dismissed questions
+    questions = IssueOpenQuestion.objects.filter(
+        issue=item
+    ).exclude(
+        status=OpenQuestionStatus.OPEN
+    ).order_by('created_at')
+    
+    if not questions.exists():
+        # No answered questions, remove the section if it exists
+        pattern = r'\n## Offene Fragen\n.*?(?=\n##|\Z)'
+        item.description = re.sub(pattern, '', item.description, flags=re.DOTALL).strip()
+        item.save(update_fields=['description'])
+        return
+    
+    # Build the questions section
+    questions_section = "\n\n## Offene Fragen\n\n"
+    
+    for q in questions:
+        status_marker = "[x]" if q.status in [OpenQuestionStatus.ANSWERED, OpenQuestionStatus.DISMISSED] else "[ ]"
+        questions_section += f"- {status_marker} {q.question}\n"
+        
+        if q.status == OpenQuestionStatus.ANSWERED and q.get_answer_display_text():
+            # Indent the answer
+            answer_text = q.get_answer_display_text().strip()
+            questions_section += f"  Antwort: {answer_text}\n"
+        
+        questions_section += "\n"
+    
+    # Remove trailing newlines
+    questions_section = questions_section.rstrip() + "\n"
+    
+    # Check if questions section already exists
+    pattern = r'\n## Offene Fragen\n.*?(?=\n##|\Z)'
+    
+    if re.search(pattern, item.description, flags=re.DOTALL):
+        # Replace existing section
+        item.description = re.sub(pattern, questions_section, item.description, flags=re.DOTALL)
+    else:
+        # Append new section at the end
+        item.description = item.description.rstrip() + questions_section
+    
+    item.save(update_fields=['description'])
+
+
 @login_required
 
 @require_POST
@@ -1887,6 +1943,9 @@ def item_open_question_answer(request, question_id):
             question.answered_by = request.user
             question.save()
             
+            # Update item description with answered questions
+            _sync_answered_questions_to_description(question.issue)
+            
             # Log activity
             activity_service = ActivityService()
             activity_service.log(
@@ -1944,6 +2003,9 @@ def item_open_question_answer(request, question_id):
             question.answered_at = timezone.now()
             question.answered_by = request.user
             question.save()
+            
+            # Update item description with answered questions
+            _sync_answered_questions_to_description(question.issue)
             
             # Log activity
             activity_service = ActivityService()
