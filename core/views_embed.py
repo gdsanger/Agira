@@ -89,20 +89,27 @@ def embed_project_issues(request, project_id):
     # Configure table with pagination
     RequestConfig(request, paginate={'per_page': 25}).configure(table)
     
-    # Calculate KPIs (only non-internal items)
-    kpi_queryset = Item.objects.filter(
+    # Calculate KPIs with a single optimized query (only non-internal items)
+    from django.db.models import Q, Count, Case, When, IntegerField
+    
+    kpi_data = Item.objects.filter(
         project=embed_access.project,
         intern=False
+    ).aggregate(
+        open_count=Count('id', filter=~Q(status=ItemStatus.CLOSED)),
+        closed_30d_count=Count(
+            'id',
+            filter=Q(status=ItemStatus.CLOSED, updated_at__gte=timezone.now() - timedelta(days=30))
+        ),
+        inbox_count=Count('id', filter=Q(status=ItemStatus.INBOX)),
+        backlog_count=Count('id', filter=Q(status=ItemStatus.BACKLOG))
     )
     
     kpis = {
-        'open_count': kpi_queryset.exclude(status=ItemStatus.CLOSED).count(),
-        'closed_30d_count': kpi_queryset.filter(
-            status=ItemStatus.CLOSED,
-            updated_at__gte=timezone.now() - timedelta(days=30)
-        ).count(),
-        'inbox_count': kpi_queryset.filter(status=ItemStatus.INBOX).count(),
-        'backlog_count': kpi_queryset.filter(status=ItemStatus.BACKLOG).count(),
+        'open_count': kpi_data['open_count'] or 0,
+        'closed_30d_count': kpi_data['closed_30d_count'] or 0,
+        'inbox_count': kpi_data['inbox_count'] or 0,
+        'backlog_count': kpi_data['backlog_count'] or 0,
     }
     
     context = {
@@ -520,22 +527,26 @@ def embed_project_releases(request, project_id):
     if embed_access.project.id != project_id:
         raise Http404("Project not found")
     
-    # Get all releases for this project
+    # Get all releases for this project with prefetched items to avoid N+1 queries
+    # Only fetch non-internal items
+    from django.db.models import Prefetch
+    
     releases = Release.objects.filter(
         project=embed_access.project
+    ).prefetch_related(
+        Prefetch(
+            'items',
+            queryset=Item.objects.filter(intern=False).select_related('type').order_by('-updated_at'),
+            to_attr='filtered_items'
+        )
     ).order_by('-update_date', '-id')
     
-    # For each release, get non-intern items
+    # Build releases with their filtered items
     releases_with_items = []
     for release in releases:
-        items = Item.objects.filter(
-            solution_release=release,
-            intern=False  # Security: exclude internal items
-        ).select_related('type').order_by('-updated_at')
-        
         releases_with_items.append({
             'release': release,
-            'items': items,
+            'items': release.filtered_items,  # Use prefetched filtered items
         })
     
     context = {

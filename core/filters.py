@@ -3,6 +3,7 @@ Django filters for Item model.
 """
 import django_filters
 from django import forms
+from functools import cached_property
 from .models import Item, Project, ItemType, Organisation, User
 
 
@@ -195,13 +196,12 @@ class EmbedItemFilter(django_filters.FilterSet):
             return queryset.exclude(status=ItemStatus.CLOSED)
         return queryset
     
-    @property
+    @cached_property
     def qs(self):
         """
         Override queryset to always exclude intern items for security.
         This is fail-safe - no matter what filters are applied, intern items are excluded.
+        Uses @cached_property for efficient caching.
         """
-        if not hasattr(self, '_qs'):
-            parent_qs = super().qs
-            self._qs = parent_qs.filter(intern=False)
-        return self._qs
+        parent_qs = super().qs
+        return parent_qs.filter(intern=False)
