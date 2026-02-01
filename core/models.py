@@ -428,7 +428,8 @@ class Change(models.Model):
         item_ids.update(direct_item_ids)
         
         # Get items from the associated release
-        if self.release_id:
+        # Using release_id directly avoids an extra database query
+        if self.release_id is not None:
             release_item_ids = set(
                 Item.objects.filter(solution_release_id=self.release_id).values_list('id', flat=True)
             )

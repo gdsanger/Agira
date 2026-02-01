@@ -186,6 +186,7 @@ def build_change_pdf(change, output):
                 item.title or '—'
             ])
         
+        # Column widths: ID (30mm) + Type (40mm) + Title (100mm) = 170mm (matches page width)
         item_table = Table(item_data, colWidths=[30 * mm, 40 * mm, 100 * mm])
         item_table.setStyle(_get_data_table_style())
         story.append(item_table)
