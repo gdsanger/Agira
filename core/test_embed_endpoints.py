@@ -746,3 +746,175 @@ This is a **bold** statement.
         self.assertContains(response, f'Issue #{item_with_solution.id}')
         self.assertContains(response, 'Test Issue with Solution')
         self.assertContains(response, 'This is a simple solution.')
+
+
+class EmbedInternalItemsSecurityTestCase(TestCase):
+    """Test that internal items (intern=True) are never shown in embed portal"""
+
+    def setUp(self):
+        """Set up test data"""
+        # Create organisations and projects
+        self.org = Organisation.objects.create(name='Test Org')
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test project'
+        )
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='bug',
+            name='Bug',
+            is_active=True
+        )
+        
+        # Create embed access
+        self.embed_access = OrganisationEmbedProject.objects.create(
+            organisation=self.org,
+            project=self.project,
+            is_enabled=True
+        )
+        self.token = self.embed_access.embed_token
+        
+        # Create a regular (non-internal) item
+        self.public_item = Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Public Item',
+            description='This is public',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            intern=False
+        )
+        
+        # Create an internal item
+        self.internal_item = Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Internal Item - SECRET',
+            description='This should never be visible in customer portal',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            intern=True
+        )
+        
+        self.client = Client()
+
+    def test_internal_item_not_in_issues_list(self):
+        """Test that internal items are not shown in the issues list"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Public item should be visible
+        self.assertContains(response, 'Public Item')
+        # Internal item should NOT be visible
+        self.assertNotContains(response, 'Internal Item - SECRET')
+        self.assertNotContains(response, 'This should never be visible in customer portal')
+
+    def test_internal_item_not_accessible_via_detail_view(self):
+        """Test that internal items cannot be accessed via detail view"""
+        response = self.client.get(
+            f'/embed/issues/{self.internal_item.id}/',
+            {'token': self.token}
+        )
+        
+        # Should return 404, not show the item
+        self.assertEqual(response.status_code, 404)
+
+    def test_public_item_accessible_via_detail_view(self):
+        """Test that public items can be accessed via detail view"""
+        response = self.client.get(
+            f'/embed/issues/{self.public_item.id}/',
+            {'token': self.token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Public Item')
+
+    def test_internal_item_not_in_filtered_results(self):
+        """Test that internal items are excluded even when filtering"""
+        # Filter by status - should still exclude internal items
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token, 'status': 'not_closed'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Public Item')
+        self.assertNotContains(response, 'Internal Item - SECRET')
+
+    def test_internal_item_not_in_search_results(self):
+        """Test that internal items are excluded from search results"""
+        # Search for the internal item - should not be found
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token, 'q': 'SECRET'}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Internal Item - SECRET')
+        self.assertNotContains(response, 'SECRET')
+
+    def test_kpis_exclude_internal_items(self):
+        """Test that KPI counts exclude internal items"""
+        # Create more items with different statuses
+        Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Public Backlog Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+            intern=False
+        )
+        Item.objects.create(
+            project=self.project,
+            organisation=self.org,
+            title='Internal Backlog Item',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+            intern=True
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that KPI counts are correct (excluding internal items)
+        # We have 2 public items (inbox + backlog), 0 closed in 30d
+        context = response.context
+        self.assertEqual(context['kpis']['open_count'], 2)  # Only public items
+        self.assertEqual(context['kpis']['inbox_count'], 1)  # Only public inbox item
+        self.assertEqual(context['kpis']['backlog_count'], 1)  # Only public backlog item
+
+    def test_releases_page_excludes_internal_items(self):
+        """Test that the releases page excludes internal items"""
+        from core.models import Release
+        
+        # Create a release
+        release = Release.objects.create(
+            project=self.project,
+            name='Test Release',
+            version='1.0.0'
+        )
+        
+        # Assign both public and internal items to the release
+        self.public_item.solution_release = release
+        self.public_item.save()
+        
+        self.internal_item.solution_release = release
+        self.internal_item.save()
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/releases/',
+            {'token': self.token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        # Public item should be visible
+        self.assertContains(response, 'Public Item')
+        # Internal item should NOT be visible
+        self.assertNotContains(response, 'Internal Item - SECRET')

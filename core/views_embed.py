@@ -12,13 +12,19 @@ from django.db import transaction
 from django.utils import timezone
 from django.urls import reverse
 from django.contrib.contenttypes.models import ContentType
+from datetime import timedelta
+
+from django_tables2 import RequestConfig
 
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
-    ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole
+    ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole,
+    Release
 )
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+from .tables import EmbedItemTable
+from .filters import EmbedItemFilter
 
 
 def validate_embed_token(token):
@@ -52,7 +58,8 @@ def validate_embed_token(token):
 def embed_project_issues(request, project_id):
     """
     List all issues for a project with filtering, search, sorting, and pagination.
-    GET /embed/projects/<project_id>/issues/?token=...&status=...&type=...&search=...&sort=...&order=...&page=...
+    Uses django-tables2 and django-filter.
+    GET /embed/projects/<project_id>/issues/?token=...&status=...&type=...&q=...
     """
     token = request.GET.get('token')
     embed_access = validate_embed_token(token)
@@ -64,77 +71,56 @@ def embed_project_issues(request, project_id):
     if embed_access.project.id != project_id:
         raise Http404("Project not found")
     
-    # Get all issues for this project
-    items = Item.objects.filter(
-        project=embed_access.project
+    # Get all issues for this project, excluding intern items (security requirement)
+    queryset = Item.objects.filter(
+        project=embed_access.project,
+        intern=False  # Security: never show internal items in customer portal
     ).select_related(
-        'type', 'assigned_to', 'requester'
+        'type', 'assigned_to', 'requester', 'solution_release'
     )
     
-    # Get filter parameters
-    status_filter = request.GET.get('status', '')
-    type_filter = request.GET.get('type', '')
-    search_query = request.GET.get('search', '')
-    sort_field = request.GET.get('sort', 'updated')
-    sort_order = request.GET.get('order', 'desc')
+    # Apply filters using django-filter
+    filterset = EmbedItemFilter(request.GET, queryset=queryset)
     
-    # Apply status filter
-    if status_filter:
-        if status_filter == 'closed':
-            items = items.filter(status=ItemStatus.CLOSED)
-        elif status_filter == 'not_closed':
-            items = items.exclude(status=ItemStatus.CLOSED)
+    # Create table with filtered queryset
+    table = EmbedItemTable(filterset.qs)
+    table.token = token  # Pass token to table for URL generation
     
-    # Apply type filter
-    if type_filter:
-        try:
-            type_id = int(type_filter)
-            items = items.filter(type_id=type_id)
-        except (ValueError, TypeError):
-            pass
+    # Configure table with pagination
+    RequestConfig(request, paginate={'per_page': 25}).configure(table)
     
-    # Apply search
-    if search_query:
-        from django.db.models import Q
-        items = items.filter(
-            Q(title__icontains=search_query) | Q(description__icontains=search_query)
-        )
+    # Calculate KPIs with a single optimized query (only non-internal items)
+    from django.db.models import Q, Count, Case, When, IntegerField
     
-    # Apply sorting
-    sort_mapping = {
-        'id': 'id',
-        'title': 'title',
-        'status': 'status',
-        'updated': 'updated_at',
+    kpi_data = Item.objects.filter(
+        project=embed_access.project,
+        intern=False
+    ).aggregate(
+        open_count=Count('id', filter=~Q(status=ItemStatus.CLOSED)),
+        closed_30d_count=Count(
+            'id',
+            filter=Q(status=ItemStatus.CLOSED, updated_at__gte=timezone.now() - timedelta(days=30))
+        ),
+        inbox_count=Count('id', filter=Q(status=ItemStatus.INBOX)),
+        backlog_count=Count('id', filter=Q(status=ItemStatus.BACKLOG))
+    )
+    
+    kpis = {
+        'open_count': kpi_data['open_count'] or 0,
+        'closed_30d_count': kpi_data['closed_30d_count'] or 0,
+        'inbox_count': kpi_data['inbox_count'] or 0,
+        'backlog_count': kpi_data['backlog_count'] or 0,
     }
-    
-    sort_db_field = sort_mapping.get(sort_field, 'updated_at')
-    if sort_order == 'asc':
-        items = items.order_by(sort_db_field)
-    else:
-        items = items.order_by(f'-{sort_db_field}')
-    
-    # Pagination
-    from django.core.paginator import Paginator
-    paginator = Paginator(items, 25)  # 25 items per page
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-    
-    # Get all item types for filter dropdown
-    item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
     context = {
         'project': embed_access.project,
-        'items': page_obj,
-        'page_obj': page_obj,
         'organisation': embed_access.organisation,
         'token': token,
-        'item_types': item_types,
-        'current_status': status_filter,
-        'current_type': type_filter,
-        'current_search': search_query,
-        'current_sort': sort_field,
-        'current_order': sort_order,
+        'table': table,
+        'filter': filterset,
+        'kpis': kpis,
+        # Keep items for solution modals
+        'items': filterset.qs,
     }
     return render(request, 'embed/issue_list.html', context)
 
@@ -151,11 +137,12 @@ def embed_issue_detail(request, issue_id):
         return HttpResponseForbidden("Access disabled")
     
     # Get the issue and verify it belongs to the embedded project
+    # Security: Exclude intern items
     item = get_object_or_404(
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
             'assigned_to', 'solution_release'
-        ).prefetch_related('nodes'),
+        ).prefetch_related('nodes').filter(intern=False),
         id=issue_id
     )
     
@@ -523,3 +510,49 @@ def embed_issue_attachments(request, issue_id):
     return render(request, 'embed/partials/attachments_list.html', {
         'attachments': attachments,
     })
+
+
+def embed_project_releases(request, project_id):
+    """
+    List all releases for a project with their associated items.
+    GET /embed/projects/<project_id>/releases/?token=...
+    """
+    token = request.GET.get('token')
+    embed_access = validate_embed_token(token)
+    
+    if embed_access is None:
+        return HttpResponseForbidden("Access disabled")
+    
+    # Verify the project_id matches the embed access
+    if embed_access.project.id != project_id:
+        raise Http404("Project not found")
+    
+    # Get all releases for this project with prefetched items to avoid N+1 queries
+    # Only fetch non-internal items
+    from django.db.models import Prefetch
+    
+    releases = Release.objects.filter(
+        project=embed_access.project
+    ).prefetch_related(
+        Prefetch(
+            'items',
+            queryset=Item.objects.filter(intern=False).select_related('type').order_by('-updated_at'),
+            to_attr='filtered_items'
+        )
+    ).order_by('-update_date', '-id')
+    
+    # Build releases with their filtered items
+    releases_with_items = []
+    for release in releases:
+        releases_with_items.append({
+            'release': release,
+            'items': release.filtered_items,  # Use prefetched filtered items
+        })
+    
+    context = {
+        'project': embed_access.project,
+        'organisation': embed_access.organisation,
+        'token': token,
+        'releases_with_items': releases_with_items,
+    }
+    return render(request, 'embed/releases.html', context)
