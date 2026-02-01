@@ -549,7 +549,7 @@
                         </div>
                         <div class="mb-3">
                             <strong>Solution Release:</strong>
-                            <div class="mt-2" id="release-field-container">
+                            <div class="mt-2 d-flex gap-2" id="release-field-container">
                                 <select 
                                     class="form-select form-select-sm" 
                                     id="release-select"
@@ -565,14 +565,25 @@
                                     </option>
                                     {% endfor %}
                                 </select>
-                                <small id="release-save-indicator" class="htmx-indicator text-success" style="display: none;">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-check-circle me-1" viewBox="0 0 16 16">
-                                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-                                        <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>
-                                    </svg>
-                                    Gespeichert
-                                </small>
+                                {% if item.solution_release %}
+                                <button type="button" 
+                                        class="btn btn-sm btn-outline-primary"
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#releaseDetailModal"
+                                        hx-get="{% url 'release-detail-modal' item.solution_release.id %}"
+                                        hx-target="#releaseDetailModalContent"
+                                        hx-trigger="click">
+                                    <i class="bi bi-info-circle"></i> Details
+                                </button>
+                                {% endif %}
                             </div>
+                            <small id="release-save-indicator" class="htmx-indicator text-success" style="display: none;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-check-circle me-1" viewBox="0 0 16 16">
+                                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                    <path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>
+                                </svg>
+                                Gespeichert
+                            </small>
                         </div>
                         <div class="mb-3">
                             <strong>Node:</strong>
@@ -1589,5 +1600,19 @@
 
 <!-- Include move item modal -->
 {% include 'partials/move_item_modal.html' %}
+
+<!-- Release Detail Modal -->
+<div class="modal fade" id="releaseDetailModal" tabindex="-1" aria-labelledby="releaseDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" id="releaseDetailModalContent">
+            <!-- Content will be loaded via HTMX -->
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

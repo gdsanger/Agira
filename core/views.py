@@ -3525,6 +3525,75 @@ def project_delete_release(request, id, release_id):
 
 
 @login_required
+def release_detail_modal(request, release_id):
+    """Return the release detail modal content with items table."""
+    from django_tables2 import RequestConfig
+    from .tables import ReleaseItemsTable
+    from .filters import ReleaseItemsFilter
+    
+    release = get_object_or_404(Release, id=release_id)
+    
+    # Get items for this release
+    items_queryset = Item.objects.filter(solution_release=release).select_related(
+        'type', 'organisation', 'assigned_to'
+    )
+    
+    # Apply filters
+    item_filter = ReleaseItemsFilter(request.GET, queryset=items_queryset)
+    
+    # Create table
+    table = ReleaseItemsTable(item_filter.qs)
+    RequestConfig(request, paginate={'per_page': 25}).configure(table)
+    
+    # Get the primary change for this release
+    primary_change = release.get_primary_change()
+    
+    context = {
+        'release': release,
+        'table': table,
+        'filter': item_filter,
+        'items_count': items_queryset.count(),
+        'primary_change': primary_change,
+    }
+    
+    return render(request, 'partials/release_detail_modal_content.html', context)
+
+
+@login_required
+def release_create_change(request, release_id):
+    """Create a new Change from a Release."""
+    release = get_object_or_404(Release, id=release_id)
+    
+    # Check if a change already exists for this release
+    existing_change = release.get_primary_change()
+    if existing_change:
+        return JsonResponse({
+            'success': False, 
+            'error': 'A change already exists for this release',
+            'change_id': existing_change.id
+        }, status=400)
+    
+    try:
+        # Create the change
+        change = Change.objects.create(
+            project=release.project,
+            title=f'Change für {release.name}',
+            description=f'Automatically created change for release {release.version}',
+            release=release,
+            planned_date=release.planned_date,  # Date-only field
+            status=ChangeStatus.DRAFT
+        )
+        
+        return JsonResponse({
+            'success': True, 
+            'message': 'Change created successfully',
+            'change_id': change.id
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
 def project_attachments_tab(request, id):
     """Return the project attachments tab content."""
     project = get_object_or_404(Project, id=id)

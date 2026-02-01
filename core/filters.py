@@ -205,3 +205,64 @@ class EmbedItemFilter(django_filters.FilterSet):
         """
         parent_qs = super().qs
         return parent_qs.filter(intern=False)
+
+
+class ReleaseItemsFilter(django_filters.FilterSet):
+    """
+    FilterSet for filtering items associated with a release.
+    Excludes project and release filters, includes status.
+    """
+    # Search filter (title or description)
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Search',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by title or description...'
+        })
+    )
+    
+    # Type filter
+    type = django_filters.ModelChoiceFilter(
+        queryset=ItemType.objects.all().order_by('name'),
+        label='Type',
+        empty_label='All Types',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Status filter
+    status = django_filters.ChoiceFilter(
+        choices=[],  # Will be populated dynamically
+        label='Status',
+        empty_label='All Statuses',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Assigned to filter
+    assigned_to = django_filters.ModelChoiceFilter(
+        queryset=User.objects.filter(active=True).order_by('username'),
+        label='Assigned To',
+        empty_label='All Assignees',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        model = Item
+        fields = ['q', 'type', 'status', 'assigned_to']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Populate status choices dynamically
+        from .models import ItemStatus
+        self.filters['status'].extra['choices'] = ItemStatus.choices
+    
+    def filter_search(self, queryset, name, value):
+        """
+        Custom search filter that searches in both title and description fields.
+        """
+        from django.db.models import Q
+        if value:
+            return queryset.filter(
+                Q(title__icontains=value) | Q(description__icontains=value)
+            )
+        return queryset
