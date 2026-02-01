@@ -5125,8 +5125,8 @@ def change_detail(request, id):
             role=AttachmentRole.APPROVER_ATTACHMENT
         ).select_related('attachment')
     
-    # Get items associated with this change
-    items = change.items.all().select_related('project', 'type')
+    # Get items associated with this change (direct + release items, deduplicated)
+    items = change.get_associated_items()
     
     context = {
         'change': change,

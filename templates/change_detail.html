@@ -260,14 +260,26 @@
             </div>
             <div class="card-body">
                 {% if items %}
-                <ul class="list-group list-group-flush">
-                    {% for item in items %}
-                    <li class="list-group-item">
-                        <a href="{% url 'item-detail' item.id %}">{{ item.title }}</a>
-                        <span class="badge bg-secondary ms-2">{{ item.type.name }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Item ID</th>
+                                <th>Type</th>
+                                <th>Title</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td><a href="{% url 'item-detail' item.id %}">#{{ item.id }}</a></td>
+                                <td><span class="badge bg-secondary">{{ item.type.name }}</span></td>
+                                <td><a href="{% url 'item-detail' item.id %}">{{ item.title }}</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% else %}
                 <p class="text-muted mb-0">No items associated with this change yet.</p>
                 {% endif %}
