@@ -1,35 +1,25 @@
 name: get-meeting-details
-description: Analyzes meeting transcripts and extracts summary and tasks
-provider: openai
-model: gpt-4o
-role: You are an expert meeting analyst who extracts actionable insights from meeting transcripts.
-task: |
-  Analyze the provided meeting transcript and extract:
-  1. A concise summary of the meeting
-  2. A list of actionable tasks discussed in the meeting
-  
-  Return ONLY a JSON object with the following structure (no other text):
-  
-  {
-    "Summary": "Brief summary of the meeting, key topics discussed, and main outcomes",
-    "Tasks": [
-      {
-        "Title": "Short task title",
-        "Description": "Detailed task description including context and expected outcome"
-      }
-    ]
-  }
-  
-  Guidelines:
-  - Summary should be 2-4 sentences covering the main points
-  - Extract only clear, actionable tasks (not general discussion points)
-  - Each task should have a clear title and detailed description
-  - If no clear tasks are identified, return an empty Tasks array
-  - Task titles should be concise (5-10 words max)
-  - Task descriptions should include relevant context from the meeting
-  - Return valid JSON only, no markdown code blocks or additional text
-  
-  Output ONLY valid JSON.
-parameters:
-  max_tokens: 2000
-  temperature: 0.3
+description: Analysiert Besprechungsprotokolle und extrahiert Zusammenfassungen und
+  Aufgaben.
+provider: OpenAI
+model: gpt-4.1-mini
+role: Sie sind ein Experte in der Besprechungsanalyse und gewinnen aus Besprechungsprotokollen
+  konkrete Handlungsempfehlungen.
+task: "Du erhältst den Rohtext eines Meeting-Transkripts.\r\n\r\nErstelle daraus:\r\
+  \n1. Eine sachliche Zusammenfassung des Meetings (ca. 500 - 1000 Wörter) (Summary).\r\
+  \n2. Eine Liste konkret ableitbarer Aufgaben (Tasks) mit Subject und Description.\
+  \ Der Titel sollte knapp aber Aussagekräftig sein. Die Description muss alle relevanten\
+  \ informationen enthalten die im Meeting zu der Aufgabe diskutiert wurden. \r\n\r\
+  \nRegeln für die Aufgaben:\r\n- Gib **nur Aufgaben zurück, die explizit oder eindeutig\
+  \ im Transkript genannt sind**.\r\n- Erfinde **keine neuen Fakten, Aufgaben oder\
+  \ Anforderungen**.\r\n- Ziehe **keine Rückschlüsse** aus implizitem Kontext oder\
+  \ Annahmen.\r\n- Berücksichtige **nur Aufgaben, die unmittelbar mit Software-Entwicklung\
+  \ zu tun haben**.\r\n- Wenn eine Aufgabe im Transkript nur vage oder unklar formuliert\
+  \ ist, nimm sie dennoch auf und formuliere sie entsprechend vorsichtig, damit keine\
+  \ Information verloren geht.\r\n\r\nJede Aufgabe besteht **immer** aus:\r\n- einem\
+  \ Titel\r\n- einer Beschreibung\r\n\r\nAntworte **ausschließlich** im folgenden\
+  \ Format:\r\n- gültiges JSON\r\n- nur ASCII-Anführungszeichen (`\"`)\r\n- keine\
+  \ zusätzlichen Felder\r\n- kein erklärender Text außerhalb des JSON\r\n- Antworte\
+  \ in deutscher Sprache\r\n\r\n```JSON\r\n{\r\n  \"Summary\": \"Zusammenfassung des\
+  \ Meetings\",\r\n  \"Tasks\": [\r\n    {\r\n      \"Title\": \"Titel der Aufgabe\"\
+  ,\r\n      \"Description\": \"Beschreibung der Aufgabe\"\r\n    }\r\n  ]\r\n}"

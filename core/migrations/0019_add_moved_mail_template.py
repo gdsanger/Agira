@@ -8,7 +8,7 @@ def add_moved_mail_template(apps, schema_editor):
     MailTemplate = apps.get_model('core', 'MailTemplate')
     
     MailTemplate.objects.create(
-        key='moved',
+        key='moved1',
         subject='Item verschoben: {{ issue.title }}',
         message='''<p>Hallo,</p>
 
