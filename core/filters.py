@@ -173,6 +173,18 @@ class EmbedItemFilter(django_filters.FilterSet):
         model = Item
         fields = ['q', 'status', 'type']
     
+    def __init__(self, *args, **kwargs):
+        """
+        Override init to apply default status filter when no explicit status is provided.
+        """
+        # If data is provided and status is not in it, set default to 'not_closed'
+        if args and args[0] is not None:
+            data = args[0].copy() if hasattr(args[0], 'copy') else args[0]
+            if 'status' not in data:
+                data['status'] = 'not_closed'
+                args = (data,) + args[1:]
+        super().__init__(*args, **kwargs)
+    
     def filter_search(self, queryset, name, value):
         """
         Filter items by search query in title or description.
@@ -188,12 +200,22 @@ class EmbedItemFilter(django_filters.FilterSet):
         """
         Filter items by status.
         Supports 'closed' and 'not_closed' as special values.
+        
+        Default behavior: 'not_closed' (via initial parameter) to exclude closed items
+        
+        Explicit filter behavior:
+        - If value is empty (''), shows all items (user explicitly chose "All Statuses")
+        - If value is 'closed', shows only closed items
+        - If value is 'not_closed', excludes closed items (default)
         """
         from .models import ItemStatus
+        
         if value == 'closed':
             return queryset.filter(status=ItemStatus.CLOSED)
         elif value == 'not_closed':
             return queryset.exclude(status=ItemStatus.CLOSED)
+        
+        # Empty value ('') means "All Statuses" - show everything
         return queryset
     
     @cached_property
@@ -204,6 +226,7 @@ class EmbedItemFilter(django_filters.FilterSet):
         Uses @cached_property for efficient caching.
         """
         parent_qs = super().qs
+        # Always exclude intern items for security
         return parent_qs.filter(intern=False)
 
 
