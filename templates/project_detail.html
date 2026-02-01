@@ -678,6 +678,9 @@ function editRelease(id, name, version, type, status, plannedDate) {
     // Set form action URL
     form.setAttribute('hx-post', `/projects/{{ project.id }}/releases/${id}/update/`);
     
+    // Reinitialize HTMX for the form after setting the attribute
+    htmx.process(form);
+    
     // Populate form fields
     document.getElementById('editReleaseId').value = id;
     document.getElementById('editReleaseName').value = name;
