@@ -57,7 +57,7 @@ class IssueStandardAnswerModelTest(TestCase):
         self.assertEqual(len(answers), 2)
         self.assertEqual(answers[0].key, 'answer2')  # Lower sort_order first
         self.assertEqual(answers[1].key, 'test_answer')
-        self.assertEqual(answers[1].key, 'test_answer')
+
 
 
 class IssueOpenQuestionModelTest(TestCase):

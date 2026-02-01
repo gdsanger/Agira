@@ -1452,6 +1452,9 @@ def _sync_answered_questions_to_description(item):
     """
     import re
     
+    # Section title constant
+    QUESTIONS_SECTION_TITLE = "## Offene Fragen"
+    
     # Get all answered or dismissed questions
     questions = IssueOpenQuestion.objects.filter(
         issue=item
@@ -1461,13 +1464,13 @@ def _sync_answered_questions_to_description(item):
     
     if not questions.exists():
         # No answered questions, remove the section if it exists
-        pattern = r'\n## Offene Fragen\n.*?(?=\n##|\Z)'
+        pattern = rf'(?:\n|^){QUESTIONS_SECTION_TITLE}\n.*?(?=\n##|\Z)'
         item.description = re.sub(pattern, '', item.description, flags=re.DOTALL).strip()
         item.save(update_fields=['description'])
         return
     
     # Build the questions section
-    questions_section = "\n\n## Offene Fragen\n\n"
+    questions_section = f"\n\n{QUESTIONS_SECTION_TITLE}\n\n"
     
     for q in questions:
         status_marker = "[x]" if q.status in [OpenQuestionStatus.ANSWERED, OpenQuestionStatus.DISMISSED] else "[ ]"
@@ -1484,7 +1487,7 @@ def _sync_answered_questions_to_description(item):
     questions_section = questions_section.rstrip() + "\n"
     
     # Check if questions section already exists
-    pattern = r'\n## Offene Fragen\n.*?(?=\n##|\Z)'
+    pattern = rf'(?:\n|^){QUESTIONS_SECTION_TITLE}\n.*?(?=\n##|\Z)'
     
     if re.search(pattern, item.description, flags=re.DOTALL):
         # Replace existing section
