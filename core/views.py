@@ -26,7 +26,7 @@ from .models import (
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
-    MailTemplate, MailActionMapping)
+    MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -1493,16 +1493,66 @@ Context from similar items and related information:
         
         # Execute the github-issue-creation-agent
         agent_service = AgentService()
-        optimized_description = agent_service.execute_agent(
+        agent_response = agent_service.execute_agent(
             filename='github-issue-creation-agent.yml',
             input_text=agent_input,
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )
         
-        # Update item description
-        item.description = optimized_description.strip()
+        # Parse the response - expect JSON format with issue.description and open_questions
+        try:
+            # Try to parse as JSON
+            response_data = json.loads(agent_response.strip())
+            
+            # Extract description from JSON contract
+            if isinstance(response_data, dict) and 'issue' in response_data:
+                optimized_description = response_data['issue'].get('description', '').strip()
+                open_questions = response_data.get('open_questions', [])
+            else:
+                # Fallback: treat entire response as description
+                optimized_description = agent_response.strip()
+                open_questions = []
+        except json.JSONDecodeError:
+            # Fallback: treat entire response as description
+            optimized_description = agent_response.strip()
+            open_questions = []
+        
+        # Validate we have a description
+        if not optimized_description:
+            raise ValueError("AI agent returned empty description")
+        
+        # Update item description (only the issue.description part)
+        item.description = optimized_description
         item.save()
+        
+        # Process open questions
+        questions_added = 0
+        if open_questions and isinstance(open_questions, list):
+            for question_text in open_questions:
+                if not question_text or not isinstance(question_text, str):
+                    continue
+                
+                question_text = question_text.strip()
+                if not question_text:
+                    continue
+                
+                # Check if an open question with identical text already exists
+                existing = IssueOpenQuestion.objects.filter(
+                    issue=item,
+                    question=question_text,
+                    status=OpenQuestionStatus.OPEN
+                ).exists()
+                
+                if not existing:
+                    # Create new open question
+                    IssueOpenQuestion.objects.create(
+                        issue=item,
+                        question=question_text,
+                        source=OpenQuestionSource.AI_AGENT,
+                        sort_order=questions_added
+                    )
+                    questions_added += 1
         
         # Log activity - success
         activity_service = ActivityService()
@@ -1801,6 +1851,191 @@ def item_save_pre_review(request, item_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@login_required
+@require_POST
+def item_open_question_answer(request, question_id):
+    """
+    Answer or dismiss an open question.
+    
+    Expects JSON body with:
+    - action: 'answer' or 'dismiss'
+    - answer_type: 'free_text' or 'standard_answer' (for action='answer')
+    - answer_text: Free text answer (if answer_type='free_text')
+    - standard_answer_id: ID of standard answer (if answer_type='standard_answer')
+    """
+    from core.models import OpenQuestionAnswerType
+    
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Check permissions - user must be authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'error': 'Authentication required'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        action = data.get('action', '').lower()
+        
+        if action == 'dismiss':
+            # Mark as dismissed
+            question.status = OpenQuestionStatus.DISMISSED
+            question.answered_at = timezone.now()
+            question.answered_by = request.user
+            question.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='item.open_question.dismissed',
+                target=question.issue,
+                actor=request.user,
+                summary=f'Open question dismissed: {question.question[:50]}...',
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'status': question.status
+            })
+            
+        elif action == 'answer':
+            # Validate answer
+            answer_type = data.get('answer_type', '').lower()
+            
+            if answer_type == 'free_text':
+                answer_text = data.get('answer_text', '').strip()
+                if not answer_text:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Answer text is required for free text answers'
+                    }, status=400)
+                
+                question.answer_type = OpenQuestionAnswerType.FREE_TEXT
+                question.answer_text = answer_text
+                question.standard_answer = None
+                question.standard_answer_key = None
+                
+            elif answer_type == 'standard_answer':
+                standard_answer_id = data.get('standard_answer_id')
+                if not standard_answer_id:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Standard answer ID is required'
+                    }, status=400)
+                
+                standard_answer = get_object_or_404(IssueStandardAnswer, id=standard_answer_id, is_active=True)
+                
+                question.answer_type = OpenQuestionAnswerType.STANDARD_ANSWER
+                question.answer_text = None
+                question.standard_answer = standard_answer
+                question.standard_answer_key = standard_answer.key
+                
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid answer_type. Must be "free_text" or "standard_answer"'
+                }, status=400)
+            
+            # Mark as answered
+            question.status = OpenQuestionStatus.ANSWERED
+            question.answered_at = timezone.now()
+            question.answered_by = request.user
+            question.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='item.open_question.answered',
+                target=question.issue,
+                actor=request.user,
+                summary=f'Open question answered: {question.question[:50]}...',
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'status': question.status,
+                'answer': question.get_answer_display_text()
+            })
+            
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid action. Must be "answer" or "dismiss"'
+            }, status=400)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON in request body'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error answering open question {question_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def item_open_questions_list(request, item_id):
+    """
+    Get list of open questions for an item.
+    
+    Returns JSON with:
+    - questions: list of question objects
+    - standard_answers: list of available standard answers
+    - has_open: boolean indicating if there are open questions
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get all questions for this item
+    questions = IssueOpenQuestion.objects.filter(issue=item).select_related(
+        'standard_answer', 'answered_by'
+    )
+    
+    # Get active standard answers
+    standard_answers = IssueStandardAnswer.objects.filter(is_active=True)
+    
+    # Format questions
+    questions_data = []
+    for q in questions:
+        questions_data.append({
+            'id': q.id,
+            'question': q.question,
+            'status': q.status,
+            'status_display': q.get_status_display(),
+            'answer_type': q.answer_type if q.answer_type != 'None' else None,
+            'answer_text': q.get_answer_display_text(),
+            'source': q.source,
+            'source_display': q.get_source_display(),
+            'created_at': q.created_at.isoformat(),
+            'answered_at': q.answered_at.isoformat() if q.answered_at else None,
+            'answered_by': q.answered_by.name if q.answered_by else None,
+        })
+    
+    # Format standard answers
+    standard_answers_data = [
+        {
+            'id': sa.id,
+            'key': sa.key,
+            'label': sa.label,
+            'text': sa.text,
+        }
+        for sa in standard_answers
+    ]
+    
+    # Check if there are open questions
+    has_open = questions.filter(status=OpenQuestionStatus.OPEN).exists()
+    
+    return JsonResponse({
+        'success': True,
+        'questions': questions_data,
+        'standard_answers': standard_answers_data,
+        'has_open': has_open,
+    })
 
 
 @login_required

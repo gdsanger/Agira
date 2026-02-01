@@ -9,7 +9,8 @@ from .models import (
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
-    ExternalIssueKind, MailTemplate, OrganisationEmbedProject
+    ExternalIssueKind, MailTemplate, OrganisationEmbedProject,
+    IssueOpenQuestion, IssueStandardAnswer
 )
 from core.services.github.service import GitHubService
 from core.services.integrations.base import IntegrationError
@@ -65,6 +66,15 @@ class ItemCommentInline(admin.TabularInline):
     extra = 0
     readonly_fields = ['created_at', 'sent_at']
     fields = ['author', 'kind', 'visibility', 'subject', 'body', 'created_at']
+    can_delete = False
+
+
+class IssueOpenQuestionInline(admin.TabularInline):
+    model = IssueOpenQuestion
+    extra = 0
+    fields = ['question', 'status', 'answer_type', 'source', 'answered_by', 'answered_at']
+    readonly_fields = ['answered_at', 'created_at', 'updated_at']
+    autocomplete_fields = ['answered_by', 'standard_answer']
     can_delete = False
 
 
@@ -200,7 +210,7 @@ class ItemAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description']
     autocomplete_fields = ['project', 'parent', 'type', 'organisation', 'requester', 'assigned_to', 'solution_release']
     readonly_fields = ['created_at', 'updated_at']
-    inlines = [ExternalIssueMappingInline, ItemCommentInline]
+    inlines = [ExternalIssueMappingInline, ItemCommentInline, IssueOpenQuestionInline]
     actions = ['create_github_issue']
     
     fieldsets = (
@@ -615,3 +625,39 @@ class OrganisationEmbedProjectAdmin(admin.ModelAdmin):
             level=messages.SUCCESS
         )
     rotate_token.short_description = "Rotate embed token (invalidates old token)"
+
+
+# Register Open Questions Models
+@admin.register(IssueStandardAnswer)
+class IssueStandardAnswerAdmin(admin.ModelAdmin):
+    list_display = ['label', 'key', 'is_active', 'sort_order']
+    list_filter = ['is_active']
+    search_fields = ['label', 'key', 'text']
+    list_editable = ['is_active', 'sort_order']
+    ordering = ['sort_order', 'label']
+    
+    fieldsets = (
+        (None, {'fields': ('key', 'label', 'text')}),
+        ('Settings', {'fields': ('is_active', 'sort_order')}),
+    )
+
+
+@admin.register(IssueOpenQuestion)
+class IssueOpenQuestionAdmin(admin.ModelAdmin):
+    list_display = ['question_short', 'issue', 'status', 'source', 'answered_by', 'created_at']
+    list_filter = ['status', 'source', 'created_at', 'answered_at']
+    search_fields = ['question', 'answer_text', 'issue__title']
+    autocomplete_fields = ['issue', 'answered_by', 'standard_answer']
+    readonly_fields = ['created_at', 'updated_at', 'answered_at']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        (None, {'fields': ('issue', 'question', 'source')}),
+        ('Answer', {'fields': ('status', 'answer_type', 'answer_text', 'standard_answer', 'answered_by', 'answered_at')}),
+        ('Metadata', {'fields': ('sort_order', 'created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+    
+    def question_short(self, obj):
+        """Display shortened question text"""
+        return obj.question[:50] + '...' if len(obj.question) > 50 else obj.question
+    question_short.short_description = 'Question'

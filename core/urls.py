@@ -89,6 +89,10 @@ urlpatterns = [
     path('items/<int:item_id>/ai/pre-review/', views.item_pre_review, name='item-pre-review'),
     path('items/<int:item_id>/ai/save-pre-review/', views.item_save_pre_review, name='item-save-pre-review'),
     
+    # Open Questions endpoints
+    path('items/<int:item_id>/open-questions/', views.item_open_questions_list, name='item-open-questions-list'),
+    path('open-questions/<int:question_id>/answer/', views.item_open_question_answer, name='item-open-question-answer'),
+    
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
     path('ai/optimize-text/', views.ai_optimize_text, name='ai-optimize-text'),

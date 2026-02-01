@@ -120,6 +120,23 @@ class AttachmentRole(models.TextChoices):
     APPROVER_ATTACHMENT = 'ApproverAttachment', _('Approver Attachment')
 
 
+class OpenQuestionStatus(models.TextChoices):
+    OPEN = 'Open', _('Open')
+    ANSWERED = 'Answered', _('Answered')
+    DISMISSED = 'Dismissed', _('Dismissed')
+
+
+class OpenQuestionAnswerType(models.TextChoices):
+    FREE_TEXT = 'FreeText', _('Free Text')
+    STANDARD_ANSWER = 'StandardAnswer', _('Standard Answer')
+    NONE = 'None', _('None')
+
+
+class OpenQuestionSource(models.TextChoices):
+    AI_AGENT = 'AIAgent', _('AI Agent')
+    HUMAN = 'Human', _('Human')
+
+
 # Custom User Manager
 class UserManager(BaseUserManager):
     def create_user(self, username, email, password=None, **extra_fields):
@@ -1178,3 +1195,114 @@ class ReportDocument(models.Model):
     
     def __str__(self):
         return f"{self.report_key} for {self.object_type} #{self.object_id}"
+
+
+class IssueStandardAnswer(models.Model):
+    """
+    Configurable standard answers for quick question responses.
+    
+    Provides pre-defined answers for common questions to speed up
+    the process of answering open questions on issues.
+    """
+    key = models.SlugField(max_length=100, unique=True, help_text="Unique key for this standard answer")
+    label = models.CharField(max_length=200, help_text="Short label shown in UI")
+    text = models.TextField(help_text="Full answer text")
+    is_active = models.BooleanField(default=True, help_text="Whether this answer is available for selection")
+    sort_order = models.IntegerField(default=0, help_text="Display order (lower numbers first)")
+    
+    class Meta:
+        ordering = ['sort_order', 'label']
+    
+    def __str__(self):
+        return self.label
+
+
+class IssueOpenQuestion(models.Model):
+    """
+    Open questions identified by AI agents or humans for an issue.
+    
+    Questions are never deleted, only marked as answered or dismissed.
+    This maintains a historical record of all questions and decisions.
+    """
+    issue = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='open_questions')
+    question = models.TextField(help_text="The question text")
+    status = models.CharField(
+        max_length=20,
+        choices=OpenQuestionStatus.choices,
+        default=OpenQuestionStatus.OPEN,
+        help_text="Current status of the question"
+    )
+    answer_text = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Free text answer if provided"
+    )
+    answer_type = models.CharField(
+        max_length=20,
+        choices=OpenQuestionAnswerType.choices,
+        default=OpenQuestionAnswerType.NONE,
+        help_text="Type of answer provided"
+    )
+    standard_answer_key = models.SlugField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Key of standard answer if used"
+    )
+    standard_answer = models.ForeignKey(
+        IssueStandardAnswer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='question_uses',
+        help_text="Standard answer if selected"
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=OpenQuestionSource.choices,
+        default=OpenQuestionSource.AI_AGENT,
+        help_text="Source of this question"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    answered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the question was answered or dismissed"
+    )
+    answered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='answered_questions',
+        help_text="User who answered or dismissed the question"
+    )
+    sort_order = models.IntegerField(
+        default=0,
+        help_text="Display order within the issue (lower numbers first)"
+    )
+    
+    class Meta:
+        ordering = ['sort_order', 'created_at']
+        indexes = [
+            models.Index(fields=['issue', 'status']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Question for {self.issue.title}: {self.question[:50]}..."
+    
+    def get_answer_display_text(self):
+        """
+        Get the display text for the answer.
+        
+        Returns the standard answer text if a standard answer is used,
+        otherwise returns the free text answer.
+        """
+        if self.answer_type == OpenQuestionAnswerType.STANDARD_ANSWER and self.standard_answer:
+            return self.standard_answer.text
+        elif self.answer_type == OpenQuestionAnswerType.FREE_TEXT and self.answer_text:
+            return self.answer_text
+        return ""
+
