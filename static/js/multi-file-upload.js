@@ -161,7 +161,7 @@ class MultiFileUpload {
     }
     
     generateId() {
-        return 'upload-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        return 'upload-' + Date.now() + '-' + Math.random().toString(36).substring(2);
     }
     
     createProgressElement(uploadItem) {
@@ -403,7 +403,7 @@ function initializeUploadZone(zone) {
 
     // Auto-generate ID for zone if missing
     if (!zone.id) {
-        zone.id = 'upload-zone-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        zone.id = 'upload-zone-' + Date.now() + '-' + Math.random().toString(36).substring(2);
     }
 
     const dropZoneId = zone.id;
@@ -427,7 +427,7 @@ function initializeUploadZone(zone) {
 
     // Auto-generate ID for file input if missing
     if (!fileInput.id) {
-        fileInput.id = 'file-input-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        fileInput.id = 'file-input-' + Date.now() + '-' + Math.random().toString(36).substring(2);
     }
 
     window.multiFileUploadInstances = window.multiFileUploadInstances || {};
