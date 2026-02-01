@@ -130,3 +130,76 @@ class RelatedItemsFilter(django_filters.FilterSet):
                 Q(title__icontains=value) | Q(description__icontains=value)
             )
         return queryset
+
+
+class EmbedItemFilter(django_filters.FilterSet):
+    """
+    FilterSet for Item model in embed portal.
+    Supports filtering by status, type, and search query.
+    IMPORTANT: Always excludes items where intern=True for security.
+    """
+    # Search filter (title or description)
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Search',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search in title...'
+        })
+    )
+    
+    # Status filter with custom choices for embed
+    status = django_filters.ChoiceFilter(
+        choices=[
+            ('', 'All Statuses'),
+            ('closed', 'Closed'),
+            ('not_closed', 'Not Closed'),
+        ],
+        method='filter_status',
+        label='Status',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Type filter
+    type = django_filters.ModelChoiceFilter(
+        queryset=ItemType.objects.filter(is_active=True).order_by('name'),
+        label='Type',
+        empty_label='All Types',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        model = Item
+        fields = ['q', 'status', 'type']
+    
+    def filter_search(self, queryset, name, value):
+        """
+        Filter items by search query in title or description.
+        """
+        if value:
+            from django.db.models import Q
+            return queryset.filter(
+                Q(title__icontains=value) | Q(description__icontains=value)
+            )
+        return queryset
+    
+    def filter_status(self, queryset, name, value):
+        """
+        Filter items by status.
+        Supports 'closed' and 'not_closed' as special values.
+        """
+        from .models import ItemStatus
+        if value == 'closed':
+            return queryset.filter(status=ItemStatus.CLOSED)
+        elif value == 'not_closed':
+            return queryset.exclude(status=ItemStatus.CLOSED)
+        return queryset
+    
+    @property
+    def qs(self):
+        """
+        Override queryset to always exclude intern items for security.
+        This is fail-safe - no matter what filters are applied, intern items are excluded.
+        """
+        parent_qs = super().qs
+        return parent_qs.filter(intern=False)

@@ -1,4 +1,5 @@
 {% extends "embed/base.html" %}
+{% load django_tables2 %}
 {% load agira_filters %}
 
 {% block title %}Issues - {{ project.name }}{% endblock %}
@@ -15,34 +16,99 @@
     </div>
 </div>
 
-<!-- Filter and Search Form -->
+<!-- KPI Card (Collapsible) -->
+<div class="card mb-3">
+    <div class="card-header" id="kpiCardHeader">
+        <h5 class="mb-0">
+            <button class="btn btn-link text-decoration-none w-100 text-start d-flex justify-content-between align-items-center" 
+                    type="button" 
+                    data-bs-toggle="collapse" 
+                    data-bs-target="#kpiCardBody" 
+                    aria-expanded="true" 
+                    aria-controls="kpiCardBody">
+                <span><i class="bi bi-bar-chart-fill me-2"></i>Key Performance Indicators</span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </h5>
+    </div>
+    <div id="kpiCardBody" class="collapse show" aria-labelledby="kpiCardHeader">
+        <div class="card-body">
+            <div class="row g-3">
+                <!-- Open Items -->
+                <div class="col-md-3">
+                    <div class="kpi-box border rounded p-3 text-center" 
+                         data-bs-toggle="tooltip" 
+                         title="Total number of items that are not closed">
+                        <div class="kpi-icon text-primary mb-2">
+                            <i class="bi bi-folder-open" style="font-size: 2rem;"></i>
+                        </div>
+                        <div class="kpi-value h3 mb-1">{{ kpis.open_count }}</div>
+                        <div class="kpi-label text-muted small">Open Items</div>
+                    </div>
+                </div>
+                
+                <!-- Closed Items (< 30 days) -->
+                <div class="col-md-3">
+                    <div class="kpi-box border rounded p-3 text-center" 
+                         data-bs-toggle="tooltip" 
+                         title="Items closed within the last 30 days">
+                        <div class="kpi-icon text-success mb-2">
+                            <i class="bi bi-check-circle-fill" style="font-size: 2rem;"></i>
+                        </div>
+                        <div class="kpi-value h3 mb-1">{{ kpis.closed_30d_count }}</div>
+                        <div class="kpi-label text-muted small">Closed (30d)</div>
+                    </div>
+                </div>
+                
+                <!-- Inbox Items -->
+                <div class="col-md-3">
+                    <div class="kpi-box border rounded p-3 text-center" 
+                         data-bs-toggle="tooltip" 
+                         title="Items in Inbox status - newly created items awaiting triage">
+                        <div class="kpi-icon text-info mb-2">
+                            <i class="bi bi-inbox-fill" style="font-size: 2rem;"></i>
+                        </div>
+                        <div class="kpi-value h3 mb-1">{{ kpis.inbox_count }}</div>
+                        <div class="kpi-label text-muted small">Inbox</div>
+                    </div>
+                </div>
+                
+                <!-- Backlog Items -->
+                <div class="col-md-3">
+                    <div class="kpi-box border rounded p-3 text-center" 
+                         data-bs-toggle="tooltip" 
+                         title="Items in Backlog status - items planned for future work">
+                        <div class="kpi-icon text-secondary mb-2">
+                            <i class="bi bi-list-check" style="font-size: 2rem;"></i>
+                        </div>
+                        <div class="kpi-value h3 mb-1">{{ kpis.backlog_count }}</div>
+                        <div class="kpi-label text-muted small">Backlog</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Form -->
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" action="{% url 'embed-project-issues' project.id %}" class="row g-3">
             <input type="hidden" name="token" value="{{ token }}">
             
             <div class="col-md-3">
-                <label for="status" class="form-label">Status</label>
-                <select name="status" id="status" class="form-select">
-                    <option value="">All Statuses</option>
-                    <option value="closed" {% if current_status == 'closed' %}selected{% endif %}>Closed</option>
-                    <option value="not_closed" {% if current_status == 'not_closed' %}selected{% endif %}>Not Closed</option>
-                </select>
+                {{ filter.form.status.label_tag }}
+                {{ filter.form.status }}
             </div>
             
             <div class="col-md-3">
-                <label for="type" class="form-label">Type</label>
-                <select name="type" id="type" class="form-select">
-                    <option value="">All Types</option>
-                    {% for item_type in item_types %}
-                    <option value="{{ item_type.id }}" {% if item_type.id|stringformat:"s" == current_type %}selected{% endif %}>{{ item_type.name }}</option>
-                    {% endfor %}
-                </select>
+                {{ filter.form.type.label_tag }}
+                {{ filter.form.type }}
             </div>
             
             <div class="col-md-4">
-                <label for="search" class="form-label">Search</label>
-                <input type="text" name="search" id="search" class="form-control" placeholder="Search in title..." value="{{ current_search }}">
+                {{ filter.form.q.label_tag }}
+                {{ filter.form.q }}
             </div>
             
             <div class="col-md-2 d-flex align-items-end">
@@ -54,95 +120,11 @@
     </div>
 </div>
 
-{% if items %}
+<!-- Items Table -->
+{% if table.page.object_list %}
 <div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
-            <tr>
-                <th>
-                    <a href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort=id&order={% if current_sort == 'id' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white">
-                        ID {% if current_sort == 'id' %}<i class="bi bi-caret-{% if current_order == 'asc' %}up{% else %}down{% endif %}-fill"></i>{% endif %}
-                    </a>
-                </th>
-                <th>
-                    <a href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort=title&order={% if current_sort == 'title' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white">
-                        Title {% if current_sort == 'title' %}<i class="bi bi-caret-{% if current_order == 'asc' %}up{% else %}down{% endif %}-fill"></i>{% endif %}
-                    </a>
-                </th>
-                <th>Type</th>
-                <th>
-                    <a href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort=status&order={% if current_sort == 'status' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white">
-                        Status {% if current_sort == 'status' %}<i class="bi bi-caret-{% if current_order == 'asc' %}up{% else %}down{% endif %}-fill"></i>{% endif %}
-                    </a>
-                </th>
-                <th>Assigned To</th>
-                <th>
-                    <a href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort=updated&order={% if current_sort == 'updated' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white">
-                        Updated {% if current_sort == 'updated' %}<i class="bi bi-caret-{% if current_order == 'asc' %}up{% else %}down{% endif %}-fill"></i>{% endif %}
-                    </a>
-                </th>
-                <th class="text-center" style="width: 80px;">Solution</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in items %}
-            <tr>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.id }}</td>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.title }}</td>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.type.name }}</td>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">
-                    <span class="badge bg-secondary">{{ item.get_status_display }}</span>
-                </td>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.assigned_to.name|default:"Unassigned" }}</td>
-                <td onclick="window.location='{% url 'embed-issue-detail' item.id %}?token={{ token|escapejs }}'" style="cursor: pointer;">{{ item.updated_at|date:"d.m.Y H:i" }}</td>
-                <td class="text-center">
-                    {% if item.solution_description|trim %}
-                    <button type="button" class="btn btn-sm btn-outline-info" 
-                            data-bs-toggle="modal" 
-                            data-bs-target="#solutionModal{{ item.id }}"
-                            title="View Solution Description"
-                            aria-label="View solution description for issue {{ item.id }}"
-                            onclick="event.stopPropagation();">
-                        <i class="bi bi-lightbulb"></i>
-                    </button>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {% render_table table %}
 </div>
-
-<!-- Pagination -->
-{% if page_obj %}
-<nav aria-label="Page navigation">
-    <ul class="pagination justify-content-center">
-        {% if page_obj.has_previous %}
-        <li class="page-item">
-            <a class="page-link" href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort={{ current_sort }}&order={{ current_order }}&page={{ page_obj.previous_page_number }}">Previous</a>
-        </li>
-        {% else %}
-        <li class="page-item disabled">
-            <span class="page-link">Previous</span>
-        </li>
-        {% endif %}
-        
-        <li class="page-item disabled">
-            <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-        </li>
-        
-        {% if page_obj.has_next %}
-        <li class="page-item">
-            <a class="page-link" href="?token={{ token }}&status={{ current_status }}&type={{ current_type }}&search={{ current_search }}&sort={{ current_sort }}&order={{ current_order }}&page={{ page_obj.next_page_number }}">Next</a>
-        </li>
-        {% else %}
-        <li class="page-item disabled">
-            <span class="page-link">Next</span>
-        </li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
 
 <!-- Solution Description Modals -->
 {% for item in items %}
@@ -177,4 +159,15 @@
     <i class="bi bi-info-circle"></i> No issues found. <a href="{% url 'embed-issue-create-form' project.id %}?token={{ token }}">Create the first issue</a>
 </div>
 {% endif %}
+
+<!-- Initialize Bootstrap tooltips -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+
 {% endblock %}

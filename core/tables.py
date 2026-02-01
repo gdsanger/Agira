@@ -4,7 +4,7 @@ Django tables for Item model.
 import django_tables2 as tables
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import Item
+from .models import Item, Release
 
 
 class ItemTable(tables.Table):
@@ -261,3 +261,146 @@ class RelatedItemsTable(tables.Table):
         if record.assigned_to:
             return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
+
+
+class EmbedItemTable(tables.Table):
+    """
+    Table for displaying items in the embed portal.
+    Includes columns for ID, Title, Type, Status, Updated, Solution Release, and Solution indicator.
+    """
+    
+    # ID column
+    id = tables.Column(
+        verbose_name='ID',
+        orderable=True,
+        attrs={'td': {'class': 'text-muted small'}}
+    )
+    
+    # Title column with link to embed detail view
+    title = tables.Column(
+        verbose_name='Title',
+        orderable=True,
+        attrs={'td': {'class': 'item-title-cell'}}
+    )
+    
+    # Type column
+    type = tables.Column(
+        verbose_name='Type',
+        orderable=True,
+        accessor='type__name'
+    )
+    
+    # Status column
+    status = tables.Column(
+        verbose_name='Status',
+        orderable=True
+    )
+    
+    # Updated at column
+    updated_at = tables.DateTimeColumn(
+        verbose_name='Updated',
+        format='d.m.Y H:i',
+        orderable=True,
+        attrs={'td': {'class': 'text-muted small'}}
+    )
+    
+    # Solution Release column
+    solution_release = tables.Column(
+        verbose_name='Solution Release',
+        orderable=True,
+        accessor='solution_release__version',
+        empty_values=()
+    )
+    
+    # Solution indicator column
+    solution = tables.Column(
+        verbose_name='Solution',
+        orderable=False,
+        empty_values=(),
+        attrs={'td': {'class': 'text-center', 'style': 'width: 80px;'}}
+    )
+    
+    class Meta:
+        model = Item
+        template_name = 'django_tables2/bootstrap5.html'
+        fields = ('id', 'title', 'type', 'status', 'updated_at', 'solution_release', 'solution')
+        attrs = {
+            'class': 'table table-hover',
+            'thead': {'class': 'table-dark'}
+        }
+        order_by = '-updated_at'
+    
+    def render_title(self, record, value):
+        """
+        Render title column with link to embed detail view.
+        Token is passed via table.token attribute.
+        """
+        token = getattr(self, 'token', '')
+        url = reverse('embed-issue-detail', kwargs={'issue_id': record.id}) + f'?token={token}'
+        return format_html(
+            '<a href="{}" class="text-decoration-none">{}</a>',
+            url,
+            value
+        )
+    
+    def render_type(self, record):
+        """
+        Render type column as a badge.
+        """
+        return format_html(
+            '<span class="badge bg-secondary">{}</span>',
+            record.type.name
+        )
+    
+    def render_status(self, value):
+        """
+        Render status column as a badge with emoji.
+        """
+        from .models import ItemStatus
+        status_dict = dict(ItemStatus.choices)
+        display_text = status_dict.get(value, value)
+        
+        # Color mapping for status badges
+        status_colors = {
+            'Inbox': 'bg-info',
+            'Backlog': 'bg-secondary',
+            'Working': 'bg-warning',
+            'Testing': 'bg-primary',
+            'ReadyForRelease': 'bg-success',
+            'Planing': 'bg-info',
+            'Specification': 'bg-info',
+            'Closed': 'bg-dark',
+        }
+        color = status_colors.get(value, 'bg-secondary')
+        
+        return format_html(
+            '<span class="badge {}">{}</span>',
+            color,
+            display_text
+        )
+    
+    def render_solution_release(self, value, record):
+        """
+        Render solution_release column with em dash for empty values.
+        """
+        if record.solution_release:
+            return record.solution_release.version
+        return format_html('<span class="text-muted">{}</span>', '—')
+    
+    def render_solution(self, record):
+        """
+        Render solution indicator button if solution exists.
+        """
+        if record.solution_description and record.solution_description.strip():
+            return format_html(
+                '<button type="button" class="btn btn-sm btn-outline-info" '
+                'data-bs-toggle="modal" '
+                'data-bs-target="#solutionModal{}" '
+                'title="View Solution Description" '
+                'aria-label="View solution description for issue {}">'
+                '<i class="bi bi-lightbulb"></i>'
+                '</button>',
+                record.id,
+                record.id
+            )
+        return ''
