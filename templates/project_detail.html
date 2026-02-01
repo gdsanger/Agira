@@ -273,8 +273,9 @@
                                 <th>Version</th>
                                 <th>Type</th>
                                 <th>Status</th>
-                                <th>Risk</th>
+                                <th>Planned Date</th>
                                 <th>Updated</th>
+                                <th>Change</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -301,23 +302,27 @@
                                     <span class="badge bg-secondary">{{ release.status }}</span>
                                     {% endif %}
                                 </td>
+                                <td>{% if release.planned_date %}{{ release.planned_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                                <td>{% if release.updated_at %}{{ release.updated_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
                                 <td>
-                                    {% if release.risk == 'Low' %}
-                                    <span class="badge bg-success">{{ release.risk }}</span>
-                                    {% elif release.risk == 'Normal' %}
-                                    <span class="badge bg-info">{{ release.risk }}</span>
-                                    {% elif release.risk == 'High' %}
-                                    <span class="badge bg-warning">{{ release.risk }}</span>
-                                    {% elif release.risk == 'VeryHigh' %}
-                                    <span class="badge bg-danger">Very High</span>
+                                    {% with change=release.get_primary_change %}
+                                    {% if change %}
+                                    <a href="{% url 'change-detail' change.id %}" class="badge bg-success text-decoration-none">
+                                        View Change
+                                    </a>
                                     {% else %}
-                                    <span class="badge bg-secondary">{{ release.risk }}</span>
+                                    <button class="btn btn-sm btn-outline-success"
+                                            hx-post="{% url 'release-create-change' release.id %}"
+                                            hx-swap="none"
+                                            hx-on::after-request="handleCreateChangeResponse(event)">
+                                        + Create Change
+                                    </button>
                                     {% endif %}
+                                    {% endwith %}
                                 </td>
-                                <td>{% if release.update_date %}{{ release.update_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
                                 <td>
                                     <button class="btn btn-sm btn-outline-primary me-1" 
-                                            onclick="editRelease({{ release.id }}, '{{ release.name|escapejs }}', '{{ release.version|escapejs }}', '{{ release.type }}', '{{ release.status }}', '{{ release.risk }}')">
+                                            onclick="editRelease({{ release.id }}, '{{ release.name|escapejs }}', '{{ release.version|escapejs }}', '{{ release.type }}', '{{ release.status }}', '{{ release.planned_date|date:"Y-m-d"|default:"" }}')">
                                         Edit
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger"
@@ -666,7 +671,7 @@ function handleReleaseDeleteResponse(event) {
 }
 
 // Edit release function
-function editRelease(id, name, version, type, status, risk) {
+function editRelease(id, name, version, type, status, plannedDate) {
     const modal = new bootstrap.Modal(document.getElementById('editReleaseModal'));
     const form = document.getElementById('editReleaseForm');
     
@@ -679,7 +684,7 @@ function editRelease(id, name, version, type, status, risk) {
     document.getElementById('editReleaseVersion').value = version;
     document.getElementById('editReleaseType').value = type || '';
     document.getElementById('editReleaseStatus').value = status || 'Planned';
-    document.getElementById('editReleaseRisk').value = risk || 'Normal';
+    document.getElementById('editReleasePlannedDate').value = plannedDate || '';
     
     // Show modal
     modal.show();

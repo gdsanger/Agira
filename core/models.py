@@ -362,14 +362,20 @@ class Release(models.Model):
     risk_description = models.TextField(blank=True)
     risk_mitigation = models.TextField(blank=True)
     rescue_measure = models.TextField(blank=True)
+    planned_date = models.DateField(null=True, blank=True, help_text=_('Planned release date'))
     update_date = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
     status = models.CharField(max_length=20, choices=ReleaseStatus.choices, default=ReleaseStatus.PLANNED)
 
     class Meta:
-        ordering = ['-update_date', 'project', 'name']
+        ordering = ['-planned_date', '-updated_at', 'project', 'name']
 
     def __str__(self):
         return f"{self.project.name} - {self.version}"
+    
+    def get_primary_change(self):
+        """Get the first change associated with this release."""
+        return self.changes.first()
 
 
 class Change(models.Model):
@@ -378,6 +384,7 @@ class Change(models.Model):
     description = models.TextField(blank=True)
     planned_start = models.DateTimeField(null=True, blank=True)
     planned_end = models.DateTimeField(null=True, blank=True)
+    planned_date = models.DateField(null=True, blank=True, help_text=_('Planned change date (date only)'))
     executed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=ChangeStatus.choices, default=ChangeStatus.DRAFT)
     risk = models.CharField(max_length=20, choices=RiskLevel.choices, default=RiskLevel.NORMAL)

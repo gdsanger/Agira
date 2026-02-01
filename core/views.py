@@ -3423,7 +3423,7 @@ def project_add_release(request, id):
         version = request.POST.get('version')
         release_type = request.POST.get('type')
         status = request.POST.get('status', ReleaseStatus.PLANNED)
-        risk = request.POST.get('risk', RiskLevel.NORMAL)
+        planned_date_str = request.POST.get('planned_date')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -3436,9 +3436,14 @@ def project_add_release(request, id):
         if status and status not in ReleaseStatus.values:
             return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
         
-        # Validate risk
-        if risk and risk not in RiskLevel.values:
-            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        # Parse planned_date if provided
+        planned_date = None
+        if planned_date_str:
+            try:
+                from datetime import datetime
+                planned_date = datetime.strptime(planned_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
         
         release = Release.objects.create(
             project=project,
@@ -3446,7 +3451,7 @@ def project_add_release(request, id):
             version=version,
             type=release_type if release_type else None,
             status=status,
-            risk=risk
+            planned_date=planned_date
         )
         
         return JsonResponse({'success': True, 'message': 'Release created successfully', 'release_id': release.id})
@@ -3467,7 +3472,7 @@ def project_update_release(request, id, release_id):
         version = request.POST.get('version')
         release_type = request.POST.get('type')
         status = request.POST.get('status')
-        risk = request.POST.get('risk')
+        planned_date_str = request.POST.get('planned_date')
         
         if not name or not version:
             return JsonResponse({'success': False, 'error': 'Name and Version are required'}, status=400)
@@ -3480,16 +3485,23 @@ def project_update_release(request, id, release_id):
         if status and status not in ReleaseStatus.values:
             return JsonResponse({'success': False, 'error': f'Invalid status. Must be one of: {", ".join(ReleaseStatus.values)}'}, status=400)
         
-        # Validate risk
-        if risk and risk not in RiskLevel.values:
-            return JsonResponse({'success': False, 'error': f'Invalid risk level. Must be one of: {", ".join(RiskLevel.values)}'}, status=400)
+        # Parse planned_date if provided
+        if planned_date_str:
+            try:
+                from datetime import datetime
+                planned_date = datetime.strptime(planned_date_str, '%Y-%m-%d').date()
+                release.planned_date = planned_date
+            except ValueError:
+                return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        elif planned_date_str == '':
+            # Empty string means clear the date
+            release.planned_date = None
         
         # Update release fields
         release.name = name
         release.version = version
         release.type = release_type if release_type else None
         release.status = status if status else release.status
-        release.risk = risk if risk else release.risk
         release.save()
         
         return JsonResponse({'success': True, 'message': 'Release updated successfully'})
@@ -3508,6 +3520,75 @@ def project_delete_release(request, id, release_id):
     try:
         release.delete()
         return JsonResponse({'success': True, 'message': 'Release deleted successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+def release_detail_modal(request, release_id):
+    """Return the release detail modal content with items table."""
+    from django_tables2 import RequestConfig
+    from .tables import ReleaseItemsTable
+    from .filters import ReleaseItemsFilter
+    
+    release = get_object_or_404(Release, id=release_id)
+    
+    # Get items for this release
+    items_queryset = Item.objects.filter(solution_release=release).select_related(
+        'type', 'organisation', 'assigned_to'
+    )
+    
+    # Apply filters
+    item_filter = ReleaseItemsFilter(request.GET, queryset=items_queryset)
+    
+    # Create table
+    table = ReleaseItemsTable(item_filter.qs)
+    RequestConfig(request, paginate={'per_page': 25}).configure(table)
+    
+    # Get the primary change for this release
+    primary_change = release.get_primary_change()
+    
+    context = {
+        'release': release,
+        'table': table,
+        'filter': item_filter,
+        'items_count': items_queryset.count(),
+        'primary_change': primary_change,
+    }
+    
+    return render(request, 'partials/release_detail_modal_content.html', context)
+
+
+@login_required
+def release_create_change(request, release_id):
+    """Create a new Change from a Release."""
+    release = get_object_or_404(Release, id=release_id)
+    
+    # Check if a change already exists for this release
+    existing_change = release.get_primary_change()
+    if existing_change:
+        return JsonResponse({
+            'success': False, 
+            'error': 'A change already exists for this release',
+            'change_id': existing_change.id
+        }, status=400)
+    
+    try:
+        # Create the change
+        change = Change.objects.create(
+            project=release.project,
+            title=f'Change für {release.name}',
+            description=f'Automatically created change for release {release.version}',
+            release=release,
+            planned_date=release.planned_date,  # Date-only field
+            status=ChangeStatus.DRAFT
+        )
+        
+        return JsonResponse({
+            'success': True, 
+            'message': 'Change created successfully',
+            'change_id': change.id
+        })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
