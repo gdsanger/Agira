@@ -2,6 +2,96 @@
 
 {% block title %}Create Issue - {{ project.name }}{% endblock %}
 
+{% block extra_head %}
+<!-- ToastUI Editor CSS -->
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<style>
+/* Toast Editor styling for dark theme */
+#description-editor {
+    max-height: 400px;
+    overflow: hidden;
+}
+
+#description-editor .toastui-editor-defaultUI {
+    max-height: 400px !important;
+    overflow: hidden !important;
+}
+
+#description-editor .toastui-editor-md-container,
+#description-editor .toastui-editor-preview {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    max-height: 350px !important;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+#description-editor .toastui-editor-contents {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+#description-editor .toastui-editor-contents pre {
+    overflow-x: auto;
+    white-space: pre;
+}
+
+/* File upload styling */
+.file-upload-area {
+    border: 2px dashed #495057;
+    border-radius: 0.375rem;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.file-upload-area:hover {
+    border-color: #0d6efd;
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.file-upload-area.drag-over {
+    border-color: #0d6efd;
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+.file-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background-color: #212529;
+    border-radius: 0.25rem;
+}
+
+.file-list-item .file-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.file-list-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-list-item .file-size {
+    font-size: 0.875rem;
+    color: #adb5bd;
+}
+
+.file-list-item .btn-remove {
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="mb-3">
     <a href="{% url 'embed-project-issues' project.id %}?token={{ token }}" class="btn btn-sm btn-outline-secondary">
@@ -45,11 +135,25 @@
             
             <div class="mb-3">
                 <label for="description" class="form-label">Description</label>
-                <textarea name="description" id="description" class="form-control" rows="6"></textarea>
-                <div class="form-text">Supports Markdown formatting</div>
+                <div id="description-editor"></div>
+                <input type="hidden" name="description" id="description">
+                <div class="form-text">Supports Markdown formatting and inline images (paste or drag & drop)</div>
+            </div>
+            
+            <!-- File Attachments -->
+            <div class="mb-3">
+                <label class="form-label">Attachments (Optional)</label>
+                <div class="file-upload-area" id="fileUploadArea">
+                    <input type="file" id="fileInput" name="files" multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.svg,.pdf,.docx,.md,.html" style="display: none;">
+                    <i class="bi bi-cloud-upload fs-1 text-muted"></i>
+                    <p class="mb-1">Click to select files or drag and drop here</p>
+                    <small class="text-muted">Max 5 files • 10MB per file • Images, PDF, DOCX, Markdown, HTML allowed</small>
+                </div>
+                <div id="fileList" class="mt-3"></div>
             </div>
             
             <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="attachment_ids" id="attachmentIds" value="">
             
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary">
@@ -85,3 +189,238 @@
     });
 </script>
 {% endblock %}
+
+{% block extra_scripts %}
+<!-- ToastUI Editor JS -->
+<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Track uploaded attachment IDs
+    const uploadedAttachments = [];
+    
+    // Initialize ToastUI Editor with image upload hook
+    const descriptionEditor = new toastui.Editor({
+        el: document.querySelector('#description-editor'),
+        height: '400px',
+        initialEditType: 'markdown',
+        previewStyle: 'vertical',
+        initialValue: '',
+        theme: 'dark',
+        usageStatistics: false,
+        hooks: {
+            addImageBlobHook: async (blob, callback) => {
+                try {
+                    // Upload image via AJAX
+                    const formData = new FormData();
+                    formData.append('file', blob);
+                    formData.append('token', '{{ token }}');
+                    formData.append('is_inline', 'true');
+                    
+                    const response = await fetch('{% url "embed-attachment-pre-upload" project.id %}?token={{ token }}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Upload failed');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Track the attachment ID for inline images
+                        uploadedAttachments.push(data.attachment_id);
+                        // Return the URL to be inserted into the editor
+                        callback(data.url, data.filename);
+                    } else {
+                        alert('Failed to upload image: ' + (data.error || 'Unknown error'));
+                        callback('', '');
+                    }
+                } catch (error) {
+                    console.error('Image upload error:', error);
+                    alert('Failed to upload image: ' + error.message);
+                    callback('', '');
+                }
+            }
+        }
+    });
+    
+    // File upload handling
+    const fileInput = document.getElementById('fileInput');
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const fileList = document.getElementById('fileList');
+    const selectedFiles = [];
+    const maxFiles = 5;
+    const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.pdf', '.docx', '.md', '.html'];
+    
+    // Click to select files
+    fileUploadArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // File selection handler
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        fileInput.value = ''; // Reset input to allow selecting the same file again
+    });
+    
+    // Drag and drop handlers
+    fileUploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.add('drag-over');
+    });
+    
+    fileUploadArea.addEventListener('dragleave', () => {
+        fileUploadArea.classList.remove('drag-over');
+    });
+    
+    fileUploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.remove('drag-over');
+        handleFiles(e.dataTransfer.files);
+    });
+    
+    function handleFiles(files) {
+        const filesArray = Array.from(files);
+        
+        // Check total file count
+        if (selectedFiles.length + filesArray.length > maxFiles) {
+            alert(`You can only upload a maximum of ${maxFiles} files.`);
+            return;
+        }
+        
+        for (const file of filesArray) {
+            // Check file extension
+            const fileName = file.name.toLowerCase();
+            const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+            
+            if (!hasValidExtension) {
+                alert(`File "${file.name}" has an invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
+                continue;
+            }
+            
+            // Check file size
+            if (file.size > maxSizeBytes) {
+                alert(`File "${file.name}" exceeds the maximum size of 10MB.`);
+                continue;
+            }
+            
+            // Add to selected files
+            selectedFiles.push(file);
+        }
+        
+        updateFileList();
+    }
+    
+    function updateFileList() {
+        fileList.innerHTML = '';
+        
+        if (selectedFiles.length === 0) {
+            return;
+        }
+        
+        selectedFiles.forEach((file, index) => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-list-item';
+            
+            const fileInfo = document.createElement('div');
+            fileInfo.className = 'file-info';
+            
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-file-earmark';
+            
+            const fileName = document.createElement('span');
+            fileName.className = 'file-name';
+            fileName.textContent = file.name;
+            
+            const fileSize = document.createElement('span');
+            fileSize.className = 'file-size';
+            fileSize.textContent = formatFileSize(file.size);
+            
+            fileInfo.appendChild(icon);
+            fileInfo.appendChild(fileName);
+            fileInfo.appendChild(fileSize);
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-sm btn-outline-danger btn-remove';
+            removeBtn.innerHTML = '<i class="bi bi-x"></i>';
+            removeBtn.addEventListener('click', () => {
+                selectedFiles.splice(index, 1);
+                updateFileList();
+            });
+            
+            fileItem.appendChild(fileInfo);
+            fileItem.appendChild(removeBtn);
+            fileList.appendChild(fileItem);
+        });
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    // Form submission handler
+    const form = document.querySelector('form');
+    const submitButton = form.querySelector('button[type="submit"]');
+    const originalButtonText = submitButton.innerHTML;
+    
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Sync editor content to hidden field
+        document.getElementById('description').value = descriptionEditor.getMarkdown();
+        
+        // Disable submit button
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Uploading...';
+        
+        try {
+            // Upload files first if any
+            const uploadedFileIds = [];
+            
+            for (const file of selectedFiles) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('token', '{{ token }}');
+                formData.append('is_inline', 'false');
+                
+                const response = await fetch('{% url "embed-attachment-pre-upload" project.id %}?token={{ token }}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to upload file: ${file.name}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    uploadedFileIds.push(data.attachment_id);
+                } else {
+                    throw new Error(data.error || `Failed to upload file: ${file.name}`);
+                }
+            }
+            
+            // Add all attachment IDs (files + inline images)
+            const allAttachmentIds = [...uploadedFileIds, ...uploadedAttachments];
+            document.getElementById('attachmentIds').value = allAttachmentIds.join(',');
+            
+            // Submit the form
+            form.submit();
+        } catch (error) {
+            console.error('Upload error:', error);
+            alert('Error uploading files: ' + error.message);
+            
+            // Re-enable submit button
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalButtonText;
+        }
+    });
+});

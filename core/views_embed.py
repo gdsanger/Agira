@@ -217,6 +217,116 @@ def embed_issue_create_form(request, project_id):
 
 @csrf_exempt
 @require_POST
+def embed_attachment_pre_upload(request, project_id):
+    """
+    Pre-upload an attachment before issue creation.
+    POST /embed/projects/<project_id>/attachments/pre-upload/?token=...
+    
+    This endpoint allows uploading attachments before creating an issue.
+    The attachments are temporarily stored and will be linked to the issue upon creation.
+    """
+    import os
+    
+    token = request.POST.get('token') or request.GET.get('token')
+    embed_access = validate_embed_token(token)
+    
+    if embed_access is None:
+        return HttpResponseForbidden("Access disabled")
+    
+    # Verify the project_id matches the embed access
+    if embed_access.project.id != project_id:
+        raise Http404("Project not found")
+    
+    # Get uploaded file
+    if 'file' not in request.FILES:
+        return JsonResponse({
+            'success': False,
+            'error': 'No file provided'
+        }, status=400)
+    
+    uploaded_file = request.FILES['file']
+    is_inline = request.POST.get('is_inline', 'false').lower() == 'true'
+    
+    # Validate file type
+    allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.pdf', '.docx', '.md', '.html']
+    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+    
+    if file_extension not in allowed_extensions:
+        return JsonResponse({
+            'success': False,
+            'error': f'File type not allowed. Allowed types: {", ".join(allowed_extensions)}'
+        }, status=400)
+    
+    # Validate file size (10MB)
+    max_size_bytes = 10 * 1024 * 1024  # 10MB
+    if uploaded_file.size > max_size_bytes:
+        return JsonResponse({
+            'success': False,
+            'error': f'File size exceeds maximum of 10MB'
+        }, status=400)
+    
+    try:
+        # Store attachment using the storage service with custom max size
+        storage_service = AttachmentStorageService(max_size_mb=10)
+        
+        # Create a temporary Item placeholder to store the attachment
+        # We'll use the project as the temporary target and update the link later
+        attachment = Attachment.objects.create(
+            created_by=None,
+            original_name=uploaded_file.name,
+            content_type=uploaded_file.content_type or '',
+            size_bytes=uploaded_file.size,
+            sha256='',  # Will be computed if needed
+            storage_path='',  # Will be set below
+            is_deleted=False
+        )
+        
+        # Build storage path for temporary attachment
+        from core.services.storage.paths import build_attachment_path, get_absolute_path, sanitize_filename
+        relative_path = build_attachment_path(embed_access.project, attachment.id, uploaded_file.name)
+        absolute_path = get_absolute_path(storage_service.data_dir, relative_path)
+        
+        # Ensure parent directory exists
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write file to storage
+        with open(absolute_path, 'wb') as dest:
+            uploaded_file.seek(0)
+            # Write in chunks
+            while chunk := uploaded_file.read(8192):
+                dest.write(chunk)
+        
+        # Update attachment with storage path
+        attachment.storage_path = relative_path
+        attachment.save(update_fields=['storage_path'])
+        
+        # Generate URL for inline images
+        attachment_url = ''
+        if is_inline:
+            # For inline images, we need to provide a URL that can be used in the markdown
+            # We'll use the embed attachment download URL
+            attachment_url = reverse('embed-attachment-download', args=[attachment.id]) + f'?token={token}'
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'File uploaded successfully',
+            'attachment_id': attachment.id,
+            'filename': attachment.original_name,
+            'url': attachment_url,
+        })
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error pre-uploading attachment: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_POST
 def embed_issue_create(request, project_id):
     """
     Create a new issue.
@@ -281,6 +391,30 @@ def embed_issue_create(request, project_id):
             status=ItemStatus.INBOX,
             requester=requester,
         )
+        
+        # Link pre-uploaded attachments to the item
+        attachment_ids_str = request.POST.get('attachment_ids', '').strip()
+        if attachment_ids_str:
+            attachment_ids = [int(aid) for aid in attachment_ids_str.split(',') if aid.strip()]
+            
+            # Get the attachments and link them to the item
+            content_type_obj = ContentType.objects.get_for_model(Item)
+            for attachment_id in attachment_ids:
+                try:
+                    attachment = Attachment.objects.get(id=attachment_id)
+                    
+                    # Create attachment link
+                    AttachmentLink.objects.create(
+                        attachment=attachment,
+                        target_content_type=content_type_obj,
+                        target_object_id=item.id,
+                        role=AttachmentRole.ITEM_FILE
+                    )
+                except Attachment.DoesNotExist:
+                    # Log warning but don't fail the creation
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Attachment {attachment_id} not found when creating item {item.id}")
         
         # Log activity
         activity_service = ActivityService()
@@ -556,3 +690,71 @@ def embed_project_releases(request, project_id):
         'releases_with_items': releases_with_items,
     }
     return render(request, 'embed/releases.html', context)
+
+
+def embed_attachment_download(request, attachment_id):
+    """
+    Download an attachment via the embed portal.
+    GET /embed/attachments/<attachment_id>/download/?token=...
+    
+    This endpoint allows downloading attachments through the embed portal.
+    Validates the token to ensure the requester has access to the project.
+    """
+    token = request.GET.get('token')
+    embed_access = validate_embed_token(token)
+    
+    if embed_access is None:
+        return HttpResponseForbidden("Access disabled")
+    
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+        
+        if attachment.is_deleted:
+            raise Http404("Attachment not found")
+        
+        # Verify that the attachment belongs to an item in the embedded project
+        # or is a pre-uploaded attachment (no links yet)
+        attachment_links = AttachmentLink.objects.filter(attachment=attachment)
+        
+        if attachment_links.exists():
+            # Check if any link is to an item in the embedded project
+            item_content_type = ContentType.objects.get_for_model(Item)
+            valid_link = False
+            
+            for link in attachment_links:
+                if link.target_content_type == item_content_type:
+                    item = Item.objects.filter(id=link.target_object_id, project=embed_access.project).first()
+                    if item:
+                        valid_link = True
+                        break
+            
+            if not valid_link:
+                raise Http404("Attachment not found")
+        
+        # Read file content
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+        
+        # Determine if this is an image for inline display
+        content_type = attachment.content_type or 'application/octet-stream'
+        is_image = content_type.startswith('image/')
+        
+        # Create response with file
+        response = HttpResponse(file_content, content_type=content_type)
+        
+        if is_image:
+            # For images, display inline
+            response['Content-Disposition'] = f'inline; filename="{attachment.original_name}"'
+        else:
+            # For other files, force download
+            response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+        
+        response['Content-Length'] = len(file_content)
+        
+        return response
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Download failed for attachment {attachment_id}: {e}")
+        return HttpResponse(f"Download failed: {str(e)}", status=500)
