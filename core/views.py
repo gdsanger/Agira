@@ -1576,10 +1576,10 @@ Context from similar items and related information:
                 # Single line like ```json{...}``` - remove opening fence
                 cleaned_response = cleaned_response[3:]  # Remove ```
                 # Also strip any language identifier (json, etc)
-                if cleaned_response and not cleaned_response[0] in ['{', '[']:
+                if cleaned_response and cleaned_response[0] not in ('{', '['):
                     # Find where JSON actually starts
                     for i, char in enumerate(cleaned_response):
-                        if char in ['{', '[']:
+                        if char in ('{', '['):
                             cleaned_response = cleaned_response[i:]
                             break
             
@@ -1602,12 +1602,14 @@ Context from similar items and related information:
                 optimized_description = response_data.get('description', '').strip()
                 open_questions = response_data.get('open_questions', [])
             else:
-                # No recognized format - use the cleaned response as-is
-                # Note: This may still contain JSON if format is unrecognized
+                # No recognized JSON format
+                # Save cleaned response (code fences removed) as fallback
+                # This preserves agent output even if format is unexpected
                 optimized_description = cleaned_response
                 open_questions = []
         except json.JSONDecodeError:
-            # Not valid JSON - use the cleaned response as-is
+            # Not valid JSON after cleaning
+            # Save cleaned response (code fences removed) as fallback
             optimized_description = cleaned_response
             open_questions = []
         
