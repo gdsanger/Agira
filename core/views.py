@@ -3861,6 +3861,28 @@ def project_delete_release(request, id, release_id):
 
 
 @login_required
+def project_close_release(request, id, release_id):
+    """Close a release by setting status to CLOSED and recording closed_at/closed_by."""
+    project = get_object_or_404(Project, id=id)
+    release = get_object_or_404(Release, id=release_id, project=project)
+    
+    try:
+        # Check if already closed
+        if release.status == ReleaseStatus.CLOSED:
+            return JsonResponse({'success': False, 'error': 'Release is already closed'}, status=400)
+        
+        # Update release to closed status
+        release.status = ReleaseStatus.CLOSED
+        release.closed_at = timezone.now()
+        release.closed_by = request.user
+        release.save()
+        
+        return JsonResponse({'success': True, 'message': 'Release closed successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
 def release_detail_modal(request, release_id):
     """Return the release detail modal content with items table."""
     from django_tables2 import RequestConfig
