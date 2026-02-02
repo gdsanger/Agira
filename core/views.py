@@ -1559,29 +1559,22 @@ Context from similar items and related information:
             client_ip=request.META.get('REMOTE_ADDR')
         )
         
-        # Parse the response - expect JSON format with description and open_questions
+        # Parse the response - expect JSON format:
+        # {"issue": {"description": "..."}, "open_questions": [...]}
         try:
             # Try to parse as JSON
             response_data = json.loads(agent_response.strip())
             
-            # Extract description from JSON - support two formats:
-            # Format 1: {"issue": {"description": "..."}, "open_questions": [...]}
-            # Format 2: {"description": "...", "open_questions": [...]}
-            if isinstance(response_data, dict):
-                if 'issue' in response_data and isinstance(response_data['issue'], dict):
-                    # Format 1: nested issue object
-                    optimized_description = response_data['issue'].get('description', '').strip()
-                    open_questions = response_data.get('open_questions', [])
-                elif 'description' in response_data:
-                    # Format 2: direct description field
-                    optimized_description = response_data.get('description', '').strip()
-                    open_questions = response_data.get('open_questions', [])
-                else:
-                    # No description field found - fallback to entire response
-                    optimized_description = agent_response.strip()
-                    open_questions = []
+            if isinstance(response_data, dict) and 'issue' in response_data and isinstance(response_data['issue'], dict):
+                # Expected format: nested issue object with description
+                optimized_description = response_data['issue'].get('description', '').strip()
+                open_questions = response_data.get('open_questions', [])
+            elif isinstance(response_data, dict) and 'description' in response_data:
+                # Fallback format: direct description field (for backward compatibility)
+                optimized_description = response_data.get('description', '').strip()
+                open_questions = response_data.get('open_questions', [])
             else:
-                # Not a dict - fallback to entire response
+                # No recognized format - fallback to entire response
                 optimized_description = agent_response.strip()
                 open_questions = []
         except json.JSONDecodeError:
