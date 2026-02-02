@@ -402,251 +402,6 @@
                                     
                                     <!-- Open Questions Warning and Section -->
                                     <div id="open-questions-container" class="mt-4"></div>
-                                    <script>
-                                        // Load open questions on page load
-                                        document.addEventListener('DOMContentLoaded', function() {
-                                            loadOpenQuestions();
-                                        });
-                                        
-                                        function loadOpenQuestions() {
-                                            fetch('{% url "item-open-questions-list" item.id %}')
-                                                .then(response => response.json())
-                                                .then(data => {
-                                                    if (data.success) {
-                                                        renderOpenQuestions(data);
-                                                    }
-                                                })
-                                                .catch(error => console.error('Error loading open questions:', error));
-                                        }
-                                        
-                                        function renderOpenQuestions(data) {
-                                            const container = document.getElementById('open-questions-container');
-                                            if (!data.questions || data.questions.length === 0) {
-                                                container.innerHTML = '';
-                                                return;
-                                            }
-                                            
-                                            let html = '';
-                                            
-                                            // Add warning banner if there are open questions
-                                            if (data.has_open) {
-                                                html += `
-                                                    <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2" viewBox="0 0 16 16">
-                                                            <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-                                                        </svg>
-                                                        <div>
-                                                            ⚠️ <strong>Achtung:</strong> Dieses Issue enthält offene Fragen
-                                                        </div>
-                                                    </div>
-                                                `;
-                                            }
-                                            
-                                            // Add questions section
-                                            html += `
-                                                <div class="card">
-                                                    <div class="card-header">
-                                                        <h6 class="mb-0">Offene Fragen</h6>
-                                                    </div>
-                                                    <div class="card-body">
-                                            `;
-                                            
-                                            data.questions.forEach((q, index) => {
-                                                const isOpen = q.status === 'Open';
-                                                const statusBadgeClass = isOpen ? 'bg-warning' : (q.status === 'Answered' ? 'bg-success' : 'bg-secondary');
-                                                const checkIcon = isOpen ? '' : '✓ ';
-                                                
-                                                html += `
-                                                    <div class="border-bottom pb-3 mb-3" id="question-${q.id}">
-                                                        <div class="d-flex justify-content-between align-items-start mb-2">
-                                                            <div class="flex-grow-1">
-                                                                <span class="badge ${statusBadgeClass} me-2">${checkIcon}${q.status_display}</span>
-                                                                <small class="text-muted">von ${q.source_display}</small>
-                                                            </div>
-                                                        </div>
-                                                        <div class="mb-2">
-                                                            <strong>${q.question}</strong>
-                                                        </div>
-                                                `;
-                                                
-                                                if (q.answer_text) {
-                                                    html += `
-                                                        <div class="mt-2 ms-3">
-                                                            <small class="text-muted">Antwort:</small>
-                                                            <div>${q.answer_text}</div>
-                                                            <small class="text-muted">
-                                                                ${q.answered_by ? 'von ' + q.answered_by : ''} 
-                                                                ${q.answered_at ? 'am ' + new Date(q.answered_at).toLocaleDateString('de-DE') : ''}
-                                                            </small>
-                                                        </div>
-                                                    `;
-                                                }
-                                                
-                                                if (isOpen) {
-                                                    html += `
-                                                        <div class="mt-3">
-                                                            <div class="btn-group" role="group">
-                                                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="showAnswerForm(${q.id})">
-                                                                    Beantworten
-                                                                </button>
-                                                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissQuestion(${q.id})">
-                                                                    Als erledigt markieren
-                                                                </button>
-                                                            </div>
-                                                            <div id="answer-form-${q.id}" class="mt-3" style="display:none;">
-                                                                <div class="mb-3">
-                                                                    <label class="form-label">Antworttyp wählen:</label>
-                                                                    <select class="form-select mb-2" id="answer-type-${q.id}" onchange="toggleAnswerInput(${q.id})">
-                                                                        <option value="standard">Standardantwort</option>
-                                                                        <option value="free">Freie Antwort</option>
-                                                                    </select>
-                                                                    
-                                                                    <div id="standard-answer-${q.id}">
-                                                                        <select class="form-select" id="standard-select-${q.id}">
-                                                `;
-                                                    
-                                                    data.standard_answers.forEach(sa => {
-                                                        html += `<option value="${sa.id}">${sa.label}</option>`;
-                                                    });
-                                                    
-                                                    html += `
-                                                                        </select>
-                                                                    </div>
-                                                                    
-                                                                    <div id="free-answer-${q.id}" style="display:none;">
-                                                                        <textarea class="form-control" id="free-text-${q.id}" rows="3" placeholder="Geben Sie Ihre Antwort ein..."></textarea>
-                                                                    </div>
-                                                                </div>
-                                                                <button type="button" class="btn btn-sm btn-primary" onclick="submitAnswer(${q.id})">
-                                                                    Antwort speichern
-                                                                </button>
-                                                                <button type="button" class="btn btn-sm btn-secondary" onclick="hideAnswerForm(${q.id})">
-                                                                    Abbrechen
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    `;
-                                                }
-                                                
-                                                html += `
-                                                    </div>
-                                                `;
-                                            });
-                                            
-                                            html += `
-                                                    </div>
-                                                </div>
-                                            `;
-                                            
-                                            container.innerHTML = html;
-                                        }
-                                        
-                                        function showAnswerForm(questionId) {
-                                            document.getElementById('answer-form-' + questionId).style.display = 'block';
-                                        }
-                                        
-                                        function hideAnswerForm(questionId) {
-                                            document.getElementById('answer-form-' + questionId).style.display = 'none';
-                                        }
-                                        
-                                        function toggleAnswerInput(questionId) {
-                                            const answerType = document.getElementById('answer-type-' + questionId).value;
-                                            const standardDiv = document.getElementById('standard-answer-' + questionId);
-                                            const freeDiv = document.getElementById('free-answer-' + questionId);
-                                            
-                                            if (answerType === 'standard') {
-                                                standardDiv.style.display = 'block';
-                                                freeDiv.style.display = 'none';
-                                            } else {
-                                                standardDiv.style.display = 'none';
-                                                freeDiv.style.display = 'block';
-                                            }
-                                        }
-                                        
-                                        function submitAnswer(questionId) {
-                                            const answerType = document.getElementById('answer-type-' + questionId).value;
-                                            
-                                            const payload = {
-                                                action: 'answer',
-                                                answer_type: answerType === 'standard' ? 'standard_answer' : 'free_text'
-                                            };
-                                            
-                                            if (answerType === 'standard') {
-                                                payload.standard_answer_id = document.getElementById('standard-select-' + questionId).value;
-                                            } else {
-                                                const freeText = document.getElementById('free-text-' + questionId).value.trim();
-                                                if (!freeText) {
-                                                    alert('Bitte geben Sie eine Antwort ein.');
-                                                    return;
-                                                }
-                                                payload.answer_text = freeText;
-                                            }
-                                            
-                                            fetch(`/open-questions/${questionId}/answer/`, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'X-CSRFToken': getCookie('csrftoken')
-                                                },
-                                                body: JSON.stringify(payload)
-                                            })
-                                            .then(response => response.json())
-                                            .then(data => {
-                                                if (data.success) {
-                                                    loadOpenQuestions(); // Reload to show updated state
-                                                } else {
-                                                    alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
-                                                }
-                                            })
-                                            .catch(error => {
-                                                console.error('Error:', error);
-                                                alert('Fehler beim Speichern der Antwort');
-                                            });
-                                        }
-                                        
-                                        function dismissQuestion(questionId) {
-                                            if (!confirm('Möchten Sie diese Frage wirklich als erledigt markieren?')) {
-                                                return;
-                                            }
-                                            
-                                            fetch(`/open-questions/${questionId}/answer/`, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'X-CSRFToken': getCookie('csrftoken')
-                                                },
-                                                body: JSON.stringify({action: 'dismiss'})
-                                            })
-                                            .then(response => response.json())
-                                            .then(data => {
-                                                if (data.success) {
-                                                    loadOpenQuestions(); // Reload to show updated state
-                                                } else {
-                                                    alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
-                                                }
-                                            })
-                                            .catch(error => {
-                                                console.error('Error:', error);
-                                                alert('Fehler beim Markieren der Frage');
-                                            });
-                                        }
-                                        
-                                        // Helper function to get CSRF token
-                                        function getCookie(name) {
-                                            let cookieValue = null;
-                                            if (document.cookie && document.cookie !== '') {
-                                                const cookies = document.cookie.split(';');
-                                                for (let i = 0; i < cookies.length; i++) {
-                                                    const cookie = cookies[i].trim();
-                                                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                                                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            return cookieValue;
-                                        }
-                                    </script>
                                 </div>
                             </div>
 
@@ -1862,5 +1617,260 @@
         </div>
     </div>
 </div>
+
+<script>
+    // Open Questions functionality
+    
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Load open questions on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadOpenQuestions();
+    });
+    
+    function loadOpenQuestions() {
+        fetch('{% url "item-open-questions-list" item.id %}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderOpenQuestions(data);
+                }
+            })
+            .catch(error => console.error('Error loading open questions:', error));
+    }
+    
+    function renderOpenQuestions(data) {
+        const container = document.getElementById('open-questions-container');
+        if (!data.questions || data.questions.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        
+        // Add warning banner if there are open questions
+        if (data.has_open) {
+            html += `
+                <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2" viewBox="0 0 16 16">
+                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                    </svg>
+                    <div>
+                        ⚠️ <strong>Achtung:</strong> Dieses Issue enthält offene Fragen
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add questions section
+        html += `
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Offene Fragen</h6>
+                </div>
+                <div class="card-body">
+        `;
+        
+        data.questions.forEach((q, index) => {
+            const isOpen = q.status === 'Open';
+            const statusBadgeClass = isOpen ? 'bg-warning' : (q.status === 'Answered' ? 'bg-success' : 'bg-secondary');
+            const checkIcon = isOpen ? '' : '✓ ';
+            
+            html += `
+                <div class="border-bottom pb-3 mb-3" id="question-${q.id}">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="flex-grow-1">
+                            <span class="badge ${statusBadgeClass} me-2">${checkIcon}${q.status_display}</span>
+                            <small class="text-muted">von ${q.source_display}</small>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <strong>${escapeHtml(q.question)}</strong>
+                    </div>
+            `;
+            
+            if (q.answer_text) {
+                html += `
+                    <div class="mt-2 ms-3">
+                        <small class="text-muted">Antwort:</small>
+                        <div>${escapeHtml(q.answer_text)}</div>
+                        <small class="text-muted">
+                            ${q.answered_by ? 'von ' + escapeHtml(q.answered_by) : ''} 
+                            ${q.answered_at ? 'am ' + new Date(q.answered_at).toLocaleDateString('de-DE') : ''}
+                        </small>
+                    </div>
+                `;
+            }
+            
+            if (isOpen) {
+                html += `
+                    <div class="mt-3">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="showAnswerForm(${q.id})">
+                                Beantworten
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissQuestion(${q.id})">
+                                Als erledigt markieren
+                            </button>
+                        </div>
+                        <div id="answer-form-${q.id}" class="mt-3" style="display:none;">
+                            <div class="mb-3">
+                                <label class="form-label">Antworttyp wählen:</label>
+                                <select class="form-select mb-2" id="answer-type-${q.id}" onchange="toggleAnswerInput(${q.id})">
+                                    <option value="standard">Standardantwort</option>
+                                    <option value="free">Freie Antwort</option>
+                                </select>
+                                
+                                <div id="standard-answer-${q.id}">
+                                    <select class="form-select" id="standard-select-${q.id}">
+            `;
+                
+                data.standard_answers.forEach(sa => {
+                    html += `<option value="${escapeHtml(sa.id)}">${escapeHtml(sa.label)}</option>`;
+                });
+                
+                html += `
+                                    </select>
+                                </div>
+                                
+                                <div id="free-answer-${q.id}" style="display:none;">
+                                    <textarea class="form-control" id="free-text-${q.id}" rows="3" placeholder="Geben Sie Ihre Antwort ein..."></textarea>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="submitAnswer(${q.id})">
+                                Antwort speichern
+                            </button>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="hideAnswerForm(${q.id})">
+                                Abbrechen
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += `
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+    }
+    
+    function showAnswerForm(questionId) {
+        document.getElementById('answer-form-' + questionId).style.display = 'block';
+    }
+    
+    function hideAnswerForm(questionId) {
+        document.getElementById('answer-form-' + questionId).style.display = 'none';
+    }
+    
+    function toggleAnswerInput(questionId) {
+        const answerType = document.getElementById('answer-type-' + questionId).value;
+        const standardDiv = document.getElementById('standard-answer-' + questionId);
+        const freeDiv = document.getElementById('free-answer-' + questionId);
+        
+        if (answerType === 'standard') {
+            standardDiv.style.display = 'block';
+            freeDiv.style.display = 'none';
+        } else {
+            standardDiv.style.display = 'none';
+            freeDiv.style.display = 'block';
+        }
+    }
+    
+    function submitAnswer(questionId) {
+        const answerType = document.getElementById('answer-type-' + questionId).value;
+        
+        const payload = {
+            action: 'answer',
+            answer_type: answerType === 'standard' ? 'standard_answer' : 'free_text'
+        };
+        
+        if (answerType === 'standard') {
+            payload.standard_answer_id = document.getElementById('standard-select-' + questionId).value;
+        } else {
+            const freeText = document.getElementById('free-text-' + questionId).value.trim();
+            if (!freeText) {
+                alert('Bitte geben Sie eine Antwort ein.');
+                return;
+            }
+            payload.answer_text = freeText;
+        }
+        
+        fetch(`/open-questions/${questionId}/answer/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to show updated state
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Speichern der Antwort');
+        });
+    }
+    
+    function dismissQuestion(questionId) {
+        if (!confirm('Möchten Sie diese Frage wirklich als erledigt markieren?')) {
+            return;
+        }
+        
+        fetch(`/open-questions/${questionId}/answer/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({action: 'dismiss'})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to show updated state
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Markieren der Frage');
+        });
+    }
+    
+    // Helper function to get CSRF token
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
 
 {% endblock %}

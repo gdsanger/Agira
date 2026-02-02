@@ -1559,21 +1559,26 @@ Context from similar items and related information:
             client_ip=request.META.get('REMOTE_ADDR')
         )
         
-        # Parse the response - expect JSON format with issue.description and open_questions
+        # Parse the response - expect JSON format:
+        # {"issue": {"description": "..."}, "open_questions": [...]}
         try:
             # Try to parse as JSON
             response_data = json.loads(agent_response.strip())
             
-            # Extract description from JSON contract
-            if isinstance(response_data, dict) and 'issue' in response_data:
+            if isinstance(response_data, dict) and 'issue' in response_data and isinstance(response_data['issue'], dict):
+                # Expected format: nested issue object with description
                 optimized_description = response_data['issue'].get('description', '').strip()
                 open_questions = response_data.get('open_questions', [])
+            elif isinstance(response_data, dict) and 'description' in response_data:
+                # Fallback format: direct description field (for backward compatibility)
+                optimized_description = response_data.get('description', '').strip()
+                open_questions = response_data.get('open_questions', [])
             else:
-                # Fallback: treat entire response as description
+                # No recognized format - fallback to entire response
                 optimized_description = agent_response.strip()
                 open_questions = []
         except json.JSONDecodeError:
-            # Fallback: treat entire response as description
+            # Not valid JSON - fallback to entire response
             optimized_description = agent_response.strip()
             open_questions = []
         
