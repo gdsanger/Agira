@@ -1561,9 +1561,37 @@ Context from similar items and related information:
         
         # Parse the response - expect JSON format:
         # {"issue": {"description": "..."}, "open_questions": [...]}
+        
+        # Clean the response: remove markdown code fences if present
+        cleaned_response = agent_response.strip()
+        
+        # Remove ```json or ``` code fences
+        if cleaned_response.startswith('```'):
+            # Find the end of the first line (```json or just ```)
+            first_newline = cleaned_response.find('\n')
+            if first_newline != -1:
+                # Multi-line: remove first line
+                cleaned_response = cleaned_response[first_newline + 1:]
+            else:
+                # Single line like ```json{...}``` - remove opening fence
+                cleaned_response = cleaned_response[3:]  # Remove ```
+                # Also strip any language identifier (json, etc)
+                if cleaned_response and cleaned_response[0] not in ('{', '['):
+                    # Find where JSON actually starts
+                    for i, char in enumerate(cleaned_response):
+                        if char in ('{', '['):
+                            cleaned_response = cleaned_response[i:]
+                            break
+            
+            # Remove trailing ```
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            cleaned_response = cleaned_response.strip()
+        
         try:
             # Try to parse as JSON
-            response_data = json.loads(agent_response.strip())
+            response_data = json.loads(cleaned_response)
             
             if isinstance(response_data, dict) and 'issue' in response_data and isinstance(response_data['issue'], dict):
                 # Expected format: nested issue object with description
@@ -1574,12 +1602,15 @@ Context from similar items and related information:
                 optimized_description = response_data.get('description', '').strip()
                 open_questions = response_data.get('open_questions', [])
             else:
-                # No recognized format - fallback to entire response
-                optimized_description = agent_response.strip()
+                # No recognized JSON format
+                # Save cleaned response (code fences removed) as fallback
+                # This preserves agent output even if format is unexpected
+                optimized_description = cleaned_response
                 open_questions = []
         except json.JSONDecodeError:
-            # Not valid JSON - fallback to entire response
-            optimized_description = agent_response.strip()
+            # Not valid JSON after cleaning
+            # Save cleaned response (code fences removed) as fallback
+            optimized_description = cleaned_response
             open_questions = []
         
         # Validate we have a description
