@@ -215,6 +215,7 @@ agents/*
 !agents/html-to-markdown-converter.yml
 !agents/mail-issue-classification-agent.yml
 !agents/get-meeting-details.yml
+!agents/github-issue-creation-agent.yml
 *.yml.env
 db.sqlite3
 test_db.sqlite3
