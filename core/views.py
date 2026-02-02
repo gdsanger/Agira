@@ -1570,7 +1570,18 @@ Context from similar items and related information:
             # Find the end of the first line (```json or just ```)
             first_newline = cleaned_response.find('\n')
             if first_newline != -1:
+                # Multi-line: remove first line
                 cleaned_response = cleaned_response[first_newline + 1:]
+            else:
+                # Single line like ```json{...}``` - remove opening fence
+                cleaned_response = cleaned_response[3:]  # Remove ```
+                # Also strip any language identifier (json, etc)
+                if cleaned_response and not cleaned_response[0] in ['{', '[']:
+                    # Find where JSON actually starts
+                    for i, char in enumerate(cleaned_response):
+                        if char in ['{', '[']:
+                            cleaned_response = cleaned_response[i:]
+                            break
             
             # Remove trailing ```
             if cleaned_response.endswith('```'):
@@ -1591,8 +1602,8 @@ Context from similar items and related information:
                 optimized_description = response_data.get('description', '').strip()
                 open_questions = response_data.get('open_questions', [])
             else:
-                # No recognized format - use the cleaned response
-                # This should not save raw JSON, but the description if we can extract it
+                # No recognized format - use the cleaned response as-is
+                # Note: This may still contain JSON if format is unrecognized
                 optimized_description = cleaned_response
                 open_questions = []
         except json.JSONDecodeError:
