@@ -112,19 +112,30 @@
     </div>
     <div class="card-body">
         <!-- Upload Zone -->
-        <div id="embed-issue-upload-drop-zone"
-             class="upload-drop-zone mb-3" 
-             data-upload-url="{% url 'embed-issue-upload-attachment' item.id %}?token={{ token }}"
-             data-refresh-url="{% url 'embed-issue-attachments' item.id %}?token={{ token }}"
-             data-refresh-target="#attachments-list"
-             data-max-file-size="26214400"
-             data-upload-zone="true">
-            <i class="bi bi-cloud-arrow-up" style="font-size: 2rem; color: #6c757d;"></i>
-            <p class="mb-1">Drag & drop files here</p>
-            <p class="text-muted small mb-2">or click to select files</p>
-            <p class="text-muted small">Support for multiple files • Maximum 25 MB per file</p>
-            <input type="file" id="embed-issue-file-input" multiple>
-            <input type="hidden" name="token" value="{{ token }}">
+        <div
+            id="embed-issue-upload-drop-zone"
+            class="upload-drop-zone mb-3"
+            data-upload-zone="true"
+            data-component-key="embed-issue-attachments"
+            data-upload-url="{% url 'embed-issue-upload-attachment' item.id %}?token={{ token }}"
+            data-refresh-url="{% url 'embed-issue-attachments' item.id %}?token={{ token }}"
+            data-refresh-target="#attachments-list"
+            data-max-file-size="26214400">
+            <div class="upload-drop-zone-icon">
+                <i class="bi bi-cloud-upload"></i>
+            </div>
+            <div class="upload-drop-zone-text">
+                <strong>Drag & drop files here</strong> or click to select
+            </div>
+            <div class="upload-drop-zone-subtext">
+                Support for multiple files • Maximum 25 MB per file
+            </div>
+            <input 
+                type="file" 
+                id="embed-issue-file-input" 
+                name="file" 
+                multiple
+                accept="*/*">
         </div>
         
         <!-- Upload Progress Container -->
