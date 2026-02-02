@@ -1620,6 +1620,14 @@
 
 <script>
     // Open Questions functionality
+    
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
     // Load open questions on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadOpenQuestions();
@@ -1682,7 +1690,7 @@
                         </div>
                     </div>
                     <div class="mb-2">
-                        <strong>${q.question}</strong>
+                        <strong>${escapeHtml(q.question)}</strong>
                     </div>
             `;
             
@@ -1690,9 +1698,9 @@
                 html += `
                     <div class="mt-2 ms-3">
                         <small class="text-muted">Antwort:</small>
-                        <div>${q.answer_text}</div>
+                        <div>${escapeHtml(q.answer_text)}</div>
                         <small class="text-muted">
-                            ${q.answered_by ? 'von ' + q.answered_by : ''} 
+                            ${q.answered_by ? 'von ' + escapeHtml(q.answered_by) : ''} 
                             ${q.answered_at ? 'am ' + new Date(q.answered_at).toLocaleDateString('de-DE') : ''}
                         </small>
                     </div>
@@ -1723,7 +1731,7 @@
             `;
                 
                 data.standard_answers.forEach(sa => {
-                    html += `<option value="${sa.id}">${sa.label}</option>`;
+                    html += `<option value="${escapeHtml(sa.id)}">${escapeHtml(sa.label)}</option>`;
                 });
                 
                 html += `
