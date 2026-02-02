@@ -1113,6 +1113,11 @@ class OrganisationEmbedProject(models.Model):
         unique=True,
         help_text=_('Cryptographically secure token for embed access')
     )
+    allowed_origins = models.TextField(
+        blank=True,
+        default='',
+        help_text=_('Comma-separated list of allowed origins for iframe embedding (e.g., https://app.example.com, https://portal.example.org)')
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1133,6 +1138,24 @@ class OrganisationEmbedProject(models.Model):
 
     def __str__(self):
         return f"{self.organisation.name} - {self.project.name} ({'enabled' if self.is_enabled else 'disabled'})"
+    
+    def get_allowed_origins(self):
+        """
+        Parse and return the list of allowed origins.
+        
+        Returns:
+            list: List of allowed origin strings (whitespace trimmed, empty entries removed)
+        """
+        if not self.allowed_origins:
+            return []
+        
+        # Split by comma, trim whitespace, and remove empty entries
+        origins = [
+            origin.strip() 
+            for origin in self.allowed_origins.split(',') 
+            if origin.strip()
+        ]
+        return origins
 
     def save(self, *args, **kwargs):
         """

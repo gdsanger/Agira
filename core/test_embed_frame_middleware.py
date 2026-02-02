@@ -4,7 +4,7 @@ Tests for embed frame middleware.
 Verifies that embed endpoints can be embedded in iframes from allowed origins
 while other endpoints remain protected.
 """
-from django.test import TestCase, Client, override_settings
+from django.test import TestCase, Client
 from core.models import (
     Organisation, Project, OrganisationEmbedProject, ItemType
 )
@@ -29,11 +29,12 @@ class EmbedFrameMiddlewareTestCase(TestCase):
             is_active=True
         )
         
-        # Create embed access
+        # Create embed access with allowed origins
         self.embed_access = OrganisationEmbedProject.objects.create(
             organisation=self.org,
             project=self.project,
-            is_enabled=True
+            is_enabled=True,
+            allowed_origins='https://app.example.com,https://portal.example.org'
         )
         self.valid_token = self.embed_access.embed_token
         
@@ -64,27 +65,75 @@ class EmbedFrameMiddlewareTestCase(TestCase):
         csp = response.get('Content-Security-Policy', '')
         self.assertIn('frame-ancestors', csp)
 
-    @override_settings(EMBED_ALLOWED_ORIGINS='https://app.ebner-vermietung.de')
-    def test_embed_endpoint_csp_includes_allowed_origin(self):
-        """Test that CSP includes the configured allowed origin"""
-        # Mock os.getenv to return our test value
-        from unittest.mock import patch
-        with patch('core.middleware.os.getenv') as mock_getenv:
-            mock_getenv.return_value = 'https://app.ebner-vermietung.de'
-            
-            # Reload middleware to pick up the mocked value
-            from importlib import reload
-            from core import middleware
-            reload(middleware)
-            
-            response = self.client.get(
-                f'/embed/projects/{self.project.id}/issues/',
-                {'token': self.valid_token}
-            )
-            
-            self.assertEqual(response.status_code, 200)
+    def test_embed_endpoint_csp_includes_allowed_origins(self):
+        """Test that CSP includes the configured allowed origins from database"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        csp = response.get('Content-Security-Policy', '')
+        # Should include both configured origins
+        self.assertIn('https://app.example.com', csp)
+        self.assertIn('https://portal.example.org', csp)
+
+    def test_embed_endpoint_without_token_denies_framing(self):
+        """Test that embed endpoints without token deny iframe embedding"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/'
+        )
+        
+        # Should still return 404 (from view validation)
+        # But if it returns a response, CSP should deny framing
+        if response.status_code == 200:
             csp = response.get('Content-Security-Policy', '')
-            self.assertIn('https://app.ebner-vermietung.de', csp)
+            self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_embed_endpoint_with_invalid_token_denies_framing(self):
+        """Test that embed endpoints with invalid token deny iframe embedding"""
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': 'invalid-token-12345'}
+        )
+        
+        # Should return 404 from view validation
+        # But check CSP is set to deny
+        if response.status_code == 200:
+            csp = response.get('Content-Security-Policy', '')
+            self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_embed_endpoint_with_disabled_access_denies_framing(self):
+        """Test that disabled embed access denies iframe embedding"""
+        # Disable the embed access
+        self.embed_access.is_enabled = False
+        self.embed_access.save()
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        # Should return 403 from view validation
+        # CSP should deny framing
+        csp = response.get('Content-Security-Policy', '')
+        self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_embed_endpoint_with_empty_origins_denies_framing(self):
+        """Test that embed access with no allowed origins denies iframe embedding"""
+        # Clear allowed origins
+        self.embed_access.allowed_origins = ''
+        self.embed_access.save()
+        
+        response = self.client.get(
+            f'/embed/projects/{self.project.id}/issues/',
+            {'token': self.valid_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        csp = response.get('Content-Security-Policy', '')
+        # Should deny framing when no origins configured
+        self.assertIn("frame-ancestors 'none'", csp)
 
     def test_non_embed_endpoint_has_frame_protection(self):
         """Test that non-embed endpoints still have X-Frame-Options"""
@@ -121,6 +170,8 @@ class EmbedFrameMiddlewareTestCase(TestCase):
         # Should have CSP frame-ancestors
         csp = response.get('Content-Security-Policy', '')
         self.assertIn('frame-ancestors', csp)
+        # Should include allowed origins
+        self.assertIn('https://app.example.com', csp)
 
     def test_embed_create_form_allows_framing(self):
         """Test that embed create form endpoint allows framing"""
@@ -139,14 +190,13 @@ class EmbedFrameMiddlewareTestCase(TestCase):
 
     def test_csp_headers_are_preserved(self):
         """Test that existing CSP headers are preserved and frame-ancestors is appended"""
-        from unittest.mock import patch
         from django.test import RequestFactory
         from core.middleware import EmbedFrameMiddleware
         from django.http import HttpResponse
         
-        # Create a request for an embed endpoint
+        # Create a request for an embed endpoint with token
         factory = RequestFactory()
-        request = factory.get('/embed/projects/1/issues/')
+        request = factory.get(f'/embed/projects/1/issues/?token={self.valid_token}')
         
         # Create a response with an existing CSP header
         def get_response(req):
@@ -167,3 +217,48 @@ class EmbedFrameMiddlewareTestCase(TestCase):
         self.assertIn("script-src 'self' 'unsafe-inline'", csp)
         # Check that X-Frame-Options was removed
         self.assertNotIn('X-Frame-Options', response)
+
+    def test_middleware_with_multiple_origins(self):
+        """Test that multiple origins are included in CSP"""
+        # Create embed access with multiple origins
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org,
+            project=Project.objects.create(name='Multi Origin Project', description='Test'),
+            is_enabled=True,
+            allowed_origins='https://app1.example.com,https://app2.example.com,https://app3.example.com'
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{embed.project.id}/issues/',
+            {'token': embed.embed_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        csp = response.get('Content-Security-Policy', '')
+        # All three origins should be in CSP
+        self.assertIn('https://app1.example.com', csp)
+        self.assertIn('https://app2.example.com', csp)
+        self.assertIn('https://app3.example.com', csp)
+
+    def test_middleware_with_whitespace_in_origins(self):
+        """Test that whitespace in origins is handled correctly"""
+        # Create embed access with whitespace
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org,
+            project=Project.objects.create(name='Whitespace Project', description='Test'),
+            is_enabled=True,
+            allowed_origins='  https://app.example.com  ,  https://portal.example.com  '
+        )
+        
+        response = self.client.get(
+            f'/embed/projects/{embed.project.id}/issues/',
+            {'token': embed.embed_token}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        csp = response.get('Content-Security-Policy', '')
+        # Origins should be trimmed
+        self.assertIn('https://app.example.com', csp)
+        self.assertIn('https://portal.example.com', csp)
+        # Should not have extra spaces
+        self.assertNotIn('  https://app.example.com  ', csp)
