@@ -33,6 +33,7 @@ urlpatterns = [
     path('projects/<int:id>/releases/add/', views.project_add_release, name='project-add-release'),
     path('projects/<int:id>/releases/<int:release_id>/update/', views.project_update_release, name='project-update-release'),
     path('projects/<int:id>/releases/<int:release_id>/delete/', views.project_delete_release, name='project-delete-release'),
+    path('projects/<int:id>/releases/<int:release_id>/close/', views.project_close_release, name='project-close-release'),
     path('releases/<int:release_id>/modal/', views.release_detail_modal, name='release-detail-modal'),
     path('releases/<int:release_id>/create-change/', views.release_create_change, name='release-create-change'),
     path('projects/<int:id>/items/tab/', views.project_items_tab, name='project-items-tab'),

@@ -383,6 +383,8 @@ class Release(models.Model):
     update_date = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     status = models.CharField(max_length=20, choices=ReleaseStatus.choices, default=ReleaseStatus.PLANNED)
+    closed_at = models.DateTimeField(null=True, blank=True, help_text=_('Date and time when release was closed'))
+    closed_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='closed_releases', help_text=_('User who closed the release'))
 
     class Meta:
         ordering = ['-planned_date', '-updated_at', 'project', 'name']
