@@ -1561,9 +1561,26 @@ Context from similar items and related information:
         
         # Parse the response - expect JSON format:
         # {"issue": {"description": "..."}, "open_questions": [...]}
+        
+        # Clean the response: remove markdown code fences if present
+        cleaned_response = agent_response.strip()
+        
+        # Remove ```json or ``` code fences
+        if cleaned_response.startswith('```'):
+            # Find the end of the first line (```json or just ```)
+            first_newline = cleaned_response.find('\n')
+            if first_newline != -1:
+                cleaned_response = cleaned_response[first_newline + 1:]
+            
+            # Remove trailing ```
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            cleaned_response = cleaned_response.strip()
+        
         try:
             # Try to parse as JSON
-            response_data = json.loads(agent_response.strip())
+            response_data = json.loads(cleaned_response)
             
             if isinstance(response_data, dict) and 'issue' in response_data and isinstance(response_data['issue'], dict):
                 # Expected format: nested issue object with description
@@ -1574,12 +1591,13 @@ Context from similar items and related information:
                 optimized_description = response_data.get('description', '').strip()
                 open_questions = response_data.get('open_questions', [])
             else:
-                # No recognized format - fallback to entire response
-                optimized_description = agent_response.strip()
+                # No recognized format - use the cleaned response
+                # This should not save raw JSON, but the description if we can extract it
+                optimized_description = cleaned_response
                 open_questions = []
         except json.JSONDecodeError:
-            # Not valid JSON - fallback to entire response
-            optimized_description = agent_response.strip()
+            # Not valid JSON - use the cleaned response as-is
+            optimized_description = cleaned_response
             open_questions = []
         
         # Validate we have a description
