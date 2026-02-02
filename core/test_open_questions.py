@@ -21,12 +21,14 @@ class IssueStandardAnswerModelTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
-        self.answer = IssueStandardAnswer.objects.create(
+        self.answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='test_answer',
-            label='Test Answer',
-            text='This is a test answer',
-            is_active=True,
-            sort_order=10
+            defaults={
+                'label': 'Test Answer',
+                'text': 'This is a test answer',
+                'is_active': True,
+                'sort_order': 10
+            }
         )
     
     def test_create_standard_answer(self):
@@ -41,16 +43,21 @@ class IssueStandardAnswerModelTest(TestCase):
     
     def test_ordering(self):
         """Test default ordering by sort_order"""
-        answer2 = IssueStandardAnswer.objects.create(
+        answer2, _ = IssueStandardAnswer.objects.get_or_create(
             key='answer2',
-            label='Answer 2',
-            text='Text 2',
-            sort_order=5
+            defaults={
+                'label': 'Answer 2',
+                'text': 'Text 2',
+                'sort_order': 5
+            }
         )
         
-        answers = list(IssueStandardAnswer.objects.all())
+        # Filter to only our test answers
+        answers = list(IssueStandardAnswer.objects.filter(key__in=['answer2', 'test_answer']))
+        self.assertEqual(len(answers), 2)
         self.assertEqual(answers[0].key, 'answer2')  # Lower sort_order first
         self.assertEqual(answers[1].key, 'test_answer')
+
 
 
 class IssueOpenQuestionModelTest(TestCase):
@@ -76,10 +83,12 @@ class IssueOpenQuestionModelTest(TestCase):
             status=ItemStatus.INBOX
         )
         
-        self.standard_answer = IssueStandardAnswer.objects.create(
+        self.standard_answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='copilot_decides',
-            label='Copilot decides',
-            text='Copilot kann das selbst entscheiden'
+            defaults={
+                'label': 'Copilot decides',
+                'text': 'Copilot kann das selbst entscheiden'
+            }
         )
         
         self.question = IssueOpenQuestion.objects.create(
@@ -348,10 +357,12 @@ class OpenQuestionsAPITest(TestCase):
             status=ItemStatus.INBOX
         )
         
-        self.standard_answer = IssueStandardAnswer.objects.create(
+        self.standard_answer, _ = IssueStandardAnswer.objects.get_or_create(
             key='copilot_decides',
-            label='Copilot decides',
-            text='Copilot kann das selbst entscheiden'
+            defaults={
+                'label': 'Copilot decides',
+                'text': 'Copilot kann das selbst entscheiden'
+            }
         )
         
         self.question = IssueOpenQuestion.objects.create(
@@ -518,3 +529,85 @@ class OpenQuestionsAPITest(TestCase):
         data = response.json()
         self.assertFalse(data['success'])
         self.assertIn('Answer text is required', data['error'])
+    
+    def test_answered_questions_synced_to_description(self):
+        """Test that answered questions are appended to item description"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Store original description
+        original_description = self.item.description
+        
+        # Answer the question
+        url = reverse('item-open-question-answer', kwargs={'question_id': self.question.id})
+        payload = {
+            'action': 'answer',
+            'answer_type': 'standard_answer',
+            'standard_answer_id': self.standard_answer.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify description was updated
+        self.item.refresh_from_db()
+        self.assertIn('## Offene Fragen', self.item.description)
+        self.assertIn('[x]', self.item.description)
+        self.assertIn(self.question.question, self.item.description)
+        self.assertIn(self.standard_answer.text, self.item.description)
+        
+        # Create another question and answer it
+        question2 = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Second question?',
+            source=OpenQuestionSource.AI_AGENT
+        )
+        
+        url2 = reverse('item-open-question-answer', kwargs={'question_id': question2.id})
+        payload2 = {
+            'action': 'answer',
+            'answer_type': 'free_text',
+            'answer_text': 'Custom answer for second question'
+        }
+        
+        response2 = self.client.post(
+            url2,
+            data=json.dumps(payload2),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response2.status_code, 200)
+        
+        # Verify both questions are in description
+        self.item.refresh_from_db()
+        self.assertIn(question2.question, self.item.description)
+        self.assertIn('Custom answer for second question', self.item.description)
+    
+    def test_dismissed_questions_synced_to_description(self):
+        """Test that dismissed questions are also added to description"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Dismiss the question
+        url = reverse('item-open-question-answer', kwargs={'question_id': self.question.id})
+        payload = {
+            'action': 'dismiss'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify description was updated
+        self.item.refresh_from_db()
+        self.assertIn('## Offene Fragen', self.item.description)
+        self.assertIn('[x]', self.item.description)
+        self.assertIn(self.question.question, self.item.description)
+
