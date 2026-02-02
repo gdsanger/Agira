@@ -214,3 +214,99 @@ class OrganisationEmbedProjectTestCase(TestCase):
         self.assertIsNotNone(embed.embed_token)
         self.assertNotEqual(embed.embed_token, original_token)
         self.assertTrue(len(embed.embed_token) > 0)
+
+    def test_get_allowed_origins_empty(self):
+        """Test get_allowed_origins returns empty list when field is empty"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins=''
+        )
+        
+        self.assertEqual(embed.get_allowed_origins(), [])
+
+    def test_get_allowed_origins_single(self):
+        """Test get_allowed_origins with single origin"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins='https://app.example.com'
+        )
+        
+        self.assertEqual(
+            embed.get_allowed_origins(),
+            ['https://app.example.com']
+        )
+
+    def test_get_allowed_origins_multiple(self):
+        """Test get_allowed_origins with multiple origins"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins='https://app.example.com,https://portal.example.org'
+        )
+        
+        self.assertEqual(
+            embed.get_allowed_origins(),
+            ['https://app.example.com', 'https://portal.example.org']
+        )
+
+    def test_get_allowed_origins_with_whitespace(self):
+        """Test get_allowed_origins trims whitespace"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins='  https://app.example.com  ,  https://portal.example.org  '
+        )
+        
+        self.assertEqual(
+            embed.get_allowed_origins(),
+            ['https://app.example.com', 'https://portal.example.org']
+        )
+
+    def test_get_allowed_origins_removes_empty_entries(self):
+        """Test get_allowed_origins removes empty entries"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins='https://app.example.com,,https://portal.example.org,  ,'
+        )
+        
+        self.assertEqual(
+            embed.get_allowed_origins(),
+            ['https://app.example.com', 'https://portal.example.org']
+        )
+
+    def test_get_allowed_origins_multiline(self):
+        """Test get_allowed_origins with multiline input"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1,
+            is_enabled=True,
+            allowed_origins='''
+                https://app.ebner-vermietung.de,
+                https://portal.example.com,
+                https://staging.example.com
+            '''
+        )
+        
+        origins = embed.get_allowed_origins()
+        self.assertEqual(len(origins), 3)
+        self.assertIn('https://app.ebner-vermietung.de', origins)
+        self.assertIn('https://portal.example.com', origins)
+        self.assertIn('https://staging.example.com', origins)
+
+    def test_allowed_origins_defaults_to_empty(self):
+        """Test that allowed_origins defaults to empty string"""
+        embed = OrganisationEmbedProject.objects.create(
+            organisation=self.org1,
+            project=self.project1
+        )
+        
+        self.assertEqual(embed.allowed_origins, '')
+        self.assertEqual(embed.get_allowed_origins(), [])

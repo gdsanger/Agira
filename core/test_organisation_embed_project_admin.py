@@ -51,7 +51,7 @@ class OrganisationEmbedProjectInlineTestCase(TestCase):
 
     def test_inline_fields(self):
         """Test that inline displays correct fields"""
-        expected_fields = ['project', 'is_enabled', 'embed_token_display', 'updated_at']
+        expected_fields = ['project', 'is_enabled', 'allowed_origins', 'embed_token_display', 'updated_at']
         self.assertEqual(self.inline.fields, expected_fields)
 
     def test_inline_embed_token_display(self):
@@ -236,8 +236,8 @@ class OrganisationEmbedProjectAdminTestCase(TestCase):
         """Test that fieldsets are properly structured"""
         fieldsets = self.admin.fieldsets
         
-        # Should have 3 sections
-        self.assertEqual(len(fieldsets), 3)
+        # Should have 4 sections now (added Allowed Origins section)
+        self.assertEqual(len(fieldsets), 4)
         
         # Check section names and fields
         self.assertEqual(fieldsets[0][0], None)  # Main section
@@ -248,6 +248,9 @@ class OrganisationEmbedProjectAdminTestCase(TestCase):
         self.assertEqual(fieldsets[1][0], 'Token')  # Token section
         self.assertIn('embed_token', fieldsets[1][1]['fields'])
         
-        self.assertEqual(fieldsets[2][0], 'Metadata')  # Metadata section
-        self.assertIn('created_at', fieldsets[2][1]['fields'])
-        self.assertIn('updated_at', fieldsets[2][1]['fields'])
+        self.assertEqual(fieldsets[2][0], 'Allowed Origins')  # Allowed Origins section
+        self.assertIn('allowed_origins', fieldsets[2][1]['fields'])
+        
+        self.assertEqual(fieldsets[3][0], 'Metadata')  # Metadata section
+        self.assertIn('created_at', fieldsets[3][1]['fields'])
+        self.assertIn('updated_at', fieldsets[3][1]['fields'])

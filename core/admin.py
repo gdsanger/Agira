@@ -28,7 +28,7 @@ class OrganisationEmbedProjectInline(admin.TabularInline):
     extra = 0
     autocomplete_fields = ['project']
     readonly_fields = ['embed_token_display', 'created_at', 'updated_at']
-    fields = ['project', 'is_enabled', 'embed_token_display', 'updated_at']
+    fields = ['project', 'is_enabled', 'allowed_origins', 'embed_token_display', 'updated_at']
     
     def embed_token_display(self, obj):
         """Display masked token for security"""
@@ -589,6 +589,7 @@ class OrganisationEmbedProjectAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('organisation', 'project', 'is_enabled')}),
         ('Token', {'fields': ('embed_token',)}),
+        ('Allowed Origins', {'fields': ('allowed_origins',), 'description': 'Comma-separated list of allowed origins for iframe embedding'}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
     
