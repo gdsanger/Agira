@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <!-- ToastUI Editor CSS -->
-<link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<link rel="stylesheet" href="https://uicdn.toast.com/editor/3.2.2/toastui-editor.min.css" />
 <style>
 /* Toast Editor styling for dark theme */
 #description-editor {
@@ -144,10 +144,10 @@
             <div class="mb-3">
                 <label class="form-label">Attachments (Optional)</label>
                 <div class="file-upload-area" id="fileUploadArea">
-                    <input type="file" id="fileInput" name="files" multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.svg,.pdf,.docx,.md,.html" style="display: none;">
+                    <input type="file" id="fileInput" name="files" multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.pdf,.docx,.md" style="display: none;">
                     <i class="bi bi-cloud-upload fs-1 text-muted"></i>
                     <p class="mb-1">Click to select files or drag and drop here</p>
-                    <small class="text-muted">Max 5 files • 10MB per file • Images, PDF, DOCX, Markdown, HTML allowed</small>
+                    <small class="text-muted">Max 5 files • 10MB per file • Images, PDF, DOCX, Markdown allowed</small>
                 </div>
                 <div id="fileList" class="mt-3"></div>
             </div>
@@ -192,7 +192,7 @@
 
 {% block extra_scripts %}
 <!-- ToastUI Editor JS -->
-<script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
+<script src="https://uicdn.toast.com/editor/3.2.2/toastui-editor-all.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Track uploaded attachment IDs
@@ -252,7 +252,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedFiles = [];
     const maxFiles = 5;
     const maxSizeBytes = 10 * 1024 * 1024; // 10MB
-    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.pdf', '.docx', '.md', '.html'];
+    // Note: Client-side validation is for UX only. Server-side validation is enforced for security.
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.pdf', '.docx', '.md'];
     
     // Click to select files
     fileUploadArea.addEventListener('click', () => {
@@ -346,8 +347,14 @@ document.addEventListener('DOMContentLoaded', function() {
             removeBtn.type = 'button';
             removeBtn.className = 'btn btn-sm btn-outline-danger btn-remove';
             removeBtn.innerHTML = '<i class="bi bi-x"></i>';
-            removeBtn.addEventListener('click', () => {
-                selectedFiles.splice(index, 1);
+            removeBtn.dataset.fileName = file.name; // Use filename to identify which file to remove
+            removeBtn.addEventListener('click', (e) => {
+                // Remove file by filtering out the one with matching name
+                const fileToRemove = e.currentTarget.dataset.fileName;
+                const indexToRemove = selectedFiles.findIndex(f => f.name === fileToRemove);
+                if (indexToRemove > -1) {
+                    selectedFiles.splice(indexToRemove, 1);
+                }
                 updateFileList();
             });
             

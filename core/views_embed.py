@@ -27,6 +27,12 @@ from .tables import EmbedItemTable
 from .filters import EmbedItemFilter
 
 
+# Constants for embed attachment uploads
+MAX_ATTACHMENT_SIZE_MB = 10
+MAX_ATTACHMENT_COUNT = 5
+ALLOWED_ATTACHMENT_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.pdf', '.docx', '.md']
+
+
 def validate_embed_token(token):
     """
     Validate embed token and return the OrganisationEmbedProject instance.
@@ -248,26 +254,27 @@ def embed_attachment_pre_upload(request, project_id):
     is_inline = request.POST.get('is_inline', 'false').lower() == 'true'
     
     # Validate file type
-    allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.pdf', '.docx', '.md', '.html']
+    # Security: SVG and HTML files can contain JavaScript and pose XSS risks
+    # Only allow safe file types for embed portal
     file_extension = os.path.splitext(uploaded_file.name)[1].lower()
     
-    if file_extension not in allowed_extensions:
+    if file_extension not in ALLOWED_ATTACHMENT_EXTENSIONS:
         return JsonResponse({
             'success': False,
-            'error': f'File type not allowed. Allowed types: {", ".join(allowed_extensions)}'
+            'error': f'File type not allowed. Allowed types: {", ".join(ALLOWED_ATTACHMENT_EXTENSIONS)}'
         }, status=400)
     
-    # Validate file size (10MB)
-    max_size_bytes = 10 * 1024 * 1024  # 10MB
+    # Validate file size
+    max_size_bytes = MAX_ATTACHMENT_SIZE_MB * 1024 * 1024
     if uploaded_file.size > max_size_bytes:
         return JsonResponse({
             'success': False,
-            'error': f'File size exceeds maximum of 10MB'
+            'error': f'File size exceeds maximum of {MAX_ATTACHMENT_SIZE_MB}MB'
         }, status=400)
     
     try:
         # Store attachment using the storage service with custom max size
-        storage_service = AttachmentStorageService(max_size_mb=10)
+        storage_service = AttachmentStorageService(max_size_mb=MAX_ATTACHMENT_SIZE_MB)
         
         # Create a temporary Item placeholder to store the attachment
         # We'll use the project as the temporary target and update the link later
@@ -395,7 +402,14 @@ def embed_issue_create(request, project_id):
         # Link pre-uploaded attachments to the item
         attachment_ids_str = request.POST.get('attachment_ids', '').strip()
         if attachment_ids_str:
-            attachment_ids = [int(aid) for aid in attachment_ids_str.split(',') if aid.strip()]
+            try:
+                attachment_ids = [int(aid) for aid in attachment_ids_str.split(',') if aid.strip().isdigit()]
+            except (ValueError, AttributeError):
+                # Log warning but don't fail the creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Invalid attachment IDs format when creating item: {attachment_ids_str}")
+                attachment_ids = []
             
             # Get the attachments and link them to the item
             content_type_obj = ContentType.objects.get_for_model(Item)
@@ -739,15 +753,19 @@ def embed_attachment_download(request, attachment_id):
         content_type = attachment.content_type or 'application/octet-stream'
         is_image = content_type.startswith('image/')
         
+        # Sanitize filename for header (prevent header injection)
+        from urllib.parse import quote
+        safe_filename = quote(attachment.original_name)
+        
         # Create response with file
         response = HttpResponse(file_content, content_type=content_type)
         
         if is_image:
             # For images, display inline
-            response['Content-Disposition'] = f'inline; filename="{attachment.original_name}"'
+            response['Content-Disposition'] = f'inline; filename="{safe_filename}"'
         else:
             # For other files, force download
-            response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
         
         response['Content-Length'] = len(file_content)
         
