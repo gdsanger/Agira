@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Change Policies - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>Change Policies</h1>
+            <p class="text-muted">Manage change approval policies based on risk level and security relevance</p>
+        </div>
+        <a href="{% url 'change-policy-create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Policy
+        </a>
+    </div>
+</div>
+
+<!-- Info Box -->
+<div class="alert alert-info mb-4">
+    <h6 class="alert-heading"><i class="bi bi-info-circle"></i> Role Descriptions</h6>
+    <ul class="mb-0">
+        <li><strong>INFO</strong> - Only informative, no approval required (automatically assigned)</li>
+        <li><strong>APPROVER</strong> - Approver on customer side</li>
+        <li><strong>ISB</strong> - Information Security Officer</li>
+        <li><strong>DEV</strong> - Head of Development (must always approve, automatically assigned)</li>
+        <li><strong>MGMT</strong> - Management / Executive Leadership</li>
+    </ul>
+    <small class="text-muted mt-2 d-block">Note: INFO and DEV roles are always automatically assigned regardless of policy configuration.</small>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+    <form method="get" action="{% url 'change-policies' %}" class="row g-3">
+        <div class="col-md-3">
+            <select name="risk_level" class="form-select">
+                <option value="">All Risk Levels</option>
+                {% for value, label in risk_levels %}
+                <option value="{{ value }}" {% if risk_level_filter == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="security_relevant" class="form-select">
+                <option value="">All Security Relevance</option>
+                <option value="true" {% if security_filter == 'true' %}selected{% endif %}>Security Relevant</option>
+                <option value="false" {% if security_filter == 'false' %}selected{% endif %}>Not Security Relevant</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="release_type" class="form-select">
+                <option value="">All Release Types</option>
+                <option value="null" {% if release_type_filter == 'null' %}selected{% endif %}>No Release</option>
+                {% for value, label in release_types %}
+                <option value="{{ value }}" {% if release_type_filter == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-funnel"></i> Filter
+            </button>
+            {% if risk_level_filter or security_filter or release_type_filter %}
+            <a href="{% url 'change-policies' %}" class="btn btn-secondary">
+                <i class="bi bi-x-circle"></i> Clear
+            </a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Policies Table -->
+<div class="card">
+    <div class="card-body p-0">
+        {% if policies %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Risk Level</th>
+                        <th>Security Relevant</th>
+                        <th>Release Type</th>
+                        <th>Roles</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for policy in policies %}
+                    <tr>
+                        <td>
+                            <span class="badge 
+                                {% if policy.risk_level == 'Low' %}bg-success
+                                {% elif policy.risk_level == 'Normal' %}bg-info
+                                {% elif policy.risk_level == 'High' %}bg-warning
+                                {% elif policy.risk_level == 'VeryHigh' %}bg-danger
+                                {% endif %}">
+                                {{ policy.get_risk_level_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if policy.security_relevant %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-shield-exclamation"></i> Yes
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if policy.release_type %}
+                            <span class="badge bg-primary">{{ policy.get_release_type_display }}</span>
+                            {% else %}
+                            <span class="text-muted">No Release</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% for role in policy.policy_roles.all %}
+                            <span class="badge bg-secondary me-1">{{ role.get_role_display }}</span>
+                            {% empty %}
+                            <span class="text-muted">-</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ policy.updated_at|date:"Y-m-d H:i" }}</small>
+                        </td>
+                        <td>
+                            <a href="{% url 'change-policy-edit' policy.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePolicy({{ policy.id }}, '{{ policy|escapejs }}')">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4">
+            <div class="alert alert-info mb-0">
+                {% if risk_level_filter or security_filter or release_type_filter %}
+                No change policies found matching the current filters.
+                {% else %}
+                No change policies yet. <a href="{% url 'change-policy-create' %}">Create your first policy</a>.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if policies %}
+<div class="mt-3">
+    <small class="text-muted">Showing {{ policies|length }} polic{{ policies|length|pluralize:"y,ies" }}</small>
+</div>
+{% endif %}
+
+<script>
+function deletePolicy(id, name) {
+    if (!confirm(`Are you sure you want to delete the policy "${name}"?`)) {
+        return;
+    }
+    
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    
+    fetch(`/change-policies/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.redirect;
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting the policy');
+    });
+}
+</script>
+{% endblock %}

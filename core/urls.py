@@ -179,6 +179,12 @@ urlpatterns = [
     
     # Public URLs (no authentication required)
     path('public/logo.png', views.public_logo, name='public-logo'),
+    # Change Policy URLs
+    path('change-policies/', views.change_policies, name='change-policies'),
+    path('change-policies/new/', views.change_policy_create, name='change-policy-create'),
+    path('change-policies/<int:id>/edit/', views.change_policy_edit, name='change-policy-edit'),
+    path('change-policies/<int:id>/update/', views.change_policy_update, name='change-policy-update'),
+    path('change-policies/<int:id>/delete/', views.change_policy_delete, name='change-policy-delete'),
     
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),

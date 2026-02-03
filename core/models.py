@@ -54,6 +54,7 @@ class ReleaseStatus(models.TextChoices):
 class ReleaseType(models.TextChoices):
     MAJOR = 'Major', _('Major')
     MINOR = 'Minor', _('Minor')
+    BUGFIX = 'Bugfix', _('Bugfix')
     HOTFIX = 'Hotfix', _('Hotfix')
     SECURITYFIX = 'Securityfix', _('Securityfix')
 
@@ -483,6 +484,53 @@ class ChangeApproval(models.Model):
 
     def __str__(self):
         return f"{self.change.title} - {self.approver.username} ({self.status})"
+
+
+class ChangePolicy(models.Model):
+    """
+    Policy defining which roles should be assigned as approvers for a change
+    based on risk level, security relevance, and optionally release type.
+    """
+    risk_level = models.CharField(max_length=20, choices=RiskLevel.choices)
+    security_relevant = models.BooleanField(default=False)
+    release_type = models.CharField(max_length=20, choices=ReleaseType.choices, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['risk_level', 'security_relevant', 'release_type'],
+                name='unique_change_policy'
+            )
+        ]
+        ordering = ['risk_level', 'security_relevant', 'release_type']
+
+    def __str__(self):
+        release_type_str = self.release_type if self.release_type else 'No Release'
+        security_str = 'Security Relevant' if self.security_relevant else 'Not Security Relevant'
+        return f"{self.get_risk_level_display()} - {security_str} - {release_type_str}"
+
+
+class ChangePolicyRole(models.Model):
+    """
+    Role assigned to a change policy.
+    Defines which roles should be notified/approved for changes matching the policy.
+    """
+    policy = models.ForeignKey(ChangePolicy, on_delete=models.CASCADE, related_name='policy_roles')
+    role = models.CharField(max_length=20, choices=UserRole.choices)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['policy', 'role'],
+                name='unique_policy_role'
+            )
+        ]
+        ordering = ['policy', 'role']
+
+    def __str__(self):
+        return f"{self.policy} - {self.get_role_display()}"
 
 
 class Item(models.Model):

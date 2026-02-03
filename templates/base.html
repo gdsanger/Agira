@@ -211,6 +211,10 @@
                             <i class="bi bi-diagram-3 sidebar-icon"></i>
                             <span class="sidebar-text">Mail Action Mappings</span>
                         </a>
+                        <a href="{% url 'change-policies' %}" class="sidebar-link sidebar-link-sub {% if 'change-polic' in request.resolver_match.url_name %}active{% endif %}">
+                            <i class="bi bi-shield-check sidebar-icon"></i>
+                            <span class="sidebar-text">Change Policies</span>
+                        </a>
                     </div>
                 </div>
 
