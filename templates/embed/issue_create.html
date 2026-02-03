@@ -441,11 +441,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // Save name and email to localStorage before form submission
             // This is saved before submission since we'll redirect to the detail page on success
             // If backend validation fails, user will return to form and can retry
+            // Save each field independently so partial input is not lost
             const nameValue = nameField.value.trim();
             const emailValue = emailField.value.trim();
             
-            if (nameValue && emailValue) {
+            if (nameValue) {
                 localStorage.setItem(NAME_STORAGE_KEY, nameValue);
+            }
+            if (emailValue) {
                 localStorage.setItem(EMAIL_STORAGE_KEY, emailValue);
             }
             
