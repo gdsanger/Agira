@@ -1381,3 +1381,60 @@ class IssueOpenQuestion(models.Model):
             return self.answer_text
         return ""
 
+
+class GlobalSettings(models.Model):
+    """
+    Global application settings (Singleton).
+    Only one instance should exist in the database.
+    """
+    company_name = models.CharField(
+        max_length=255,
+        default="Your Company Name",
+        help_text="Company name"
+    )
+    email = models.EmailField(
+        default="company@example.com",
+        help_text="Company contact email address"
+    )
+    address = models.TextField(
+        default="Street Address\nZIP City\nCountry",
+        help_text="Company address (Street, ZIP, City, Country)"
+    )
+    base_url = models.URLField(
+        max_length=500,
+        default="https://example.com",
+        help_text="Base URL of the application"
+    )
+    logo = models.ImageField(
+        upload_to='global_settings/',
+        blank=True,
+        null=True,
+        help_text="Company logo (PNG, JPG, WEBP, GIF - max 5 MB)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Global Settings'
+        verbose_name_plural = 'Global Settings'
+
+    def __str__(self):
+        return f"Global Settings - {self.company_name}"
+
+    def save(self, *args, **kwargs):
+        """
+        Enforce singleton pattern - ensure only one instance exists.
+        """
+        if not self.pk and GlobalSettings.objects.exists():
+            # If trying to create a new instance when one already exists
+            raise ValidationError("Only one GlobalSettings instance can exist.")
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def get_instance(cls):
+        """
+        Get the singleton instance, creating it with defaults if it doesn't exist.
+        """
+        instance, created = cls.objects.get_or_create(pk=1)
+        return instance
+

@@ -199,6 +199,10 @@
                         <span class="sidebar-section-title">Configuration</span>
                     </a>
                     <div class="collapse" id="configCollapse">
+                        <a href="{% url 'global-settings' %}" class="sidebar-link sidebar-link-sub {% if 'global-settings' in request.resolver_match.url_name %}active{% endif %}">
+                            <i class="bi bi-gear-fill sidebar-icon"></i>
+                            <span class="sidebar-text">Global Settings</span>
+                        </a>
                         <a href="{% url 'mail-templates' %}" class="sidebar-link sidebar-link-sub {% if 'mail-template' in request.resolver_match.url_name %}active{% endif %}">
                             <i class="bi bi-envelope sidebar-icon"></i>
                             <span class="sidebar-text">Mail Templates</span>

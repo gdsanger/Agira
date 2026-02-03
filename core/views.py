@@ -27,7 +27,8 @@ from .models import (
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
-    ChangePolicy, ChangePolicyRole)
+    GlobalSettings, ChangePolicy, ChangePolicyRole)
+
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
@@ -7212,6 +7213,83 @@ def email_send_reply(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+# ==================== Global Settings Views ====================
+
+@login_required
+def global_settings_detail(request):
+    """Global Settings detail view (singleton)."""
+    settings = GlobalSettings.get_instance()
+    
+    context = {
+        'settings': settings,
+    }
+    return render(request, 'global_settings_detail.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def global_settings_update(request):
+    """Update Global Settings."""
+    settings = GlobalSettings.get_instance()
+    
+    try:
+        settings.company_name = request.POST.get('company_name', settings.company_name)
+        settings.email = request.POST.get('email', settings.email)
+        settings.address = request.POST.get('address', settings.address)
+        settings.base_url = request.POST.get('base_url', settings.base_url)
+        
+        # Handle logo upload
+        if 'logo' in request.FILES:
+            # Delete old logo if exists
+            if settings.logo:
+                settings.logo.delete(save=False)
+            settings.logo = request.FILES['logo']
+        
+        settings.full_clean()  # Validate before saving
+        settings.save()
+        
+        # Return success toast trigger
+        response = HttpResponse()
+        response['HX-Trigger'] = 'showToast'
+        return response
+        
+    except ValidationError as e:
+        error_msg = ', '.join([f"{k}: {', '.join(v)}" for k, v in e.message_dict.items()])
+        return HttpResponse(f"Validation error: {error_msg}", status=400)
+    except Exception as e:
+        return HttpResponse(f"Error updating settings: {str(e)}", status=400)
+
+
+def public_logo(request):
+    """
+    Serve the company logo publicly without authentication.
+    This endpoint is accessible at /public/logo.png
+    """
+    settings = GlobalSettings.get_instance()
+    
+    if not settings.logo:
+        # Return a 404 if no logo is set
+        raise Http404("No logo configured")
+    
+    # Serve the logo file
+    try:
+        from django.http import FileResponse
+        import mimetypes
+        
+        logo_file = settings.logo.open('rb')
+        
+        # Determine content type from file extension
+        content_type, _ = mimetypes.guess_type(settings.logo.name)
+        if not content_type:
+            # Fallback to generic image type if detection fails
+            content_type = 'image/png'
+        
+        response = FileResponse(logo_file, content_type=content_type)
+        response['Cache-Control'] = 'public, max-age=3600'  # Cache for 1 hour
+        return response
+    except Exception as e:
+        logger.error(f"Error serving logo: {e}")
+        raise Http404("Logo file not found")
 # Change Policy Views
 
 @login_required

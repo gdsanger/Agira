@@ -173,6 +173,12 @@ urlpatterns = [
     path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
     path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
     
+    # Global Settings URLs
+    path('global-settings/', views.global_settings_detail, name='global-settings'),
+    path('global-settings/update/', views.global_settings_update, name='global-settings-update'),
+    
+    # Public URLs (no authentication required)
+    path('public/logo.png', views.public_logo, name='public-logo'),
     # Change Policy URLs
     path('change-policies/', views.change_policies, name='change-policies'),
     path('change-policies/new/', views.change_policy_create, name='change-policy-create'),
