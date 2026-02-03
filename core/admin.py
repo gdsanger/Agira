@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from .models import (
     Organisation, ItemType, User, UserOrganisation,
-    Project, Node, Release, Change, ChangeApproval,
+    Project, Node, Release, Change, ChangeApproval, ChangePolicy, ChangePolicyRole,
     Item, ItemRelation, ExternalIssueMapping, ItemComment,
     Attachment, AttachmentLink, Activity,
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
@@ -52,6 +52,12 @@ class ChangeApprovalInline(admin.TabularInline):
     autocomplete_fields = ['approver']
     readonly_fields = ['decision_at', 'approved_at']
     fields = ['approver', 'is_required', 'status', 'informed_at', 'approved', 'approved_at', 'decision_at', 'comment', 'notes']
+
+
+class ChangePolicyRoleInline(admin.TabularInline):
+    model = ChangePolicyRole
+    extra = 1
+    fields = ['role']
 
 
 class ExternalIssueMappingInline(admin.TabularInline):
@@ -201,6 +207,35 @@ class ChangeApprovalAdmin(admin.ModelAdmin):
         ('Timeline', {'fields': ('informed_at',)}),
         ('Comments & Notes', {'fields': ('comment', 'notes')}),
     )
+
+
+@admin.register(ChangePolicy)
+class ChangePolicyAdmin(admin.ModelAdmin):
+    list_display = ['__str__', 'risk_level', 'security_relevant', 'release_type', 'roles_display', 'created_at', 'updated_at']
+    list_filter = ['risk_level', 'security_relevant', 'release_type']
+    search_fields = ['risk_level', 'release_type']
+    inlines = [ChangePolicyRoleInline]
+    
+    fieldsets = (
+        (None, {'fields': ('risk_level', 'security_relevant', 'release_type')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+    readonly_fields = ['created_at', 'updated_at']
+    
+    def roles_display(self, obj):
+        roles = obj.policy_roles.all()
+        if roles:
+            return ', '.join([role.get_role_display() for role in roles])
+        return '-'
+    roles_display.short_description = 'Roles'
+
+
+@admin.register(ChangePolicyRole)
+class ChangePolicyRoleAdmin(admin.ModelAdmin):
+    list_display = ['policy', 'role']
+    list_filter = ['role']
+    search_fields = ['policy__risk_level', 'policy__release_type']
+    autocomplete_fields = ['policy']
 
 
 @admin.register(Item)
