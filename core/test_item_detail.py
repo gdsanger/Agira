@@ -670,3 +670,242 @@ class ItemAutoPopulateTest(TestCase):
         # Check that context has no default values
         self.assertIsNone(response.context['default_requester'])
         self.assertIsNone(response.context['default_organisation'])
+
+
+class SolutionReleaseFilteringTest(TestCase):
+    """Test solution release filtering in item detail view."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Create user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User',
+            role='Agent'
+        )
+        
+        # Create organisation
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+        
+        # Create two projects
+        self.project_a = Project.objects.create(
+            name='Project A',
+            description='Test project A'
+        )
+        self.project_a.clients.add(self.org)
+        
+        self.project_b = Project.objects.create(
+            name='Project B',
+            description='Test project B'
+        )
+        self.project_b.clients.add(self.org)
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='bug',
+            name='Bug',
+            is_active=True
+        )
+        
+        # Import ReleaseStatus for use in tests
+        from core.models import ReleaseStatus
+        
+        # Create releases for Project A
+        self.release_a_planned = Release.objects.create(
+            project=self.project_a,
+            name='Release A Planned',
+            version='1.0.0',
+            status=ReleaseStatus.PLANNED
+        )
+        
+        self.release_a_working = Release.objects.create(
+            project=self.project_a,
+            name='Release A Working',
+            version='1.1.0',
+            status=ReleaseStatus.WORKING
+        )
+        
+        self.release_a_closed = Release.objects.create(
+            project=self.project_a,
+            name='Release A Closed',
+            version='0.9.0',
+            status=ReleaseStatus.CLOSED
+        )
+        
+        # Create releases for Project B
+        self.release_b_planned = Release.objects.create(
+            project=self.project_b,
+            name='Release B Planned',
+            version='2.0.0',
+            status=ReleaseStatus.PLANNED
+        )
+        
+        self.release_b_closed = Release.objects.create(
+            project=self.project_b,
+            name='Release B Closed',
+            version='1.9.0',
+            status=ReleaseStatus.CLOSED
+        )
+        
+        # Create test item in Project A
+        self.item = Item.objects.create(
+            project=self.project_a,
+            title='Test Item',
+            description='Test description',
+            type=self.item_type,
+            organisation=self.org,
+            requester=self.user,
+            assigned_to=self.user,
+            status=ItemStatus.WORKING
+        )
+        
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_releases_filtered_by_project(self):
+        """Test that only releases from the same project are shown in dropdown."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Get releases from context
+        releases = response.context['releases']
+        release_ids = [r.id for r in releases]
+        
+        # Should contain Project A releases (but not closed ones)
+        self.assertIn(self.release_a_planned.id, release_ids)
+        self.assertIn(self.release_a_working.id, release_ids)
+        
+        # Should NOT contain Project B releases
+        self.assertNotIn(self.release_b_planned.id, release_ids)
+        self.assertNotIn(self.release_b_closed.id, release_ids)
+    
+    def test_releases_exclude_closed_status(self):
+        """Test that Closed releases are excluded from dropdown."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Get releases from context
+        releases = response.context['releases']
+        release_ids = [r.id for r in releases]
+        
+        # Should NOT contain closed releases
+        self.assertNotIn(self.release_a_closed.id, release_ids)
+        self.assertNotIn(self.release_b_closed.id, release_ids)
+        
+        # Should contain non-closed releases from same project
+        self.assertIn(self.release_a_planned.id, release_ids)
+        self.assertIn(self.release_a_working.id, release_ids)
+    
+    def test_badge_shows_assigned_closed_release(self):
+        """Test that badge displays assigned release even if it's Closed."""
+        # Assign a closed release to the item
+        self.item.solution_release = self.release_a_closed
+        self.item.save()
+        
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that the page contains the release badge
+        self.assertContains(response, 'Release: 0.9.0')
+        self.assertContains(response, 'bg-success')  # Closed releases use success color
+        
+        # Verify closed release is NOT in the dropdown options
+        releases = response.context['releases']
+        release_ids = [r.id for r in releases]
+        self.assertNotIn(self.release_a_closed.id, release_ids)
+    
+    def test_badge_shows_assigned_foreign_project_release(self):
+        """Test that badge displays assigned release even if from different project."""
+        # Assign a release from Project B to item in Project A
+        # (This would normally be prevented by validation, but could exist as legacy data)
+        # We use update() to bypass the save() method validation
+        Item.objects.filter(id=self.item.id).update(solution_release=self.release_b_planned)
+        self.item.refresh_from_db()
+        
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that the page contains the release badge
+        self.assertContains(response, 'Release: 2.0.0')
+        self.assertContains(response, 'bg-info')  # Non-closed releases use info color
+        
+        # Verify foreign project release is NOT in the dropdown options
+        releases = response.context['releases']
+        release_ids = [r.id for r in releases]
+        self.assertNotIn(self.release_b_planned.id, release_ids)
+    
+    def test_no_badge_when_no_release_assigned(self):
+        """Test that no badge is shown when item has no solution_release."""
+        # Item has no solution_release (None)
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that the release version badge pattern is not present in card header
+        # The badge would show "Release: X.Y.Z"
+        content = response.content.decode('utf-8')
+        
+        # Check that header doesn't contain release badge
+        # Look for the pattern: badge with bg-success or bg-info containing "Release: "
+        self.assertNotIn('bg-success">Release: ', content)
+        self.assertNotIn('bg-info">Release: ', content)
+    
+    def test_empty_dropdown_when_all_releases_closed(self):
+        """Test that dropdown is empty when all releases for project are Closed."""
+        # Create a new project with only closed releases
+        project_c = Project.objects.create(
+            name='Project C',
+            description='Test project C'
+        )
+        project_c.clients.add(self.org)
+        
+        from core.models import ReleaseStatus
+        Release.objects.create(
+            project=project_c,
+            name='Release C Closed 1',
+            version='1.0.0',
+            status=ReleaseStatus.CLOSED
+        )
+        
+        Release.objects.create(
+            project=project_c,
+            name='Release C Closed 2',
+            version='2.0.0',
+            status=ReleaseStatus.CLOSED
+        )
+        
+        # Create item in Project C
+        item_c = Item.objects.create(
+            project=project_c,
+            title='Test Item C',
+            description='Test description',
+            type=self.item_type,
+            organisation=self.org,
+            requester=self.user,
+            status=ItemStatus.WORKING
+        )
+        
+        url = reverse('item-detail', args=[item_c.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify releases list is empty
+        releases = response.context['releases']
+        self.assertEqual(len(releases), 0)

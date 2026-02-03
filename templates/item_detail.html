@@ -465,7 +465,14 @@
                 <!-- Additional Information Card -->
                 <div class="card mb-3">
                     <div class="card-header">
-                        <h5 class="mb-0">Additional Information</h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Additional Information</h5>
+                            {% if item.solution_release %}
+                                <span class="badge {% if item.solution_release.status == 'Closed' %}bg-success{% else %}bg-info{% endif %}">
+                                    Release: {{ item.solution_release.version }}
+                                </span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
