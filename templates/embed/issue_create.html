@@ -37,7 +37,10 @@
     white-space: pre;
 }
 
-/* Fix Markdown view readability - white background with dark text */
+/* Fix Markdown view readability - white background with dark text
+   Note: Hard-coded colors are intentional for this dark-themed embed context.
+   The editor is initialized with theme: 'dark' on line 227, but the Markdown
+   view needs a light background for text readability. WYSIWYG view is unaffected. */
 #description-editor .toastui-editor-md-container,
 #description-editor .toastui-editor-md-container .toastui-editor-main,
 #description-editor .toastui-editor-md-container .CodeMirror,
