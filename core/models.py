@@ -17,6 +17,8 @@ class UserRole(models.TextChoices):
     APPROVER = 'Approver', _('Approver')
     ISB = 'ISB', _('ISB')
     MGMT = "Managemenet", _('Management')
+    INFO = 'Info', _('Info')
+    DEV = 'Development', _('Development')
 
 
 class ProjectStatus(models.TextChoices):
