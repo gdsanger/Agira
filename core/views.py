@@ -5900,7 +5900,7 @@ def change_reject(request, id, approval_id):
 @require_http_methods(["POST"])
 def change_update_approver(request, id, approval_id):
     """Update approver details including new fields and attachment."""
-    from core.services.storage.service import StorageService
+    from core.services.storage.service import AttachmentStorageService
     
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
@@ -5916,7 +5916,7 @@ def change_update_approver(request, id, approval_id):
         else:
             approval.informed_at = None
         
-        # Update approved flag
+        # Update approved flag - checkbox sends 'true' when checked, nothing when unchecked
         approval.approved = request.POST.get('approved') == 'true'
         
         # Update approved_at
@@ -5959,7 +5959,7 @@ def change_update_approver(request, id, approval_id):
                 }, status=400)
             
             # Use storage service to save file
-            storage_service = StorageService()
+            storage_service = AttachmentStorageService()
             attachment = storage_service.save_file(
                 file=file,
                 user=request.user,
