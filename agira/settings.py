@@ -32,7 +32,7 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,agira.angermeier.net,agira.isarlabs.de' ).split(',')
 CSRF_TRUSTED_ORIGINS = [
-    "https://agira.angermeier.net:8443",
+    "https://agira.angermeier.net",
     "https://agira.isarlabs.de",
     "http://localhost:8005",
     "http://localhost:8006",
