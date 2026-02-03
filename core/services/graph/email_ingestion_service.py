@@ -570,74 +570,8 @@ class EmailIngestionService:
         Returns:
             Tuple of (User, Organisation or None)
         """
-        # Check if user already exists
-        try:
-            user = User.objects.get(email=email)
-            logger.debug(f"User {email} already exists")
-            
-            # Get primary organization
-            primary_org = UserOrganisation.objects.filter(
-                user=user,
-                is_primary=True,
-            ).first()
-            
-            return user, primary_org.organisation if primary_org else None
-            
-        except User.DoesNotExist:
-            pass
-        
-        # Extract domain from email
-        domain = email.split('@')[1] if '@' in email else None
-        
-        # Find organization by domain
-        organisation = None
-        if domain:
-            organisation = self._find_organisation_by_domain(domain)
-        
-        # Generate username from email (sanitize for Django username requirements)
-        # Django usernames allow letters, digits, and @/./+/-/_ characters
-        import re
-        username_base = email.split('@')[0] if '@' in email else email
-        # Replace invalid characters with underscores
-        username = re.sub(r'[^\w.@+-]', '_', username_base)
-        
-        # Ensure username is not empty
-        if not username:
-            username = "user_" + email.replace("@", "_at_").replace(".", "_")
-        
-        # Ensure username is unique
-        base_username = username
-        counter = 1
-        while User.objects.filter(username=username).exists():
-            username = f"{base_username}{counter}"
-            counter += 1
-        
-        # Generate random password
-        password = self._generate_random_password()
-        
-        # Create user
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            name=name or email,
-            role=UserRole.USER,
-            active=True,
-        )
-        
-        logger.info(f"Created new user: {username} ({email})")
-        
-        # Assign to organization if found
-        if organisation:
-            UserOrganisation.objects.create(
-                user=user,
-                organisation=organisation,
-                role=UserRole.USER,
-                is_primary=True,
-            )
-            logger.info(f"Assigned user {username} to organization {organisation.name}")
-        
-        return user, organisation
+        from core.services.user_service import get_or_create_user_and_org
+        return get_or_create_user_and_org(email=email, name=name)
     
     def _find_organisation_by_domain(self, domain: str) -> Optional[Organisation]:
         """
