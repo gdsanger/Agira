@@ -9,7 +9,7 @@ from core.models import (
     Organisation, UserOrganisation, Project, ItemType, Item, 
     ItemStatus, Release, ItemComment, ExternalIssueMapping, 
     ExternalIssueKind, AttachmentRole, Attachment, AttachmentLink,
-    CommentKind
+    CommentKind, ReleaseStatus
 )
 from core.services.activity import ActivityService
 
@@ -714,9 +714,6 @@ class SolutionReleaseFilteringTest(TestCase):
             is_active=True
         )
         
-        # Import ReleaseStatus for use in tests
-        from core.models import ReleaseStatus
-        
         # Create releases for Project A
         self.release_a_planned = Release.objects.create(
             project=self.project_a,
@@ -875,7 +872,6 @@ class SolutionReleaseFilteringTest(TestCase):
         )
         project_c.clients.add(self.org)
         
-        from core.models import ReleaseStatus
         Release.objects.create(
             project=project_c,
             name='Release C Closed 1',
