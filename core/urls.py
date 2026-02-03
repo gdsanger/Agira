@@ -173,6 +173,13 @@ urlpatterns = [
     path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
     path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
     
+    # Global Settings URLs
+    path('global-settings/', views.global_settings_detail, name='global-settings'),
+    path('global-settings/update/', views.global_settings_update, name='global-settings-update'),
+    
+    # Public URLs (no authentication required)
+    path('public/logo.png', views.public_logo, name='public-logo'),
+    
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
     path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),
