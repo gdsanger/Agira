@@ -173,6 +173,13 @@ urlpatterns = [
     path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
     path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
     
+    # Change Policy URLs
+    path('change-policies/', views.change_policies, name='change-policies'),
+    path('change-policies/new/', views.change_policy_create, name='change-policy-create'),
+    path('change-policies/<int:id>/edit/', views.change_policy_edit, name='change-policy-edit'),
+    path('change-policies/<int:id>/update/', views.change_policy_update, name='change-policy-update'),
+    path('change-policies/<int:id>/delete/', views.change_policy_delete, name='change-policy-delete'),
+    
     # Weaviate Sync URLs
     path('weaviate/status/<str:object_type>/<str:object_id>/', views.weaviate_status, name='weaviate-status'),
     path('weaviate/object/<str:object_type>/<str:object_id>/', views.weaviate_object, name='weaviate-object'),

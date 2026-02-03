@@ -26,13 +26,15 @@ from .models import (
     Attachment, AttachmentLink, AttachmentRole, Activity, ProjectStatus, NodeType, ReleaseStatus,
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
-    MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource)
+    MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
+    ChangePolicy, ChangePolicyRole)
 
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
 from .services.mail import check_mail_trigger, prepare_mail_preview
+from .services.change_policy_service import ChangePolicyService
 from .backends.azuread import AzureADAuth, AzureADAuthError
 
 # Configure logging
@@ -5587,6 +5589,13 @@ def change_create(request):
         if organisation_ids:
             change.organisations.set(organisation_ids)
         
+        # Sync approvers based on policy
+        try:
+            sync_result = ChangePolicyService.sync_change_approvers(change)
+            logger.info(f"Synced approvers for change {change.id}: {sync_result}")
+        except Exception as e:
+            logger.error(f"Error syncing approvers for change {change.id}: {e}", exc_info=True)
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -5701,6 +5710,13 @@ def change_update(request, id):
             change.organisations.set(organisation_ids)
         else:
             change.organisations.clear()
+        
+        # Sync approvers based on policy
+        try:
+            sync_result = ChangePolicyService.sync_change_approvers(change)
+            logger.info(f"Synced approvers for change {change.id}: {sync_result}")
+        except Exception as e:
+            logger.error(f"Error syncing approvers for change {change.id}: {e}", exc_info=True)
         
         # Log activity
         activity_service = ActivityService()
@@ -7193,4 +7209,216 @@ def email_send_reply(request):
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
         logger.error(f"Error sending email: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# Change Policy Views
+
+@login_required
+def change_policies(request):
+    """Change policies list view."""
+    policies = ChangePolicy.objects.prefetch_related('policy_roles').all()
+    
+    # Filter by risk level
+    risk_level_filter = request.GET.get('risk_level', '').strip()
+    if risk_level_filter:
+        policies = policies.filter(risk_level=risk_level_filter)
+    
+    # Filter by security relevant
+    security_filter = request.GET.get('security_relevant', '').strip()
+    if security_filter == 'true':
+        policies = policies.filter(security_relevant=True)
+    elif security_filter == 'false':
+        policies = policies.filter(security_relevant=False)
+    
+    # Filter by release type
+    release_type_filter = request.GET.get('release_type', '').strip()
+    if release_type_filter:
+        if release_type_filter == 'null':
+            policies = policies.filter(release_type__isnull=True)
+        else:
+            policies = policies.filter(release_type=release_type_filter)
+    
+    context = {
+        'policies': policies,
+        'risk_levels': RiskLevel.choices,
+        'release_types': ReleaseType.choices,
+        'risk_level_filter': risk_level_filter,
+        'security_filter': security_filter,
+        'release_type_filter': release_type_filter,
+    }
+    return render(request, 'change_policies.html', context)
+
+
+@login_required
+def change_policy_create(request):
+    """Show create form for new change policy."""
+    context = {
+        'policy': None,
+        'risk_levels': RiskLevel.choices,
+        'release_types': ReleaseType.choices,
+        'user_roles': UserRole.choices,
+    }
+    return render(request, 'change_policy_form.html', context)
+
+
+@login_required
+def change_policy_edit(request, id):
+    """Show edit form for existing change policy."""
+    policy = get_object_or_404(ChangePolicy, id=id)
+    
+    # Get current roles
+    selected_roles = list(policy.policy_roles.values_list('role', flat=True))
+    
+    context = {
+        'policy': policy,
+        'risk_levels': RiskLevel.choices,
+        'release_types': ReleaseType.choices,
+        'user_roles': UserRole.choices,
+        'selected_roles': selected_roles,
+    }
+    return render(request, 'change_policy_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_policy_update(request, id):
+    """Create or update a change policy."""
+    try:
+        # Parse form data
+        risk_level = request.POST.get('risk_level', '').strip()
+        security_relevant = request.POST.get('security_relevant') == 'on'
+        release_type = request.POST.get('release_type', '').strip()
+        roles = request.POST.getlist('roles')
+        
+        # Validate required fields
+        if not risk_level:
+            return JsonResponse({'success': False, 'error': 'Risk level is required'}, status=400)
+        
+        # Handle empty release type (should be None in DB)
+        if not release_type or release_type == '':
+            release_type = None
+        
+        # Create or update
+        if id == 0:
+            # Create new policy
+            # Check if policy with same criteria already exists
+            existing_query = ChangePolicy.objects.filter(
+                risk_level=risk_level,
+                security_relevant=security_relevant
+            )
+            if release_type:
+                existing_query = existing_query.filter(release_type=release_type)
+            else:
+                existing_query = existing_query.filter(release_type__isnull=True)
+            
+            if existing_query.exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'A policy with these criteria already exists'
+                }, status=400)
+            
+            policy = ChangePolicy.objects.create(
+                risk_level=risk_level,
+                security_relevant=security_relevant,
+                release_type=release_type
+            )
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='change_policy.created',
+                target=policy,
+                actor=request.user,
+                summary=f'Created change policy: {policy}'
+            )
+            
+            message = 'Change policy created successfully'
+        else:
+            # Update existing policy
+            policy = get_object_or_404(ChangePolicy, id=id)
+            
+            # Check if updating would create duplicate
+            existing_query = ChangePolicy.objects.filter(
+                risk_level=risk_level,
+                security_relevant=security_relevant
+            ).exclude(id=id)
+            
+            if release_type:
+                existing_query = existing_query.filter(release_type=release_type)
+            else:
+                existing_query = existing_query.filter(release_type__isnull=True)
+            
+            if existing_query.exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'A policy with these criteria already exists'
+                }, status=400)
+            
+            policy.risk_level = risk_level
+            policy.security_relevant = security_relevant
+            policy.release_type = release_type
+            policy.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='change_policy.updated',
+                target=policy,
+                actor=request.user,
+                summary=f'Updated change policy: {policy}'
+            )
+            
+            message = 'Change policy updated successfully'
+        
+        # Update roles
+        # Delete existing roles
+        policy.policy_roles.all().delete()
+        
+        # Create new roles
+        for role in roles:
+            if role:  # Skip empty values
+                ChangePolicyRole.objects.create(
+                    policy=policy,
+                    role=role
+                )
+        
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'redirect': reverse('change-policies')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating change policy: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_policy_delete(request, id):
+    """Delete a change policy."""
+    policy = get_object_or_404(ChangePolicy, id=id)
+    policy_str = str(policy)
+    
+    try:
+        # Log activity before deletion
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change_policy.deleted',
+            target=policy,
+            actor=request.user,
+            summary=f'Deleted change policy: {policy_str}'
+        )
+        
+        policy.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Change policy "{policy_str}" deleted successfully',
+            'redirect': reverse('change-policies')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting change policy: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
