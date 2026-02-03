@@ -19,7 +19,7 @@ from django_tables2 import RequestConfig
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
     ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole,
-    Release
+    Release, UserRole
 )
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -200,22 +200,10 @@ def embed_issue_create_form(request, project_id):
     # Get active item types for the form
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
-    # Get organization users for requester selection
-    from .models import User, UserOrganisation
-    org_user_ids = UserOrganisation.objects.filter(
-        organisation=embed_access.organisation
-    ).values_list('user_id', flat=True)
-    
-    org_users = User.objects.filter(
-        id__in=org_user_ids,
-        active=True
-    ).order_by('name')
-    
     context = {
         'project': embed_access.project,
         'organisation': embed_access.organisation,
         'item_types': item_types,
-        'org_users': org_users,
         'token': token,
     }
     return render(request, 'embed/issue_create.html', context)
@@ -339,6 +327,9 @@ def embed_issue_create(request, project_id):
     Create a new issue.
     POST /embed/projects/<project_id>/issues/create/?token=...
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     token = request.POST.get('token') or request.GET.get('token')
     embed_access = validate_embed_token(token)
     
@@ -353,7 +344,8 @@ def embed_issue_create(request, project_id):
     title = request.POST.get('title', '').strip()
     description = request.POST.get('description', '').strip()
     type_id = request.POST.get('type')
-    requester_id = request.POST.get('requester')
+    name = request.POST.get('name', '').strip()
+    email = request.POST.get('email', '').strip()
     
     # Validation
     if not title:
@@ -365,33 +357,59 @@ def embed_issue_create(request, project_id):
     if not type_id:
         return HttpResponse("Type is required", status=400)
     
-    if not requester_id:
-        return HttpResponse("Requester is required", status=400)
+    if not name:
+        return HttpResponse("Name is required", status=400)
+    
+    if len(name) > 200:
+        return HttpResponse("Name must not exceed 200 characters", status=400)
+    
+    if not email:
+        return HttpResponse("Email is required", status=400)
+    
+    # Basic email validation
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, email):
+        return HttpResponse("Invalid email format", status=400)
     
     try:
         item_type = ItemType.objects.get(id=type_id, is_active=True)
     except ItemType.DoesNotExist:
         return HttpResponse("Invalid item type", status=400)
     
-    # Get requester user
-    from .models import User, UserOrganisation
+    # Get or create user based on email
+    from core.services.user_service import get_or_create_user_and_org
+    from core.models import UserOrganisation
     try:
-        # Verify requester exists and belongs to the organization
-        user_org = UserOrganisation.objects.get(
-            user_id=requester_id,
-            organisation=embed_access.organisation
+        requester, user_organisation = get_or_create_user_and_org(
+            email=email,
+            name=name,
         )
-        requester = user_org.user
-        if not requester.active:
-            return HttpResponse("Requester is not active", status=400)
-    except UserOrganisation.DoesNotExist:
-        return HttpResponse("Invalid requester", status=400)
+    except ValueError as e:
+        logger.error(f"Error creating user: {e}")
+        return HttpResponse(f"Error processing user information: {str(e)}", status=400)
+    
+    # Determine which organisation to use for the item
+    # If user has no organization, add them to the embed organization
+    if user_organisation:
+        item_organisation = user_organisation
+    else:
+        # Add user to embed organization with non-primary flag
+        UserOrganisation.objects.get_or_create(
+            user=requester,
+            organisation=embed_access.organisation,
+            defaults={
+                'role': UserRole.USER,
+                'is_primary': False,  # Not primary since it's not based on email domain
+            }
+        )
+        item_organisation = embed_access.organisation
     
     # Create the item
     with transaction.atomic():
         item = Item.objects.create(
             project=embed_access.project,
-            organisation=embed_access.organisation,
+            organisation=item_organisation,
             title=title,
             description=description,
             type=item_type,
@@ -440,78 +458,68 @@ def embed_issue_create(request, project_id):
         )
         
         # Send confirmation email to requester
-        _send_requester_confirmation_email(item, requester)
+        _send_requester_confirmation_email(item, email)
     
     # Redirect to the issue detail page using reverse
     redirect_url = reverse('embed-issue-detail', args=[item.id]) + f'?token={token}'
     return redirect(redirect_url)
 
 
-def _send_requester_confirmation_email(item, requester):
+def _send_requester_confirmation_email(item, recipient_email):
     """
-    Send confirmation email to requester using activity-assigned template.
+    Send inbox notification email to requester using MailActionMapping.
+    
+    This function sends an email to the email address provided in the form,
+    using the mail template configured for the item's status and type via MailActionMapping.
     
     Args:
         item: Created Item instance
-        requester: User who requested the item
+        recipient_email: Email address to send the notification to (from the form)
     """
-    from .models import MailTemplate
-    from .services.mail.template_processor import process_template
-    from .services.graph.client import get_client
-    from .services.exceptions import ServiceDisabled, ServiceNotConfigured, ServiceError
     import logging
-    
     logger = logging.getLogger(__name__)
     
     try:
-        # Get the activity-assigned template
-        template = MailTemplate.objects.get(key='activity-assigned')
+        from core.services.mail.mail_trigger_service import (
+            check_mail_trigger,
+            prepare_mail_preview,
+        )
+        from core.services.graph.mail_service import send_email
         
-        # Process template with item data
-        processed = process_template(template, item)
+        # Check if there's a mail trigger for this item's status and type
+        mapping = check_mail_trigger(item)
         
-        # Prepare email payload for Graph API
-        payload = {
-            "message": {
-                "subject": processed['subject'],
-                "body": {
-                    "contentType": "HTML",
-                    "content": processed['message']
-                },
-                "toRecipients": [
-                    {
-                        "emailAddress": {
-                            "address": requester.email
-                        }
-                    }
-                ]
-            },
-            "saveToSentItems": True
-        }
+        if not mapping:
+            logger.debug(
+                f"No mail trigger found for item {item.id} "
+                f"(status={item.status}, type={item.type.key})"
+            )
+            return
         
-        # Add CC if specified in template
-        if template.cc_address:
-            cc_addresses = [addr.strip() for addr in template.cc_address.split(',') if addr.strip()]
-            if cc_addresses:
-                payload["message"]["ccRecipients"] = [
-                    {"emailAddress": {"address": addr}} for addr in cc_addresses
-                ]
+        # Prepare mail preview
+        preview = prepare_mail_preview(item, mapping)
         
-        # Send email via Graph API
-        client = get_client()
-        sender_upn = template.from_address if template.from_address else requester.email
-        client.send_mail(sender_upn, payload)
+        # Send email to the provided email address
+        result = send_email(
+            subject=preview['subject'],
+            body=preview['message'],
+            to=[recipient_email],
+            body_is_html=True,
+            cc=None,  # No CC for customer portal submissions
+            sender=preview.get('from_address'),
+            item=item,
+            author=None,  # System-generated email
+            visibility="Internal",
+        )
         
-        logger.info(f"Sent confirmation email to requester {requester.email} for item {item.id}")
-        
-    except MailTemplate.DoesNotExist:
-        logger.warning(f"activity-assigned template not found, skipping email for item {item.id}")
-    except (ServiceDisabled, ServiceNotConfigured) as e:
-        logger.warning(f"Email service not configured, skipping email for item {item.id}: {e}")
-    except ServiceError as e:
-        logger.error(f"Failed to send confirmation email for item {item.id}: {e}")
+        if result.success:
+            logger.info(f"Sent inbox notification for item {item.id} to {recipient_email}")
+        else:
+            logger.error(f"Failed to send inbox notification for item {item.id}: {result.error}")
+            
     except Exception as e:
-        logger.error(f"Unexpected error sending confirmation email for item {item.id}: {e}")
+        logger.error(f"Error sending inbox notification for item {item.id}: {e}")
+        # Don't raise - email sending failure shouldn't prevent item creation
 
 
 @csrf_exempt
