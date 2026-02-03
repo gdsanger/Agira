@@ -37,6 +37,24 @@
     white-space: pre;
 }
 
+/* Fix Markdown view readability - white background with dark text */
+#description-editor .toastui-editor-md-container,
+#description-editor .toastui-editor-md-container .toastui-editor-main,
+#description-editor .toastui-editor-md-container .CodeMirror,
+#description-editor .toastui-editor-md-container .CodeMirror-scroll {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+}
+
+/* Ensure cursor and selection are visible in Markdown view */
+#description-editor .toastui-editor-md-container .CodeMirror-cursor {
+    border-left-color: #000000 !important;
+}
+
+#description-editor .toastui-editor-md-container .CodeMirror-selected {
+    background-color: rgba(0, 123, 255, 0.2) !important;
+}
+
 /* File upload styling */
 .file-upload-area {
     border: 2px dashed #495057;
