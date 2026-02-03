@@ -7258,8 +7258,17 @@ def public_logo(request):
     # Serve the logo file
     try:
         from django.http import FileResponse
+        import mimetypes
+        
         logo_file = settings.logo.open('rb')
-        response = FileResponse(logo_file, content_type='image/png')
+        
+        # Determine content type from file extension
+        content_type, _ = mimetypes.guess_type(settings.logo.name)
+        if not content_type:
+            # Fallback to generic image type if detection fails
+            content_type = 'image/png'
+        
+        response = FileResponse(logo_file, content_type=content_type)
         response['Cache-Control'] = 'public, max-age=3600'  # Cache for 1 hour
         return response
     except Exception as e:
