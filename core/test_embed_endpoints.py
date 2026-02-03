@@ -299,7 +299,8 @@ class EmbedEndpointTestCase(TestCase):
                 'title': 'New External Issue',
                 'description': 'Created via embed portal',
                 'type': self.item_type_bug.id,
-                'requester': self.user.id,
+                'name': 'Test User',
+                'email': 'testuser@example.com',
             }
         )
         
@@ -319,8 +320,9 @@ class EmbedEndpointTestCase(TestCase):
         self.assertEqual(new_item.description, 'Created via embed portal')
         self.assertEqual(new_item.type, self.item_type_bug)
         self.assertEqual(new_item.status, ItemStatus.INBOX)
-        self.assertEqual(new_item.organisation, self.org1)
-        self.assertEqual(new_item.requester, self.user)
+        # Check requester was created or found
+        self.assertIsNotNone(new_item.requester)
+        self.assertEqual(new_item.requester.email, 'testuser@example.com')
 
     def test_issue_create_missing_title(self):
         """Test issue creation fails without title"""
@@ -356,25 +358,61 @@ class EmbedEndpointTestCase(TestCase):
                 'token': self.valid_token,
                 'title': 'Invalid Type Issue',
                 'type': 99999,
-                'requester': self.user.id,
+                'name': 'Test User',
+                'email': 'testuser@example.com',
             }
         )
         
         self.assertEqual(response.status_code, 400)
 
-    def test_issue_create_missing_requester(self):
-        """Test issue creation fails without requester"""
+    def test_issue_create_missing_name(self):
+        """Test issue creation fails without name"""
         response = self.client.post(
             f'/embed/projects/{self.project1.id}/issues/create/submit/',
             {
                 'token': self.valid_token,
-                'title': 'No Requester Issue',
-                'description': 'Missing requester',
+                'title': 'No Name Issue',
+                'description': 'Missing name',
                 'type': self.item_type_bug.id,
+                'email': 'testuser@example.com',
             }
         )
         
         self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Name is required', response.content)
+
+    def test_issue_create_missing_email(self):
+        """Test issue creation fails without email"""
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'No Email Issue',
+                'description': 'Missing email',
+                'type': self.item_type_bug.id,
+                'name': 'Test User',
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Email is required', response.content)
+    
+    def test_issue_create_invalid_email(self):
+        """Test issue creation fails with invalid email format"""
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'Invalid Email Issue',
+                'description': 'Bad email format',
+                'type': self.item_type_bug.id,
+                'name': 'Test User',
+                'email': 'not-an-email',
+            }
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b'Invalid email format', response.content)
 
     def test_issue_create_title_too_long(self):
         """Test issue creation fails with title exceeding max length"""
@@ -385,7 +423,8 @@ class EmbedEndpointTestCase(TestCase):
                 'token': self.valid_token,
                 'title': long_title,
                 'type': self.item_type_bug.id,
-                'requester': self.user.id,
+                'name': 'Test User',
+                'email': 'testuser@example.com',
             }
         )
         
@@ -429,6 +468,149 @@ class EmbedEndpointTestCase(TestCase):
         )
         
         self.assertEqual(response.status_code, 404)
+
+    def test_issue_create_user_upsert_new_user(self):
+        """Test that a new user is created when email doesn't exist"""
+        initial_user_count = User.objects.count()
+        
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'Issue from New User',
+                'description': 'Created by new user',
+                'type': self.item_type_bug.id,
+                'name': 'New User',
+                'email': 'newuser@example.com',
+            }
+        )
+        
+        # Should redirect to issue detail
+        self.assertEqual(response.status_code, 302)
+        
+        # Check user was created
+        new_user_count = User.objects.count()
+        self.assertEqual(new_user_count, initial_user_count + 1)
+        
+        # Check user properties
+        new_user = User.objects.get(email='newuser@example.com')
+        self.assertEqual(new_user.name, 'New User')
+        self.assertTrue(new_user.active)
+        
+        # Check item was created with correct requester
+        new_item = Item.objects.filter(
+            project=self.project1,
+            title='Issue from New User'
+        ).first()
+        self.assertIsNotNone(new_item)
+        self.assertEqual(new_item.requester, new_user)
+    
+    def test_issue_create_user_upsert_existing_user(self):
+        """Test that existing user is reused when email matches"""
+        # Create an existing user
+        existing_user = User.objects.create_user(
+            username='existing',
+            email='existing@example.com',
+            name='Existing User',
+            password='testpass123'
+        )
+        initial_user_count = User.objects.count()
+        
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'Issue from Existing User',
+                'description': 'Created by existing user',
+                'type': self.item_type_bug.id,
+                'name': 'Different Name',  # Name should not matter
+                'email': 'existing@example.com',
+            }
+        )
+        
+        # Should redirect to issue detail
+        self.assertEqual(response.status_code, 302)
+        
+        # Check no new user was created
+        new_user_count = User.objects.count()
+        self.assertEqual(new_user_count, initial_user_count)
+        
+        # Check item was created with correct requester
+        new_item = Item.objects.filter(
+            project=self.project1,
+            title='Issue from Existing User'
+        ).first()
+        self.assertIsNotNone(new_item)
+        self.assertEqual(new_item.requester, existing_user)
+    
+    def test_issue_create_organization_assignment_via_domain(self):
+        """Test that organization is assigned based on email domain"""
+        # Set up organization with domain list (one per line)
+        self.org1.mail_domains = 'testdomain.com\nanother.com'
+        self.org1.save()
+        
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'Issue with Domain Match',
+                'description': 'User from org domain',
+                'type': self.item_type_bug.id,
+                'name': 'Domain User',
+                'email': 'user@testdomain.com',
+            }
+        )
+        
+        # Should redirect to issue detail
+        self.assertEqual(response.status_code, 302)
+        
+        # Check user was assigned to organization
+        new_user = User.objects.get(email='user@testdomain.com')
+        user_orgs = new_user.user_organisations.filter(is_primary=True)
+        self.assertEqual(user_orgs.count(), 1)
+        self.assertEqual(user_orgs.first().organisation, self.org1)
+        
+        # Check item has correct organization
+        new_item = Item.objects.filter(
+            project=self.project1,
+            title='Issue with Domain Match'
+        ).first()
+        self.assertIsNotNone(new_item)
+        self.assertEqual(new_item.organisation, self.org1)
+    
+    def test_issue_create_no_organization_for_unknown_domain(self):
+        """Test that user is created without org when domain doesn't match"""
+        response = self.client.post(
+            f'/embed/projects/{self.project1.id}/issues/create/submit/',
+            {
+                'token': self.valid_token,
+                'title': 'Issue with Unknown Domain',
+                'description': 'User from unknown domain',
+                'type': self.item_type_bug.id,
+                'name': 'Unknown Domain User',
+                'email': 'user@unknowndomain.com',
+            }
+        )
+        
+        # Should redirect to issue detail
+        self.assertEqual(response.status_code, 302)
+        
+        # Check user was created but assigned to embed organization
+        new_user = User.objects.get(email='user@unknowndomain.com')
+        user_orgs = new_user.user_organisations.all()
+        # User should be added to embed organization
+        self.assertEqual(user_orgs.count(), 1)
+        self.assertEqual(user_orgs.first().organisation, self.embed_access.organisation)
+        # But it should not be primary (since not based on domain)
+        self.assertFalse(user_orgs.first().is_primary)
+        
+        # Check item was created with embed org
+        new_item = Item.objects.filter(
+            project=self.project1,
+            title='Issue with Unknown Domain'
+        ).first()
+        self.assertIsNotNone(new_item)
+        self.assertEqual(new_item.organisation, self.embed_access.organisation)
 
     def test_add_comment_success(self):
         """Test successful comment addition"""

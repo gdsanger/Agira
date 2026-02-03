@@ -123,14 +123,15 @@
             </div>
             
             <div class="mb-3">
-                <label for="requester" class="form-label">Requester <span class="text-danger">*</span></label>
-                <select name="requester" id="requester" class="form-select" required>
-                    <option value="">Select requester...</option>
-                    {% for user in org_users %}
-                    <option value="{{ user.id }}">{{ user.name }} ({{ user.email }})</option>
-                    {% endfor %}
-                </select>
-                <div class="form-text">Select the person who is requesting this issue</div>
+                <label for="name" class="form-label">Your Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" id="name" class="form-control" required maxlength="200">
+                <div class="form-text">Please enter your full name</div>
+            </div>
+            
+            <div class="mb-3">
+                <label for="email" class="form-label">Your Email <span class="text-danger">*</span></label>
+                <input type="email" name="email" id="email" class="form-control" required>
+                <div class="form-text">We'll use this to send you updates about your issue</div>
             </div>
             
             <div class="mb-3">
@@ -195,6 +196,24 @@
 <script src="https://uicdn.toast.com/editor/3.2.2/toastui-editor-all.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // LocalStorage keys for name and email
+    const NAME_STORAGE_KEY = 'customer_portal.issue_creator.name';
+    const EMAIL_STORAGE_KEY = 'customer_portal.issue_creator.email';
+    
+    // Load saved values from localStorage
+    const nameField = document.getElementById('name');
+    const emailField = document.getElementById('email');
+    
+    const savedName = localStorage.getItem(NAME_STORAGE_KEY);
+    const savedEmail = localStorage.getItem(EMAIL_STORAGE_KEY);
+    
+    if (savedName) {
+        nameField.value = savedName;
+    }
+    if (savedEmail) {
+        emailField.value = savedEmail;
+    }
+    
     // Track uploaded attachment IDs
     const uploadedAttachments = [];
     
@@ -418,6 +437,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add all attachment IDs (files + inline images)
             const allAttachmentIds = [...uploadedFileIds, ...uploadedAttachments];
             document.getElementById('attachmentIds').value = allAttachmentIds.join(',');
+            
+            // Save name and email to localStorage before form submission
+            // This is saved before submission since we'll redirect to the detail page on success
+            // If backend validation fails, user will return to form and can retry
+            // Save each field independently so partial input is not lost
+            const nameValue = nameField.value.trim();
+            const emailValue = emailField.value.trim();
+            
+            if (nameValue) {
+                localStorage.setItem(NAME_STORAGE_KEY, nameValue);
+            }
+            if (emailValue) {
+                localStorage.setItem(EMAIL_STORAGE_KEY, emailValue);
+            }
             
             // Submit the form
             form.submit();
