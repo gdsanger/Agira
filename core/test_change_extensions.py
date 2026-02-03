@@ -11,7 +11,7 @@ from django.contrib.contenttypes.models import ContentType
 from core.models import (
     Change, ChangeApproval, ChangeStatus, Project, Organisation,
     User, UserRole, UserOrganisation, RiskLevel, AttachmentRole,
-    Attachment, AttachmentLink
+    Attachment, AttachmentLink, ApprovalStatus
 )
 
 
@@ -298,6 +298,38 @@ class ChangeApproverManagementTestCase(TestCase):
                 self.assertIsNotNone(approval.approved_at)
                 self.assertEqual(approval.notes, 'Test notes')
                 self.assertEqual(approval.comment, 'Test comment')
+
+    def test_update_approver_uncheck_approved(self):
+        """Test unchecking the approved checkbox when editing an approver"""
+        # Create an already approved approval
+        approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.approver,
+            approved=True,
+            status=ApprovalStatus.APPROVED,
+            approved_at=timezone.now()
+        )
+        
+        # Update without the 'approved' field (simulating unchecked checkbox)
+        response = self.client.post(
+            reverse('change-update-approver', args=[self.change.id, approval.id]),
+            {
+                'notes': 'Updated notes',
+                'comment': 'Updated comment'
+                # Note: 'approved' is not sent when checkbox is unchecked
+            }
+        )
+        
+        # Refresh from database
+        approval.refresh_from_db()
+        
+        # Verify that approved flag is now False
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data.get('success'))
+        self.assertFalse(approval.approved)
+        self.assertEqual(approval.notes, 'Updated notes')
+        self.assertEqual(approval.comment, 'Updated comment')
 
 
 class ChangeAITextImprovementTestCase(TestCase):
