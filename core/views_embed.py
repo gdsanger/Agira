@@ -19,7 +19,7 @@ from django_tables2 import RequestConfig
 from .models import (
     OrganisationEmbedProject, Project, Item, ItemComment, ItemType, 
     ItemStatus, CommentVisibility, CommentKind, Attachment, AttachmentLink, AttachmentRole,
-    Release
+    Release, UserRole
 )
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -379,6 +379,7 @@ def embed_issue_create(request, project_id):
     
     # Get or create user based on email
     from core.services.user_service import get_or_create_user_and_org
+    from core.models import UserOrganisation
     try:
         requester, user_organisation = get_or_create_user_and_org(
             email=email,
@@ -389,8 +390,20 @@ def embed_issue_create(request, project_id):
         return HttpResponse(f"Error processing user information: {str(e)}", status=400)
     
     # Determine which organisation to use for the item
-    # Priority: user's organization > embed access organization
-    item_organisation = user_organisation if user_organisation else embed_access.organisation
+    # If user has no organization, add them to the embed organization
+    if user_organisation:
+        item_organisation = user_organisation
+    else:
+        # Add user to embed organization with non-primary flag
+        UserOrganisation.objects.get_or_create(
+            user=requester,
+            organisation=embed_access.organisation,
+            defaults={
+                'role': UserRole.USER,
+                'is_primary': False,  # Not primary since it's not based on email domain
+            }
+        )
+        item_organisation = embed_access.organisation
     
     # Create the item
     with transaction.atomic():

@@ -545,8 +545,8 @@ class EmbedEndpointTestCase(TestCase):
     
     def test_issue_create_organization_assignment_via_domain(self):
         """Test that organization is assigned based on email domain"""
-        # Set up organization with domain list
-        self.org1.mail_domains = 'testdomain.com,another.com'
+        # Set up organization with domain list (one per line)
+        self.org1.mail_domains = 'testdomain.com\nanother.com'
         self.org1.save()
         
         response = self.client.post(
@@ -566,7 +566,7 @@ class EmbedEndpointTestCase(TestCase):
         
         # Check user was assigned to organization
         new_user = User.objects.get(email='user@testdomain.com')
-        user_orgs = new_user.organisations.filter(is_primary=True)
+        user_orgs = new_user.user_organisations.filter(is_primary=True)
         self.assertEqual(user_orgs.count(), 1)
         self.assertEqual(user_orgs.first().organisation, self.org1)
         
@@ -595,18 +595,21 @@ class EmbedEndpointTestCase(TestCase):
         # Should redirect to issue detail
         self.assertEqual(response.status_code, 302)
         
-        # Check user was created but not assigned to any organization
+        # Check user was created but assigned to embed organization
         new_user = User.objects.get(email='user@unknowndomain.com')
-        user_orgs = new_user.organisations.all()
-        self.assertEqual(user_orgs.count(), 0)
+        user_orgs = new_user.user_organisations.all()
+        # User should be added to embed organization
+        self.assertEqual(user_orgs.count(), 1)
+        self.assertEqual(user_orgs.first().organisation, self.embed_access.organisation)
+        # But it should not be primary (since not based on domain)
+        self.assertFalse(user_orgs.first().is_primary)
         
-        # Check item was created with embed org as fallback
+        # Check item was created with embed org
         new_item = Item.objects.filter(
             project=self.project1,
             title='Issue with Unknown Domain'
         ).first()
         self.assertIsNotNone(new_item)
-        # Should use embed access organization as fallback
         self.assertEqual(new_item.organisation, self.embed_access.organisation)
 
     def test_add_comment_success(self):
