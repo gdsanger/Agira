@@ -34,6 +34,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.agents import AgentService
 from .services.mail import check_mail_trigger, prepare_mail_preview
+from .services.change_policy_service import ChangePolicyService
 from .backends.azuread import AzureADAuth, AzureADAuthError
 
 # Configure logging
@@ -5588,6 +5589,13 @@ def change_create(request):
         if organisation_ids:
             change.organisations.set(organisation_ids)
         
+        # Sync approvers based on policy
+        try:
+            sync_result = ChangePolicyService.sync_change_approvers(change)
+            logger.info(f"Synced approvers for change {change.id}: {sync_result}")
+        except Exception as e:
+            logger.error(f"Error syncing approvers for change {change.id}: {e}", exc_info=True)
+        
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -5702,6 +5710,13 @@ def change_update(request, id):
             change.organisations.set(organisation_ids)
         else:
             change.organisations.clear()
+        
+        # Sync approvers based on policy
+        try:
+            sync_result = ChangePolicyService.sync_change_approvers(change)
+            logger.info(f"Synced approvers for change {change.id}: {sync_result}")
+        except Exception as e:
+            logger.error(f"Error syncing approvers for change {change.id}: {e}", exc_info=True)
         
         # Log activity
         activity_service = ActivityService()
