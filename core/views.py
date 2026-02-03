@@ -781,8 +781,12 @@ def item_detail(request, item_id):
     # Get all projects for the move modal
     projects = Project.objects.all().order_by('name')
     
-    # Get all releases for the inline edit
-    releases = Release.objects.all().order_by('-version')
+    # Get releases for the inline edit (filtered by project and exclude Closed)
+    releases = Release.objects.filter(
+        project=item.project
+    ).exclude(
+        status=ReleaseStatus.CLOSED
+    ).order_by('-version')
     
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
