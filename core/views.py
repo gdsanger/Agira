@@ -799,7 +799,7 @@ def item_detail(request, item_id):
                 user=item.requester,
                 is_primary=True
             )
-            requester_org_short = primary_org.organisation.short if primary_org.organisation.short else None
+            requester_org_short = primary_org.organisation.short or None
         except UserOrganisation.DoesNotExist:
             requester_org_short = None
     
