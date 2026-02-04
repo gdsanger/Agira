@@ -1123,25 +1123,10 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
             const modal = bootstrap.Modal.getInstance(document.getElementById('quickCreateUserModal'));
             modal.hide();
             
-            // Add the new user to the requester dropdown
-            const requesterSelect = document.getElementById('requester');
-            const option = document.createElement('option');
-            option.value = data.user_id;
-            option.selected = true;
-            
-            // Fetch the user details to get the org short code
-            // For now, just use the name without org (will be shown after page reload)
-            const userName = document.getElementById('quick_user_name_edit').value;
-            const orgSelect = document.getElementById('quick_user_organization_edit');
-            const selectedOrg = orgSelect.options[orgSelect.selectedIndex].text;
-            option.textContent = `${userName} ${selectedOrg}`;
-            
-            requesterSelect.appendChild(option);
-            
             // Reset form
             this.reset();
             
-            // Reload page after a short delay to show the updated requester with proper org short
+            // Reload page to show the updated requester with proper org short code
             setTimeout(() => {
                 window.location.reload();
             }, 1000);
