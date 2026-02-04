@@ -275,13 +275,11 @@ def _get_attachment_text_content(attachment) -> str:
             file_path = storage_service.get_file_path(attachment)
             
             # Extract content based on file type
-            content = None
-            
             if is_plain_text:
                 content = _extract_plain_text(file_path)
             elif is_pdf:
                 content = _extract_pdf_text(file_path)
-            elif is_docx:
+            else:  # is_docx
                 content = _extract_docx_text(file_path)
             
             # If extraction succeeded, return the content
