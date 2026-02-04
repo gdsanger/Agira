@@ -38,6 +38,15 @@
                        value="{% if organisation %}{{ organisation.name }}{% endif %}" required>
             </div>
             
+            <div class="mb-3">
+                <label for="short" class="form-label">Short Code</label>
+                <input type="text" class="form-control" id="short" name="short" 
+                       value="{% if organisation %}{{ organisation.short }}{% endif %}" 
+                       maxlength="10"
+                       placeholder="Max 10 characters">
+                <div class="form-text">Optional short code/abbreviation for this organization (max 10 characters)</div>
+            </div>
+            
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary">
                     {% if organisation %}Update{% else %}Create{% endif %}
