@@ -4294,8 +4294,18 @@ def organisation_create(request):
     
     # Handle POST request (HTMX form submission)
     try:
+        short = request.POST.get('short', '').strip()
+        
+        # Validate short field length
+        if short and len(short) > 10:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Short code must be 10 characters or less'
+            }, status=400)
+        
         organisation = Organisation.objects.create(
-            name=request.POST.get('name')
+            name=request.POST.get('name'),
+            short=short
         )
         return JsonResponse({
             'success': True,
@@ -4327,7 +4337,17 @@ def organisation_update(request, id):
     
     # Handle POST request (HTMX form submission)
     try:
+        short = request.POST.get('short', '').strip()
+        
+        # Validate short field length
+        if short and len(short) > 10:
+            return JsonResponse({
+                'success': False, 
+                'error': 'Short code must be 10 characters or less'
+            }, status=400)
+        
         organisation.name = request.POST.get('name', organisation.name)
+        organisation.short = short
         organisation.save()
         
         return JsonResponse({

@@ -171,6 +171,7 @@ class UserManager(BaseUserManager):
 # Models
 class Organisation(models.Model):
     name = models.CharField(max_length=255, unique=True)
+    short = models.CharField(max_length=10, blank=True, help_text="Short code/abbreviation for this organization (max 10 characters)")
     mail_domains = models.TextField(
         blank=True,
         help_text="Mail domains for this organization, one per line (e.g., example.com)"

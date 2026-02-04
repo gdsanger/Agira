@@ -178,6 +178,25 @@
 
     <!-- Right Column: Sidebar (1/3) -->
     <div class="detail-sidebar">
+        <!-- Organisation Info Card -->
+        <div class="project-info-card mb-3">
+            <div class="project-info-label">Organisation Info</div>
+            <div class="project-info-value">
+                <div class="d-flex flex-column gap-2">
+                    <div>
+                        <span class="text-muted d-block mb-1">Name</span>
+                        <strong>{{ organisation.name }}</strong>
+                    </div>
+                    {% if organisation.short %}
+                    <div>
+                        <span class="text-muted d-block mb-1">Short Code</span>
+                        <strong>{{ organisation.short }}</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
         <!-- Statistics Card -->
         <div class="project-info-card">
             <div class="project-info-label">Statistics</div>
