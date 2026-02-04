@@ -311,11 +311,13 @@
                             </option>
                             {% endfor %}
                         </select>
+                        {% if item %}
                         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickCreateUserModal" title="Quick Create User">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg" viewBox="0 0 16 16">
                                 <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/>
                             </svg>
                         </button>
+                        {% endif %}
                     </div>
                 </div>
                 
@@ -1100,7 +1102,7 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
     e.preventDefault();
     
     const formData = new FormData(this);
-    const itemId = {% if item %}{{ item.id|escapejs }}{% else %}null{% endif %};
+    const itemId = {% if item %}{{ item.id }}{% else %}null{% endif %};
     
     if (!itemId) {
         showToast('error', 'Cannot create user: Item not yet saved');

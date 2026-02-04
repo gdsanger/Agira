@@ -243,7 +243,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             str: The short code if exists, empty string if no primary org or no short code
         """
         try:
-            primary_org = self.user_organisations.select_related('organisation').get(is_primary=True)
+            primary_org = self.user_organisations.get(is_primary=True)
             return primary_org.organisation.short if primary_org.organisation.short else ''
         except UserOrganisation.DoesNotExist:
             return ''
