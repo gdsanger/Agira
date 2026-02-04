@@ -357,3 +357,81 @@ class PublicLogoViewTestCase(TestCase):
         response = self.client.get(reverse('public-logo'))
         
         self.assertEqual(response.status_code, 404)
+
+
+class GlobalSettingsIntegrationTestCase(TestCase):
+    """Integration tests for the complete Global Settings workflow"""
+    
+    def setUp(self):
+        """Set up test data"""
+        # Clear any existing settings
+        GlobalSettings.objects.all().delete()
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            email='test@example.com'
+        )
+        
+        # Set up client
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+    
+    def test_complete_logo_upload_workflow(self):
+        """Test the complete workflow: initial setup -> logo upload -> public access"""
+        # Step 1: Get initial settings page
+        response = self.client.get(reverse('global-settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Global Settings')
+        
+        # Step 2: Set up initial settings
+        settings = GlobalSettings.get_instance()
+        settings.company_name = 'Test Company Inc.'
+        settings.email = 'contact@testcompany.com'
+        settings.address = '123 Test Street\n12345 Test City\nTest Country'
+        settings.base_url = 'https://testcompany.com'
+        settings.save()
+        
+        # Step 3: Upload a logo (simulating the form submission with empty other fields)
+        image_content = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+        test_image = SimpleUploadedFile(
+            'company_logo.gif',
+            image_content,
+            content_type='image/gif'
+        )
+        
+        response = self.client.post(reverse('global-settings-update'), {
+            'company_name': '',  # Empty - should keep existing
+            'email': '',  # Empty - should keep existing
+            'address': '',  # Empty - should keep existing
+            'base_url': '',  # Empty - should keep existing
+            'logo': test_image
+        })
+        
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('HX-Trigger', response)
+        
+        # Step 4: Verify settings were preserved and logo was uploaded
+        settings.refresh_from_db()
+        self.assertEqual(settings.company_name, 'Test Company Inc.')
+        self.assertEqual(settings.email, 'contact@testcompany.com')
+        self.assertTrue(settings.logo)
+        self.assertIn('company_logo', settings.logo.name)
+        
+        # Step 5: Verify public logo endpoint works without authentication
+        self.client.logout()
+        response = self.client.get(reverse('public-logo'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/gif')
+        
+        # Step 6: Verify detail view shows the logo
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('global-settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, settings.logo.url)
+        
+        # Clean up
+        if settings.logo:
+            settings.logo.delete()
