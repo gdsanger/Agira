@@ -791,6 +791,21 @@ def item_detail(request, item_id):
         status=ReleaseStatus.CLOSED
     ).order_by('-version')
     
+    # Get requester's primary organisation short code
+    requester_org_short = None
+    if item.requester:
+        try:
+            primary_org = UserOrganisation.objects.select_related('organisation').get(
+                user=item.requester,
+                is_primary=True
+            )
+            requester_org_short = primary_org.organisation.short if primary_org.organisation.short else None
+        except UserOrganisation.DoesNotExist:
+            requester_org_short = None
+    
+    # Get all organisations for quick-create user modal
+    organisations = Organisation.objects.all().order_by('name')
+    
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
     
@@ -800,6 +815,8 @@ def item_detail(request, item_id):
         'users': users,
         'projects': projects,
         'releases': releases,
+        'requester_org_short': requester_org_short,
+        'organisations': organisations,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
     }
@@ -874,6 +891,90 @@ def item_update_intern(request, item_id):
         return HttpResponse(status=200)
     except Exception as e:
         return HttpResponse(status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_quick_create_user(request, item_id):
+    """Quick create a user and set as requester for an item."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get form data
+    name = request.POST.get('name', '').strip()
+    email = request.POST.get('email', '').strip()
+    organization_id = request.POST.get('organization_id', '').strip()
+    
+    # Validate required fields
+    if not name:
+        return JsonResponse({'success': False, 'error': 'Name is required'}, status=400)
+    if not email:
+        return JsonResponse({'success': False, 'error': 'Email is required'}, status=400)
+    if not organization_id:
+        return JsonResponse({'success': False, 'error': 'Organization is required'}, status=400)
+    
+    try:
+        # Get organization
+        organization = get_object_or_404(Organisation, id=organization_id)
+        
+        # Generate username from email
+        username = email.split('@')[0]
+        
+        # Check if username already exists, if so, append a number
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        
+        # Check if email already exists
+        if User.objects.filter(email=email).exists():
+            return JsonResponse({'success': False, 'error': f'A user with email {email} already exists'}, status=400)
+        
+        # Create user with transaction to ensure atomicity
+        with transaction.atomic():
+            # Create the user
+            user = User.objects.create(
+                username=username,
+                email=email,
+                name=name,
+                role=UserRole.USER,
+                active=True
+            )
+            
+            # Set a default password (user will need to reset it)
+            user.set_unusable_password()
+            user.save()
+            
+            # Create primary organization relationship
+            UserOrganisation.objects.create(
+                user=user,
+                organisation=organization,
+                role=UserRole.USER,
+                is_primary=True
+            )
+            
+            # Set the user as requester for the item
+            old_requester = item.requester.name if item.requester else 'None'
+            item.requester = user
+            item.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='item.field_changed',
+                target=item,
+                actor=request.user,
+                summary=f'Changed requester from {old_requester} to {user.name} (quick created)'
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'User {name} created successfully and set as requester',
+                'user_id': user.id
+            })
+    except Exception as e:
+        logger.error(f'Error creating user: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 @login_required
