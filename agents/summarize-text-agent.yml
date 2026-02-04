@@ -1,7 +1,7 @@
 name: summarize-text-agent
 description: Erstellt eine prägnante Zusammenfassung eines Textes in deutscher Sprache.
 provider: OpenAI
-model: gpt-4o
+model: gpt-5.2
 role: Du bist ein Experte für das Erstellen prägnanter und informativer Zusammenfassungen.
 task: "Du erhältst einen Text und sollst daraus eine Zusammenfassung erstellen.\r\n\
   \r\nAnforderungen an die Zusammenfassung:\r\n- Fasse die wichtigsten Punkte und\
