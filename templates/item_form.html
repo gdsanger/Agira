@@ -1100,7 +1100,7 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
     e.preventDefault();
     
     const formData = new FormData(this);
-    const itemId = {% if item %}{{ item.id }}{% else %}null{% endif %};
+    const itemId = {% if item %}{{ item.id|escapejs }}{% else %}null{% endif %};
     
     if (!itemId) {
         showToast('error', 'Cannot create user: Item not yet saved');

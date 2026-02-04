@@ -2930,7 +2930,10 @@ def item_create(request):
         projects = Project.objects.all().order_by('name')
         item_types = ItemType.objects.filter(is_active=True).order_by('name')
         organisations = Organisation.objects.all().order_by('name')
-        users = User.objects.all().order_by('name')
+        # Prefetch user organizations for efficient org short code lookup in template
+        users = User.objects.prefetch_related(
+            'user_organisations__organisation'
+        ).all().order_by('name')
         statuses = ItemStatus.choices
         
         # Auto-populate default values for requester and organisation
@@ -3097,7 +3100,10 @@ def item_edit(request, item_id):
         projects = Project.objects.all().order_by('name')
         item_types = ItemType.objects.filter(is_active=True).order_by('name')
         organisations = Organisation.objects.all().order_by('name')
-        users = User.objects.all().order_by('name')
+        # Prefetch user organizations for efficient org short code lookup in template
+        users = User.objects.prefetch_related(
+            'user_organisations__organisation'
+        ).all().order_by('name')
         statuses = ItemStatus.choices
         
         # Get releases for the current project
