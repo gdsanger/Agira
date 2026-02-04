@@ -1114,8 +1114,10 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 // Duration to display success toast before page reload
 const TOAST_DISPLAY_DURATION = 800; // milliseconds
 
-// Note: Using 'function' syntax (not arrow function) to get proper 'this' binding
-// 'this' refers to the form element, allowing us to access form context and methods
+// Note: Using function expression (not arrow function) for proper 'this' binding
+// Arrow functions lexically bind 'this' from enclosing scope, whereas function expressions
+// receive 'this' from the event listener, which is bound to the form element.
+// This allows access to form context (e.g., this.reset(), this.getAttribute())
 document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', function(e) {
     e.preventDefault();
     
@@ -1151,7 +1153,10 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
             // Reset form
             this.reset();
             
-            // Brief delay to allow success toast to be visible before page reload
+            // Page reload approach: Simple but discards unsaved form changes
+            // Trade-off: Ensures all data (including org short codes) is fresh from database
+            // Alternative would be dynamic dropdown update, but adds complexity
+            // Note: In edit mode, item already exists, so risk of data loss is limited
             setTimeout(() => {
                 window.location.reload();
             }, TOAST_DISPLAY_DURATION);
