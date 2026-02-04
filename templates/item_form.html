@@ -1069,7 +1069,11 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
                 <h5 class="modal-title" id="quickCreateUserModalLabel">Quick Create User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="quickCreateUserFormEdit">
+            <form id="quickCreateUserFormEdit" 
+                  {% if item %}
+                  data-item-id="{{ item.id }}"
+                  data-create-url="{% url 'item-quick-create-user' item.id %}"
+                  {% endif %}>
                 {% csrf_token %}
                 <div class="modal-body">
                     <div class="mb-3">
@@ -1105,14 +1109,19 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
     e.preventDefault();
     
     const formData = new FormData(this);
-    const itemId = {% if item %}{{ item.id }}{% else %}null{% endif %};
+    // Get item ID from form's data attribute (safer than template interpolation)
+    const form = document.getElementById('quickCreateUserFormEdit');
+    const itemId = form.getAttribute('data-item-id');
     
     if (!itemId) {
         showToast('error', 'Cannot create user: Item not yet saved');
         return;
     }
     
-    fetch(`/items/${itemId}/quick-create-user/`, {
+    // Use data attribute for URL to maintain consistency with Django URL config
+    const createUrl = form.getAttribute('data-create-url');
+    
+    fetch(createUrl, {
         method: 'POST',
         body: formData,
         headers: {
@@ -1132,9 +1141,10 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
             this.reset();
             
             // Reload page to show the updated requester with proper org short code
+            // Small delay to allow toast to be visible before reload
             setTimeout(() => {
                 window.location.reload();
-            }, 1000);
+            }, 800);
         } else {
             showToast('error', data.error || 'Failed to create user');
         }
