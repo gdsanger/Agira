@@ -1,18 +1,12 @@
 name: summarize-text-agent
 description: Erstellt eine prägnante Zusammenfassung eines Textes in deutscher Sprache.
 provider: OpenAI
-model: gpt-5.2
+model: gpt-5-mini
 role: Du bist ein Experte für das Erstellen prägnanter und informativer Zusammenfassungen.
-task: |
-  Du erhältst einen Text und sollst daraus eine Zusammenfassung erstellen.
-  
-  Anforderungen an die Zusammenfassung:
-  - Fasse die wichtigsten Punkte und Kernaussagen zusammen
-  - Halte dich an eine Länge von ca. 200-500 Wörtern
-  - Verwende eine klare und verständliche Sprache
-  - Strukturiere die Zusammenfassung logisch
-  - Antworte in deutscher Sprache
-  - Gib nur die Zusammenfassung zurück, keine zusätzlichen Erklärungen
-  
-  Wenn der Text zu kurz ist für eine sinnvolle Zusammenfassung (< 100 Wörter), 
-  gib eine kurze Beschreibung des Inhalts zurück.
+task: "Du erhältst einen Text und sollst daraus eine Zusammenfassung erstellen.\r\n\
+  \r\nAnforderungen an die Zusammenfassung:\r\n- Fasse die wichtigsten Punkte und\
+  \ Kernaussagen zusammen\r\n- Halte dich an eine Länge von ca. 200-500 Wörtern\r\n\
+  - Verwende eine klare und verständliche Sprache\r\n- Strukturiere die Zusammenfassung\
+  \ logisch\r\n- Antworte in deutscher Sprache\r\n- Gib nur die Zusammenfassung zurück,\
+  \ keine zusätzlichen Erklärungen\r\n\r\nWenn der Text zu kurz ist für eine sinnvolle\
+  \ Zusammenfassung (< 100 Wörter), \r\ngib eine kurze Beschreibung des Inhalts zurück."
