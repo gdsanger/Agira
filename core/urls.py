@@ -75,6 +75,7 @@ urlpatterns = [
     path('items/attachments/<int:attachment_id>/delete/', views.item_delete_attachment, name='item-delete-attachment'),
     path('items/attachments/<int:attachment_id>/view/', views.item_view_attachment, name='item-view-attachment'),
     path('items/attachments/<int:attachment_id>/download/', views.item_download_attachment, name='item-download-attachment'),
+    path('attachments/<int:attachment_id>/ai-summary/', views.attachment_ai_summary, name='attachment-ai-summary'),
     path('items/<int:item_id>/tabs/comments/', views.item_comments_tab, name='item-comments-tab'),
     path('items/<int:item_id>/tabs/attachments/', views.item_attachments_tab, name='item-attachments-tab'),
     path('items/<int:item_id>/tabs/activity/', views.item_activity_tab, name='item-activity-tab'),

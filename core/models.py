@@ -782,6 +782,7 @@ class Attachment(models.Model):
     sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     storage_path = models.CharField(max_length=1000)
     is_deleted = models.BooleanField(default=False)
+    file_type = models.CharField(max_length=20, blank=True, db_index=True, help_text="File type determined from extension (e.g., PDF, DOCX, MD)")
     
     # Email attachment metadata
     content_id = models.CharField(max_length=500, blank=True, help_text="Content-ID for inline email attachments (e.g., 'image001.png@01D9...')")
@@ -802,6 +803,115 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"{self.original_name} (ID: {self.id})"
+    
+    def determine_file_type(self) -> str:
+        """
+        Determine file type from filename extension or content_type.
+        
+        Returns:
+            String representing the file type (e.g., 'PDF', 'DOCX', 'MD')
+        """
+        import os
+        
+        # Extract extension from original_name
+        if self.original_name:
+            _, ext = os.path.splitext(self.original_name.lower())
+            ext = ext.lstrip('.')
+            
+            # Map common extensions to display names
+            extension_map = {
+                'pdf': 'PDF',
+                'doc': 'DOC',
+                'docx': 'DOCX',
+                'xls': 'XLS',
+                'xlsx': 'XLSX',
+                'ppt': 'PPT',
+                'pptx': 'PPTX',
+                'txt': 'TXT',
+                'md': 'MD',
+                'markdown': 'MD',
+                'html': 'HTML',
+                'htm': 'HTML',
+                'xml': 'XML',
+                'json': 'JSON',
+                'csv': 'CSV',
+                'zip': 'ZIP',
+                'rar': 'RAR',
+                '7z': '7Z',
+                'tar': 'TAR',
+                'gz': 'GZ',
+                'jpg': 'JPG',
+                'jpeg': 'JPG',
+                'png': 'PNG',
+                'gif': 'GIF',
+                'bmp': 'BMP',
+                'svg': 'SVG',
+                'mp3': 'MP3',
+                'mp4': 'MP4',
+                'avi': 'AVI',
+                'mov': 'MOV',
+                'wav': 'WAV',
+                'py': 'PY',
+                'js': 'JS',
+                'java': 'JAVA',
+                'c': 'C',
+                'cpp': 'CPP',
+                'cs': 'CS',
+                'go': 'GO',
+                'rb': 'RB',
+                'php': 'PHP',
+                'sql': 'SQL',
+                'sh': 'SH',
+                'bat': 'BAT',
+                'ps1': 'PS1',
+            }
+            
+            if ext in extension_map:
+                return extension_map[ext]
+            elif ext:
+                # Return uppercase version of unknown extensions
+                return ext.upper()[:10]  # Limit to 10 chars
+        
+        # Fallback to content_type if no extension
+        if self.content_type:
+            # Extract main type from MIME type
+            mime_map = {
+                'application/pdf': 'PDF',
+                'application/msword': 'DOC',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+                'application/vnd.ms-excel': 'XLS',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+                'application/vnd.ms-powerpoint': 'PPT',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+                'text/plain': 'TXT',
+                'text/markdown': 'MD',
+                'text/html': 'HTML',
+                'text/xml': 'XML',
+                'application/json': 'JSON',
+                'text/csv': 'CSV',
+                'application/zip': 'ZIP',
+                'image/jpeg': 'JPG',
+                'image/png': 'PNG',
+                'image/gif': 'GIF',
+                'image/svg+xml': 'SVG',
+            }
+            
+            if self.content_type in mime_map:
+                return mime_map[self.content_type]
+            
+            # Try to extract from content_type
+            if '/' in self.content_type:
+                main_type = self.content_type.split('/')[0]
+                if main_type in ('image', 'audio', 'video'):
+                    return main_type.upper()[:10]
+        
+        return 'FILE'  # Default fallback
+    
+    def save(self, *args, **kwargs):
+        """Override save to auto-populate file_type if not set."""
+        if not self.file_type:
+            self.file_type = self.determine_file_type()
+        super().save(*args, **kwargs)
 
 
 class AttachmentLink(models.Model):
