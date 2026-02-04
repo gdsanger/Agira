@@ -301,15 +301,22 @@
                 <!-- Requester -->
                 <div class="mb-3">
                     <label for="requester" class="form-label">Requester</label>
-                    <select class="form-select" id="requester" name="requester" form="itemForm">
-                        <option value="">None</option>
-                        {% for user in users %}
-                        <option value="{{ user.id }}" 
-                                {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
-                            {{ user.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" id="requester" name="requester" form="itemForm">
+                            <option value="">None</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" 
+                                    {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
+                                {{ user.name }}{% with org_short=user.get_primary_org_short %}{% if org_short %} ({{ org_short }}){% else %} (N/A){% endif %}{% endwith %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickCreateUserModal" title="Quick Create User">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Assigned To -->
@@ -1048,5 +1055,105 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 {% endif %}
 <!-- Include mail confirmation modal -->
 {% include 'partials/mail_confirmation_modal.html' %}
+
+<!-- Quick Create User Modal -->
+<div class="modal fade" id="quickCreateUserModal" tabindex="-1" aria-labelledby="quickCreateUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickCreateUserModalLabel">Quick Create User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="quickCreateUserFormEdit">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="quick_user_name_edit" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="quick_user_name_edit" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quick_user_email_edit" class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="quick_user_email_edit" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quick_user_organization_edit" class="form-label">Primary Organization *</label>
+                        <select class="form-select" id="quick_user_organization_edit" name="organization_id" required>
+                            <option value="">Select an organization...</option>
+                            {% for org in organisations %}
+                            <option value="{{ org.id }}">{{ org.name }}{% if org.short %} ({{ org.short }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Quick Create User Handler for Edit Form
+document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const itemId = {% if item %}'{{ item.id }}'{% else %}null{% endif %};
+    
+    if (!itemId) {
+        showToast('error', 'Cannot create user: Item not yet saved');
+        return;
+    }
+    
+    fetch(`/items/${itemId}/quick-create-user/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('success', data.message);
+            
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('quickCreateUserModal'));
+            modal.hide();
+            
+            // Add the new user to the requester dropdown
+            const requesterSelect = document.getElementById('requester');
+            const option = document.createElement('option');
+            option.value = data.user_id;
+            option.selected = true;
+            
+            // Fetch the user details to get the org short code
+            // For now, just use the name without org (will be shown after page reload)
+            const userName = document.getElementById('quick_user_name_edit').value;
+            const orgSelect = document.getElementById('quick_user_organization_edit');
+            const selectedOrg = orgSelect.options[orgSelect.selectedIndex].text;
+            option.textContent = `${userName} ${selectedOrg}`;
+            
+            requesterSelect.appendChild(option);
+            
+            // Reset form
+            this.reset();
+            
+            // Reload page after a short delay to show the updated requester with proper org short
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to create user');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('error', 'Network error while creating user');
+    });
+});
+</script>
 
 {% endblock %}
