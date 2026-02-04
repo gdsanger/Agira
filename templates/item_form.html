@@ -1114,6 +1114,8 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 // Duration to display success toast before page reload
 const TOAST_DISPLAY_DURATION = 800; // milliseconds
 
+// Note: Using 'function' syntax (not arrow function) to get proper 'this' binding
+// 'this' refers to the form element, allowing us to access form context and methods
 document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', function(e) {
     e.preventDefault();
     
@@ -1139,9 +1141,12 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
         if (data.success) {
             showToast('success', data.message);
             
-            // Close the modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('quickCreateUserModal'));
-            modal.hide();
+            // Close the modal if it's open
+            const modalEl = document.getElementById('quickCreateUserModal');
+            const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+            if (modal) {
+                modal.hide();
+            }
             
             // Reset form
             this.reset();
