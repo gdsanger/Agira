@@ -119,6 +119,96 @@ def _serialize_item(item) -> Dict[str, Any]:
     }
 
 
+def _extract_plain_text(file_path: str, encoding: str = 'utf-8') -> Optional[str]:
+    """
+    Extract text from plain text files.
+    
+    Handles: .json, .html, .py, .xml, .cs, .txt, .yml
+    
+    Args:
+        file_path: Path to the file
+        encoding: Text encoding (default: utf-8)
+        
+    Returns:
+        Extracted text content, or None if extraction fails
+    """
+    try:
+        with open(file_path, 'r', encoding=encoding) as f:
+            return f.read()
+    except UnicodeDecodeError:
+        # Try with latin-1 as fallback
+        try:
+            with open(file_path, 'r', encoding='latin-1') as f:
+                return f.read()
+        except Exception as e:
+            logger.warning(f"Could not decode file {file_path} as UTF-8 or latin-1: {e}")
+            return None
+    except Exception as e:
+        logger.error(f"Error reading plain text file {file_path}: {e}")
+        return None
+
+
+def _extract_pdf_text(file_path: str) -> Optional[str]:
+    """
+    Extract text from PDF files using PyPDF2.
+    
+    Args:
+        file_path: Path to the PDF file
+        
+    Returns:
+        Extracted text content, or None if extraction fails
+    """
+    try:
+        from PyPDF2 import PdfReader
+        
+        reader = PdfReader(file_path)
+        text_parts = []
+        
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+        
+        return '\n\n'.join(text_parts) if text_parts else None
+        
+    except ImportError:
+        logger.error("PyPDF2 library not available for PDF text extraction")
+        return None
+    except Exception as e:
+        logger.warning(f"Error extracting text from PDF {file_path}: {e}")
+        return None
+
+
+def _extract_docx_text(file_path: str) -> Optional[str]:
+    """
+    Extract text from DOCX files using python-docx.
+    
+    Args:
+        file_path: Path to the DOCX file
+        
+    Returns:
+        Extracted text content, or None if extraction fails
+    """
+    try:
+        from docx import Document
+        
+        doc = Document(file_path)
+        text_parts = []
+        
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                text_parts.append(paragraph.text)
+        
+        return '\n\n'.join(text_parts) if text_parts else None
+        
+    except ImportError:
+        logger.error("python-docx library not available for DOCX text extraction")
+        return None
+    except Exception as e:
+        logger.warning(f"Error extracting text from DOCX {file_path}: {e}")
+        return None
+
+
 def _serialize_comment(comment) -> Dict[str, Any]:
     """Serialize an ItemComment instance."""
     # Build title
@@ -153,8 +243,12 @@ def _get_attachment_text_content(attachment) -> str:
     """
     Get text content for an attachment.
     
-    For markdown files (.md), reads and returns the actual file content.
-    For other files, returns a description with metadata.
+    Extracts and returns actual file content for supported file types:
+    - Plain text: .md, .json, .html, .py, .xml, .cs, .txt, .yml
+    - PDF: .pdf
+    - DOCX: .docx
+    
+    For unsupported files, returns a description with metadata.
     
     Args:
         attachment: Attachment instance
@@ -162,42 +256,53 @@ def _get_attachment_text_content(attachment) -> str:
     Returns:
         Text content for indexing in Weaviate
     """
-    # Check if this is a markdown file
-    is_markdown = (
-        attachment.content_type == 'text/markdown' or
-        (attachment.original_name and attachment.original_name.lower().endswith('.md'))
-    )
+    # Determine file extension
+    filename = attachment.original_name or ''
+    file_extension = filename.lower().split('.')[-1] if '.' in filename else ''
     
-    if is_markdown:
-        # Try to read the markdown file content
+    # Define supported plain text extensions
+    plain_text_extensions = {'md', 'json', 'html', 'py', 'xml', 'cs', 'txt', 'yml', 'yaml'}
+    
+    # Check if file type is supported for content extraction
+    is_plain_text = file_extension in plain_text_extensions
+    is_pdf = file_extension == 'pdf'
+    is_docx = file_extension == 'docx'
+    
+    # If file type supports content extraction, try to extract it
+    if is_plain_text or is_pdf or is_docx:
         try:
             storage_service = AttachmentStorageService()
             file_path = storage_service.get_file_path(attachment)
             
-            # Read file content
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Extract content based on file type
+            content = None
             
-            # Return the full markdown content
-            return content
+            if is_plain_text:
+                content = _extract_plain_text(file_path)
+            elif is_pdf:
+                content = _extract_pdf_text(file_path)
+            elif is_docx:
+                content = _extract_docx_text(file_path)
+            
+            # If extraction succeeded, return the content
+            if content:
+                return content
+            
+            # If extraction returned None/empty, fall back to filename
+            logger.warning(
+                f"Content extraction for {filename} (attachment {attachment.id}) "
+                f"returned empty result, using filename fallback"
+            )
             
         except FileNotFoundError as e:
             logger.warning(
-                f"Markdown file not found for attachment {attachment.id} "
+                f"File not found for attachment {attachment.id} "
                 f"(path: {attachment.storage_path}): {e}"
             )
-            # Fall back to filename-based text
-            return f"Markdown file: {attachment.original_name} (content not available)"
-        except UnicodeDecodeError:
-            logger.warning(f"Could not decode markdown file for attachment {attachment.id} as UTF-8")
-            # Fall back to filename-based text
-            return f"Markdown file: {attachment.original_name} (encoding error)"
         except Exception as e:
-            logger.error(f"Error reading markdown file for attachment {attachment.id}: {e}")
-            # Fall back to filename-based text
-            return f"Markdown file: {attachment.original_name} (error reading file)"
+            logger.error(f"Error extracting content from {filename} (attachment {attachment.id}): {e}")
     
-    # For non-markdown files, use the old behavior with metadata
+    # For unsupported files or when extraction fails, use filename-based text
     text = f"Attachment: {attachment.original_name}"
     if attachment.content_type:
         text += f" ({attachment.content_type})"

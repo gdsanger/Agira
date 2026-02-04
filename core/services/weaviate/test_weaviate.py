@@ -1048,6 +1048,390 @@ Here is some text in section 2.
         self.assertIn('application/pdf', result['text'])
         self.assertIn(f'Size: {len(content)} bytes', result['text'])
     
+    def test_serialize_json_attachment(self):
+        """Test serializing JSON attachment extracts content."""
+        import io
+        import json
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create JSON content
+        json_data = {
+            "name": "Test Project",
+            "version": "1.0.0",
+            "description": "A test JSON file for attachment indexing"
+        }
+        json_content = json.dumps(json_data, indent=2)
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(json_content.encode('utf-8'))
+        file_obj.name = 'config.json'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual JSON content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'config.json')
+        self.assertIn('Test Project', result['text'])
+        self.assertIn('1.0.0', result['text'])
+        self.assertIn('A test JSON file for attachment indexing', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_python_attachment(self):
+        """Test serializing Python file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create Python content
+        python_content = '''def hello_world():
+    """Print hello world message."""
+    print("Hello, World!")
+    return True
+
+if __name__ == "__main__":
+    hello_world()
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(python_content.encode('utf-8'))
+        file_obj.name = 'script.py'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual Python content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'script.py')
+        self.assertIn('def hello_world():', result['text'])
+        self.assertIn('Print hello world message', result['text'])
+        self.assertIn('Hello, World!', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_xml_attachment(self):
+        """Test serializing XML file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create XML content
+        xml_content = '''<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <name>Test Project</name>
+    <version>1.0.0</version>
+    <description>A test XML configuration file</description>
+</project>
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(xml_content.encode('utf-8'))
+        file_obj.name = 'config.xml'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual XML content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'config.xml')
+        self.assertIn('<project>', result['text'])
+        self.assertIn('Test Project', result['text'])
+        self.assertIn('A test XML configuration file', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_yaml_attachment(self):
+        """Test serializing YAML file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create YAML content
+        yaml_content = '''name: Test Project
+version: 1.0.0
+description: A test YAML configuration file
+dependencies:
+  - python>=3.8
+  - django>=4.0
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(yaml_content.encode('utf-8'))
+        file_obj.name = 'config.yml'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual YAML content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'config.yml')
+        self.assertIn('name: Test Project', result['text'])
+        self.assertIn('1.0.0', result['text'])
+        self.assertIn('A test YAML configuration file', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_html_attachment(self):
+        """Test serializing HTML file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create HTML content
+        html_content = '''<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Test HTML Document</h1>
+    <p>This is a test HTML file for attachment indexing.</p>
+</body>
+</html>
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(html_content.encode('utf-8'))
+        file_obj.name = 'index.html'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual HTML content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'index.html')
+        self.assertIn('Test HTML Document', result['text'])
+        self.assertIn('This is a test HTML file for attachment indexing', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_txt_attachment(self):
+        """Test serializing TXT file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create TXT content
+        txt_content = '''This is a plain text file.
+
+It contains multiple lines of text.
+Each line should be indexed in Weaviate.
+
+This helps with searching through documentation.
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(txt_content.encode('utf-8'))
+        file_obj.name = 'notes.txt'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual TXT content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'notes.txt')
+        self.assertIn('This is a plain text file', result['text'])
+        self.assertIn('indexed in Weaviate', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_cs_attachment(self):
+        """Test serializing C# file attachment extracts content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create C# content
+        cs_content = '''using System;
+
+namespace TestNamespace
+{
+    public class HelloWorld
+    {
+        public static void Main(string[] args)
+        {
+            Console.WriteLine("Hello, World!");
+        }
+    }
+}
+'''
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(cs_content.encode('utf-8'))
+        file_obj.name = 'Program.cs'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains the actual C# content
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'Program.cs')
+        self.assertIn('namespace TestNamespace', result['text'])
+        self.assertIn('public class HelloWorld', result['text'])
+        self.assertIn('Hello, World!', result['text'])
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_pdf_attachment_with_text(self):
+        """Test serializing PDF attachment extracts text content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create a simple PDF with text using reportlab (already in requirements)
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import letter
+        
+        # Create PDF in memory
+        pdf_buffer = io.BytesIO()
+        c = canvas.Canvas(pdf_buffer, pagesize=letter)
+        c.drawString(100, 750, "Test PDF Document")
+        c.drawString(100, 730, "This is a test PDF file for attachment indexing.")
+        c.drawString(100, 710, "It should extract this text content.")
+        c.showPage()
+        c.save()
+        
+        # Get PDF content
+        pdf_buffer.seek(0)
+        
+        storage = AttachmentStorageService()
+        pdf_buffer.name = 'document.pdf'
+        
+        attachment = storage.store_attachment(
+            file=pdf_buffer,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains extracted PDF text
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'document.pdf')
+        # PDF text extraction should work
+        self.assertIn('Test PDF Document', result['text'])
+        self.assertIn('test PDF file', result['text'])
+        # Should NOT contain the old filename-based text format
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_docx_attachment_with_text(self):
+        """Test serializing DOCX attachment extracts text content."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        from docx import Document
+        
+        # Create a DOCX file in memory
+        doc = Document()
+        doc.add_heading('Test DOCX Document', 0)
+        doc.add_paragraph('This is a test DOCX file for attachment indexing.')
+        doc.add_paragraph('It should extract this text content from all paragraphs.')
+        
+        # Save to BytesIO
+        docx_buffer = io.BytesIO()
+        doc.save(docx_buffer)
+        docx_buffer.seek(0)
+        
+        storage = AttachmentStorageService()
+        docx_buffer.name = 'document.docx'
+        
+        attachment = storage.store_attachment(
+            file=docx_buffer,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains extracted DOCX text
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'document.docx')
+        self.assertIn('Test DOCX Document', result['text'])
+        self.assertIn('test DOCX file for attachment indexing', result['text'])
+        self.assertIn('extract this text content', result['text'])
+        # Should NOT contain the old filename-based text format
+        self.assertNotIn('Attachment:', result['text'])
+    
+    def test_serialize_unsupported_attachment_uses_fallback(self):
+        """Test that unsupported file types use filename fallback."""
+        import io
+        from core.models import Attachment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create a file with unsupported extension
+        content = b"Binary content"
+        
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(content)
+        file_obj.name = 'image.png'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        attachment.content_type = 'image/png'
+        attachment.save()
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify the text field contains metadata fallback
+        self.assertEqual(result['type'], 'attachment')
+        self.assertEqual(result['title'], 'image.png')
+        self.assertIn('Attachment: image.png', result['text'])
+        self.assertIn('image/png', result['text'])
+    
     def test_serialize_markdown_by_extension(self):
         """Test serializing markdown file identified by .md extension."""
         import io
