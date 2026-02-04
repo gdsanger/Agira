@@ -307,7 +307,10 @@
                             {% for user in users %}
                             <option value="{{ user.id }}" 
                                     {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
-                                {{ user.name }}{% with org_short=user.get_primary_org_short %}{% if org_short %} ({{ org_short }}){% else %} (N/A){% endif %}{% endwith %}
+                                {{ user.name }}
+                                {% with org_short=user.get_primary_org_short %}
+                                    {% if org_short %} ({{ org_short }}){% else %} (N/A){% endif %}
+                                {% endwith %}
                             </option>
                             {% endfor %}
                         </select>
