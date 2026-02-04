@@ -196,6 +196,15 @@ CACHES = {
     }
 }
 
+# Redis Configuration for AI Agent Response Cache
+REDIS_CACHE_ENABLED = os.getenv('REDIS_CACHE_ENABLED', 'False') == 'True'
+REDIS_CACHE_HOST = os.getenv('REDIS_CACHE_HOST', 'localhost')
+REDIS_CACHE_PORT = int(os.getenv('REDIS_CACHE_PORT', '6379'))
+REDIS_CACHE_DB = int(os.getenv('REDIS_CACHE_DB', '0'))
+REDIS_CACHE_PASSWORD = os.getenv('REDIS_CACHE_PASSWORD', None)
+REDIS_CACHE_SOCKET_TIMEOUT = int(os.getenv('REDIS_CACHE_SOCKET_TIMEOUT', '5'))
+REDIS_CACHE_SOCKET_CONNECT_TIMEOUT = int(os.getenv('REDIS_CACHE_SOCKET_CONNECT_TIMEOUT', '5'))
+
 # Weaviate Search Configuration
 WEAVIATE_SEARCH_LIMIT = int(os.getenv('WEAVIATE_SEARCH_LIMIT', '25'))
 WEAVIATE_SEARCH_ALPHA = float(os.getenv('WEAVIATE_SEARCH_ALPHA', '0.5'))
