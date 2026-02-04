@@ -7360,10 +7360,23 @@ def global_settings_update(request):
     settings = GlobalSettings.get_instance()
     
     try:
-        settings.company_name = request.POST.get('company_name', settings.company_name)
-        settings.email = request.POST.get('email', settings.email)
-        settings.address = request.POST.get('address', settings.address)
-        settings.base_url = request.POST.get('base_url', settings.base_url)
+        # Update fields only if they have a value (not empty string)
+        # This allows partial updates and prevents clearing fields when only uploading a logo
+        company_name = request.POST.get('company_name', '').strip()
+        if company_name:
+            settings.company_name = company_name
+        
+        email = request.POST.get('email', '').strip()
+        if email:
+            settings.email = email
+        
+        address = request.POST.get('address', '').strip()
+        if address:
+            settings.address = address
+        
+        base_url = request.POST.get('base_url', '').strip()
+        if base_url:
+            settings.base_url = base_url
         
         # Handle logo upload
         if 'logo' in request.FILES:
