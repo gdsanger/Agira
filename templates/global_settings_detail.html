@@ -31,6 +31,8 @@
             <div class="card-body">
                 <form hx-post="{% url 'global-settings-update' %}" 
                       hx-swap="none"
+                      hx-encoding="multipart/form-data"
+                      enctype="multipart/form-data"
                       hx-on::after-request="if(event.detail.successful) { showToast('Settings updated successfully', 'success'); location.reload(); }">
                     {% csrf_token %}
                     
