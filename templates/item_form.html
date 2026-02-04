@@ -301,15 +301,27 @@
                 <!-- Requester -->
                 <div class="mb-3">
                     <label for="requester" class="form-label">Requester</label>
-                    <select class="form-select" id="requester" name="requester" form="itemForm">
-                        <option value="">None</option>
-                        {% for user in users %}
-                        <option value="{{ user.id }}" 
-                                {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
-                            {{ user.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" id="requester" name="requester" form="itemForm">
+                            <option value="">None</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" 
+                                    {% if item and item.requester and item.requester.id == user.id or not item and default_requester and default_requester.id == user.id %}selected{% endif %}>
+                                {{ user.name }}
+                                {% with org_short=user.get_primary_org_short %}
+                                    {% if org_short %} ({{ org_short }}){% else %} (N/A){% endif %}
+                                {% endwith %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if item %}
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickCreateUserModal" title="Quick Create User">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z"/>
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
                 
                 <!-- Assigned To -->
@@ -1048,5 +1060,115 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 {% endif %}
 <!-- Include mail confirmation modal -->
 {% include 'partials/mail_confirmation_modal.html' %}
+
+<!-- Quick Create User Modal -->
+<div class="modal fade" id="quickCreateUserModal" tabindex="-1" aria-labelledby="quickCreateUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickCreateUserModalLabel">Quick Create User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <!-- Quick Create User Modal for Edit Form -->
+            <!-- Note: Form ID includes 'Edit' suffix to avoid collision with the form in item_detail.html -->
+            <form id="quickCreateUserFormEdit" 
+                  {% if item %}
+                  data-item-id="{{ item.id }}"
+                  data-create-url="{% url 'item-quick-create-user' item.id %}"
+                  {% endif %}>
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="quick_user_name_edit" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="quick_user_name_edit" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quick_user_email_edit" class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="quick_user_email_edit" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quick_user_organization_edit" class="form-label">Primary Organization *</label>
+                        <select class="form-select" id="quick_user_organization_edit" name="organization_id" required>
+                            <option value="">Select an organization...</option>
+                            {% for org in organisations %}
+                            <option value="{{ org.id }}">{{ org.name }}{% if org.short %} ({{ org.short }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Quick Create User Handler for Edit Form
+// Note: This form only exists on the edit page (when item exists),
+// so the optional chaining (?.) safely handles the create page case
+// Form ID includes 'Edit' suffix to avoid ID collision with item_detail.html
+
+// Duration to display success toast before page reload
+const TOAST_DISPLAY_DURATION = 800; // milliseconds
+
+// Note: Using function expression (not arrow function) for proper 'this' binding
+// Arrow functions lexically bind 'this' from enclosing scope, whereas function expressions
+// receive 'this' from the event listener, which is bound to the form element.
+// This allows access to form context (e.g., this.reset(), this.getAttribute())
+document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    // Get item ID and URL from form's data attributes (safer than template interpolation)
+    const itemId = this.getAttribute('data-item-id');
+    const createUrl = this.getAttribute('data-create-url');
+    
+    if (!itemId) {
+        showToast('error', 'Cannot create user: Item not yet saved');
+        return;
+    }
+    
+    fetch(createUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('success', data.message);
+            
+            // Close the modal if it's open
+            const modalEl = document.getElementById('quickCreateUserModal');
+            const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+            if (modal) {
+                modal.hide();
+            }
+            
+            // Reset form
+            this.reset();
+            
+            // Page reload approach: Simple but discards unsaved form changes
+            // Trade-off: Ensures all data (including org short codes) is fresh from database
+            // Alternative would be dynamic dropdown update, but adds complexity
+            // Note: In edit mode, item already exists, so risk of data loss is limited
+            setTimeout(() => {
+                window.location.reload();
+            }, TOAST_DISPLAY_DURATION);
+        } else {
+            showToast('error', data.error || 'Failed to create user');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('error', 'Network error while creating user');
+    });
+});
+</script>
 
 {% endblock %}

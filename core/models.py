@@ -234,6 +234,19 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.name} ({self.username})"
+    
+    def get_primary_org_short(self):
+        """
+        Get the short code of the user's primary organisation.
+        
+        Returns:
+            str: The short code if exists, empty string if no primary org or no short code
+        """
+        try:
+            primary_org = self.user_organisations.get(is_primary=True)
+            return primary_org.organisation.short if primary_org.organisation.short else ''
+        except UserOrganisation.DoesNotExist:
+            return ''
 
 
 class UserOrganisation(models.Model):
