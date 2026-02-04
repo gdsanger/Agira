@@ -123,7 +123,7 @@ def _extract_plain_text(file_path: str, encoding: str = 'utf-8') -> Optional[str
     """
     Extract text from plain text files.
     
-    Handles: .json, .html, .py, .xml, .cs, .txt, .yml
+    Handles: .json, .html, .py, .xml, .cs, .txt, .yml, .yaml
     
     Args:
         file_path: Path to the file
@@ -244,7 +244,7 @@ def _get_attachment_text_content(attachment) -> str:
     Get text content for an attachment.
     
     Extracts and returns actual file content for supported file types:
-    - Plain text: .md, .json, .html, .py, .xml, .cs, .txt, .yml
+    - Plain text: .md, .json, .html, .py, .xml, .cs, .txt, .yml, .yaml
     - PDF: .pdf
     - DOCX: .docx
     
