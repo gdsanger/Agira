@@ -474,6 +474,5 @@ REDIS_CACHE_SOCKET_CONNECT_TIMEOUT = int(os.getenv('REDIS_CACHE_SOCKET_CONNECT_T
 
 ## Weiterführende Informationen
 
-- Issue: gdsanger/Agira#[ISSUE_NUMBER]
 - Related: gdsanger/Agira#146
 - Local Backlog: /items/252/

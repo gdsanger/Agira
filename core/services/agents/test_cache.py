@@ -6,15 +6,11 @@ import hashlib
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase, override_settings
 
-from core.services.agents.cache import AgentCacheService
+from core.services.agents.cache import AgentCacheService, DEFAULT_TTL_SECONDS
 
 
 class AgentCacheServiceTestCase(TestCase):
     """Test cases for AgentCacheService functionality."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        pass
     
     @override_settings(REDIS_CACHE_ENABLED=False)
     def test_cache_disabled_when_redis_not_enabled(self):
@@ -139,7 +135,7 @@ class AgentCacheServiceTestCase(TestCase):
         config = cache_service.parse_cache_config(agent_data)
         
         self.assertFalse(config['enabled'])
-        self.assertEqual(config['ttl_seconds'], 7776000)  # 90 days
+        self.assertEqual(config['ttl_seconds'], DEFAULT_TTL_SECONDS)
         self.assertEqual(config['key_strategy'], 'content_hash')
         self.assertEqual(config['agent_version'], 1)
     
@@ -158,7 +154,7 @@ class AgentCacheServiceTestCase(TestCase):
         config = cache_service.parse_cache_config(agent_data)
         
         self.assertTrue(config['enabled'])
-        self.assertEqual(config['ttl_seconds'], 7776000)  # Default
+        self.assertEqual(config['ttl_seconds'], DEFAULT_TTL_SECONDS)
         self.assertEqual(config['key_strategy'], 'content_hash')  # Default
         self.assertEqual(config['agent_version'], 1)  # Default
     

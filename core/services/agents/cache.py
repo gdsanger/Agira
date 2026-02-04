@@ -14,6 +14,9 @@ from django.conf import settings
 # Module-level logger
 logger = logging.getLogger(__name__)
 
+# Default cache TTL (90 days in seconds)
+DEFAULT_TTL_SECONDS = 7776000
+
 
 class AgentCacheService:
     """
@@ -174,7 +177,7 @@ class AgentCacheService:
         # Apply defaults
         return {
             'enabled': cache_config.get('enabled', False),
-            'ttl_seconds': cache_config.get('ttl_seconds', 7776000),  # 90 days default
+            'ttl_seconds': cache_config.get('ttl_seconds', DEFAULT_TTL_SECONDS),
             'key_strategy': cache_config.get('key_strategy', 'content_hash'),
             'agent_version': cache_config.get('agent_version', 1)
         }
@@ -227,7 +230,7 @@ class AgentCacheService:
             return False
         
         agent_version = cache_config.get('agent_version', 1)
-        ttl_seconds = cache_config.get('ttl_seconds', 7776000)
+        ttl_seconds = cache_config.get('ttl_seconds', DEFAULT_TTL_SECONDS)
         
         cache_key = self.build_cache_key(agent_name, input_text, agent_version)
         
