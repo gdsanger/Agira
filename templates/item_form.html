@@ -1105,21 +1105,20 @@ document.addEventListener('DOMContentLoaded', loadActiveDetailTabEdit);
 
 <script>
 // Quick Create User Handler for Edit Form
+// Note: This form only exists on the edit page (when item exists),
+// so the optional chaining (?.) safely handles the create page case
 document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
-    // Get item ID from form's data attribute (safer than template interpolation)
-    const form = document.getElementById('quickCreateUserFormEdit');
-    const itemId = form.getAttribute('data-item-id');
+    // Get item ID and URL from form's data attributes (safer than template interpolation)
+    const itemId = this.getAttribute('data-item-id');
+    const createUrl = this.getAttribute('data-create-url');
     
     if (!itemId) {
         showToast('error', 'Cannot create user: Item not yet saved');
         return;
     }
-    
-    // Use data attribute for URL to maintain consistency with Django URL config
-    const createUrl = form.getAttribute('data-create-url');
     
     fetch(createUrl, {
         method: 'POST',
@@ -1140,11 +1139,11 @@ document.getElementById('quickCreateUserFormEdit')?.addEventListener('submit', f
             // Reset form
             this.reset();
             
-            // Reload page to show the updated requester with proper org short code
-            // Small delay to allow toast to be visible before reload
+            // Brief delay to allow success toast to be visible before page reload
+            const TOAST_DISPLAY_DURATION = 800; // milliseconds
             setTimeout(() => {
                 window.location.reload();
-            }, 800);
+            }, TOAST_DISPLAY_DURATION);
         } else {
             showToast('error', data.error || 'Failed to create user');
         }
