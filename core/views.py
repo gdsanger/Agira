@@ -995,6 +995,10 @@ def item_attachments_tab(request, item_id):
     """HTMX endpoint to load attachments tab."""
     item = get_object_or_404(Item, id=item_id)
     
+    # Get query parameters for filtering
+    search_query = request.GET.get('search', '').strip()
+    file_type_filter = request.GET.get('file_type', '').strip()
+    
     # Get attachments linked to this item
     content_type = ContentType.objects.get_for_model(Item)
     attachment_links = AttachmentLink.objects.filter(
@@ -1005,9 +1009,24 @@ def item_attachments_tab(request, item_id):
     
     attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
     
+    # Apply filename search filter
+    if search_query:
+        attachments = [a for a in attachments if search_query.lower() in a.original_name.lower()]
+    
+    # Apply file type filter
+    if file_type_filter:
+        attachments = [a for a in attachments if a.file_type == file_type_filter]
+    
+    # Get distinct file types for filter dropdown
+    all_attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    file_types = sorted(set(a.file_type for a in all_attachments if a.file_type))
+    
     context = {
         'item': item,
         'attachments': attachments,
+        'file_types': file_types,
+        'search_query': search_query,
+        'file_type_filter': file_type_filter,
     }
     return render(request, 'partials/item_attachments_tab.html', context)
 
@@ -2482,6 +2501,94 @@ def item_delete_attachment(request, attachment_id):
         return JsonResponse({'success': True, 'message': 'Attachment deleted successfully'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def attachment_ai_summary(request, attachment_id):
+    """
+    Generate AI summary for an attachment using text from Weaviate.
+    
+    Returns HTML for modal content showing the AI-generated summary.
+    """
+    from core.services.weaviate.client import is_available
+    from core.services.weaviate.service import fetch_object_by_type, exists_object
+    from core.services.agents import AgentService
+    
+    attachment = get_object_or_404(Attachment, id=attachment_id)
+    
+    # Check if Weaviate is available
+    if not is_available():
+        context = {
+            'attachment': attachment,
+            'error': 'Weaviate service is not configured or disabled.',
+            'available': False,
+        }
+        return render(request, 'partials/attachment_summary_modal_content.html', context)
+    
+    # Check if Weaviate object exists
+    if not exists_object('attachment', str(attachment_id)):
+        context = {
+            'attachment': attachment,
+            'error': 'This attachment has not been indexed in Weaviate yet.',
+            'available': True,
+            'exists': False,
+        }
+        return render(request, 'partials/attachment_summary_modal_content.html', context)
+    
+    try:
+        # Fetch Weaviate object to get text
+        obj_data = fetch_object_by_type('attachment', str(attachment_id))
+        
+        if not obj_data or 'text' not in obj_data:
+            context = {
+                'attachment': attachment,
+                'error': 'No text content found in Weaviate object.',
+                'available': True,
+                'exists': True,
+            }
+            return render(request, 'partials/attachment_summary_modal_content.html', context)
+        
+        text_content = obj_data['text']
+        
+        if not text_content or len(text_content.strip()) < 10:
+            context = {
+                'attachment': attachment,
+                'error': 'Text content is too short to summarize.',
+                'available': True,
+                'exists': True,
+            }
+            return render(request, 'partials/attachment_summary_modal_content.html', context)
+        
+        # Execute AI agent to generate summary
+        agent_service = AgentService()
+        summary = agent_service.execute_agent(
+            filename='summarize-text-agent.yml',
+            input_text=text_content,
+            user=request.user if request.user.is_authenticated else None,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        context = {
+            'attachment': attachment,
+            'summary': summary,
+            'available': True,
+            'exists': True,
+            'success': True,
+        }
+        return render(request, 'partials/attachment_summary_modal_content.html', context)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating summary for attachment {attachment_id}: {e}")
+        
+        context = {
+            'attachment': attachment,
+            'error': f'Error generating summary: {str(e)}',
+            'available': True,
+            'exists': True,
+        }
+        return render(request, 'partials/attachment_summary_modal_content.html', context)
 
 
 @login_required
@@ -4070,6 +4177,10 @@ def project_attachments_tab(request, id):
     """Return the project attachments tab content."""
     project = get_object_or_404(Project, id=id)
     
+    # Get query parameters for filtering
+    search_query = request.GET.get('search', '').strip()
+    file_type_filter = request.GET.get('file_type', '').strip()
+    
     # Get attachments linked to this project
     content_type = ContentType.objects.get_for_model(Project)
     attachment_links = AttachmentLink.objects.filter(
@@ -4080,6 +4191,18 @@ def project_attachments_tab(request, id):
     
     attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
     
+    # Apply filename search filter
+    if search_query:
+        attachments = [a for a in attachments if search_query.lower() in a.original_name.lower()]
+    
+    # Apply file type filter
+    if file_type_filter:
+        attachments = [a for a in attachments if a.file_type == file_type_filter]
+    
+    # Get distinct file types for filter dropdown
+    all_attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+    file_types = sorted(set(a.file_type for a in all_attachments if a.file_type))
+    
     # Pagination - 10 items per page
     paginator = Paginator(attachments, 10)
     page_number = request.GET.get('page', 1)
@@ -4088,6 +4211,9 @@ def project_attachments_tab(request, id):
     context = {
         'project': project,
         'page_obj': page_obj,
+        'file_types': file_types,
+        'search_query': search_query,
+        'file_type_filter': file_type_filter,
     }
     return render(request, 'partials/project_attachments_tab.html', context)
 

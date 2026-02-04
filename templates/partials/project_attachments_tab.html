@@ -37,6 +37,43 @@
         
         <hr class="my-4">
         
+        <!-- Search and Filter Controls -->
+        {% if page_obj.object_list or search_query or file_type_filter %}
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input 
+                        type="text" 
+                        class="form-control" 
+                        placeholder="Dateiname suchen..."
+                        value="{{ search_query }}"
+                        hx-get="{% url 'project-attachments-tab' project.id %}"
+                        hx-trigger="keyup changed delay:300ms"
+                        hx-target="#attachments-list"
+                        hx-include="[name='file_type']"
+                        name="search">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <select 
+                    class="form-select" 
+                    name="file_type"
+                    hx-get="{% url 'project-attachments-tab' project.id %}"
+                    hx-trigger="change"
+                    hx-target="#attachments-list"
+                    hx-include="[name='search']">
+                    <option value="">Alle Dateitypen</option>
+                    {% for ft in file_types %}
+                        <option value="{{ ft }}" {% if ft == file_type_filter %}selected{% endif %}>{{ ft }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- Attachments List -->
         <div id="attachments-list">
             {% if page_obj.object_list %}
@@ -44,6 +81,7 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
+                                <th style="width: 60px;">Typ</th>
                                 <th>Filename</th>
                                 <th>Size</th>
                                 <th>Uploaded</th>
@@ -55,6 +93,12 @@
                         <tbody>
                             {% for attachment in page_obj %}
                             <tr>
+                                <td>
+                                    <!-- FileType Avatar -->
+                                    <span class="badge bg-primary" style="font-size: 0.7rem; min-width: 45px;" title="{{ attachment.file_type }}">
+                                        {{ attachment.file_type|default:"FILE" }}
+                                    </span>
+                                </td>
                                 <td>
                                     <a href="#" onclick="viewAttachment({{ attachment.id }}, '{{ attachment.original_name|escapejs }}', '{{ attachment.content_type|escapejs }}'); return false;" style="cursor: pointer;">
                                         <strong>{{ attachment.original_name }}</strong>
@@ -85,6 +129,21 @@
                                     </div>
                                 </td>
                                 <td>
+                                    <!-- AI Summary Button -->
+                                    <button 
+                                        type="button" 
+                                        class="btn btn-sm btn-outline-info me-1 attachment-summary-btn"
+                                        data-attachment-id="{{ attachment.id }}"
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#attachmentSummaryModal"
+                                        hx-get="{% url 'attachment-ai-summary' attachment.id %}"
+                                        hx-target="#attachmentSummaryModalBody"
+                                        hx-trigger="click"
+                                        title="AI-Zusammenfassung anzeigen">
+                                        <i class="bi bi-stars"></i>
+                                    </button>
+                                    
+                                    <!-- Delete Button -->
                                     <button type="button" class="btn btn-sm btn-outline-danger" 
                                             onclick="deleteProjectAttachment({{ attachment.id }})"
                                             title="Delete attachment">
@@ -107,13 +166,13 @@
                         {% if page_obj.has_previous %}
                         <li class="page-item">
                             <a class="page-link" href="#"
-                               hx-get="{% url 'project-attachments-tab' project.id %}?page=1"
+                               hx-get="{% url 'project-attachments-tab' project.id %}?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if file_type_filter %}&file_type={{ file_type_filter }}{% endif %}"
                                hx-target="#project-attachments"
                                hx-swap="innerHTML">First</a>
                         </li>
                         <li class="page-item">
                             <a class="page-link" href="#"
-                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.previous_page_number }}"
+                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if file_type_filter %}&file_type={{ file_type_filter }}{% endif %}"
                                hx-target="#project-attachments"
                                hx-swap="innerHTML">Previous</a>
                         </li>
@@ -128,13 +187,13 @@
                         {% if page_obj.has_next %}
                         <li class="page-item">
                             <a class="page-link" href="#"
-                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.next_page_number }}"
+                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if file_type_filter %}&file_type={{ file_type_filter }}{% endif %}"
                                hx-target="#project-attachments"
                                hx-swap="innerHTML">Next</a>
                         </li>
                         <li class="page-item">
                             <a class="page-link" href="#"
-                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.paginator.num_pages }}"
+                               hx-get="{% url 'project-attachments-tab' project.id %}?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if file_type_filter %}&file_type={{ file_type_filter }}{% endif %}"
                                hx-target="#project-attachments"
                                hx-swap="innerHTML">Last</a>
                         </li>
@@ -148,10 +207,39 @@
             {% else %}
                 <div class="text-center text-muted py-4">
                     <div class="mb-2">📎</div>
-                    <div>No attachments yet</div>
-                    <small>Upload a file to get started!</small>
+                    {% if search_query or file_type_filter %}
+                        <div>Keine Attachments gefunden</div>
+                        <small>Versuchen Sie eine andere Suche oder Filter</small>
+                    {% else %}
+                        <div>No attachments yet</div>
+                        <small>Upload a file to get started!</small>
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
     </div>
 </div>
+
+<!-- Include the AI Summary Modal -->
+{% include 'partials/attachment_summary_modal.html' %}
+
+<script>
+// Disable summary button for attachments without Weaviate object
+document.addEventListener('htmx:afterSettle', function(event) {
+    // Check all weaviate status buttons and disable summary buttons accordingly
+    document.querySelectorAll('.attachment-summary-btn').forEach(function(btn) {
+        const attachmentId = btn.getAttribute('data-attachment-id');
+        // Find the corresponding weaviate status button
+        const weaviateBtn = document.querySelector(`[hx-get*="weaviate-status/attachment/${attachmentId}"]`);
+        if (weaviateBtn) {
+            // Check if weaviate button shows object doesn't exist (btn-danger)
+            const statusBtn = weaviateBtn.querySelector('.btn-danger');
+            if (statusBtn) {
+                btn.disabled = true;
+                btn.title = 'Attachment not indexed in Weaviate';
+                btn.classList.add('disabled');
+            }
+        }
+    });
+});
+</script>
