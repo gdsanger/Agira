@@ -87,8 +87,8 @@ class IssueOpenQuestionInline(admin.TabularInline):
 # Model Admin Classes
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ['name']
-    search_fields = ['name']
+    list_display = ['name', 'short']
+    search_fields = ['name', 'short']
     inlines = [UserOrganisationInline, OrganisationEmbedProjectInline]
 
 
