@@ -4932,6 +4932,10 @@ def ai_provider_fetch_models(request, id):
         models_data = []
         
         if provider.provider_type == 'OpenAI':
+            # Validate API key exists
+            if not provider.api_key:
+                raise ValueError("OpenAI API key is not configured. Please add your API key in the provider settings.")
+            
             # Use OpenAI API to list models
             openai_client = openai.OpenAI(api_key=provider.api_key)
             models_list = openai_client.models.list()
@@ -4950,6 +4954,10 @@ def ai_provider_fetch_models(request, id):
                     })
         
         elif provider.provider_type == 'Gemini':
+            # Validate API key exists
+            if not provider.api_key:
+                raise ValueError("Gemini API key is not configured. Please add your API key in the provider settings.")
+            
             # Use Gemini API to list all available models
             gemini_client = genai.Client(api_key=provider.api_key)
             models_list = gemini_client.models.list()
