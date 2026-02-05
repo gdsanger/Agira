@@ -328,6 +328,58 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Check that the response contains deactivation info
         self.assertContains(response, 'old-model')
         self.assertContains(response, 'deactivated')
+    
+    @patch('core.views.openai.OpenAI')
+    def test_fetch_models_is_idempotent(self, mock_openai):
+        """Test that fetching models multiple times doesn't create duplicates"""
+        # Mock OpenAI API response
+        mock_model1 = Mock()
+        mock_model1.id = 'gpt-4'
+        
+        mock_model2 = Mock()
+        mock_model2.id = 'gpt-3.5-turbo'
+        
+        mock_models_list = Mock()
+        mock_models_list.data = [mock_model1, mock_model2]
+        
+        mock_client = Mock()
+        mock_client.models.list.return_value = mock_models_list
+        mock_openai.return_value = mock_client
+        
+        # First fetch
+        response1 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response1.status_code, 200)
+        
+        # Count models after first fetch
+        count_after_first = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_first, 2)
+        
+        # Second fetch (should not create duplicates)
+        response2 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response2.status_code, 200)
+        
+        # Count should be the same
+        count_after_second = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_second, 2)
+        
+        # Third fetch (verify idempotency)
+        response3 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response3.status_code, 200)
+        
+        # Count should still be the same
+        count_after_third = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_third, 2)
+        
+        # Verify the model IDs are correct
+        model_ids = AIModel.objects.filter(provider=self.openai_provider).values_list('model_id', flat=True)
+        self.assertIn('gpt-4', model_ids)
+        self.assertIn('gpt-3.5-turbo', model_ids)
 
 
 class AIModelInlineEditingTestCase(TestCase):
@@ -335,7 +387,17 @@ class AIModelInlineEditingTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create test provider
         self.provider = AIProvider.objects.create(
@@ -369,7 +431,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -388,7 +450,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -407,7 +469,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -498,7 +560,17 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create test provider and model
         self.provider = AIProvider.objects.create(
@@ -518,19 +590,12 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_view_loads(self):
         """Test that the AI Jobs History view loads successfully"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        # Create a test user
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create some test job history entries
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.COMPLETED,
@@ -542,7 +607,7 @@ class AIJobsHistoryViewTestCase(TestCase):
         
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.ERROR,
@@ -569,18 +634,12 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_filtering_by_status(self):
         """Test filtering jobs by status"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create jobs with different statuses
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.COMPLETED,
@@ -592,7 +651,7 @@ class AIJobsHistoryViewTestCase(TestCase):
         
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.ERROR,
@@ -614,19 +673,13 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_pagination(self):
         """Test pagination with 25 items per page"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create 30 jobs to test pagination
         for i in range(30):
             AIJobsHistory.objects.create(
                 agent='core.ai',
-                user=user,
+                user=self.user,
                 provider=self.provider,
                 model=self.model,
                 status=AIJobStatus.COMPLETED,

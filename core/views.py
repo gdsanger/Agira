@@ -5174,7 +5174,12 @@ def ai_model_update_field(request, provider_id, model_id):
             return HttpResponse("Invalid field", status=400)
         
         model.save()
-        return HttpResponse(status=200)
+        
+        # Return success with visual feedback
+        # Add a temporary success class to the input
+        response = HttpResponse(status=204)  # No content, but success
+        response['HX-Trigger'] = 'priceUpdated'
+        return response
         
     except Exception as e:
         return HttpResponse(f"Error updating field: {str(e)}", status=400)
