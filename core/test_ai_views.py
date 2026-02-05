@@ -13,7 +13,17 @@ class AIProviderFetchModelsTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create OpenAI provider
         self.openai_provider = AIProvider.objects.create(
@@ -257,6 +267,67 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Check total models count
         models = AIModel.objects.filter(provider=self.openai_provider)
         self.assertEqual(models.count(), 2)
+    
+    @patch('core.views.openai.OpenAI')
+    def test_fetch_models_deactivates_removed_models(self, mock_openai):
+        """Test that models no longer in API are deactivated"""
+        # Create existing models
+        model1 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='gpt-4',
+            model_id='gpt-4',
+            active=True
+        )
+        model2 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='gpt-3.5-turbo',
+            model_id='gpt-3.5-turbo',
+            active=True
+        )
+        model3 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='old-model',
+            model_id='old-model',
+            active=True
+        )
+        
+        # Mock OpenAI API response - only returns gpt-4 and gpt-3.5-turbo
+        # old-model is no longer available
+        mock_model1 = Mock()
+        mock_model1.id = 'gpt-4'
+        
+        mock_model2 = Mock()
+        mock_model2.id = 'gpt-3.5-turbo'
+        
+        mock_models_list = Mock()
+        mock_models_list.data = [mock_model1, mock_model2]
+        
+        mock_client = Mock()
+        mock_client.models.list.return_value = mock_models_list
+        mock_openai.return_value = mock_client
+        
+        response = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        
+        # Refresh models from database
+        model1.refresh_from_db()
+        model2.refresh_from_db()
+        model3.refresh_from_db()
+        
+        # Check that gpt-4 and gpt-3.5-turbo are still active
+        self.assertTrue(model1.active)
+        self.assertTrue(model2.active)
+        
+        # Check that old-model was deactivated
+        self.assertFalse(model3.active)
+        
+        # Check that the response contains deactivation info
+        self.assertContains(response, 'old-model')
+        self.assertContains(response, 'deactivated')
 
 
 class AIModelInlineEditingTestCase(TestCase):
@@ -582,3 +653,104 @@ class AIJobsHistoryViewTestCase(TestCase):
         self.assertEqual(len(page_obj), 5)
         self.assertFalse(page_obj.has_next())
         self.assertTrue(page_obj.has_previous())
+
+
+class AIProviderUpdateTestCase(TestCase):
+    """Test cases for AI Provider update functionality"""
+    
+    def setUp(self):
+        """Set up test data"""
+        from core.models import User
+        
+        self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
+        
+        # Create test provider with known API key
+        self.provider = AIProvider.objects.create(
+            name='Test Provider',
+            provider_type='OpenAI',
+            api_key='original-secret-key-12345',
+            organization_id='org-123',
+            active=True
+        )
+    
+    def test_provider_update_preserves_api_key_when_masked(self):
+        """Test that updating provider with masked API key preserves the original key"""
+        original_key = self.provider.api_key
+        
+        # Update provider with masked API key (as shown in the UI)
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Updated Provider Name',
+                'provider_type': 'OpenAI',
+                'api_key': '********************',  # Masked value from UI
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key was NOT changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, original_key)
+        
+        # Verify other fields were updated
+        self.assertEqual(self.provider.name, 'Updated Provider Name')
+    
+    def test_provider_update_preserves_api_key_when_empty(self):
+        """Test that updating provider with empty API key preserves the original key"""
+        original_key = self.provider.api_key
+        
+        # Update provider with empty API key
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Updated Provider Name',
+                'provider_type': 'OpenAI',
+                'api_key': '',  # Empty value
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key was NOT changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, original_key)
+    
+    def test_provider_update_changes_api_key_when_new_key_provided(self):
+        """Test that updating provider with new API key actually updates it"""
+        original_key = self.provider.api_key
+        new_key = 'new-secret-key-67890'
+        
+        # Update provider with new API key
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Test Provider',
+                'provider_type': 'OpenAI',
+                'api_key': new_key,
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key WAS changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, new_key)
+        self.assertNotEqual(self.provider.api_key, original_key)
