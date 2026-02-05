@@ -202,4 +202,25 @@ This command:
 > *Agira soll nicht vorschreiben, wie gearbeitet wird –  
 > sondern sichtbar machen, **was** gemacht wurde, **warum**, **wann** und **von wem**.*
 
+## License & Usage
+
+Agira is licensed under the **Business Source License (BSL 1.1)**.
+
+### What this means:
+- You may use Agira internally without restriction
+- You may adapt it to your own needs
+- You may use it in customer or institutional projects
+- All features are available to all users
+
+### What is not allowed:
+- Offering Agira as a SaaS or hosted service
+- Selling Agira or derived products
+- Redistributing Agira as a standalone product
+
+Agira was developed as a private project and is provided in good faith.
+It is intended for productive use, learning, and collaboration —
+not for commercial exploitation without agreement.
+
+For commercial licensing or special use cases, please contact the author.
+
 ---
