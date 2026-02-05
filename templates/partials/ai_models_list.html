@@ -19,6 +19,14 @@
 </div>
 {% endif %}
 
+<script>
+// Visual feedback for successful price updates
+function showPriceSaveSuccess(element) {
+    element.classList.add('border-success');
+    setTimeout(() => element.classList.remove('border-success'), 1000);
+}
+</script>
+
 {% if models %}
 <div class="table-responsive">
     <table class="table table-sm">
@@ -54,7 +62,7 @@
                            hx-vals='{"field": "input_price_per_1m_tokens"}'
                            hx-include="this"
                            hx-swap="none"
-                           hx-on::after-request="if(event.detail.successful) { this.classList.add('border-success'); setTimeout(() => this.classList.remove('border-success'), 1000); }"
+                           hx-on::after-request="if(event.detail.successful) showPriceSaveSuccess(this)"
                            name="value"
                            placeholder="0.00">
                 </td>
@@ -70,7 +78,7 @@
                            hx-vals='{"field": "output_price_per_1m_tokens"}'
                            hx-include="this"
                            hx-swap="none"
-                           hx-on::after-request="if(event.detail.successful) { this.classList.add('border-success'); setTimeout(() => this.classList.remove('border-success'), 1000); }"
+                           hx-on::after-request="if(event.detail.successful) showPriceSaveSuccess(this)"
                            name="value"
                            placeholder="0.00">
                 </td>

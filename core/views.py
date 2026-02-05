@@ -4868,7 +4868,9 @@ def ai_provider_update(request, id):
         # Only update api_key if a new one is provided (not masked)
         api_key = request.POST.get('api_key', '').strip()
         # Skip if empty or if it's only asterisks (masked placeholder)
-        if api_key and not all(c == '*' for c in api_key):
+        # Define masked pattern check for clarity
+        is_masked = api_key and set(api_key) == {'*'}
+        if api_key and not is_masked:
             # API key contains non-asterisk characters, so it's a real key
             provider.api_key = api_key
         
@@ -5174,12 +5176,7 @@ def ai_model_update_field(request, provider_id, model_id):
             return HttpResponse("Invalid field", status=400)
         
         model.save()
-        
-        # Return success with visual feedback
-        # Add a temporary success class to the input
-        response = HttpResponse(status=204)  # No content, but success
-        response['HX-Trigger'] = 'priceUpdated'
-        return response
+        return HttpResponse(status=204)  # No content, but success
         
     except Exception as e:
         return HttpResponse(f"Error updating field: {str(e)}", status=400)
