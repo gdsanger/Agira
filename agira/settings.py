@@ -305,6 +305,8 @@ LOGGING = {
 
 # Add file handler only if log directory is available
 if LOG_DIR_AVAILABLE:
+    # TimedRotatingFileHandler automatically appends timestamps to rotated files
+    # e.g., app.log.2026-02-04, app.log.2026-02-03, etc.
     LOGGING['handlers']['daily_rotating_file'] = {
         'level': 'DEBUG',
         'class': 'logging.handlers.TimedRotatingFileHandler',
@@ -326,13 +328,14 @@ if sentry_dsn_value:
     from sentry_sdk.integrations.django import DjangoIntegration
     
     # Parse traces_sample_rate with validation
+    traces_rate_str = os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.1')
     try:
-        traces_rate = float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.1'))
+        traces_rate = float(traces_rate_str)
         if not 0.0 <= traces_rate <= 1.0:
             print(f'Warning: SENTRY_TRACES_SAMPLE_RATE={traces_rate} out of range [0.0, 1.0], using 0.1', file=sys.stderr)
             traces_rate = 0.1
     except (ValueError, TypeError):
-        print(f'Warning: Invalid SENTRY_TRACES_SAMPLE_RATE value, using default 0.1', file=sys.stderr)
+        print(f'Warning: Invalid SENTRY_TRACES_SAMPLE_RATE value "{traces_rate_str}", using default 0.1', file=sys.stderr)
         traces_rate = 0.1
     
     # Parse send_default_pii with flexible boolean parsing
