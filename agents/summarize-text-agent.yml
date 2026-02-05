@@ -12,6 +12,6 @@ task: "Du erhältst einen Text und sollst daraus eine Zusammenfassung erstellen.
   \ Zusammenfassung (< 100 Wörter), \r\ngib eine kurze Beschreibung des Inhalts zurück."
 cache:
   enabled: true
-  ttl_seconds: 604800   # 7 Tage
+  ttl_seconds: 604800
   key_strategy: content_hash
   agent_version: 1

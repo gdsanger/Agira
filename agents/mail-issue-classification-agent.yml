@@ -20,3 +20,8 @@ task: "Analyze the provided email content and classify it based on the available
   \ or unclear requests\r\n- If type is unclear, use \"task\" as default\r\n- Project\
   \ name MUST exactly match one from the context list (case-sensitive)\r\n\r\nOutput\
   \ ONLY valid JSON, nothing else."
+cache:
+  enabled: true
+  ttl_seconds: 360
+  key_strategy: content_hash
+  agent_version: 1

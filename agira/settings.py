@@ -22,7 +22,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Logging directory setup - try /logs first, fallback to BASE_DIR/logs
-LOG_BASE_PATH = Path('/logs')
+LOG_BASE_PATH = Path(BASE_DIR / 'logs')
 LOG_DIR_AVAILABLE = False
 try:
     LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)

@@ -12,3 +12,8 @@ task: "Convert the provided HTML content to clean, well-formatted Markdown.\r\n\
   \n- Preserve code blocks if present\r\n- Preserve tables if present (use Markdown\
   \ table syntax)\r\n- Output ONLY the converted Markdown, no explanations or comments\r\
   \n\r\nIf the input is already plain text or contains no HTML, return it as-is."
+cache:
+  enabled: true
+  ttl_seconds: 3600
+  key_strategy: content_hash
+  agent_version: 1

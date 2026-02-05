@@ -25,3 +25,8 @@ task: "Formatiere einen unformatierten Rohtext um, damit ein umsetzbares Issue f
   \n  },\r\n  \"open_questions\": [\r\n    \"Was soll passieren, wenn Feld X leer\
   \ ist?\",\r\n    \"Darf Objekt Y gelöscht werden, wenn untergeordnete Elemente existieren?\"\
   \r\n  ]\r\n}\r\n```"
+cache:
+  enabled: true
+  ttl_seconds: 120
+  key_strategy: content_hash
+  agent_version: 1
