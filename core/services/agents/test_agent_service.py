@@ -231,6 +231,96 @@ class AgentServiceTestCase(TestCase):
         
         # Raw data should not contain 'filename'
         self.assertNotIn('filename', raw_data)
+    
+    def test_save_agent_with_cache_configuration(self):
+        """Test that saving an agent with cache configuration works correctly."""
+        filename = 'test-agent-cache.yml'
+        agent_data = {
+            'name': 'Test Agent with Cache',
+            'description': 'An agent with cache configuration',
+            'provider': 'openai',
+            'model': 'gpt-4',
+            'role': 'Test role',
+            'task': 'Test task',
+            'cache': {
+                'enabled': True,
+                'ttl_seconds': 604800,
+                'key_strategy': 'content_hash',
+                'agent_version': 1,
+            }
+        }
+        
+        # Save the agent
+        self.agent_service.save_agent(filename, agent_data)
+        
+        # Verify content
+        loaded_agent = self.agent_service.get_agent(filename)
+        self.assertIsNotNone(loaded_agent)
+        self.assertIn('cache', loaded_agent)
+        self.assertTrue(loaded_agent['cache']['enabled'])
+        self.assertEqual(loaded_agent['cache']['ttl_seconds'], 604800)
+        self.assertEqual(loaded_agent['cache']['key_strategy'], 'content_hash')
+        self.assertEqual(loaded_agent['cache']['agent_version'], 1)
+    
+    def test_save_agent_cache_roundtrip(self):
+        """Test that cache configuration survives round-trip save/load."""
+        filename = 'test-cache-roundtrip.yml'
+        original_cache = {
+            'enabled': True,
+            'ttl_seconds': 7776000,
+            'key_strategy': 'content_hash',
+            'agent_version': 5,
+        }
+        
+        agent_data = {
+            'name': 'Cache Roundtrip Test',
+            'provider': 'openai',
+            'model': 'gpt-3.5-turbo',
+            'cache': original_cache.copy()
+        }
+        
+        # Save agent
+        self.agent_service.save_agent(filename, agent_data)
+        
+        # Load agent
+        loaded_agent = self.agent_service.get_agent(filename)
+        
+        # Verify cache is identical
+        self.assertEqual(loaded_agent['cache'], original_cache)
+        
+        # Update and save again (without changing task)
+        loaded_agent['description'] = 'Updated description'
+        self.agent_service.save_agent(filename, loaded_agent)
+        
+        # Load again
+        reloaded_agent = self.agent_service.get_agent(filename)
+        
+        # Cache should still be the same
+        self.assertEqual(reloaded_agent['cache'], original_cache)
+    
+    def test_save_agent_with_disabled_cache(self):
+        """Test that saving an agent with disabled cache works correctly."""
+        filename = 'test-agent-cache-disabled.yml'
+        agent_data = {
+            'name': 'Test Agent Cache Disabled',
+            'provider': 'openai',
+            'model': 'gpt-4',
+            'cache': {
+                'enabled': False,
+                'ttl_seconds': 7776000,
+                'key_strategy': 'content_hash',
+                'agent_version': 1,
+            }
+        }
+        
+        # Save the agent
+        self.agent_service.save_agent(filename, agent_data)
+        
+        # Verify content
+        loaded_agent = self.agent_service.get_agent(filename)
+        self.assertIsNotNone(loaded_agent)
+        self.assertIn('cache', loaded_agent)
+        self.assertFalse(loaded_agent['cache']['enabled'])
 
 
 class AgentServiceCacheIntegrationTestCase(TestCase):
