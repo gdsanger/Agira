@@ -77,3 +77,23 @@ def trim(text):
         return ""
     return str(text).strip()
 
+
+@register.filter
+def release_status_badge_class(status):
+    """
+    Get Bootstrap badge class for release status.
+    
+    Args:
+        status: Release status value from the database (e.g., 'Planned', 'Working', 'Closed').
+                For the Release model, the internal value and display value are the same.
+        
+    Returns:
+        Bootstrap badge class (e.g., 'bg-info', 'bg-warning', 'bg-success')
+    """
+    status_colors = {
+        'Planned': 'bg-info',      # Blue - informational/planned
+        'Working': 'bg-warning',   # Yellow - in progress
+        'Closed': 'bg-success',    # Green - completed
+    }
+    return status_colors.get(status, 'bg-secondary')  # Default to secondary if unknown
+
