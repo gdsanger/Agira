@@ -13,7 +13,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -250,9 +249,6 @@ ITEMS_PER_PAGE = 25
 # LOGGING CONFIGURATION
 # Implements daily rotating file handler with 7-day retention
 # ============================================================================
-current_date_str = datetime.now().strftime('%Y-%m-%d')
-log_filepath = LOG_BASE_PATH / f'app-{current_date_str}.log'
-
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -271,7 +267,7 @@ LOGGING = {
         'daily_rotating_file': {
             'level': 'DEBUG',
             'class': 'logging.handlers.TimedRotatingFileHandler',
-            'filename': str(log_filepath),
+            'filename': str(LOG_BASE_PATH / 'app.log'),
             'when': 'midnight',
             'interval': 1,
             'backupCount': 7,
@@ -314,8 +310,8 @@ if sentry_dsn_value:
     sentry_sdk.init(
         dsn=sentry_dsn_value,
         integrations=[DjangoIntegration()],
-        traces_sample_rate=1.0,
-        send_default_pii=True,
+        traces_sample_rate=float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
+        send_default_pii=os.getenv('SENTRY_SEND_PII', 'False') == 'True',
         environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
     )
 
