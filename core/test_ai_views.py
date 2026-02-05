@@ -13,7 +13,17 @@ class AIProviderFetchModelsTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create OpenAI provider
         self.openai_provider = AIProvider.objects.create(
@@ -257,6 +267,119 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Check total models count
         models = AIModel.objects.filter(provider=self.openai_provider)
         self.assertEqual(models.count(), 2)
+    
+    @patch('core.views.openai.OpenAI')
+    def test_fetch_models_deactivates_removed_models(self, mock_openai):
+        """Test that models no longer in API are deactivated"""
+        # Create existing models
+        model1 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='gpt-4',
+            model_id='gpt-4',
+            active=True
+        )
+        model2 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='gpt-3.5-turbo',
+            model_id='gpt-3.5-turbo',
+            active=True
+        )
+        model3 = AIModel.objects.create(
+            provider=self.openai_provider,
+            name='old-model',
+            model_id='old-model',
+            active=True
+        )
+        
+        # Mock OpenAI API response - only returns gpt-4 and gpt-3.5-turbo
+        # old-model is no longer available
+        mock_model1 = Mock()
+        mock_model1.id = 'gpt-4'
+        
+        mock_model2 = Mock()
+        mock_model2.id = 'gpt-3.5-turbo'
+        
+        mock_models_list = Mock()
+        mock_models_list.data = [mock_model1, mock_model2]
+        
+        mock_client = Mock()
+        mock_client.models.list.return_value = mock_models_list
+        mock_openai.return_value = mock_client
+        
+        response = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        
+        # Refresh models from database
+        model1.refresh_from_db()
+        model2.refresh_from_db()
+        model3.refresh_from_db()
+        
+        # Check that gpt-4 and gpt-3.5-turbo are still active
+        self.assertTrue(model1.active)
+        self.assertTrue(model2.active)
+        
+        # Check that old-model was deactivated
+        self.assertFalse(model3.active)
+        
+        # Check that the response contains deactivation info
+        self.assertContains(response, 'old-model')
+        self.assertContains(response, 'deactivated')
+    
+    @patch('core.views.openai.OpenAI')
+    def test_fetch_models_is_idempotent(self, mock_openai):
+        """Test that fetching models multiple times doesn't create duplicates"""
+        # Mock OpenAI API response
+        mock_model1 = Mock()
+        mock_model1.id = 'gpt-4'
+        
+        mock_model2 = Mock()
+        mock_model2.id = 'gpt-3.5-turbo'
+        
+        mock_models_list = Mock()
+        mock_models_list.data = [mock_model1, mock_model2]
+        
+        mock_client = Mock()
+        mock_client.models.list.return_value = mock_models_list
+        mock_openai.return_value = mock_client
+        
+        # First fetch
+        response1 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response1.status_code, 200)
+        
+        # Count models after first fetch
+        count_after_first = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_first, 2)
+        
+        # Second fetch (should not create duplicates)
+        response2 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response2.status_code, 200)
+        
+        # Count should be the same
+        count_after_second = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_second, 2)
+        
+        # Third fetch (verify idempotency)
+        response3 = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
+        )
+        self.assertEqual(response3.status_code, 200)
+        
+        # Count should still be the same
+        count_after_third = AIModel.objects.filter(provider=self.openai_provider).count()
+        self.assertEqual(count_after_third, 2)
+        
+        # Verify the model IDs are correct
+        model_ids = AIModel.objects.filter(provider=self.openai_provider).values_list('model_id', flat=True)
+        self.assertIn('gpt-4', model_ids)
+        self.assertIn('gpt-3.5-turbo', model_ids)
 
 
 class AIModelInlineEditingTestCase(TestCase):
@@ -264,7 +387,17 @@ class AIModelInlineEditingTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create test provider
         self.provider = AIProvider.objects.create(
@@ -298,7 +431,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -317,7 +450,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -336,7 +469,7 @@ class AIModelInlineEditingTestCase(TestCase):
             }
         )
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         
         # Check model was updated
         self.model.refresh_from_db()
@@ -427,7 +560,17 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from core.models import User
+        
         self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
         
         # Create test provider and model
         self.provider = AIProvider.objects.create(
@@ -447,19 +590,12 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_view_loads(self):
         """Test that the AI Jobs History view loads successfully"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        # Create a test user
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create some test job history entries
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.COMPLETED,
@@ -471,7 +607,7 @@ class AIJobsHistoryViewTestCase(TestCase):
         
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.ERROR,
@@ -498,18 +634,12 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_filtering_by_status(self):
         """Test filtering jobs by status"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create jobs with different statuses
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.COMPLETED,
@@ -521,7 +651,7 @@ class AIJobsHistoryViewTestCase(TestCase):
         
         AIJobsHistory.objects.create(
             agent='core.ai',
-            user=user,
+            user=self.user,
             provider=self.provider,
             model=self.model,
             status=AIJobStatus.ERROR,
@@ -543,19 +673,13 @@ class AIJobsHistoryViewTestCase(TestCase):
     
     def test_ai_jobs_history_pagination(self):
         """Test pagination with 25 items per page"""
-        from core.models import AIJobsHistory, User, AIJobStatus
-        
-        user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+        from core.models import AIJobsHistory, AIJobStatus
         
         # Create 30 jobs to test pagination
         for i in range(30):
             AIJobsHistory.objects.create(
                 agent='core.ai',
-                user=user,
+                user=self.user,
                 provider=self.provider,
                 model=self.model,
                 status=AIJobStatus.COMPLETED,
@@ -582,3 +706,104 @@ class AIJobsHistoryViewTestCase(TestCase):
         self.assertEqual(len(page_obj), 5)
         self.assertFalse(page_obj.has_next())
         self.assertTrue(page_obj.has_previous())
+
+
+class AIProviderUpdateTestCase(TestCase):
+    """Test cases for AI Provider update functionality"""
+    
+    def setUp(self):
+        """Set up test data"""
+        from core.models import User
+        
+        self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
+        
+        # Create test provider with known API key
+        self.provider = AIProvider.objects.create(
+            name='Test Provider',
+            provider_type='OpenAI',
+            api_key='original-secret-key-12345',
+            organization_id='org-123',
+            active=True
+        )
+    
+    def test_provider_update_preserves_api_key_when_masked(self):
+        """Test that updating provider with masked API key preserves the original key"""
+        original_key = self.provider.api_key
+        
+        # Update provider with masked API key (as shown in the UI)
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Updated Provider Name',
+                'provider_type': 'OpenAI',
+                'api_key': '********************',  # Masked value from UI
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key was NOT changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, original_key)
+        
+        # Verify other fields were updated
+        self.assertEqual(self.provider.name, 'Updated Provider Name')
+    
+    def test_provider_update_preserves_api_key_when_empty(self):
+        """Test that updating provider with empty API key preserves the original key"""
+        original_key = self.provider.api_key
+        
+        # Update provider with empty API key
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Updated Provider Name',
+                'provider_type': 'OpenAI',
+                'api_key': '',  # Empty value
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key was NOT changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, original_key)
+    
+    def test_provider_update_changes_api_key_when_new_key_provided(self):
+        """Test that updating provider with new API key actually updates it"""
+        original_key = self.provider.api_key
+        new_key = 'new-secret-key-67890'
+        
+        # Update provider with new API key
+        response = self.client.post(
+            reverse('ai-provider-update', kwargs={'id': self.provider.id}),
+            {
+                'name': 'Test Provider',
+                'provider_type': 'OpenAI',
+                'api_key': new_key,
+                'organization_id': 'org-123',
+                'active': 'on'
+            }
+        )
+        
+        # Check response is successful
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify API key WAS changed
+        self.provider.refresh_from_db()
+        self.assertEqual(self.provider.api_key, new_key)
+        self.assertNotEqual(self.provider.api_key, original_key)

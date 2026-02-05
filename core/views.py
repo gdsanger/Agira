@@ -4865,9 +4865,13 @@ def ai_provider_update(request, id):
         provider.organization_id = request.POST.get('organization_id', provider.organization_id)
         provider.active = request.POST.get('active') == 'on'
         
-        # Only update api_key if a new one is provided
+        # Only update api_key if a new one is provided (not masked)
         api_key = request.POST.get('api_key', '').strip()
-        if api_key:
+        # Skip if empty or if it's only asterisks (masked placeholder)
+        # Define masked pattern check for clarity
+        is_masked = api_key and set(api_key) == {'*'}
+        if api_key and not is_masked:
+            # API key contains non-asterisk characters, so it's a real key
             provider.api_key = api_key
         
         provider.save()
@@ -4977,11 +4981,18 @@ def ai_provider_fetch_models(request, id):
         # Save fetched models to the database
         created_count = 0
         existing_count = 0
+        updated_count = 0
+        
+        # Track which model_ids were fetched from the API
+        fetched_model_ids = set()
         
         for model_data in models_data:
+            model_id = model_data['model_id']
+            fetched_model_ids.add(model_id)
+            
             model, created = AIModel.objects.get_or_create(
                 provider=provider,
-                model_id=model_data['model_id'],
+                model_id=model_id,
                 defaults={
                     'name': model_data['name'],
                     'active': False,  # New models are inactive by default
@@ -4993,13 +5004,33 @@ def ai_provider_fetch_models(request, id):
             if created:
                 created_count += 1
             else:
+                # Update the name if it changed in the remote API
+                if model.name != model_data['name']:
+                    model.name = model_data['name']
+                    model.save()
+                    updated_count += 1
                 existing_count += 1
+        
+        # Deactivate models that are no longer available in the remote API
+        deactivated_models = []
+        all_local_models = provider.models.all()
+        for local_model in all_local_models:
+            if local_model.model_id not in fetched_model_ids and local_model.active:
+                local_model.active = False
+                local_model.save()
+                deactivated_models.append(local_model.name)
         
         # Return updated models list using the partial template
         models = provider.models.all().order_by('-is_default', 'name')
         context = {
             'provider': provider,
             'models': models,
+            'sync_info': {
+                'created': created_count,
+                'existing': existing_count,
+                'updated': updated_count,
+                'deactivated': deactivated_models,
+            }
         }
         return render(request, 'partials/ai_models_list.html', context)
         
@@ -5145,7 +5176,7 @@ def ai_model_update_field(request, provider_id, model_id):
             return HttpResponse("Invalid field", status=400)
         
         model.save()
-        return HttpResponse(status=200)
+        return HttpResponse(status=204)  # No content, but success
         
     except Exception as e:
         return HttpResponse(f"Error updating field: {str(e)}", status=400)
