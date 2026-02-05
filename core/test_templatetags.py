@@ -2,7 +2,7 @@
 Tests for custom template tags and filters.
 """
 from django.test import TestCase
-from core.templatetags.agira_filters import trim, render_markdown, safe_html
+from core.templatetags.agira_filters import trim, render_markdown, safe_html, release_status_badge_class
 
 
 class TrimFilterTestCase(TestCase):
@@ -145,3 +145,37 @@ class SafeHtmlFilterTestCase(TestCase):
         html = '<div onclick="alert(\'XSS\')">Click me</div>'
         result = safe_html(html)
         self.assertNotIn("onclick=", result)
+
+
+class ReleaseStatusBadgeClassFilterTestCase(TestCase):
+    """Test the release_status_badge_class template filter"""
+
+    def test_planned_status(self):
+        """Test badge class for Planned status"""
+        result = release_status_badge_class('Planned')
+        self.assertEqual(result, 'bg-info')
+
+    def test_working_status(self):
+        """Test badge class for Working status"""
+        result = release_status_badge_class('Working')
+        self.assertEqual(result, 'bg-warning')
+
+    def test_closed_status(self):
+        """Test badge class for Closed status"""
+        result = release_status_badge_class('Closed')
+        self.assertEqual(result, 'bg-success')
+
+    def test_unknown_status(self):
+        """Test badge class for unknown status defaults to secondary"""
+        result = release_status_badge_class('UnknownStatus')
+        self.assertEqual(result, 'bg-secondary')
+
+    def test_none_status(self):
+        """Test badge class for None value defaults to secondary"""
+        result = release_status_badge_class(None)
+        self.assertEqual(result, 'bg-secondary')
+
+    def test_empty_status(self):
+        """Test badge class for empty string defaults to secondary"""
+        result = release_status_badge_class('')
+        self.assertEqual(result, 'bg-secondary')

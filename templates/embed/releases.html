@@ -32,6 +32,7 @@
                     <div class="flex-grow-1">
                         <strong>{{ release.name }}</strong>
                         <span class="badge bg-primary ms-2">v{{ release.version }}</span>
+                        <span class="badge {{ release.status|release_status_badge_class }} ms-2">{{ release.get_status_display }}</span>
                         {% if release.update_date %}
                         <span class="text-muted ms-2 small">
                             <i class="bi bi-calendar"></i> {{ release.update_date|date:"d.m.Y" }}
