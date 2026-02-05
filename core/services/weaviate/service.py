@@ -201,9 +201,6 @@ def upsert_document(
             )
         
         logger.info(f"Successfully upserted document: {source_type}:{source_id_str} -> {obj_uuid}")
-        logger.debug(
-            f"Upserted document: {source_type}:{source_id_str} -> {obj_uuid}"
-        )
         
         return str(obj_uuid)
     
@@ -253,14 +250,10 @@ def delete_document(source_type: str, source_id: str | int) -> bool:
         try:
             collection.data.delete_by_id(obj_uuid)
             logger.info(f"Successfully deleted document: {source_type}:{source_id_str}")
-            logger.debug(f"Deleted document: {source_type}:{source_id_str}")
             return True
         except Exception as e:
             # Object might not exist
             logger.warning(f"Could not delete {source_type}:{source_id_str} (might not exist): {e}")
-            logger.debug(
-                f"Could not delete {source_type}:{source_id_str} (might not exist): {e}"
-            )
             return False
     
     except Exception as e:
@@ -360,9 +353,6 @@ def query(
             results.append(result)
         
         logger.info(f"Query completed: returned {len(results)} results for '{query_text}' in project {project_id_str}")
-        logger.debug(
-            f"Query '{query_text}' in project {project_id_str} returned {len(results)} results"
-        )
         
         return results
     
@@ -539,9 +529,6 @@ def global_search(
         results.sort(key=lambda x: x.score if x.score is not None else 0, reverse=True)
         
         logger.info(f"Global search completed: returned {len(results)} results for '{query}' (mode={mode})")
-        logger.debug(
-            f"Global search ({mode}) for '{query}' returned {len(results)} results"
-        )
         
         return results
     
@@ -668,14 +655,10 @@ def delete_object(type: str, object_id: str) -> bool:
         try:
             collection.data.delete_by_id(obj_uuid)
             logger.info(f"Successfully deleted object: {type}:{object_id_str}")
-            logger.debug(f"Deleted object: {type}:{object_id_str}")
             return True
         except Exception as e:
             # Object might not exist
             logger.warning(f"Could not delete {type}:{object_id_str} (might not exist): {e}")
-            logger.debug(
-                f"Could not delete {type}:{object_id_str} (might not exist): {e}"
-            )
             return False
     
     except Exception as e:
