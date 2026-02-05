@@ -256,6 +256,54 @@ class AIProviderFetchModelsTestCase(TestCase):
         
         self.assertEqual(response.status_code, 404)
     
+    def test_fetch_models_openai_missing_api_key(self):
+        """Test that OpenAI fetch fails gracefully when API key is missing"""
+        # Create provider without API key
+        provider = AIProvider.objects.create(
+            name='OpenAI No Key',
+            provider_type='OpenAI',
+            api_key='',  # Empty API key
+            active=True
+        )
+        
+        response = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': provider.id})
+        )
+        
+        # Check response - should return HTML with error message
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Error')
+        self.assertContains(response, 'API key is not configured')
+        self.assertContains(response, 'OpenAI')
+        
+        # Check no models were created
+        models = AIModel.objects.filter(provider=provider)
+        self.assertEqual(models.count(), 0)
+    
+    def test_fetch_models_gemini_missing_api_key(self):
+        """Test that Gemini fetch fails gracefully when API key is missing"""
+        # Create provider without API key (empty string)
+        provider = AIProvider.objects.create(
+            name='Gemini No Key',
+            provider_type='Gemini',
+            api_key='',  # Empty API key
+            active=True
+        )
+        
+        response = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': provider.id})
+        )
+        
+        # Check response - should return HTML with error message
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Error')
+        self.assertContains(response, 'API key is not configured')
+        self.assertContains(response, 'Gemini')
+        
+        # Check no models were created
+        models = AIModel.objects.filter(provider=provider)
+        self.assertEqual(models.count(), 0)
+    
     @patch('core.views.openai.OpenAI')
     def test_fetch_models_mixed_new_and_existing(self, mock_openai):
         """Test fetching when some models exist and some are new"""
