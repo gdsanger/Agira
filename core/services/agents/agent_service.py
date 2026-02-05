@@ -12,6 +12,7 @@ from django.conf import settings
 from core.models import User
 from core.services.ai.router import AIRouter
 from core.services.exceptions import ServiceNotConfigured
+from core.services.agents.cache import AgentCacheService
 
 # Module-level logger for efficiency
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class AgentService:
         """Initialize the agent service."""
         self.agents_dir = Path(settings.BASE_DIR) / 'agents'
         self.ai_router = AIRouter()
+        self.cache_service = AgentCacheService()
     
     def list_agents(self) -> List[Dict[str, Any]]:
         """
@@ -150,6 +152,10 @@ class AgentService:
         """
         Execute an agent with the given input text.
         
+        Supports Redis-based response caching if configured in agent YAML.
+        Cache lookup is performed before AI request, and successful responses
+        are cached with configured TTL.
+        
         Args:
             filename: Agent YAML filename
             input_text: Input text to process
@@ -158,7 +164,7 @@ class AgentService:
             parameters: Optional parameters to pass to the agent
             
         Returns:
-            Plain text response from the AI
+            Plain text response from the AI (or from cache)
             
         Raises:
             ValueError: If agent not found or misconfigured
@@ -176,6 +182,23 @@ class AgentService:
         role = agent.get('role', '')
         task = agent.get('task', '')
         agent_params = agent.get('parameters', {})
+        
+        # Parse cache configuration from agent YAML
+        cache_config = self.cache_service.parse_cache_config(agent)
+        
+        # Try to get cached response
+        cached_response = self.cache_service.get_cached_response(
+            agent_name=agent_name,
+            input_text=input_text,
+            cache_config=cache_config
+        )
+        
+        if cached_response is not None:
+            logger.info(f"Returning cached response for agent '{agent_name}'")
+            return cached_response
+        
+        # Cache miss - proceed with AI request
+        logger.debug(f"Cache miss for agent '{agent_name}', executing AI request")
         
         # Build the prompt from role and task
         prompt_parts = []
@@ -214,7 +237,17 @@ class AgentService:
                 agent=agent_name
             )
             
-            return response.text
+            response_text = response.text
+            
+            # Cache the successful response
+            self.cache_service.cache_response(
+                agent_name=agent_name,
+                input_text=input_text,
+                response_text=response_text,
+                cache_config=cache_config
+            )
+            
+            return response_text
             
         except Exception as e:
             raise ServiceNotConfigured(f"Error executing agent: {e}")
