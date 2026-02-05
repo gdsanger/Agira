@@ -13,12 +13,17 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Logging directory setup
+LOG_BASE_PATH = Path('/logs')
+LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -236,4 +241,77 @@ DJANGO_TABLES2_TEMPLATE = "django_tables2/bootstrap5.html"
 
 # Pagination settings
 ITEMS_PER_PAGE = 25
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# Implements daily rotating file handler with 7-day retention
+# ============================================================================
+current_date_str = datetime.now().strftime('%Y-%m-%d')
+log_filepath = LOG_BASE_PATH / f'app-{current_date_str}.log'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'detailed_formatter': {
+            'format': '[{levelname}] {asctime} {name} {module}.{funcName}: {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'simple_formatter': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'daily_rotating_file': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': str(log_filepath),
+            'when': 'midnight',
+            'interval': 1,
+            'backupCount': 7,
+            'formatter': 'detailed_formatter',
+            'encoding': 'utf-8',
+        },
+        'console_output': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple_formatter',
+        },
+    },
+    'root': {
+        'handlers': ['daily_rotating_file', 'console_output'],
+        'level': 'DEBUG',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['daily_rotating_file', 'console_output'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core': {
+            'handlers': ['daily_rotating_file', 'console_output'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
+
+# ============================================================================
+# SENTRY ERROR TRACKING CONFIGURATION
+# Activated only when SENTRY_DSN environment variable is set
+# ============================================================================
+sentry_dsn_value = os.getenv('SENTRY_DSN', '').strip()
+if sentry_dsn_value:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    
+    sentry_sdk.init(
+        dsn=sentry_dsn_value,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=1.0,
+        send_default_pii=True,
+        environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
+    )
 
