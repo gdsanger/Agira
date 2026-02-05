@@ -23,16 +23,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Logging directory setup - try /logs first, fallback to BASE_DIR/logs
 LOG_BASE_PATH = Path('/logs')
+LOG_DIR_AVAILABLE = False
 try:
     LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+    LOG_DIR_AVAILABLE = True
 except PermissionError:
     LOG_BASE_PATH = BASE_DIR / 'logs'
     try:
         LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+        LOG_DIR_AVAILABLE = True
         print(f'Warning: Using fallback log directory at {LOG_BASE_PATH}', file=sys.stderr)
     except PermissionError as e:
         print(f'Error: Cannot create log directory at {LOG_BASE_PATH}: {e}', file=sys.stderr)
         print('Logging to file will not be available', file=sys.stderr)
+        LOG_DIR_AVAILABLE = False
 
 
 # Quick-start development settings - unsuitable for production
@@ -255,6 +259,11 @@ ITEMS_PER_PAGE = 25
 # LOGGING CONFIGURATION
 # Implements daily rotating file handler with 7-day retention
 # ============================================================================
+# Build handlers list based on LOG_DIR availability
+logging_handlers_list = ['console_output']
+if LOG_DIR_AVAILABLE:
+    logging_handlers_list.insert(0, 'daily_rotating_file')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -270,16 +279,6 @@ LOGGING = {
         },
     },
     'handlers': {
-        'daily_rotating_file': {
-            'level': 'DEBUG',
-            'class': 'logging.handlers.TimedRotatingFileHandler',
-            'filename': str(LOG_BASE_PATH / 'app.log'),
-            'when': 'midnight',
-            'interval': 1,
-            'backupCount': 7,
-            'formatter': 'detailed_formatter',
-            'encoding': 'utf-8',
-        },
         'console_output': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
@@ -287,22 +286,35 @@ LOGGING = {
         },
     },
     'root': {
-        'handlers': ['daily_rotating_file', 'console_output'],
+        'handlers': logging_handlers_list,
         'level': 'DEBUG',
     },
     'loggers': {
         'django': {
-            'handlers': ['daily_rotating_file', 'console_output'],
+            'handlers': logging_handlers_list,
             'level': 'INFO',
             'propagate': False,
         },
         'core': {
-            'handlers': ['daily_rotating_file', 'console_output'],
+            'handlers': logging_handlers_list,
             'level': 'DEBUG',
             'propagate': False,
         },
     },
 }
+
+# Add file handler only if log directory is available
+if LOG_DIR_AVAILABLE:
+    LOGGING['handlers']['daily_rotating_file'] = {
+        'level': 'DEBUG',
+        'class': 'logging.handlers.TimedRotatingFileHandler',
+        'filename': str(LOG_BASE_PATH / 'app.log'),
+        'when': 'midnight',
+        'interval': 1,
+        'backupCount': 7,
+        'formatter': 'detailed_formatter',
+        'encoding': 'utf-8',
+    }
 
 # ============================================================================
 # SENTRY ERROR TRACKING CONFIGURATION
@@ -323,11 +335,15 @@ if sentry_dsn_value:
         print(f'Warning: Invalid SENTRY_TRACES_SAMPLE_RATE value, using default 0.1', file=sys.stderr)
         traces_rate = 0.1
     
+    # Parse send_default_pii with flexible boolean parsing
+    send_pii_value = os.getenv('SENTRY_SEND_PII', '').lower()
+    send_pii = send_pii_value in ('true', '1', 'yes', 'on')
+    
     sentry_sdk.init(
         dsn=sentry_dsn_value,
         integrations=[DjangoIntegration()],
         traces_sample_rate=traces_rate,
-        send_default_pii=os.getenv('SENTRY_SEND_PII', 'False') == 'True',
+        send_default_pii=send_pii,
         environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
     )
 
