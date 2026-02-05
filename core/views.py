@@ -5213,6 +5213,15 @@ def agent_detail(request, filename):
     if not agent:
         return HttpResponse("Agent not found", status=404)
     
+    # Ensure cache config exists with defaults
+    if 'cache' not in agent:
+        agent['cache'] = {
+            'enabled': False,
+            'ttl_seconds': 7776000,
+            'key_strategy': 'content_hash',
+            'agent_version': 1,
+        }
+    
     # Get all active providers and their models
     providers = AIProvider.objects.filter(active=True).prefetch_related('models')
     provider_types = AIProviderType.choices
@@ -5242,6 +5251,12 @@ def agent_create(request):
             'role': '',
             'task': '',
             'parameters': {},
+            'cache': {
+                'enabled': False,
+                'ttl_seconds': 7776000,
+                'key_strategy': 'content_hash',
+                'agent_version': 1,
+            },
         },
         'is_new': True,
         'providers': providers,
@@ -5258,6 +5273,9 @@ def agent_save(request, filename):
     agent_service = AgentService()
     
     try:
+        # Load existing agent to check for task changes
+        existing_agent = agent_service.get_agent(filename)
+        
         # Get form data
         name = request.POST.get('name', '').strip()
         description = request.POST.get('description', '').strip()
@@ -5303,6 +5321,69 @@ def agent_save(request, filename):
         
         if parameters:
             agent_data['parameters'] = parameters
+        
+        # Parse cache configuration
+        cache_enabled = request.POST.get('cache_enabled') == 'true'
+        
+        if cache_enabled:
+            # Validate ttl_seconds
+            ttl_seconds_str = request.POST.get('cache_ttl_seconds', '').strip()
+            if not ttl_seconds_str:
+                return HttpResponse("TTL seconds is required when cache is enabled", status=400)
+            
+            try:
+                ttl_seconds = int(ttl_seconds_str)
+                if ttl_seconds <= 0:
+                    return HttpResponse("TTL seconds must be a positive integer", status=400)
+            except ValueError:
+                return HttpResponse("TTL seconds must be a valid integer", status=400)
+            
+            key_strategy = request.POST.get('cache_key_strategy', 'content_hash').strip()
+            
+            # Validate key_strategy
+            if key_strategy not in ['content_hash']:
+                return HttpResponse("Invalid key strategy. Only 'content_hash' is supported", status=400)
+            
+            # Get agent_version from form (user may have edited it, but we'll override if task changed)
+            agent_version_str = request.POST.get('cache_agent_version', '1').strip()
+            try:
+                agent_version = int(agent_version_str)
+            except ValueError:
+                agent_version = 1
+            
+            # Check if task has changed - if so, increment agent_version
+            if existing_agent:
+                existing_task = existing_agent.get('task', '')
+                if existing_task != task:
+                    # Task changed - increment version
+                    existing_cache = existing_agent.get('cache', {})
+                    existing_version = existing_cache.get('agent_version', 0)
+                    agent_version = existing_version + 1
+            
+            agent_data['cache'] = {
+                'enabled': True,
+                'ttl_seconds': ttl_seconds,
+                'key_strategy': key_strategy,
+                'agent_version': agent_version,
+            }
+        else:
+            # Cache disabled - check if task changed to still increment version if cache exists
+            if existing_agent:
+                existing_task = existing_agent.get('task', '')
+                existing_cache = existing_agent.get('cache', {})
+                
+                if existing_cache:
+                    # Preserve cache block even if disabled, but update agent_version if task changed
+                    agent_version = existing_cache.get('agent_version', 1)
+                    if existing_task != task:
+                        agent_version = agent_version + 1
+                    
+                    agent_data['cache'] = {
+                        'enabled': False,
+                        'ttl_seconds': existing_cache.get('ttl_seconds', 7776000),
+                        'key_strategy': existing_cache.get('key_strategy', 'content_hash'),
+                        'agent_version': agent_version,
+                    }
         
         # Save agent
         agent_service.save_agent(filename, agent_data)
@@ -5367,6 +5448,36 @@ def agent_create_save(request):
         
         if parameters:
             agent_data['parameters'] = parameters
+        
+        # Parse cache configuration
+        cache_enabled = request.POST.get('cache_enabled') == 'true'
+        
+        if cache_enabled:
+            # Validate ttl_seconds
+            ttl_seconds_str = request.POST.get('cache_ttl_seconds', '').strip()
+            if not ttl_seconds_str:
+                return HttpResponse("TTL seconds is required when cache is enabled", status=400)
+            
+            try:
+                ttl_seconds = int(ttl_seconds_str)
+                if ttl_seconds <= 0:
+                    return HttpResponse("TTL seconds must be a positive integer", status=400)
+            except ValueError:
+                return HttpResponse("TTL seconds must be a valid integer", status=400)
+            
+            key_strategy = request.POST.get('cache_key_strategy', 'content_hash').strip()
+            
+            # Validate key_strategy
+            if key_strategy not in ['content_hash']:
+                return HttpResponse("Invalid key strategy. Only 'content_hash' is supported", status=400)
+            
+            # For new agents, start with agent_version = 1
+            agent_data['cache'] = {
+                'enabled': True,
+                'ttl_seconds': ttl_seconds,
+                'key_strategy': key_strategy,
+                'agent_version': 1,
+            }
         
         # Creating new agent - generate filename from name
         safe_name = name.lower().replace(' ', '-').replace('_', '-')
