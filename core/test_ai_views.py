@@ -186,6 +186,28 @@ class AIProviderFetchModelsTestCase(TestCase):
         # Embedding model should not be included
         self.assertNotIn('text-embedding-004', model_ids)
     
+    @patch('google.genai.Client')
+    def test_fetch_gemini_models_handles_api_errors(self, mock_genai_client):
+        """Test that Gemini API errors are handled gracefully and displayed in UI"""
+        # Mock Gemini client to raise exception
+        mock_client = Mock()
+        mock_client.models.list.side_effect = Exception('Invalid API key')
+        mock_genai_client.return_value = mock_client
+        
+        response = self.client.post(
+            reverse('ai-provider-fetch-models', kwargs={'id': self.gemini_provider.id})
+        )
+        
+        # Check response - should return HTML with error message, not JSON
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Error')
+        self.assertContains(response, 'Invalid API key')
+        self.assertContains(response, 'Gemini')
+        
+        # Check no models were created
+        models = AIModel.objects.filter(provider=self.gemini_provider)
+        self.assertEqual(models.count(), 0)
+    
     def test_fetch_claude_models_creates_predefined_models(self):
         """Test that fetching Claude models creates predefined model list"""
         response = self.client.post(
@@ -207,18 +229,20 @@ class AIProviderFetchModelsTestCase(TestCase):
     
     @patch('core.views.openai.OpenAI')
     def test_fetch_models_handles_api_errors(self, mock_openai):
-        """Test that API errors are handled gracefully"""
+        """Test that API errors are handled gracefully and displayed in UI"""
         # Mock OpenAI to raise exception
         mock_client = Mock()
-        mock_client.models.list.side_effect = Exception('API Error')
+        mock_client.models.list.side_effect = Exception('API connection failed')
         mock_openai.return_value = mock_client
         
         response = self.client.post(
             reverse('ai-provider-fetch-models', kwargs={'id': self.openai_provider.id})
         )
         
-        # Check error response - now returns HTTP error with text, not JSON
-        self.assertEqual(response.status_code, 400)
+        # Check response - should return HTML with error message, not JSON
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Error')
+        self.assertContains(response, 'API connection failed')
         
         # Check no models were created
         models = AIModel.objects.filter(provider=self.openai_provider)
