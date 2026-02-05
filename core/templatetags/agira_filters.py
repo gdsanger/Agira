@@ -84,7 +84,8 @@ def release_status_badge_class(status):
     Get Bootstrap badge class for release status.
     
     Args:
-        status: Release status value (Planned, Working, or Closed)
+        status: Release status value from the database (e.g., 'Planned', 'Working', 'Closed').
+                For the Release model, the internal value and display value are the same.
         
     Returns:
         Bootstrap badge class (e.g., 'bg-info', 'bg-warning', 'bg-success')
