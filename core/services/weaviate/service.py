@@ -153,6 +153,8 @@ def upsert_document(
     source_id_str = str(source_id)
     project_id_str = str(project_id)
     
+    logger.info(f"Upserting document: {source_type}:{source_id_str} in project {project_id_str}")
+    
     # Generate deterministic UUID
     obj_uuid = _get_deterministic_uuid(source_type, source_id_str)
     
@@ -198,11 +200,13 @@ def upsert_document(
                 uuid=obj_uuid,
             )
         
-        logger.debug(
-            f"Upserted document: {source_type}:{source_id_str} -> {obj_uuid}"
-        )
+        logger.info(f"Successfully upserted document: {source_type}:{source_id_str} -> {obj_uuid}")
         
         return str(obj_uuid)
+    
+    except Exception as e:
+        logger.error(f"Failed to upsert document {source_type}:{source_id_str}: {type(e).__name__}: {e}", exc_info=True)
+        raise
         
     finally:
         client.close()
@@ -231,6 +235,8 @@ def delete_document(source_type: str, source_id: str | int) -> bool:
     # Convert ID to string
     source_id_str = str(source_id)
     
+    logger.info(f"Deleting document: {source_type}:{source_id_str}")
+    
     # Generate deterministic UUID
     obj_uuid = _get_deterministic_uuid(source_type, source_id_str)
     
@@ -243,14 +249,16 @@ def delete_document(source_type: str, source_id: str | int) -> bool:
         # Try to delete
         try:
             collection.data.delete_by_id(obj_uuid)
-            logger.debug(f"Deleted document: {source_type}:{source_id_str}")
+            logger.info(f"Successfully deleted document: {source_type}:{source_id_str}")
             return True
         except Exception as e:
             # Object might not exist
-            logger.debug(
-                f"Could not delete {source_type}:{source_id_str} (might not exist): {e}"
-            )
+            logger.warning(f"Could not delete {source_type}:{source_id_str} (might not exist): {e}")
             return False
+    
+    except Exception as e:
+        logger.error(f"Error deleting document {source_type}:{source_id_str}: {type(e).__name__}: {e}", exc_info=True)
+        raise
             
     finally:
         client.close()
@@ -297,6 +305,8 @@ def query(
     # Convert project_id to string
     project_id_str = str(project_id)
     
+    logger.info(f"Querying documents in project {project_id_str}: '{query_text}' (top_k={top_k})")
+    
     # Get client and ensure schema
     client = get_client()
     try:
@@ -342,11 +352,13 @@ def query(
             }
             results.append(result)
         
-        logger.debug(
-            f"Query '{query_text}' in project {project_id_str} returned {len(results)} results"
-        )
+        logger.info(f"Query completed: returned {len(results)} results for '{query_text}' in project {project_id_str}")
         
         return results
+    
+    except Exception as e:
+        logger.error(f"Query failed for '{query_text}' in project {project_id_str}: {type(e).__name__}: {e}", exc_info=True)
+        raise
         
     finally:
         client.close()
@@ -393,6 +405,8 @@ def global_search(
         >>> # Keyword search only
         >>> results = global_search("bug #123", mode="keyword")
     """
+    logger.info(f"Global search: '{query}' (mode={mode}, limit={limit}, alpha={alpha})")
+    
     # Get client and ensure schema
     client = get_client()
     try:
@@ -514,11 +528,15 @@ def global_search(
         # Use 0 as fallback for None scores (represents no relevance)
         results.sort(key=lambda x: x.score if x.score is not None else 0, reverse=True)
         
-        logger.debug(
-            f"Global search ({mode}) for '{query}' returned {len(results)} results"
-        )
+        logger.info(f"Global search completed: returned {len(results)} results for '{query}' (mode={mode})")
         
         return results
+    
+    except Exception as outer_e:
+        # Catch any exceptions not already logged
+        if "Search query failed with unexpected error" not in str(outer_e):
+            logger.error(f"Global search failed for '{query}': {type(outer_e).__name__}: {outer_e}", exc_info=True)
+        raise
         
     finally:
         client.close()
@@ -539,9 +557,14 @@ def ensure_schema() -> None:
         >>> from core.services.weaviate.service import ensure_schema
         >>> ensure_schema()  # Creates AgiraObject collection if needed
     """
+    logger.info("Ensuring Weaviate schema exists")
     client = get_client()
     try:
         _ensure_schema_internal(client)
+        logger.info("Weaviate schema verification completed")
+    except Exception as e:
+        logger.error(f"Failed to ensure schema: {type(e).__name__}: {e}", exc_info=True)
+        raise
     finally:
         client.close()
 
@@ -572,6 +595,7 @@ def upsert_object(type: str, object_id: str) -> Optional[str]:
         >>> if uuid_str:
         ...     print(f"Upserted with UUID: {uuid_str}")
     """
+    logger.info(f"Upserting object: {type}:{object_id}")
     from core.services.weaviate.serializers import to_agira_object
     
     # Load the Django object
@@ -590,7 +614,9 @@ def upsert_object(type: str, object_id: str) -> Optional[str]:
         return None
     
     # Upsert using the new schema
-    return _upsert_agira_object(obj_dict)
+    result = _upsert_agira_object(obj_dict)
+    logger.info(f"Successfully upserted object: {type}:{object_id} -> {result}")
+    return result
 
 
 def delete_object(type: str, object_id: str) -> bool:
@@ -613,6 +639,8 @@ def delete_object(type: str, object_id: str) -> bool:
         >>> if deleted:
         ...     print("Object deleted from Weaviate")
     """
+    logger.info(f"Deleting object: {type}:{object_id}")
+    
     # Convert to string and use deterministic UUID
     object_id_str = str(object_id)
     obj_uuid = _get_deterministic_uuid(type, object_id_str)
@@ -626,14 +654,16 @@ def delete_object(type: str, object_id: str) -> bool:
         # Try to delete
         try:
             collection.data.delete_by_id(obj_uuid)
-            logger.debug(f"Deleted object: {type}:{object_id_str}")
+            logger.info(f"Successfully deleted object: {type}:{object_id_str}")
             return True
         except Exception as e:
             # Object might not exist
-            logger.debug(
-                f"Could not delete {type}:{object_id_str} (might not exist): {e}"
-            )
+            logger.warning(f"Could not delete {type}:{object_id_str} (might not exist): {e}")
             return False
+    
+    except Exception as e:
+        logger.error(f"Error deleting object {type}:{object_id_str}: {type(e).__name__}: {e}", exc_info=True)
+        raise
             
     finally:
         client.close()
@@ -662,6 +692,7 @@ def upsert_instance(instance, fetch_from_github: bool = False) -> Optional[str]:
         >>> item = Item.objects.get(pk=1)
         >>> uuid_str = upsert_instance(item)
     """
+    logger.debug(f"Upserting instance: {instance.__class__.__name__} (pk={instance.pk})")
     from core.services.weaviate.serializers import to_agira_object
     
     # Serialize to AgiraObject dict
@@ -818,8 +849,10 @@ def exists_instance(instance) -> bool:
         >>> if exists_instance(item):
         ...     print("Item is synced to Weaviate")
     """
+    logger.debug(f"Checking existence of instance: {instance.__class__.__name__} (pk={instance.pk})")
     obj_type = get_weaviate_type(instance)
     if obj_type is None:
+        logger.debug(f"Instance type {instance.__class__.__name__} not supported")
         return False
     
     return exists_object(obj_type, str(instance.pk))
@@ -841,6 +874,8 @@ def exists_object(type: str, object_id: str) -> bool:
         >>> if exists:
         ...     print("Object exists in Weaviate")
     """
+    logger.debug(f"Checking existence of object: {type}:{object_id}")
+    
     # Convert to string and use deterministic UUID
     object_id_str = str(object_id)
     obj_uuid = _get_deterministic_uuid(type, object_id_str)
@@ -887,8 +922,10 @@ def fetch_object(instance) -> Optional[Dict[str, Any]]:
         >>> if obj_data:
         ...     print(obj_data['title'], obj_data['uuid'])
     """
+    logger.debug(f"Fetching object for instance: {instance.__class__.__name__} (pk={instance.pk})")
     obj_type = get_weaviate_type(instance)
     if obj_type is None:
+        logger.debug(f"Instance type {instance.__class__.__name__} not supported")
         return None
     
     return fetch_object_by_type(obj_type, str(instance.pk))
@@ -910,6 +947,8 @@ def fetch_object_by_type(type: str, object_id: str) -> Optional[Dict[str, Any]]:
         >>> if obj_data:
         ...     print(obj_data)
     """
+    logger.debug(f"Fetching object by type: {type}:{object_id}")
+    
     # Convert to string and use deterministic UUID
     object_id_str = str(object_id)
     obj_uuid = _get_deterministic_uuid(type, object_id_str)
@@ -961,6 +1000,8 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
     obj_type = obj_dict['type']
     object_id = str(obj_dict['object_id'])
     
+    logger.debug(f"Upserting AgiraObject: {obj_type}:{object_id}")
+    
     # Generate deterministic UUID
     obj_uuid = _get_deterministic_uuid(obj_type, object_id)
     
@@ -999,6 +1040,10 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
         )
         
         return str(obj_uuid)
+    
+    except Exception as e:
+        logger.error(f"Failed to upsert AgiraObject {obj_type}:{object_id}: {type(e).__name__}: {e}", exc_info=True)
+        raise
         
     finally:
         client.close()
