@@ -21,9 +21,13 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Logging directory setup
+# Logging directory setup - try /logs first, fallback to BASE_DIR/logs
 LOG_BASE_PATH = Path('/logs')
-LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+try:
+    LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    LOG_BASE_PATH = BASE_DIR / 'logs'
+    LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
