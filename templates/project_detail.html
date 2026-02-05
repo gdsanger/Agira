@@ -490,6 +490,9 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="attachmentViewerModalLabel">Attachment Viewer</h5>
+                <a href="#" id="attachmentDownloadBtn" class="btn btn-sm btn-outline-primary me-2" title="Download attachment" style="display: none;">
+                    <i class="bi bi-download"></i> Download
+                </a>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="attachmentViewerContent">
@@ -758,9 +761,14 @@ function viewAttachment(attachmentId, filename, contentType) {
     const modal = new bootstrap.Modal(document.getElementById('attachmentViewerModal'));
     const modalTitle = document.getElementById('attachmentViewerModalLabel');
     const modalContent = document.getElementById('attachmentViewerContent');
+    const downloadBtn = document.getElementById('attachmentDownloadBtn');
     
     modalTitle.textContent = filename;
     modalContent.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    
+    // Set download button URL and show it
+    downloadBtn.href = `/projects/attachments/${attachmentId}/download/`;
+    downloadBtn.style.display = 'inline-block';
     
     modal.show();
     
