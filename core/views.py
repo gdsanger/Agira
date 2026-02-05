@@ -5035,10 +5035,15 @@ def ai_provider_fetch_models(request, id):
         return render(request, 'partials/ai_models_list.html', context)
         
     except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'error': f'Failed to fetch models: {str(e)}'
-        }, status=400)
+        # Return HTML error message for HTMX to display properly
+        logger.error(f"Failed to fetch models for provider {provider.id} ({provider.provider_type}): {str(e)}")
+        models = provider.models.all().order_by('-is_default', 'name')
+        context = {
+            'provider': provider,
+            'models': models,
+            'error_message': f'Failed to fetch models from {provider.provider_type} API: {str(e)}',
+        }
+        return render(request, 'partials/ai_models_list.html', context)
 
 
 @login_required
