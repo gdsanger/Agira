@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -26,7 +27,12 @@ try:
     LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
 except PermissionError:
     LOG_BASE_PATH = BASE_DIR / 'logs'
-    LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+    try:
+        LOG_BASE_PATH.mkdir(parents=True, exist_ok=True)
+        print(f'Warning: Using fallback log directory at {LOG_BASE_PATH}', file=sys.stderr)
+    except PermissionError as e:
+        print(f'Error: Cannot create log directory at {LOG_BASE_PATH}: {e}', file=sys.stderr)
+        print('Logging to file will not be available', file=sys.stderr)
 
 
 # Quick-start development settings - unsuitable for production
@@ -307,10 +313,20 @@ if sentry_dsn_value:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
     
+    # Parse traces_sample_rate with validation
+    try:
+        traces_rate = float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.1'))
+        if not 0.0 <= traces_rate <= 1.0:
+            print(f'Warning: SENTRY_TRACES_SAMPLE_RATE={traces_rate} out of range [0.0, 1.0], using 0.1', file=sys.stderr)
+            traces_rate = 0.1
+    except (ValueError, TypeError):
+        print(f'Warning: Invalid SENTRY_TRACES_SAMPLE_RATE value, using default 0.1', file=sys.stderr)
+        traces_rate = 0.1
+    
     sentry_sdk.init(
         dsn=sentry_dsn_value,
         integrations=[DjangoIntegration()],
-        traces_sample_rate=float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
+        traces_sample_rate=traces_rate,
         send_default_pii=os.getenv('SENTRY_SEND_PII', 'False') == 'True',
         environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
     )
