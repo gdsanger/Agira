@@ -121,6 +121,10 @@
                     <i class="bi bi-folder sidebar-icon"></i>
                     <span class="sidebar-text">Projects</span>
                 </a>
+                <a href="{% url 'item-create' %}" class="sidebar-link  {% if request.resolver_match.url_name == 'item-create' %}active{% endif %}">
+                    <i class="bi bi-plus-circle-fill sidebar-icon"></i>
+                    <span class="sidebar-text">New Item</span>
+                </a>
                 
                 <!-- Items Section with Collapse -->
                 <div class="sidebar-section">
