@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load markdown_extras %}
+{% load agira_filters %}
 
 {% block title %}{{ blueprint.title }} - Blueprint - Agira{% endblock %}
 
@@ -48,7 +48,7 @@
             </div>
             <div class="card-body">
                 <div class="markdown-content">
-                    {{ blueprint.description_md|markdown }}
+                    {{ blueprint.description_md|render_markdown }}
                 </div>
             </div>
         </div>
