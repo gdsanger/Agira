@@ -142,7 +142,8 @@ def logout_view(request):
 @login_required
 def dashboard(request):
     """Dashboard page view with KPIs and activity overview."""
-    from datetime import timedelta
+    from datetime import timedelta, date
+    from django.db.models.functions import TruncDate
     
     # Calculate KPIs
     kpis = {
@@ -168,8 +169,41 @@ def dashboard(request):
     ).aggregate(total_costs=models.Sum('costs'))
     kpis['ai_jobs_24h_costs'] = ai_jobs_24h['total_costs'] or Decimal('0')
     
+    # Calculate closed items by day for the last 7 days
+    now = timezone.now()
+    today = timezone.localdate()
+    days_ago_7 = today - timedelta(days=6)  # Include today = 7 days total
+    
+    # Get closed items grouped by date
+    closed_by_day = Item.objects.filter(
+        status=ItemStatus.CLOSED,
+        updated_at__gte=timezone.make_aware(
+            timezone.datetime.combine(days_ago_7, timezone.datetime.min.time())
+        )
+    ).annotate(
+        date=TruncDate('updated_at')
+    ).values('date').annotate(
+        count=Count('id')
+    ).order_by('date')
+    
+    # Create a dictionary for quick lookup
+    closed_dict = {item['date']: item['count'] for item in closed_by_day}
+    
+    # Generate all 7 days with counts (0 if no items closed that day)
+    closed_items_chart = []
+    for i in range(6, -1, -1):  # 6 days ago to today
+        day = today - timedelta(days=i)
+        count = closed_dict.get(day, 0)
+        closed_items_chart.append({
+            'date': day.strftime('%Y-%m-%d'),
+            'date_display': day.strftime('%d.%m'),  # Format for display
+            'count': count
+        })
+    
     context = {
         'kpis': kpis,
+        'closed_items_chart': closed_items_chart,
+        'closed_items_chart_json': mark_safe(json.dumps(closed_items_chart)),
     }
     return render(request, 'dashboard.html', context)
 

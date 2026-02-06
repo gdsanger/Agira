@@ -102,6 +102,20 @@
     </div>
 </div>
 
+<!-- Closed Items by Day Chart -->
+<div class="dashboard-section mb-4">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title">
+            <i class="bi bi-check-circle me-2"></i>Closed Items by Day (Last 7 Days)
+        </h2>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <canvas id="closedItemsChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+</div>
+
 <!-- Currently Worked On Section -->
 <div class="dashboard-section mb-4">
     <div class="dashboard-section-header">
@@ -171,4 +185,73 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-kmjHkztT8cOcPJD8l5yDps/YvLNT/FbU1E8qQvL13HBKfHCBTMbY1oqOaygmFwdN" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('closedItemsChart');
+    if (ctx) {
+        const chartData = {{ closed_items_chart_json }};
+        
+        const labels = chartData.map(item => item.date_display);
+        const data = chartData.map(item => item.count);
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Closed Items',
+                    data: data,
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                const index = context[0].dataIndex;
+                                return chartData[index].date;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0
+                        },
+                        title: {
+                            display: true,
+                            text: 'Number of Items'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

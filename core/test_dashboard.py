@@ -175,3 +175,101 @@ class DashboardViewsTestCase(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
+    
+    def test_dashboard_closed_items_chart_data(self):
+        """Test that closed items chart data is calculated correctly"""
+        self.client.force_login(self.user)
+        url = reverse('dashboard')
+        response = self.client.get(url)
+        
+        # Check that the chart data is present in the context
+        self.assertIn('closed_items_chart', response.context)
+        self.assertIn('closed_items_chart_json', response.context)
+        
+        chart_data = response.context['closed_items_chart']
+        
+        # Should have exactly 7 data points
+        self.assertEqual(len(chart_data), 7)
+        
+        # Each data point should have date, date_display, and count
+        for data_point in chart_data:
+            self.assertIn('date', data_point)
+            self.assertIn('date_display', data_point)
+            self.assertIn('count', data_point)
+            self.assertIsInstance(data_point['count'], int)
+        
+        # Should have at least one closed item in the data (the one we created in setUp)
+        total_closed = sum(point['count'] for point in chart_data)
+        self.assertEqual(total_closed, 1)
+    
+    def test_dashboard_closed_items_chart_empty(self):
+        """Test that chart works correctly when no items are closed"""
+        # Delete the closed item created in setUp
+        Item.objects.filter(status=ItemStatus.CLOSED).delete()
+        
+        self.client.force_login(self.user)
+        url = reverse('dashboard')
+        response = self.client.get(url)
+        
+        chart_data = response.context['closed_items_chart']
+        
+        # Should still have exactly 7 data points
+        self.assertEqual(len(chart_data), 7)
+        
+        # All counts should be 0
+        total_closed = sum(point['count'] for point in chart_data)
+        self.assertEqual(total_closed, 0)
+    
+    def test_dashboard_closed_items_chart_multiple_days(self):
+        """Test that chart aggregates items across multiple days correctly"""
+        from datetime import timedelta
+        
+        # Create items closed on different days
+        today = timezone.now()
+        
+        # Item closed today
+        item_today = Item.objects.create(
+            project=self.project,
+            title="Closed Today",
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            organisation=self.org,
+            requester=self.user
+        )
+        
+        # Item closed 3 days ago
+        item_3_days = Item.objects.create(
+            project=self.project,
+            title="Closed 3 Days Ago",
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            organisation=self.org,
+            requester=self.user
+        )
+        item_3_days.updated_at = today - timedelta(days=3)
+        item_3_days.save()
+        
+        # Item closed 5 days ago
+        item_5_days = Item.objects.create(
+            project=self.project,
+            title="Closed 5 Days Ago",
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            organisation=self.org,
+            requester=self.user
+        )
+        item_5_days.updated_at = today - timedelta(days=5)
+        item_5_days.save()
+        
+        self.client.force_login(self.user)
+        url = reverse('dashboard')
+        response = self.client.get(url)
+        
+        chart_data = response.context['closed_items_chart']
+        
+        # Should have exactly 7 data points
+        self.assertEqual(len(chart_data), 7)
+        
+        # Should have 4 closed items total (including the one from setUp)
+        total_closed = sum(point['count'] for point in chart_data)
+        self.assertEqual(total_closed, 4)
