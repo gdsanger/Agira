@@ -1029,13 +1029,15 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
         if 'created_at' not in properties or properties['created_at'] is None:
             properties['created_at'] = datetime.now(timezone.utc)
         elif properties['created_at'].tzinfo is None:
-            # If datetime exists but is naive, make it timezone-aware
+            # Django's USE_TZ=True means naive datetimes from models are already in UTC
+            # We just need to attach the timezone info to avoid Weaviate warnings
             properties['created_at'] = properties['created_at'].replace(tzinfo=timezone.utc)
             
         if 'updated_at' not in properties or properties['updated_at'] is None:
             properties['updated_at'] = datetime.now(timezone.utc)
         elif properties['updated_at'].tzinfo is None:
-            # If datetime exists but is naive, make it timezone-aware
+            # Django's USE_TZ=True means naive datetimes from models are already in UTC
+            # We just need to attach the timezone info to avoid Weaviate warnings
             properties['updated_at'] = properties['updated_at'].replace(tzinfo=timezone.utc)
         
         # Deterministic upsert strategy:
@@ -1050,18 +1052,29 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
                 f"Updated existing AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
             )
         except Exception as replace_error:
-            # Check if this is a "not found" error (object doesn't exist)
+            # Determine error type to decide on fallback strategy
+            # NOTE: We use string matching because the Weaviate Python client v4 doesn't
+            # expose specific exception types for different HTTP status codes.
+            # This is a limitation that should be revisited if the client API changes.
             error_message = str(replace_error).lower()
+            error_type = type(replace_error).__name__
             
             # Log the replace error with diagnostic information
             logger.debug(
                 f"Weaviate replace failed for {obj_type}:{object_id} (UUID: {obj_uuid}): "
-                f"{type(replace_error).__name__}: {replace_error}"
+                f"{error_type}: {replace_error}"
             )
             
-            # Only fall back to insert if it's clearly a "not found" scenario
-            # Don't blindly insert on 5xx errors or validation errors
-            if '404' in error_message or 'not found' in error_message or 'does not exist' in error_message:
+            # Determine if this is a "not found" error (object doesn't exist)
+            # Check for multiple patterns to be robust against different error message formats
+            is_not_found = (
+                '404' in error_message or 
+                'not found' in error_message or 
+                'does not exist' in error_message or
+                'object not found' in error_message
+            )
+            
+            if is_not_found:
                 # Object doesn't exist, insert it
                 try:
                     collection.data.insert(

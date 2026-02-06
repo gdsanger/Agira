@@ -645,10 +645,14 @@ class ServiceTestCase(TestCase):
     @patch('core.services.weaviate.service.get_client')
     @patch('core.services.weaviate.service._ensure_schema_once')
     def test_upsert_agira_object_falls_back_to_insert_on_404(self, mock_ensure_schema, mock_get_client):
-        """Test that _upsert_agira_object falls back to insert on 404 error."""
+        """Test that _upsert_agira_object falls back to insert on 404 error.
+        
+        Note: Uses generic Exception with "404" in message because the Weaviate
+        Python client v4 doesn't expose specific exception types for HTTP errors.
+        """
         mock_client = MagicMock()
         mock_collection = MagicMock()
-        # Make replace fail with 404
+        # Simulate Weaviate 404 error (object not found)
         mock_collection.data.replace.side_effect = Exception("404 not found")
         mock_collection.data.insert.return_value = None
         mock_client.collections.get.return_value = mock_collection
@@ -675,10 +679,14 @@ class ServiceTestCase(TestCase):
     @patch('core.services.weaviate.service.get_client')
     @patch('core.services.weaviate.service._ensure_schema_once')
     def test_upsert_agira_object_raises_on_500_error(self, mock_ensure_schema, mock_get_client):
-        """Test that _upsert_agira_object raises exception on 500 error instead of blind fallback."""
+        """Test that _upsert_agira_object raises exception on 500 error instead of blind fallback.
+        
+        Note: Uses generic Exception with "500" in message because the Weaviate
+        Python client v4 doesn't expose specific exception types for HTTP errors.
+        """
         mock_client = MagicMock()
         mock_collection = MagicMock()
-        # Make replace fail with 500 error
+        # Simulate Weaviate 500 error (server error)
         mock_collection.data.replace.side_effect = Exception("500 Internal Server Error")
         mock_client.collections.get.return_value = mock_collection
         mock_get_client.return_value = mock_client
