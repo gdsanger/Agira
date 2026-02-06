@@ -49,12 +49,17 @@
                     
                     <div class="mb-3">
                         <label for="category" class="form-label">Category <span class="text-danger">*</span></label>
-                        <select class="form-select" id="category" name="category" required>
-                            <option value="">Select a category</option>
-                            {% for cat in categories %}
-                            <option value="{{ cat.id }}">{{ cat.name }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select class="form-select" id="category" name="category" required>
+                                <option value="">Select a category</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                                <i class="bi bi-plus-lg"></i> Add Category
+                            </button>
+                        </div>
                         <div class="form-text">Categorize this blueprint for easier filtering.</div>
                     </div>
                     
@@ -121,6 +126,33 @@
     </div>
 </div>
 
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCategoryForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="categoryName" class="form-label">Category Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="categoryName" name="name" required>
+                        <div class="form-text">Enter a unique name for the category.</div>
+                    </div>
+                    <div id="categoryErrorMessage" class="alert alert-danger d-none" role="alert"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addCategoryForm" class="btn btn-primary">Create Category</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
     <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
@@ -156,6 +188,77 @@ function showToast(type, message) {
     const bsToast = new bootstrap.Toast(toast);
     bsToast.show();
 }
+
+// Handle add category form submission
+document.getElementById('addCategoryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const errorDiv = document.getElementById('categoryErrorMessage');
+    
+    // Hide previous errors
+    errorDiv.classList.add('d-none');
+    
+    // Disable submit button
+    submitBtn.disabled = true;
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const response = await fetch('{% url "blueprint-category-create-inline" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Add new category to dropdown
+            const categorySelect = document.getElementById('category');
+            const newOption = document.createElement('option');
+            newOption.value = data.category.id;
+            newOption.textContent = data.category.name;
+            newOption.selected = true;
+            categorySelect.appendChild(newOption);
+            
+            // Show success toast
+            showToast('success', data.message);
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addCategoryModal'));
+            modal.hide();
+            
+            // Reset form
+            form.reset();
+        } else {
+            // Show error in modal
+            errorDiv.textContent = data.error || 'Failed to create category';
+            errorDiv.classList.remove('d-none');
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        const errorMessage = error.message || 'An unexpected error occurred';
+        errorDiv.textContent = 'Failed to create category: ' + errorMessage;
+        errorDiv.classList.remove('d-none');
+        submitBtn.disabled = false;
+    }
+});
+
+// Reset form and hide errors when modal is hidden
+document.getElementById('addCategoryModal').addEventListener('hidden.bs.modal', function() {
+    document.getElementById('addCategoryForm').reset();
+    document.getElementById('categoryErrorMessage').classList.add('d-none');
+    // Re-enable submit button
+    const submitBtn = document.querySelector('#addCategoryForm button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+    }
+});
 
 // Form submission handler
 document.getElementById('createBlueprintForm').addEventListener('submit', async function(e) {
