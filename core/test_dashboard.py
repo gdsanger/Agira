@@ -114,8 +114,7 @@ class DashboardViewsTestCase(TestCase):
             requester=self.user,
             assigned_to=self.user
         )
-        closed_item.updated_at = timezone.now() - timedelta(days=2)
-        closed_item.save()
+        Item.objects.filter(pk=closed_item.pk).update(updated_at=timezone.now() - timedelta(days=2))
     
     def test_dashboard_view(self):
         """Test dashboard view loads correctly"""
@@ -183,10 +182,11 @@ class DashboardViewsTestCase(TestCase):
         response = self.client.get(url)
         
         # Check that the chart data is present in the context
-        self.assertIn('closed_items_chart', response.context)
         self.assertIn('closed_items_chart_json', response.context)
         
-        chart_data = response.context['closed_items_chart']
+        # Parse the JSON data
+        import json
+        chart_data = json.loads(response.context['closed_items_chart_json'])
         
         # Should have exactly 7 data points
         self.assertEqual(len(chart_data), 7)
@@ -211,7 +211,9 @@ class DashboardViewsTestCase(TestCase):
         url = reverse('dashboard')
         response = self.client.get(url)
         
-        chart_data = response.context['closed_items_chart']
+        # Parse the JSON data
+        import json
+        chart_data = json.loads(response.context['closed_items_chart_json'])
         
         # Should still have exactly 7 data points
         self.assertEqual(len(chart_data), 7)
@@ -246,8 +248,7 @@ class DashboardViewsTestCase(TestCase):
             organisation=self.org,
             requester=self.user
         )
-        item_3_days.updated_at = today - timedelta(days=3)
-        item_3_days.save()
+        Item.objects.filter(pk=item_3_days.pk).update(updated_at=today - timedelta(days=3))
         
         # Item closed 5 days ago
         item_5_days = Item.objects.create(
@@ -258,14 +259,15 @@ class DashboardViewsTestCase(TestCase):
             organisation=self.org,
             requester=self.user
         )
-        item_5_days.updated_at = today - timedelta(days=5)
-        item_5_days.save()
+        Item.objects.filter(pk=item_5_days.pk).update(updated_at=today - timedelta(days=5))
         
         self.client.force_login(self.user)
         url = reverse('dashboard')
         response = self.client.get(url)
         
-        chart_data = response.context['closed_items_chart']
+        # Parse the JSON data
+        import json
+        chart_data = json.loads(response.context['closed_items_chart_json'])
         
         # Should have exactly 7 data points
         self.assertEqual(len(chart_data), 7)

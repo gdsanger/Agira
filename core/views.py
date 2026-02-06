@@ -202,7 +202,6 @@ def dashboard(request):
     
     context = {
         'kpis': kpis,
-        'closed_items_chart': closed_items_chart,
         'closed_items_chart_json': mark_safe(json.dumps(closed_items_chart)),
     }
     return render(request, 'dashboard.html', context)
