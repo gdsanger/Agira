@@ -10,7 +10,8 @@ from .models import (
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
     ExternalIssueKind, MailTemplate, OrganisationEmbedProject,
-    IssueOpenQuestion, IssueStandardAnswer, GlobalSettings
+    IssueOpenQuestion, IssueStandardAnswer, GlobalSettings,
+    IssueBlueprintCategory, IssueBlueprint
 )
 from core.services.github.service import GitHubService
 from core.services.integrations.base import IntegrationError
@@ -718,3 +719,40 @@ class IssueOpenQuestionAdmin(admin.ModelAdmin):
         """Display shortened question text"""
         return obj.question[:50] + '...' if len(obj.question) > 50 else obj.question
     question_short.short_description = 'Question'
+
+
+@admin.register(IssueBlueprintCategory)
+class IssueBlueprintCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug', 'is_active', 'created_at', 'updated_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'slug']
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'is_active')}),
+        ('Metadata', {'fields': ('id', 'created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+
+@admin.register(IssueBlueprint)
+class IssueBlueprintAdmin(admin.ModelAdmin):
+    list_display = ['title', 'category', 'version', 'is_active', 'created_by', 'created_at', 'updated_at']
+    list_filter = ['is_active', 'category', 'default_risk_level', 'default_security_relevant', 'created_at']
+    search_fields = ['title', 'description_md', 'notes']
+    autocomplete_fields = ['category', 'created_by']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'category', 'description_md', 'is_active', 'version')
+        }),
+        ('Optional Fields', {
+            'fields': ('tags', 'default_labels', 'default_risk_level', 'default_security_relevant', 'notes'),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('created_by', 'id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
