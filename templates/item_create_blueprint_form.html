@@ -195,14 +195,16 @@ document.getElementById('addCategoryForm').addEventListener('submit', async func
     
     const form = e.target;
     const formData = new FormData(form);
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitBtn = document.querySelector('button[form="addCategoryForm"]');
     const errorDiv = document.getElementById('categoryErrorMessage');
     
     // Hide previous errors
     errorDiv.classList.add('d-none');
     
     // Disable submit button
-    submitBtn.disabled = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+    }
     
     try {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -239,13 +241,17 @@ document.getElementById('addCategoryForm').addEventListener('submit', async func
             // Show error in modal
             errorDiv.textContent = data.error || 'Failed to create category';
             errorDiv.classList.remove('d-none');
-            submitBtn.disabled = false;
+            if (submitBtn) {
+                submitBtn.disabled = false;
+            }
         }
     } catch (error) {
         const errorMessage = error.message || 'An unexpected error occurred';
         errorDiv.textContent = 'Failed to create category: ' + errorMessage;
         errorDiv.classList.remove('d-none');
-        submitBtn.disabled = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
     }
 });
 
@@ -254,7 +260,7 @@ document.getElementById('addCategoryModal').addEventListener('hidden.bs.modal', 
     document.getElementById('addCategoryForm').reset();
     document.getElementById('categoryErrorMessage').classList.add('d-none');
     // Re-enable submit button
-    const submitBtn = document.querySelector('#addCategoryForm button[type="submit"]');
+    const submitBtn = document.querySelector('button[form="addCategoryForm"]');
     if (submitBtn) {
         submitBtn.disabled = false;
     }

@@ -8313,7 +8313,13 @@ def blueprint_category_create_inline(request):
         
     except IntegrityError as e:
         logger.error(f"Integrity error creating category: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': 'A category with this name already exists'}, status=400)
+        # Could be duplicate name or slug, or race condition
+        error_msg = 'A category with this name or similar name already exists'
+        if 'name' in str(e).lower():
+            error_msg = 'A category with this name already exists'
+        elif 'slug' in str(e).lower():
+            error_msg = 'A category with a similar name already exists'
+        return JsonResponse({'success': False, 'error': error_msg}, status=400)
     except Exception as e:
         logger.error(f"Error creating blueprint category: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
