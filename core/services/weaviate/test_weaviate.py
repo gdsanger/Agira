@@ -711,6 +711,45 @@ class ServiceTestCase(TestCase):
     
     @patch('core.services.weaviate.service.get_client')
     @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_falls_back_to_insert_on_500_with_no_object_message(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object falls back to insert on 500 error with 'no object with id' message.
+        
+        This test addresses the issue where Weaviate returns 500 Internal Server Error
+        with message "no object with id {uuid}" when trying to replace a non-existent object.
+        This should be treated as a "not found" case and trigger insert fallback.
+        
+        Note: Uses generic Exception because the Weaviate Python client v4 doesn't
+        expose specific exception types for HTTP errors.
+        """
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        # Simulate Weaviate 500 error with "no object with id" message (object not found)
+        test_uuid = "2bdbefce-74a3-5308-9414-c79508730d3f"
+        mock_collection.data.replace.side_effect = Exception(f"500 Internal Server Error: no object with id '{test_uuid}'")
+        mock_collection.data.insert.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '277',
+            'title': 'Test Item',
+            'text': 'Test content',
+        }
+        
+        result = service._upsert_agira_object(obj_dict)
+        
+        # Verify replace was attempted
+        mock_collection.data.replace.assert_called_once()
+        # Verify insert was called as fallback (this is the key behavior)
+        mock_collection.data.insert.assert_called_once()
+        
+        # Verify UUID was returned
+        expected_uuid = service._get_deterministic_uuid('item', '277')
+        self.assertEqual(result, str(expected_uuid))
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
     def test_upsert_agira_object_creates_timezone_aware_datetimes(self, mock_ensure_schema, mock_get_client):
         """Test that _upsert_agira_object creates timezone-aware datetime objects."""
         from datetime import timezone as dt_timezone
