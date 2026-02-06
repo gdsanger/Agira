@@ -81,6 +81,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'core.middleware.EmbedFrameMiddleware',  # Must come before XFrameOptionsMiddleware
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware_api.CustomGPTAPIAuthMiddleware',  # CustomGPT API authentication
 ]
 
 ROOT_URLCONF = 'agira.urls'
