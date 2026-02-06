@@ -7,7 +7,7 @@ context documents in Weaviate for semantic search and AI agent retrieval.
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
@@ -990,13 +990,21 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
     """
     Upsert an AgiraObject dictionary into Weaviate.
     
+    This function uses a deterministic upsert strategy:
+    1. Try to replace (update) the object if it exists
+    2. If replace fails with 404 (object doesn't exist), insert it
+    3. For other errors (e.g., 500, validation errors), raise exception
+    
     Args:
         obj_dict: Dictionary with AgiraObject properties
         
     Returns:
         Weaviate object UUID as string
+        
+    Raises:
+        Exception: If Weaviate operation fails (propagates from Weaviate client)
     """
-    # Extract required fields
+    # Extract required fields for logging/diagnostics
     obj_type = obj_dict['type']
     object_id = str(obj_dict['object_id'])
     
@@ -1016,33 +1024,107 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
         # Prepare properties (filter out None values for optional fields)
         properties = {k: v for k, v in obj_dict.items() if v is not None}
         
-        # Ensure datetime objects are present
+        # Ensure datetime objects are present and timezone-aware (UTC)
+        # This fixes the Con002 warning about naive datetime objects
         if 'created_at' not in properties or properties['created_at'] is None:
-            properties['created_at'] = datetime.now()
+            properties['created_at'] = datetime.now(timezone.utc)
+        elif properties['created_at'].tzinfo is None:
+            # Django's USE_TZ=True means naive datetimes from models are already in UTC
+            # We just need to attach the timezone info to avoid Weaviate warnings
+            properties['created_at'] = properties['created_at'].replace(tzinfo=timezone.utc)
+            
         if 'updated_at' not in properties or properties['updated_at'] is None:
-            properties['updated_at'] = datetime.now()
+            properties['updated_at'] = datetime.now(timezone.utc)
+        elif properties['updated_at'].tzinfo is None:
+            # Django's USE_TZ=True means naive datetimes from models are already in UTC
+            # We just need to attach the timezone info to avoid Weaviate warnings
+            properties['updated_at'] = properties['updated_at'].replace(tzinfo=timezone.utc)
         
-        # Upsert using deterministic UUID
+        # Deterministic upsert strategy:
+        # Try replace first (update if exists), then insert if not found
         try:
+            # Weaviate write triggered during create-github-issue flow
             collection.data.replace(
                 properties=properties,
                 uuid=obj_uuid,
             )
-        except Exception:
-            # If replace fails (object doesn't exist), insert it
-            collection.data.insert(
-                properties=properties,
-                uuid=obj_uuid,
+            logger.debug(
+                f"Updated existing AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
             )
+        except Exception as replace_error:
+            # Determine error type to decide on fallback strategy
+            # NOTE: We use string matching because the Weaviate Python client v4 doesn't
+            # expose specific exception types for different HTTP status codes.
+            # This is a limitation that should be revisited if the client API changes.
+            error_message = str(replace_error).lower()
+            error_type = type(replace_error).__name__
+            
+            # Log the replace error with diagnostic information
+            logger.debug(
+                f"Weaviate replace failed for {obj_type}:{object_id} (UUID: {obj_uuid}): "
+                f"{error_type}: {replace_error}"
+            )
+            
+            # Determine if this is a "not found" error (object doesn't exist)
+            # Check for multiple patterns to be robust against different error message formats
+            is_not_found = (
+                '404' in error_message or 
+                'not found' in error_message or 
+                'does not exist' in error_message
+            )
+            
+            if is_not_found:
+                # Object doesn't exist, insert it
+                try:
+                    collection.data.insert(
+                        properties=properties,
+                        uuid=obj_uuid,
+                    )
+                    logger.debug(
+                        f"Inserted new AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
+                    )
+                except Exception as insert_error:
+                    # Log comprehensive error information for insert failure
+                    logger.error(
+                        f"Weaviate INSERT failed for {obj_type}:{object_id}:\n"
+                        f"  UUID: {obj_uuid}\n"
+                        f"  Error Type: {type(insert_error).__name__}\n"
+                        f"  Error Message: {insert_error}\n"
+                        f"  Context: Item ID in obj_dict: {obj_dict.get('object_id', 'N/A')}",
+                        exc_info=True
+                    )
+                    raise
+            else:
+                # This is NOT a "not found" error (e.g., 500, validation error, etc.)
+                # Log comprehensive diagnostic information and re-raise
+                logger.error(
+                    f"Weaviate REPLACE failed with non-404 error for {obj_type}:{object_id}:\n"
+                    f"  HTTP Method: PUT\n"
+                    f"  Endpoint: /v1/objects/{COLLECTION_NAME}/{obj_uuid}\n"
+                    f"  UUID: {obj_uuid}\n"
+                    f"  Error Type: {type(replace_error).__name__}\n"
+                    f"  Error Message: {replace_error}\n"
+                    f"  Context: Item ID in obj_dict: {obj_dict.get('object_id', 'N/A')}\n"
+                    f"  Object Type: {obj_type}",
+                    exc_info=True
+                )
+                # Re-raise the error - don't silently ignore 500 or validation errors
+                raise
         
         logger.debug(
-            f"Upserted AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
+            f"Successfully upserted AgiraObject: {obj_type}:{object_id} -> {obj_uuid}"
         )
         
         return str(obj_uuid)
     
     except Exception as e:
-        logger.error(f"Failed to upsert AgiraObject {obj_type}:{object_id}: {type(e).__name__}: {e}", exc_info=True)
+        # Catch-all for any unexpected errors
+        logger.error(
+            f"Failed to upsert AgiraObject {obj_type}:{object_id}:\n"
+            f"  Error Type: {type(e).__name__}\n"
+            f"  Error Message: {e}",
+            exc_info=True
+        )
         raise
         
     finally:

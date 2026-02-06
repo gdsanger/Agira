@@ -612,6 +612,170 @@ class ServiceTestCase(TestCase):
         # Verify text was truncated
         self.assertEqual(len(results[0]['text_preview']), 203)  # 200 + "..."
         self.assertTrue(results[0]['text_preview'].endswith("..."))
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_replace_succeeds(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object uses replace when object exists."""
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        # Make replace succeed
+        mock_collection.data.replace.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '123',
+            'title': 'Test Item',
+            'text': 'Test content',
+        }
+        
+        result = service._upsert_agira_object(obj_dict)
+        
+        # Verify replace was called
+        mock_collection.data.replace.assert_called_once()
+        # Verify insert was NOT called
+        mock_collection.data.insert.assert_not_called()
+        
+        # Verify UUID was returned
+        expected_uuid = service._get_deterministic_uuid('item', '123')
+        self.assertEqual(result, str(expected_uuid))
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_falls_back_to_insert_on_404(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object falls back to insert on 404 error.
+        
+        Note: Uses generic Exception with "404" in message because the Weaviate
+        Python client v4 doesn't expose specific exception types for HTTP errors.
+        """
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        # Simulate Weaviate 404 error (object not found)
+        mock_collection.data.replace.side_effect = Exception("404 not found")
+        mock_collection.data.insert.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '123',
+            'title': 'Test Item',
+            'text': 'Test content',
+        }
+        
+        result = service._upsert_agira_object(obj_dict)
+        
+        # Verify replace was attempted
+        mock_collection.data.replace.assert_called_once()
+        # Verify insert was called as fallback
+        mock_collection.data.insert.assert_called_once()
+        
+        # Verify UUID was returned
+        expected_uuid = service._get_deterministic_uuid('item', '123')
+        self.assertEqual(result, str(expected_uuid))
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_raises_on_500_error(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object raises exception on 500 error instead of blind fallback.
+        
+        Note: Uses generic Exception with "500" in message because the Weaviate
+        Python client v4 doesn't expose specific exception types for HTTP errors.
+        """
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        # Simulate Weaviate 500 error (server error)
+        mock_collection.data.replace.side_effect = Exception("500 Internal Server Error")
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '123',
+            'title': 'Test Item',
+            'text': 'Test content',
+        }
+        
+        # Should raise the exception, not silently fall back to insert
+        with self.assertRaises(Exception) as context:
+            service._upsert_agira_object(obj_dict)
+        
+        self.assertIn("500", str(context.exception))
+        
+        # Verify replace was attempted
+        mock_collection.data.replace.assert_called_once()
+        # Verify insert was NOT called (no blind fallback on 5xx)
+        mock_collection.data.insert.assert_not_called()
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_creates_timezone_aware_datetimes(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object creates timezone-aware datetime objects."""
+        from datetime import timezone as dt_timezone
+        
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.data.replace.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '123',
+            'title': 'Test Item',
+            'text': 'Test content',
+            # No created_at/updated_at provided
+        }
+        
+        service._upsert_agira_object(obj_dict)
+        
+        # Verify replace was called
+        call_kwargs = mock_collection.data.replace.call_args[1]
+        properties = call_kwargs['properties']
+        
+        # Verify datetime objects are timezone-aware
+        self.assertIsNotNone(properties['created_at'].tzinfo)
+        self.assertIsNotNone(properties['updated_at'].tzinfo)
+        self.assertEqual(properties['created_at'].tzinfo, dt_timezone.utc)
+        self.assertEqual(properties['updated_at'].tzinfo, dt_timezone.utc)
+    
+    @patch('core.services.weaviate.service.get_client')
+    @patch('core.services.weaviate.service._ensure_schema_once')
+    def test_upsert_agira_object_makes_naive_datetimes_aware(self, mock_ensure_schema, mock_get_client):
+        """Test that _upsert_agira_object converts naive datetimes to timezone-aware."""
+        from datetime import datetime as dt, timezone as dt_timezone
+        
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.data.replace.return_value = None
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        # Create naive datetime (no timezone)
+        naive_datetime = dt(2024, 1, 1, 12, 0, 0)
+        
+        obj_dict = {
+            'type': 'item',
+            'object_id': '123',
+            'title': 'Test Item',
+            'text': 'Test content',
+            'created_at': naive_datetime,
+            'updated_at': naive_datetime,
+        }
+        
+        service._upsert_agira_object(obj_dict)
+        
+        # Verify replace was called
+        call_kwargs = mock_collection.data.replace.call_args[1]
+        properties = call_kwargs['properties']
+        
+        # Verify datetime objects are now timezone-aware
+        self.assertIsNotNone(properties['created_at'].tzinfo)
+        self.assertIsNotNone(properties['updated_at'].tzinfo)
+        self.assertEqual(properties['created_at'].tzinfo, dt_timezone.utc)
+        self.assertEqual(properties['updated_at'].tzinfo, dt_timezone.utc)
 
 
 class GetWeaviateTypeTestCase(TestCase):
