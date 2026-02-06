@@ -59,7 +59,14 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
+        - name: projectId
+          in: path
+          required: true
+          description: The unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            example: 1
       responses:
         '200':
           description: Successful response
@@ -81,7 +88,14 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
+        - name: projectId
+          in: path
+          required: true
+          description: The unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            example: 1
       requestBody:
         required: true
         content:
@@ -111,7 +125,14 @@ paths:
       tags:
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
+        - name: projectId
+          in: path
+          required: true
+          description: The unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            example: 1
       requestBody:
         required: true
         content:
@@ -145,7 +166,14 @@ paths:
         - Projects
         - Items
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
+        - name: projectId
+          in: path
+          required: true
+          description: The unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            example: 1
       responses:
         '200':
           description: Successful response
@@ -193,7 +221,14 @@ paths:
       tags:
         - Items
       parameters:
-        - $ref: '#/components/parameters/ItemId'
+        - name: itemId
+          in: path
+          required: true
+          description: The unique identifier of the item
+          schema:
+            type: integer
+            format: int64
+            example: 42
       responses:
         '200':
           description: Successful response
@@ -215,7 +250,14 @@ paths:
       tags:
         - Items
       parameters:
-        - $ref: '#/components/parameters/ItemId'
+        - name: itemId
+          in: path
+          required: true
+          description: The unique identifier of the item
+          schema:
+            type: integer
+            format: int64
+            example: 42
       requestBody:
         required: true
         content:
@@ -245,7 +287,14 @@ paths:
       tags:
         - Items
       parameters:
-        - $ref: '#/components/parameters/ItemId'
+        - name: itemId
+          in: path
+          required: true
+          description: The unique identifier of the item
+          schema:
+            type: integer
+            format: int64
+            example: 42
       requestBody:
         required: true
         content:
@@ -277,7 +326,14 @@ paths:
         - Items
         - Projects
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
+        - name: projectId
+          in: path
+          required: true
+          description: The unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            example: 1
       requestBody:
         required: true
         content:
@@ -314,7 +370,14 @@ paths:
       tags:
         - Items
       parameters:
-        - $ref: '#/components/parameters/ItemId'
+        - name: itemId
+          in: path
+          required: true
+          description: The unique identifier of the item
+          schema:
+            type: integer
+            format: int64
+            example: 42
       responses:
         '200':
           description: Successful response with RAG context
@@ -337,27 +400,6 @@ components:
       name: x-api-secret
       description: API secret for authentication. This is configured in the CUSTOMGPT_API_SECRET environment variable.
       
-  parameters:
-    ProjectId:
-      name: projectId
-      in: path
-      required: true
-      description: The unique identifier of the project
-      schema:
-        type: integer
-        format: int64
-        example: 1
-        
-    ItemId:
-      name: itemId
-      in: path
-      required: true
-      description: The unique identifier of the item
-      schema:
-        type: integer
-        format: int64
-        example: 42
-        
   schemas:
     Project:
       type: object
