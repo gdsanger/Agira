@@ -7,7 +7,7 @@ into AgiraObject dictionaries for storage in Weaviate.
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from django.db import models
 from core.services.storage.service import AttachmentStorageService
 
@@ -370,8 +370,8 @@ def _serialize_project(project) -> Dict[str, Any]:
         'status': project.status,
         'url': f"/projects/{project.id}/",
         'source_system': 'agira',
-        'created_at': datetime.now(),  # Projects don't have created_at
-        'updated_at': datetime.now(),
+        'created_at': datetime.now(timezone.utc),  # Projects don't have created_at
+        'updated_at': datetime.now(timezone.utc),
     }
 
 
@@ -425,8 +425,8 @@ def _serialize_node(node) -> Dict[str, Any]:
         'url': f"/nodes/{node.id}/",
         'source_system': 'agira',
         'parent_object_id': str(node.parent_node_id) if node.parent_node_id else None,
-        'created_at': datetime.now(),  # Nodes don't have created_at
-        'updated_at': datetime.now(),
+        'created_at': datetime.now(timezone.utc),  # Nodes don't have created_at
+        'updated_at': datetime.now(timezone.utc),
     }
 
 
@@ -464,8 +464,8 @@ def _serialize_release(release) -> Dict[str, Any]:
         'status': release.status,
         'url': f"/releases/{release.id}/",
         'source_system': 'agira',
-        'created_at': release.update_date or datetime.now(),
-        'updated_at': release.update_date or datetime.now(),
+        'created_at': release.update_date or datetime.now(timezone.utc),
+        'updated_at': release.update_date or datetime.now(timezone.utc),
     }
 
 
@@ -564,8 +564,8 @@ def _serialize_github_issue(mapping, fetch_from_github: bool = False) -> Dict[st
         'url': mapping.html_url or f"/items/{mapping.item_id}/",
         'source_system': 'github',
         'external_key': external_key,
-        'created_at': created_at or datetime.now(),
-        'updated_at': updated_at or datetime.now(),
+        'created_at': created_at or datetime.now(timezone.utc),
+        'updated_at': updated_at or datetime.now(timezone.utc),
     }
 
 
