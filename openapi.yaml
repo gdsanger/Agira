@@ -1,0 +1,761 @@
+openapi: 3.0.3
+info:
+  title: Agira CustomGPT Actions API
+  description: |
+    API for CustomGPT Actions to interact with Agira Projects and Items.
+    
+    All endpoints require authentication via the `x-api-secret` header.
+    
+    **Authentication:**
+    - Header: `x-api-secret`
+    - Value: Your API secret (configured in environment variable CUSTOMGPT_API_SECRET)
+    
+    **Status Filtering:**
+    - "open" items means `status != Closed`
+    - The following endpoints return only open items:
+      - GET /items
+      - GET /projects/{projectId}/open-items
+      
+  version: 1.0.0
+  contact:
+    name: Agira API Support
+    
+servers:
+  - url: https://agira.angermeier.net/api/customgpt
+    description: Production server
+  - url: http://localhost:8000/api/customgpt
+    description: Development server
+    
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /projects:
+    get:
+      summary: List all projects
+      description: Returns a list of all projects in the system.
+      operationId: listProjects
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /projects/{projectId}:
+    get:
+      summary: Get a project by ID
+      description: Returns details of a specific project.
+      operationId: getProject
+      tags:
+        - Projects
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+    put:
+      summary: Update a project (full replacement)
+      description: Updates all fields of a project.
+      operationId: updateProjectPut
+      tags:
+        - Projects
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+    patch:
+      summary: Update a project (partial update)
+      description: Updates specific fields of a project.
+      operationId: updateProjectPatch
+      tags:
+        - Projects
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /projects/{projectId}/open-items:
+    get:
+      summary: Get open items in a project
+      description: |
+        Returns all items in a project with status != Closed.
+        Open items are those that are not in Closed status.
+      operationId: getProjectOpenItems
+      tags:
+        - Projects
+        - Items
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /items:
+    get:
+      summary: List all open items
+      description: |
+        Returns all items across all projects with status != Closed.
+        Open items are those that are not in Closed status.
+      operationId: listItems
+      tags:
+        - Items
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /items/{itemId}:
+    get:
+      summary: Get an item by ID
+      description: Returns details of a specific item.
+      operationId: getItem
+      tags:
+        - Items
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+    put:
+      summary: Update an item (full replacement)
+      description: Updates all fields of an item.
+      operationId: updateItemPut
+      tags:
+        - Items
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemUpdate'
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+    patch:
+      summary: Update an item (partial update)
+      description: Updates specific fields of an item.
+      operationId: updateItemPatch
+      tags:
+        - Items
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemUpdate'
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /projects/{projectId}/items:
+    post:
+      summary: Create a new item in a project
+      description: Creates a new item within the specified project.
+      operationId: createItem
+      tags:
+        - Items
+        - Projects
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemCreate'
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+          
+  /items/{itemId}/context:
+    get:
+      summary: Get RAG context for an item
+      description: |
+        Returns RAG (Retrieval-Augmented Generation) context for an item.
+        This endpoint uses the existing RAG/AI logic to build context that
+        can be used by CustomGPT for enhanced responses.
+        
+        The response includes relevant items, comments, and other context
+        from the Weaviate vector database.
+      operationId: getItemContext
+      tags:
+        - Items
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: Successful response with RAG context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemContextResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-secret
+      description: API secret for authentication. This is configured in the CUSTOMGPT_API_SECRET environment variable.
+      
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: The unique identifier of the project
+      schema:
+        type: integer
+        format: int64
+        example: 1
+        
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: The unique identifier of the item
+      schema:
+        type: integer
+        format: int64
+        example: 42
+        
+  schemas:
+    Project:
+      type: object
+      description: A project in the Agira system
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier
+          example: 1
+        name:
+          type: string
+          description: Project name
+          example: "Customer Portal"
+        description:
+          type: string
+          description: Project description
+          example: "Customer-facing portal for issue tracking"
+        status:
+          type: string
+          description: Project status
+          enum:
+            - New
+            - Working
+            - Canceled
+            - Finished
+          example: "Working"
+        github_owner:
+          type: string
+          description: GitHub repository owner
+          example: "gdsanger"
+        github_repo:
+          type: string
+          description: GitHub repository name
+          example: "Agira"
+      required:
+        - id
+        - name
+        - status
+        
+    ProjectUpdate:
+      type: object
+      description: Project update payload
+      properties:
+        name:
+          type: string
+          description: Project name
+          example: "Customer Portal"
+        description:
+          type: string
+          description: Project description
+          example: "Updated description"
+        status:
+          type: string
+          description: Project status
+          enum:
+            - New
+            - Working
+            - Canceled
+            - Finished
+          example: "Working"
+        github_owner:
+          type: string
+          description: GitHub repository owner
+          example: "gdsanger"
+        github_repo:
+          type: string
+          description: GitHub repository name
+          example: "Agira"
+          
+    Item:
+      type: object
+      description: An item (issue/task/bug) in the Agira system
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier
+          example: 42
+        title:
+          type: string
+          description: Item title
+          example: "Fix login bug with special characters"
+        description:
+          type: string
+          description: Item description
+          example: "Users cannot login when their password contains special characters like @ or #"
+        user_input:
+          type: string
+          description: Original user input (e.g., from email)
+          example: "I can't login with my password!"
+        solution_description:
+          type: string
+          description: Description of the solution
+          example: "Updated password validation to properly escape special characters"
+        status:
+          type: string
+          description: Item status
+          enum:
+            - Inbox
+            - Backlog
+            - Working
+            - Testing
+            - ReadyForRelease
+            - Planing
+            - Specification
+            - Finished
+          example: "Working"
+        project_id:
+          type: integer
+          format: int64
+          description: ID of the project this item belongs to
+          example: 1
+        type_id:
+          type: integer
+          format: int64
+          description: ID of the item type
+          example: 1
+        organisation_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the organisation (client)
+          example: 5
+        requester_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the user who requested this item
+          example: 3
+        assigned_to_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the user assigned to this item
+          example: 7
+        parent_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the parent item (for sub-items)
+          example: 40
+        solution_release_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the release where this item was solved
+          example: 2
+        intern:
+          type: boolean
+          description: Whether this is an internal item
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:45:00Z"
+      required:
+        - id
+        - title
+        - status
+        - project_id
+        - type_id
+        
+    ItemUpdate:
+      type: object
+      description: Item update payload
+      properties:
+        title:
+          type: string
+          description: Item title
+          example: "Fix login bug with special characters"
+        description:
+          type: string
+          description: Item description
+          example: "Updated description with more details"
+        user_input:
+          type: string
+          description: Original user input
+          example: "I can't login!"
+        solution_description:
+          type: string
+          description: Description of the solution
+          example: "Applied password escaping fix"
+        status:
+          type: string
+          description: Item status
+          enum:
+            - Inbox
+            - Backlog
+            - Working
+            - Testing
+            - ReadyForRelease
+            - Planing
+            - Specification
+            - Finished
+          example: "Testing"
+        type_id:
+          type: integer
+          format: int64
+          description: ID of the item type
+          example: 1
+        assigned_to_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of the user assigned to this item
+          example: 7
+        intern:
+          type: boolean
+          description: Whether this is an internal item
+          example: false
+          
+    ItemCreate:
+      type: object
+      description: Item creation payload
+      properties:
+        title:
+          type: string
+          description: Item title
+          example: "New feature request"
+        description:
+          type: string
+          description: Item description
+          example: "Add support for dark mode"
+        user_input:
+          type: string
+          description: Original user input
+          example: "Can you add dark mode?"
+        solution_description:
+          type: string
+          description: Description of the solution
+          example: ""
+        status:
+          type: string
+          description: Item status (defaults to Inbox if not provided)
+          enum:
+            - Inbox
+            - Backlog
+            - Working
+            - Testing
+            - ReadyForRelease
+            - Planing
+            - Specification
+            - Finished
+          example: "Inbox"
+        type_id:
+          type: integer
+          format: int64
+          description: ID of the item type
+          example: 1
+        intern:
+          type: boolean
+          description: Whether this is an internal item
+          example: false
+      required:
+        - title
+        - type_id
+        
+    ItemContextResponse:
+      type: object
+      description: RAG context response for an item
+      properties:
+        query:
+          type: string
+          description: The query used for RAG search
+          example: "Fix login bug with special characters Users cannot login..."
+        alpha:
+          type: number
+          format: float
+          description: Hybrid search alpha value (0-1, higher = more vector weight)
+          example: 0.5
+        summary:
+          type: string
+          description: Human-readable summary of the results
+          example: "Found 5 related objects: 3 items, 2 comments."
+        items:
+          type: array
+          description: List of context objects
+          items:
+            $ref: '#/components/schemas/RAGContextObject'
+        stats:
+          type: object
+          description: Statistics about the results
+          properties:
+            total_results:
+              type: integer
+              example: 7
+            deduplicated:
+              type: integer
+              example: 5
+            error:
+              type: string
+              nullable: true
+              example: null
+        debug:
+          type: object
+          nullable: true
+          description: Debug information (only if include_debug=True)
+          
+    RAGContextObject:
+      type: object
+      description: A single context object from RAG search
+      properties:
+        object_type:
+          type: string
+          description: Type of object
+          example: "item"
+        object_id:
+          type: string
+          description: Unique identifier of the object
+          example: "42"
+        title:
+          type: string
+          nullable: true
+          description: Title or subject
+          example: "Related issue with authentication"
+        content:
+          type: string
+          description: Content snippet (truncated)
+          example: "This issue is related to the login system..."
+        source:
+          type: string
+          nullable: true
+          description: Source system
+          example: "agira"
+        relevance_score:
+          type: number
+          format: float
+          nullable: true
+          description: Relevance score (0-1, higher is better)
+          example: 0.85
+        link:
+          type: string
+          nullable: true
+          description: URL/link to the object
+          example: "/items/42/"
+        updated_at:
+          type: string
+          nullable: true
+          description: Last update timestamp
+          example: "2024-01-20T14:45:00Z"
+          
+    Error:
+      type: object
+      description: Error response
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Item not found"
+      required:
+        - error
+        
+  responses:
+    BadRequestError:
+      description: Bad request - invalid payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid JSON payload"
+            
+    UnauthorizedError:
+      description: Unauthorized - missing or invalid x-api-secret header
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized. Invalid or missing x-api-secret header."
+            
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Item not found"
+            
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Internal server error"
+
+tags:
+  - name: Projects
+    description: Project management endpoints
+  - name: Items
+    description: Item (issue/task/bug) management endpoints
