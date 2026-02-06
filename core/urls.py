@@ -188,6 +188,7 @@ urlpatterns = [
     path('items/<int:item_id>/create-blueprint/submit/', views.item_create_blueprint_submit, name='item-create-blueprint-submit'),
     path('items/<int:item_id>/apply-blueprint/', views.item_apply_blueprint, name='item-apply-blueprint'),
     path('items/<int:item_id>/apply-blueprint/submit/', views.item_apply_blueprint_submit, name='item-apply-blueprint-submit'),
+    path('blueprints/category/create-inline/', views.blueprint_category_create_inline, name='blueprint-category-create-inline'),
     
     # Global Settings URLs
     path('global-settings/', views.global_settings_detail, name='global-settings'),

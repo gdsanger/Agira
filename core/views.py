@@ -8258,6 +8258,74 @@ def item_create_blueprint_submit(request, item_id):
 
 
 @login_required
+@require_http_methods(["POST"])
+def blueprint_category_create_inline(request):
+    """Create a new blueprint category inline (for use in modals)."""
+    from .models import IssueBlueprintCategory
+    from django.utils.text import slugify
+    
+    try:
+        # Parse form data
+        name = request.POST.get('name', '').strip()
+        
+        # Validate required fields
+        if not name:
+            return JsonResponse({'success': False, 'error': 'Category name is required'}, status=400)
+        
+        # Auto-generate slug from name
+        slug = slugify(name)
+        
+        # Check if slug already exists and make it unique if needed
+        original_slug = slug
+        counter = 1
+        while IssueBlueprintCategory.objects.filter(slug=slug).exists():
+            slug = f"{original_slug}-{counter}"
+            counter += 1
+        
+        # Create category
+        category = IssueBlueprintCategory.objects.create(
+            name=name,
+            slug=slug,
+            is_active=True
+        )
+        
+        # Log activity (non-critical, don't fail if logging fails)
+        try:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='blueprint_category.created',
+                target=category,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Created blueprint category "{category.name}"'
+            )
+        except Exception as log_error:
+            logger.warning(f"Failed to log activity for category creation: {log_error}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Category "{name}" created successfully',
+            'category': {
+                'id': str(category.id),
+                'name': category.name,
+                'slug': category.slug
+            }
+        })
+        
+    except IntegrityError as e:
+        logger.error(f"Integrity error creating category: {e}", exc_info=True)
+        # Could be duplicate name or slug, or race condition
+        error_msg = 'A category with this name or similar name already exists'
+        if 'name' in str(e).lower():
+            error_msg = 'A category with this name already exists'
+        elif 'slug' in str(e).lower():
+            error_msg = 'A category with a similar name already exists'
+        return JsonResponse({'success': False, 'error': error_msg}, status=400)
+    except Exception as e:
+        logger.error(f"Error creating blueprint category: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
 def item_apply_blueprint(request, item_id):
     """Show modal to select and apply a blueprint to an issue."""
     from .models import IssueBlueprint
