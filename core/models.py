@@ -1630,6 +1630,7 @@ class IssueBlueprint(models.Model):
     )
     notes = models.TextField(
         blank=True,
+        default='',
         help_text='Internal notes about this blueprint'
     )
     created_by = models.ForeignKey(
