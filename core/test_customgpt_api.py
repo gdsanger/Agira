@@ -33,7 +33,7 @@ class CustomGPTAPIAuthTest(TestCase):
         self.project = Project.objects.create(
             name='Test Project',
             description='Test description',
-            status=ProjectStatus.ACTIVE
+            status=ProjectStatus.WORKING
         )
         
     def tearDown(self):
@@ -91,7 +91,7 @@ class CustomGPTProjectsAPITest(TestCase):
         self.project1 = Project.objects.create(
             name='Project 1',
             description='Description 1',
-            status=ProjectStatus.ACTIVE
+            status=ProjectStatus.WORKING
         )
         self.project2 = Project.objects.create(
             name='Project 2',
@@ -126,7 +126,7 @@ class CustomGPTProjectsAPITest(TestCase):
         self.assertEqual(data['id'], self.project1.id)
         self.assertEqual(data['name'], 'Project 1')
         self.assertEqual(data['description'], 'Description 1')
-        self.assertEqual(data['status'], ProjectStatus.ACTIVE)
+        self.assertEqual(data['status'], ProjectStatus.WORKING)
     
     def test_get_project_not_found(self):
         """Test GET /api/customgpt/projects/{id} with invalid ID."""
@@ -141,7 +141,7 @@ class CustomGPTProjectsAPITest(TestCase):
         update_data = {
             'name': 'Updated Project',
             'description': 'Updated description',
-            'status': ProjectStatus.ON_HOLD
+            'status': ProjectStatus.CANCELED
         }
         
         response = self.client.put(
@@ -155,7 +155,7 @@ class CustomGPTProjectsAPITest(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data['name'], 'Updated Project')
         self.assertEqual(data['description'], 'Updated description')
-        self.assertEqual(data['status'], ProjectStatus.ON_HOLD)
+        self.assertEqual(data['status'], ProjectStatus.CANCELED)
         
         # Verify database was updated
         self.project1.refresh_from_db()
@@ -196,14 +196,14 @@ class CustomGPTItemsAPITest(TestCase):
         self.project = Project.objects.create(
             name='Test Project',
             description='Test description',
-            status=ProjectStatus.ACTIVE
+            status=ProjectStatus.WORKING
         )
         
         # Create item type
         self.item_type = ItemType.objects.create(
             key='bug',
             name='Bug',
-            icon='🐛',
+            
             description='A bug report'
         )
         
@@ -369,14 +369,14 @@ class CustomGPTItemContextAPITest(TestCase):
         self.project = Project.objects.create(
             name='Test Project',
             description='Test description',
-            status=ProjectStatus.ACTIVE
+            status=ProjectStatus.WORKING
         )
         
         # Create item type
         self.item_type = ItemType.objects.create(
             key='bug',
             name='Bug',
-            icon='🐛',
+            
             description='A bug report'
         )
         

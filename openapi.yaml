@@ -381,10 +381,10 @@ components:
           description: Project status
           enum:
             - New
-            - Active
-            - OnHold
-            - Closed
-          example: "Active"
+            - Working
+            - Canceled
+            - Finished
+          example: "Working"
         github_owner:
           type: string
           description: GitHub repository owner
@@ -415,10 +415,10 @@ components:
           description: Project status
           enum:
             - New
-            - Active
-            - OnHold
-            - Closed
-          example: "Active"
+            - Working
+            - Canceled
+            - Finished
+          example: "Working"
         github_owner:
           type: string
           description: GitHub repository owner
@@ -464,7 +464,7 @@ components:
             - ReadyForRelease
             - Planing
             - Specification
-            - Closed
+            - Finished
           example: "Working"
         project_id:
           type: integer
@@ -558,7 +558,7 @@ components:
             - ReadyForRelease
             - Planing
             - Specification
-            - Closed
+            - Finished
           example: "Testing"
         type_id:
           type: integer
@@ -607,7 +607,7 @@ components:
             - ReadyForRelease
             - Planing
             - Specification
-            - Closed
+            - Finished
           example: "Inbox"
         type_id:
           type: integer
