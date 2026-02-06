@@ -105,7 +105,6 @@ def serialize_rag_context(context):
 # Projects Endpoints
 
 @csrf_exempt
-
 def api_projects_list(request):
     """
     GET /api/customgpt/projects
@@ -141,7 +140,6 @@ def api_project_detail_handler(request, project_id):
 
 
 @csrf_exempt
-
 def api_project_detail(request, project_id):
     """
     GET /api/customgpt/projects/{project_id}
@@ -167,7 +165,6 @@ def api_project_detail(request, project_id):
 
 
 @csrf_exempt
-
 def api_project_update_put(request, project_id):
     """
     PUT /api/customgpt/projects/{project_id}
@@ -223,7 +220,6 @@ def api_project_update_put(request, project_id):
 
 
 @csrf_exempt
-
 def api_project_update_patch(request, project_id):
     """
     PATCH /api/customgpt/projects/{project_id}
@@ -246,7 +242,6 @@ def api_project_update_patch(request, project_id):
 
 
 @csrf_exempt
-
 def api_project_open_items(request, project_id):
     """
     GET /api/customgpt/projects/{project_id}/open-items
@@ -300,7 +295,6 @@ def api_item_detail_handler(request, item_id):
 
 
 @csrf_exempt
-
 def api_items_list(request):
     """
     GET /api/customgpt/items
@@ -320,24 +314,6 @@ def api_items_list(request):
 
 
 @csrf_exempt
-def api_item_detail_handler(request, item_id):
-    """
-    Handle GET/PUT/PATCH for /api/customgpt/items/{item_id}
-    
-    Dispatches to appropriate handler based on HTTP method.
-    """
-    if request.method == 'GET':
-        return api_item_detail(request, item_id)
-    elif request.method == 'PUT':
-        return api_item_update_put(request, item_id)
-    elif request.method == 'PATCH':
-        return api_item_update_patch(request, item_id)
-    else:
-        return JsonResponse({'error': 'Method not allowed'}, status=405)
-
-
-@csrf_exempt
-
 def api_item_detail(request, item_id):
     """
     GET /api/customgpt/items/{item_id}
@@ -362,7 +338,6 @@ def api_item_detail(request, item_id):
 
 
 @csrf_exempt
-
 def api_item_update_put(request, item_id):
     """
     PUT /api/customgpt/items/{item_id}
@@ -433,7 +408,6 @@ def api_item_update_put(request, item_id):
 
 
 @csrf_exempt
-
 def api_item_update_patch(request, item_id):
     """
     PATCH /api/customgpt/items/{item_id}
@@ -456,7 +430,6 @@ def api_item_update_patch(request, item_id):
 
 
 @csrf_exempt
-
 def api_project_create_item(request, project_id):
     """
     POST /api/customgpt/projects/{project_id}/items
@@ -525,7 +498,6 @@ def api_project_create_item(request, project_id):
 
 
 @csrf_exempt
-
 def api_item_context(request, item_id):
     """
     GET /api/customgpt/items/{item_id}/context
