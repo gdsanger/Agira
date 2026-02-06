@@ -1,0 +1,134 @@
+<!-- Blueprint Selection Content (loaded via HTMX) -->
+<div class="mb-3">
+    <label for="blueprint_id" class="form-label">Select Blueprint <span class="text-danger">*</span></label>
+    <select class="form-select" id="blueprint_id" name="blueprint_id" required>
+        <option value="">Choose a blueprint...</option>
+        {% for blueprint in blueprints %}
+        <option value="{{ blueprint.id }}" data-description="{{ blueprint.description_md|truncatewords:20 }}">
+            {{ blueprint.title }} ({{ blueprint.category.name }})
+        </option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- Blueprint Preview -->
+<div id="blueprint-preview" class="mb-3 d-none">
+    <label class="form-label">Preview</label>
+    <div class="border rounded p-3 bg-light">
+        <p id="blueprint-preview-text" class="small mb-0 text-muted">Select a blueprint to see preview</p>
+    </div>
+</div>
+
+<!-- Application Options -->
+<div class="mb-3">
+    <label class="form-label">Options</label>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="replace_description" name="replace_description">
+        <label class="form-check-label" for="replace_description">
+            Replace existing description (default: append)
+        </label>
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="use_blueprint_title" name="use_blueprint_title">
+        <label class="form-check-label" for="use_blueprint_title">
+            Use blueprint title
+        </label>
+    </div>
+</div>
+
+<!-- Info Alert -->
+<div class="alert alert-info small mb-0">
+    <i class="bi bi-info-circle"></i>
+    <strong>Default behavior:</strong> Blueprint description will be appended below your current issue description with a timestamp header.
+</div>
+
+<!-- Modal Footer -->
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="submit" class="btn btn-primary" id="apply-blueprint-submit-btn">
+        <i class="bi bi-file-earmark-text"></i> Apply Blueprint
+    </button>
+</div>
+
+<script>
+// Blueprint preview
+document.getElementById('blueprint_id').addEventListener('change', function() {
+    const preview = document.getElementById('blueprint-preview');
+    const previewText = document.getElementById('blueprint-preview-text');
+    const selectedOption = this.options[this.selectedIndex];
+    
+    if (selectedOption.value) {
+        const description = selectedOption.getAttribute('data-description');
+        previewText.textContent = description || 'No description available';
+        preview.classList.remove('d-none');
+    } else {
+        preview.classList.add('d-none');
+    }
+});
+
+// Form submission via AJAX
+document.getElementById('apply-blueprint-submit-btn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    
+    const form = document.getElementById('applyBlueprintForm');
+    const formData = new FormData(form);
+    
+    // Add blueprint_id from the selection
+    const blueprintId = document.getElementById('blueprint_id').value;
+    if (!blueprintId) {
+        alert('Please select a blueprint');
+        return;
+    }
+    formData.set('blueprint_id', blueprintId);
+    
+    // Add checkboxes
+    const replaceDescription = document.getElementById('replace_description').checked;
+    const useBlueprintTitle = document.getElementById('use_blueprint_title').checked;
+    if (replaceDescription) formData.set('replace_description', 'on');
+    if (useBlueprintTitle) formData.set('use_blueprint_title', 'on');
+    
+    // Disable button
+    this.disabled = true;
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const response = await fetch('{% url "item-apply-blueprint-submit" item.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success toast
+            const toastHtml = `
+                <div class="toast align-items-center text-white bg-success border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">${data.message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('applyBlueprintModal'));
+            modal.hide();
+            
+            // Reload page after brief delay
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1000);
+        } else {
+            alert(data.error || 'Failed to apply blueprint');
+            this.disabled = false;
+        }
+    } catch (error) {
+        alert('Failed to apply blueprint: ' + error.message);
+        this.disabled = false;
+    }
+});
+</script>
