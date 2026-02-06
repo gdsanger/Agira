@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Agira CustomGPT Actions API
   description: |
@@ -23,8 +23,6 @@ info:
 servers:
   - url: https://agira.angermeier.net/api/customgpt
     description: Production server
-  - url: http://localhost:8000/api/customgpt
-    description: Development server
     
 security:
   - ApiKeyAuth: []
