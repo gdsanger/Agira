@@ -1070,8 +1070,7 @@ def _upsert_agira_object(obj_dict: Dict[str, Any]) -> str:
             is_not_found = (
                 '404' in error_message or 
                 'not found' in error_message or 
-                'does not exist' in error_message or
-                'object not found' in error_message
+                'does not exist' in error_message
             )
             
             if is_not_found:
