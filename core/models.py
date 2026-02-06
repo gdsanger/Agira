@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from encrypted_model_fields.fields import EncryptedCharField
 import secrets
+import uuid
 
 
 # Enums as TextChoices
@@ -1561,4 +1562,95 @@ class GlobalSettings(models.Model):
         """
         instance, created = cls.objects.get_or_create(pk=1)
         return instance
+
+
+class IssueBlueprintCategory(models.Model):
+    """
+    Global categories for issue blueprints.
+    Provides project-independent categorization of blueprint templates.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Issue Blueprint Category'
+        verbose_name_plural = 'Issue Blueprint Categories'
+
+    def __str__(self):
+        return self.name
+
+
+class IssueBlueprint(models.Model):
+    """
+    Reusable issue/feature templates (blueprints).
+    Project-independent templates that can be used to create new issues.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200)
+    category = models.ForeignKey(
+        IssueBlueprintCategory,
+        on_delete=models.PROTECT,
+        related_name='blueprints'
+    )
+    description_md = models.TextField(
+        help_text='Description in Markdown format. Acceptance criteria should be included here.'
+    )
+    is_active = models.BooleanField(default=True)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Optional fields
+    tags = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='List of tags as strings'
+    )
+    default_labels = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='List of default labels as strings'
+    )
+    default_risk_level = models.CharField(
+        max_length=20,
+        choices=RiskLevel.choices,
+        null=True,
+        blank=True,
+        help_text='Default risk level for issues created from this blueprint'
+    )
+    default_security_relevant = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text='Default security relevance for issues created from this blueprint'
+    )
+    notes = models.TextField(
+        blank=True,
+        default='',
+        help_text='Internal notes about this blueprint'
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_blueprints',
+        help_text='User who created this blueprint'
+    )
+
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Issue Blueprint'
+        verbose_name_plural = 'Issue Blueprints'
+        indexes = [
+            models.Index(fields=['title', 'category', 'version']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} (v{self.version})"
 
