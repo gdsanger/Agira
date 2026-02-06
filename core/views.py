@@ -7921,3 +7921,414 @@ def change_policy_delete(request, id):
     except Exception as e:
         logger.error(f"Error deleting change policy: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ============================================
+# IssueBlueprint Views
+# ============================================
+
+@login_required
+def blueprints(request):
+    """Blueprint list view with django-tables2 and django-filter."""
+    from django_tables2 import RequestConfig
+    from .tables import IssueBlueprintTable
+    from .filters import IssueBlueprintFilter
+    from .models import IssueBlueprint
+    
+    # Get queryset with related objects
+    blueprints_qs = IssueBlueprint.objects.select_related('category', 'created_by').all()
+    
+    # Apply filters
+    blueprint_filter = IssueBlueprintFilter(request.GET, queryset=blueprints_qs)
+    
+    # Create table
+    table = IssueBlueprintTable(blueprint_filter.qs)
+    RequestConfig(request, paginate={'per_page': 25}).configure(table)
+    
+    context = {
+        'table': table,
+        'filter': blueprint_filter,
+    }
+    return render(request, 'blueprints.html', context)
+
+
+@login_required
+def blueprint_detail(request, id):
+    """Blueprint detail view."""
+    from .models import IssueBlueprint
+    blueprint = get_object_or_404(IssueBlueprint.objects.select_related('category', 'created_by'), id=id)
+    
+    context = {
+        'blueprint': blueprint,
+    }
+    return render(request, 'blueprint_detail.html', context)
+
+
+@login_required
+def blueprint_create(request):
+    """Show create form for new blueprint."""
+    from .models import IssueBlueprintCategory, RiskLevel
+    
+    # Get active categories
+    categories = IssueBlueprintCategory.objects.filter(is_active=True).order_by('name')
+    
+    context = {
+        'blueprint': None,
+        'categories': categories,
+        'risk_levels': RiskLevel.choices,
+    }
+    return render(request, 'blueprint_form.html', context)
+
+
+@login_required
+def blueprint_edit(request, id):
+    """Show edit form for existing blueprint."""
+    from .models import IssueBlueprint, IssueBlueprintCategory, RiskLevel
+    
+    blueprint = get_object_or_404(IssueBlueprint, id=id)
+    
+    # Get active categories
+    categories = IssueBlueprintCategory.objects.filter(is_active=True).order_by('name')
+    
+    context = {
+        'blueprint': blueprint,
+        'categories': categories,
+        'risk_levels': RiskLevel.choices,
+    }
+    return render(request, 'blueprint_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def blueprint_update(request, id):
+    """Create or update a blueprint."""
+    from .models import IssueBlueprint, IssueBlueprintCategory
+    
+    try:
+        # Parse form data
+        title = request.POST.get('title', '').strip()
+        category_id = request.POST.get('category', '').strip()
+        description_md = request.POST.get('description_md', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        version = request.POST.get('version', '1').strip()
+        tags_str = request.POST.get('tags', '').strip()
+        default_labels_str = request.POST.get('default_labels', '').strip()
+        default_risk_level = request.POST.get('default_risk_level', '').strip()
+        default_security_relevant = request.POST.get('default_security_relevant', '').strip()
+        notes = request.POST.get('notes', '').strip()
+        action = request.POST.get('action', 'save')
+        
+        # Validate required fields
+        if not title:
+            return JsonResponse({'success': False, 'error': 'Title is required'}, status=400)
+        if not category_id:
+            return JsonResponse({'success': False, 'error': 'Category is required'}, status=400)
+        if not description_md:
+            return JsonResponse({'success': False, 'error': 'Description is required'}, status=400)
+        
+        # Validate category exists and is active
+        try:
+            category = IssueBlueprintCategory.objects.get(id=category_id, is_active=True)
+        except IssueBlueprintCategory.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Invalid or inactive category'}, status=400)
+        
+        # Parse version
+        try:
+            version = int(version)
+            if version < 1:
+                version = 1
+        except (ValueError, TypeError):
+            version = 1
+        
+        # Parse tags (comma-separated to list)
+        tags = []
+        if tags_str:
+            tags = [t.strip() for t in tags_str.split(',') if t.strip()]
+        
+        # Parse default_labels (comma-separated to list)
+        default_labels = []
+        if default_labels_str:
+            default_labels = [l.strip() for l in default_labels_str.split(',') if l.strip()]
+        
+        # Parse default_security_relevant
+        default_security_relevant_val = None
+        if default_security_relevant == 'true':
+            default_security_relevant_val = True
+        elif default_security_relevant == 'false':
+            default_security_relevant_val = False
+        
+        # Create or update
+        if str(id) == '0':
+            # Create new blueprint
+            blueprint = IssueBlueprint.objects.create(
+                title=title,
+                category=category,
+                description_md=description_md,
+                is_active=is_active,
+                version=version,
+                tags=tags if tags else None,
+                default_labels=default_labels if default_labels else None,
+                default_risk_level=default_risk_level if default_risk_level else None,
+                default_security_relevant=default_security_relevant_val,
+                notes=notes,
+                created_by=request.user if request.user.is_authenticated else None
+            )
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='blueprint.created',
+                target=blueprint,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Created blueprint "{blueprint.title}"'
+            )
+            
+            message_text = f'Blueprint "{title}" created successfully'
+        else:
+            # Update existing blueprint
+            blueprint = get_object_or_404(IssueBlueprint, id=id)
+            
+            # Update fields
+            blueprint.title = title
+            blueprint.category = category
+            blueprint.description_md = description_md
+            blueprint.is_active = is_active
+            blueprint.version = version
+            blueprint.tags = tags if tags else None
+            blueprint.default_labels = default_labels if default_labels else None
+            blueprint.default_risk_level = default_risk_level if default_risk_level else None
+            blueprint.default_security_relevant = default_security_relevant_val
+            blueprint.notes = notes
+            blueprint.save()
+            
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='blueprint.updated',
+                target=blueprint,
+                actor=request.user if request.user.is_authenticated else None,
+                summary=f'Updated blueprint "{blueprint.title}"'
+            )
+            
+            message_text = f'Blueprint "{blueprint.title}" updated successfully'
+        
+        # Determine redirect based on action
+        if action == 'save_close':
+            redirect_url = reverse('blueprints')
+        else:
+            redirect_url = reverse('blueprint-detail', args=[str(blueprint.id)])
+        
+        return JsonResponse({
+            'success': True,
+            'message': message_text,
+            'redirect': redirect_url,
+            'blueprint_id': str(blueprint.id)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def blueprint_delete(request, id):
+    """Delete a blueprint."""
+    from .models import IssueBlueprint
+    
+    blueprint = get_object_or_404(IssueBlueprint, id=id)
+    blueprint_title = blueprint.title
+    
+    try:
+        # Log activity before deletion
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='blueprint.deleted',
+            target=blueprint,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Deleted blueprint "{blueprint_title}"'
+        )
+        
+        blueprint.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Blueprint "{blueprint_title}" deleted successfully',
+            'redirect': reverse('blueprints')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def item_create_blueprint(request, item_id):
+    """Show form to create a blueprint from an existing issue."""
+    from .models import IssueBlueprintCategory
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get active categories
+    categories = IssueBlueprintCategory.objects.filter(is_active=True).order_by('name')
+    
+    context = {
+        'item': item,
+        'categories': categories,
+        'risk_levels': RiskLevel.choices,
+    }
+    return render(request, 'item_create_blueprint_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_create_blueprint_submit(request, item_id):
+    """Create a blueprint from an existing issue."""
+    from .models import IssueBlueprint, IssueBlueprintCategory
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Parse form data
+        title = request.POST.get('title', '').strip()
+        category_id = request.POST.get('category', '').strip()
+        description_md = request.POST.get('description_md', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        version = request.POST.get('version', '1').strip()
+        
+        # Validate required fields
+        if not title:
+            return JsonResponse({'success': False, 'error': 'Title is required'}, status=400)
+        if not category_id:
+            return JsonResponse({'success': False, 'error': 'Category is required'}, status=400)
+        if not description_md:
+            return JsonResponse({'success': False, 'error': 'Description is required'}, status=400)
+        
+        # Validate category exists and is active
+        try:
+            category = IssueBlueprintCategory.objects.get(id=category_id, is_active=True)
+        except IssueBlueprintCategory.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Invalid or inactive category'}, status=400)
+        
+        # Parse version
+        try:
+            version = int(version)
+            if version < 1:
+                version = 1
+        except (ValueError, TypeError):
+            version = 1
+        
+        # Create blueprint
+        blueprint = IssueBlueprint.objects.create(
+            title=title,
+            category=category,
+            description_md=description_md,
+            is_active=is_active,
+            version=version,
+            created_by=request.user if request.user.is_authenticated else None
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='blueprint.created_from_issue',
+            target=blueprint,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Created blueprint "{blueprint.title}" from issue #{item.id}'
+        )
+        
+        # Also log on the item
+        activity_service.log(
+            verb='item.blueprint_created',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Created blueprint "{blueprint.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Blueprint "{title}" created successfully from issue #{item.id}',
+            'redirect': reverse('blueprint-detail', args=[str(blueprint.id)]),
+            'blueprint_id': str(blueprint.id)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating blueprint from issue: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def item_apply_blueprint(request, item_id):
+    """Show modal to select and apply a blueprint to an issue."""
+    from .models import IssueBlueprint
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get all active blueprints
+    blueprints = IssueBlueprint.objects.filter(is_active=True).select_related('category').order_by('-updated_at')
+    
+    context = {
+        'item': item,
+        'blueprints': blueprints,
+    }
+    return render(request, 'item_apply_blueprint_modal.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_apply_blueprint_submit(request, item_id):
+    """Apply a blueprint to an issue."""
+    from .models import IssueBlueprint
+    from datetime import datetime
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Parse form data
+        blueprint_id = request.POST.get('blueprint_id', '').strip()
+        replace_description = request.POST.get('replace_description') == 'on'
+        use_blueprint_title = request.POST.get('use_blueprint_title') == 'on'
+        
+        # Validate blueprint_id
+        if not blueprint_id:
+            return JsonResponse({'success': False, 'error': 'Blueprint is required'}, status=400)
+        
+        # Get blueprint
+        try:
+            blueprint = IssueBlueprint.objects.get(id=blueprint_id, is_active=True)
+        except IssueBlueprint.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Invalid or inactive blueprint'}, status=400)
+        
+        # Apply blueprint to item
+        if use_blueprint_title:
+            item.title = blueprint.title
+        
+        if replace_description:
+            # Replace entire description
+            item.description = blueprint.description_md
+        else:
+            # Append blueprint description
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            blueprint_header = f"\n\n## Blueprint angewendet: {blueprint.title} ({current_date})\n\n"
+            item.description = (item.description or '') + blueprint_header + blueprint.description_md
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.blueprint_applied',
+            target=item,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'Applied blueprint "{blueprint.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Blueprint "{blueprint.title}" applied successfully to issue #{item.id}',
+            'redirect': reverse('item-detail', args=[item.id])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error applying blueprint to issue: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

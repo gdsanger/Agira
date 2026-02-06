@@ -289,3 +289,100 @@ class ReleaseItemsFilter(django_filters.FilterSet):
                 Q(title__icontains=value) | Q(description__icontains=value)
             )
         return queryset
+
+
+class IssueBlueprintFilter(django_filters.FilterSet):
+    """
+    FilterSet for IssueBlueprint model.
+    Supports filtering by search query, category, is_active, and tags.
+    """
+    # Search filter (title contains)
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Search',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by title...'
+        })
+    )
+    
+    # Category filter (only active categories by default)
+    category = django_filters.ModelChoiceFilter(
+        queryset=None,  # Will be set in __init__
+        label='Category',
+        empty_label='All Categories',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # is_active filter (all / active / inactive)
+    is_active = django_filters.ChoiceFilter(
+        choices=[
+            ('', 'All'),
+            ('true', 'Active'),
+            ('false', 'Inactive'),
+        ],
+        method='filter_is_active',
+        label='Status',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Tag contains filter (optional)
+    tag = django_filters.CharFilter(
+        method='filter_tag',
+        label='Tag',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Tag contains...'
+        })
+    )
+    
+    # Created by filter (optional)
+    created_by = django_filters.ModelChoiceFilter(
+        queryset=User.objects.filter(active=True).order_by('username'),
+        label='Created By',
+        empty_label='All Users',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        from .models import IssueBlueprint
+        model = IssueBlueprint
+        fields = ['q', 'category', 'is_active', 'tag', 'created_by']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set category queryset to only active categories by default
+        from .models import IssueBlueprintCategory
+        self.filters['category'].queryset = IssueBlueprintCategory.objects.filter(
+            is_active=True
+        ).order_by('name')
+    
+    def filter_search(self, queryset, name, value):
+        """
+        Filter blueprints by search query in title.
+        """
+        if value:
+            from django.db.models import Q
+            return queryset.filter(Q(title__icontains=value))
+        return queryset
+    
+    def filter_is_active(self, queryset, name, value):
+        """
+        Filter blueprints by is_active status.
+        """
+        if value == 'true':
+            return queryset.filter(is_active=True)
+        elif value == 'false':
+            return queryset.filter(is_active=False)
+        # Empty value means "All"
+        return queryset
+    
+    def filter_tag(self, queryset, name, value):
+        """
+        Filter blueprints by tag contains.
+        """
+        if value:
+            from django.db.models import Q
+            # Search for tag in tags JSONField
+            return queryset.filter(tags__contains=[value])
+        return queryset

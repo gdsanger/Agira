@@ -175,6 +175,20 @@ urlpatterns = [
     path('mail-action-mappings/<int:id>/update/', views.mail_action_mapping_update, name='mail-action-mapping-update'),
     path('mail-action-mappings/<int:id>/delete/', views.mail_action_mapping_delete, name='mail-action-mapping-delete'),
     
+    # IssueBlueprint URLs
+    path('configuration/blueprints/', views.blueprints, name='blueprints'),
+    path('configuration/blueprints/new/', views.blueprint_create, name='blueprint-create'),
+    path('configuration/blueprints/<uuid:id>/', views.blueprint_detail, name='blueprint-detail'),
+    path('configuration/blueprints/<uuid:id>/edit/', views.blueprint_edit, name='blueprint-edit'),
+    path('configuration/blueprints/<uuid:id>/update/', views.blueprint_update, name='blueprint-update'),
+    path('configuration/blueprints/<uuid:id>/delete/', views.blueprint_delete, name='blueprint-delete'),
+    
+    # Item Blueprint Integration URLs
+    path('items/<int:item_id>/create-blueprint/', views.item_create_blueprint, name='item-create-blueprint'),
+    path('items/<int:item_id>/create-blueprint/submit/', views.item_create_blueprint_submit, name='item-create-blueprint-submit'),
+    path('items/<int:item_id>/apply-blueprint/', views.item_apply_blueprint, name='item-apply-blueprint'),
+    path('items/<int:item_id>/apply-blueprint/submit/', views.item_apply_blueprint_submit, name='item-apply-blueprint-submit'),
+    
     # Global Settings URLs
     path('global-settings/', views.global_settings_detail, name='global-settings'),
     path('global-settings/update/', views.global_settings_update, name='global-settings-update'),

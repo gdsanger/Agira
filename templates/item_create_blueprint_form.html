@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Create Blueprint from Issue #{{ item.id }} - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'item-detail' item.id %}">Issue #{{ item.id }}</a></li>
+        <li class="breadcrumb-item active">Create Blueprint</li>
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>Create Blueprint from Issue</h1>
+    <p class="text-muted">Convert this issue into a reusable blueprint template</p>
+</div>
+
+<!-- Form Container -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content -->
+    <div class="detail-main">
+        <form id="createBlueprintForm">
+            {% csrf_token %}
+            
+            <!-- Source Issue Info -->
+            <div class="alert alert-info mb-3">
+                <strong><i class="bi bi-info-circle"></i> Source Issue:</strong> {{ item.title }}
+            </div>
+            
+            <!-- Basic Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Blueprint Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="title" 
+                               name="title" 
+                               value="{{ item.title }}"
+                               maxlength="200"
+                               required>
+                        <div class="form-text">Blueprint title (pre-filled from issue).</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Category <span class="text-danger">*</span></label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">Select a category</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Categorize this blueprint for easier filtering.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description_md" class="form-label">Description (Markdown) <span class="text-danger">*</span></label>
+                        <textarea class="form-control font-monospace" 
+                                  id="description_md" 
+                                  name="description_md" 
+                                  rows="15"
+                                  required>{{ item.description }}</textarea>
+                        <div class="form-text">Description pre-filled from issue. Edit as needed.</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="version" class="form-label">Version</label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="version" 
+                                   name="version" 
+                                   value="1"
+                                   min="1">
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" 
+                                       type="checkbox" 
+                                       id="is_active" 
+                                       name="is_active"
+                                       checked>
+                                <label class="form-check-label" for="is_active">
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between mb-4">
+                <a href="{% url 'item-detail' item.id %}" class="btn btn-secondary">
+                    <i class="bi bi-x-lg"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-clipboard-plus"></i> Create Blueprint
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Help -->
+    <div class="detail-sidebar">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> About Blueprints</h6>
+            </div>
+            <div class="card-body">
+                <p class="small">Blueprints are reusable templates for creating similar issues.</p>
+                <p class="small mb-0">The original issue will not be modified. You can edit the blueprint details before saving.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
+    <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto" id="toast-title">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-body">
+            Message
+        </div>
+    </div>
+</div>
+
+<script>
+// Show toast notification
+function showToast(type, message) {
+    const toast = document.getElementById('notification-toast');
+    const toastBody = document.getElementById('toast-body');
+    const toastTitle = document.getElementById('toast-title');
+    
+    toastBody.textContent = message;
+    
+    if (type === 'success') {
+        toastTitle.textContent = 'Success';
+        toast.classList.remove('bg-danger');
+        toast.classList.add('bg-success', 'text-white');
+    } else if (type === 'error') {
+        toastTitle.textContent = 'Error';
+        toast.classList.remove('bg-success');
+        toast.classList.add('bg-danger', 'text-white');
+    }
+    
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+}
+
+// Form submission handler
+document.getElementById('createBlueprintForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    
+    // Disable submit button
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const response = await fetch('{% url "item-create-blueprint-submit" item.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', data.message);
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to create blueprint');
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        const errorMessage = error.message || 'An unexpected error occurred';
+        showToast('error', 'Failed to create blueprint: ' + errorMessage);
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}
