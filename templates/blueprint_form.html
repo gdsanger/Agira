@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}{% if blueprint %}Edit {{ blueprint.title }}{% else %}New Blueprint{% endif %} - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'blueprints' %}">Blueprints</a></li>
+        {% if blueprint %}
+        <li class="breadcrumb-item"><a href="{% url 'blueprint-detail' blueprint.id %}">{{ blueprint.title }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Blueprint</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>{% if blueprint %}Edit Blueprint{% else %}Create New Blueprint{% endif %}</h1>
+    <p class="text-muted">{% if blueprint %}Update blueprint details{% else %}Add a new issue blueprint{% endif %}</p>
+</div>
+
+<!-- Form Container with 2-Column Layout -->
+<div class="detail-layout">
+    <!-- Left Column: Main Content -->
+    <div class="detail-main">
+        <form id="blueprintForm">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Basic Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="title" 
+                               name="title" 
+                               value="{% if blueprint %}{{ blueprint.title }}{% endif %}"
+                               maxlength="200"
+                               required>
+                        <div class="form-text">Short, descriptive title for the blueprint.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Category <span class="text-danger">*</span></label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">Select a category</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if blueprint and blueprint.category.id == cat.id %}selected{% endif %}>
+                                {{ cat.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Categorize this blueprint for easier filtering.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description_md" class="form-label">Description (Markdown) <span class="text-danger">*</span></label>
+                        <textarea class="form-control font-monospace" 
+                                  id="description_md" 
+                                  name="description_md" 
+                                  rows="15"
+                                  required>{% if blueprint %}{{ blueprint.description_md }}{% endif %}</textarea>
+                        <div class="form-text">Description in Markdown format. Include acceptance criteria and implementation details.</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="version" class="form-label">Version</label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="version" 
+                                   name="version" 
+                                   value="{% if blueprint %}{{ blueprint.version }}{% else %}1{% endif %}"
+                                   min="1">
+                            <div class="form-text">Blueprint version number.</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" 
+                                       type="checkbox" 
+                                       id="is_active" 
+                                       name="is_active"
+                                       {% if not blueprint or blueprint.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Optional Fields -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Optional Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="tags" class="form-label">Tags</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="tags" 
+                               name="tags" 
+                               value="{% if blueprint and blueprint.tags %}{{ blueprint.tags|join:", " }}{% endif %}"
+                               placeholder="e.g., authentication, security, api">
+                        <div class="form-text">Comma-separated list of tags.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="default_labels" class="form-label">Default Labels</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="default_labels" 
+                               name="default_labels" 
+                               value="{% if blueprint and blueprint.default_labels %}{{ blueprint.default_labels|join:", " }}{% endif %}"
+                               placeholder="e.g., feature, enhancement">
+                        <div class="form-text">Comma-separated list of default labels for issues created from this blueprint.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="default_risk_level" class="form-label">Default Risk Level</label>
+                        <select class="form-select" id="default_risk_level" name="default_risk_level">
+                            <option value="">None</option>
+                            {% for value, label in risk_levels %}
+                            <option value="{{ value }}" {% if blueprint and blueprint.default_risk_level == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Default risk level for issues created from this blueprint.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="default_security_relevant" class="form-label">Default Security Relevant</label>
+                        <select class="form-select" id="default_security_relevant" name="default_security_relevant">
+                            <option value="">None</option>
+                            <option value="true" {% if blueprint and blueprint.default_security_relevant == True %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if blueprint and blueprint.default_security_relevant == False %}selected{% endif %}>No</option>
+                        </select>
+                        <div class="form-text">Default security relevance for issues created from this blueprint.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Internal Notes</label>
+                        <textarea class="form-control" 
+                                  id="notes" 
+                                  name="notes" 
+                                  rows="4">{% if blueprint %}{{ blueprint.notes }}{% endif %}</textarea>
+                        <div class="form-text">Internal notes about this blueprint (not visible when applying to issues).</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between mb-4">
+                <a href="{% if blueprint %}{% url 'blueprint-detail' blueprint.id %}{% else %}{% url 'blueprints' %}{% endif %}" 
+                   class="btn btn-secondary">
+                    <i class="bi bi-x-lg"></i> Cancel
+                </a>
+                <div>
+                    <button type="submit" class="btn btn-outline-primary me-2" name="action" value="save">
+                        <i class="bi bi-check-lg"></i> Save
+                    </button>
+                    <button type="submit" class="btn btn-primary" name="action" value="save_close">
+                        <i class="bi bi-check-lg"></i> Save & Close
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Help -->
+    <div class="detail-sidebar">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Help</h6>
+            </div>
+            <div class="card-body">
+                <h6 class="small fw-bold">Markdown Support</h6>
+                <p class="small mb-2">Use Markdown syntax in the description:</p>
+                <ul class="small">
+                    <li><code># Heading</code> for headings</li>
+                    <li><code>**bold**</code> for bold text</li>
+                    <li><code>- item</code> for bullet lists</li>
+                    <li><code>[link](url)</code> for links</li>
+                </ul>
+                
+                <hr class="my-3">
+                
+                <h6 class="small fw-bold">Tags & Labels</h6>
+                <p class="small mb-0">Use tags to categorize blueprints internally. Default labels will be suggested when applying the blueprint to an issue.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
+    <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto" id="toast-title">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-body">
+            Message
+        </div>
+    </div>
+</div>
+
+<script>
+// Show toast notification
+function showToast(type, message) {
+    const toast = document.getElementById('notification-toast');
+    const toastBody = document.getElementById('toast-body');
+    const toastTitle = document.getElementById('toast-title');
+    
+    toastBody.textContent = message;
+    
+    if (type === 'success') {
+        toastTitle.textContent = 'Success';
+        toast.classList.remove('bg-danger');
+        toast.classList.add('bg-success', 'text-white');
+    } else if (type === 'error') {
+        toastTitle.textContent = 'Error';
+        toast.classList.remove('bg-success');
+        toast.classList.add('bg-danger', 'text-white');
+    }
+    
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+}
+
+// Form submission handler
+document.getElementById('blueprintForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    const submitButton = e.submitter;
+    
+    // Disable submit buttons
+    const submitButtons = form.querySelectorAll('button[type="submit"]');
+    submitButtons.forEach(btn => btn.disabled = true);
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const response = await fetch('{% if blueprint %}{% url "blueprint-update" blueprint.id %}{% else %}{% url "blueprint-update" "0" %}{% endif %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', data.message);
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to save blueprint');
+            submitButtons.forEach(btn => btn.disabled = false);
+        }
+    } catch (error) {
+        const errorMessage = error.message || 'An unexpected error occurred';
+        showToast('error', 'Failed to save blueprint: ' + errorMessage);
+        submitButtons.forEach(btn => btn.disabled = false);
+    }
+});
+</script>
+{% endblock %}

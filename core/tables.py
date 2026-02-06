@@ -545,3 +545,142 @@ class ReleaseItemsTable(tables.Table):
         if record.assigned_to:
             return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
+
+
+class IssueBlueprintTable(tables.Table):
+    """
+    Table for displaying IssueBlueprint list with sortable columns.
+    """
+    
+    # Title column with link to detail view
+    title = tables.Column(
+        verbose_name='Title',
+        orderable=True,
+        attrs={'td': {'class': 'blueprint-title-cell'}}
+    )
+    
+    # Category column
+    category = tables.Column(
+        verbose_name='Category',
+        orderable=True,
+        accessor='category__name'
+    )
+    
+    # Active column
+    is_active = tables.BooleanColumn(
+        verbose_name='Active',
+        orderable=True,
+        yesno='✓,✗'
+    )
+    
+    # Version column
+    version = tables.Column(
+        verbose_name='Version',
+        orderable=True,
+        attrs={'td': {'class': 'text-center small'}}
+    )
+    
+    # Updated at column
+    updated_at = tables.DateTimeColumn(
+        verbose_name='Updated',
+        format='Y-m-d H:i',
+        orderable=True,
+        attrs={'td': {'class': 'text-muted small'}}
+    )
+    
+    # Tags column
+    tags = tables.Column(
+        verbose_name='Tags',
+        orderable=False,
+        empty_values=(),
+        attrs={'td': {'class': 'small'}}
+    )
+    
+    # Actions column
+    actions = tables.Column(
+        verbose_name='Actions',
+        orderable=False,
+        empty_values=(),
+        attrs={'td': {'class': 'text-end', 'style': 'width: 120px;'}}
+    )
+    
+    class Meta:
+        from .models import IssueBlueprint
+        model = IssueBlueprint
+        template_name = 'django_tables2/bootstrap5.html'
+        fields = ('title', 'category', 'is_active', 'version', 'updated_at', 'tags', 'actions')
+        attrs = {
+            'class': 'table table-hover',
+            'thead': {'class': 'table-light'}
+        }
+        order_by = '-updated_at'
+    
+    def render_title(self, record):
+        """
+        Render title column with link to detail view.
+        """
+        url = reverse('blueprint-detail', kwargs={'id': str(record.id)})
+        title_html = format_html(
+            '<a href="{}" class="text-decoration-none"><strong>{}</strong></a>',
+            url,
+            record.title
+        )
+        
+        if record.description_md:
+            # Truncate description to 10 words
+            words = record.description_md.split()
+            truncated = ' '.join(words[:10])
+            if len(words) > 10:
+                truncated += '...'
+            desc_html = format_html(
+                '<br><small class="text-muted">{}</small>',
+                truncated
+            )
+            return format_html('{}{}', title_html, desc_html)
+        
+        return title_html
+    
+    def render_category(self, record):
+        """
+        Render category column as a badge.
+        """
+        return format_html(
+            '<span class="badge bg-info">{}</span>',
+            record.category.name
+        )
+    
+    def render_tags(self, value, record):
+        """
+        Render tags column as compact badges.
+        """
+        if record.tags and len(record.tags) > 0:
+            # Show first 2 tags + count if more
+            tags_html = []
+            for i, tag in enumerate(record.tags[:2]):
+                tags_html.append(format_html(
+                    '<span class="badge bg-secondary me-1">{}</span>',
+                    tag
+                ))
+            if len(record.tags) > 2:
+                tags_html.append(format_html(
+                    '<span class="text-muted">+{}</span>',
+                    len(record.tags) - 2
+                ))
+            return format_html('{}', mark_safe(''.join(str(h) for h in tags_html)))
+        return format_html('<span class="text-muted">{}</span>', '—')
+    
+    def render_actions(self, record):
+        """
+        Render actions column with view and edit buttons.
+        """
+        view_url = reverse('blueprint-detail', kwargs={'id': str(record.id)})
+        edit_url = reverse('blueprint-edit', kwargs={'id': str(record.id)})
+        
+        return format_html(
+            '<a href="{}" class="btn btn-sm btn-outline-primary me-1" title="View">'
+            '<i class="bi bi-eye"></i></a>'
+            '<a href="{}" class="btn btn-sm btn-outline-secondary" title="Edit">'
+            '<i class="bi bi-pencil"></i></a>',
+            view_url,
+            edit_url
+        )

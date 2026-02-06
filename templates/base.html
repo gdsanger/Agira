@@ -207,6 +207,10 @@
                             <i class="bi bi-gear-fill sidebar-icon"></i>
                             <span class="sidebar-text">Global Settings</span>
                         </a>
+                        <a href="{% url 'blueprints' %}" class="sidebar-link sidebar-link-sub {% if 'blueprint' in request.resolver_match.url_name %}active{% endif %}">
+                            <i class="bi bi-file-earmark-text sidebar-icon"></i>
+                            <span class="sidebar-text">Issue Blueprints</span>
+                        </a>
                         <a href="{% url 'mail-templates' %}" class="sidebar-link sidebar-link-sub {% if 'mail-template' in request.resolver_match.url_name %}active{% endif %}">
                             <i class="bi bi-envelope sidebar-icon"></i>
                             <span class="sidebar-text">Mail Templates</span>
