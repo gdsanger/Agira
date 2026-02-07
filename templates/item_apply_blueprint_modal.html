@@ -79,7 +79,9 @@ document.getElementById('blueprint_id').addEventListener('change', function() {
         preview.classList.remove('d-none');
         
         // Extract variables from both blueprint title and description
-        const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+        // Pattern supports Unicode letters (like German umlauts), digits, underscore, and hyphens
+        // \p{L} matches any Unicode letter, \p{N} matches any Unicode number
+        const variablePattern = /\{\{\s*([\p{L}\p{N}_-]+)\s*\}\}/gu;
         const seenVars = new Set();
         
         // Extract from title
