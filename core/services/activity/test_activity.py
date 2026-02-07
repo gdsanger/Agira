@@ -80,7 +80,7 @@ class ActivityServiceLogTestCase(TestCase):
         # Check GenericForeignKey fields
         item_ct = ContentType.objects.get_for_model(Item)
         self.assertEqual(activity.target_content_type, item_ct)
-        self.assertEqual(activity.target_object_id, self.item.pk)
+        self.assertEqual(activity.target_object_id, str(self.item.pk))
         
         # Check that generic relation works
         self.assertEqual(activity.target, self.item)
@@ -118,7 +118,7 @@ class ActivityServiceLogTestCase(TestCase):
         self.assertEqual(activity.verb, 'system.startup')
         # Target fields should still be set to satisfy DB constraints
         self.assertIsNotNone(activity.target_content_type)
-        self.assertEqual(activity.target_object_id, 0)
+        self.assertEqual(activity.target_object_id, '0')
     
     def test_log_sets_created_at(self):
         """Test that created_at is automatically set."""
