@@ -824,10 +824,12 @@ def item_detail(request, item_id):
         status=ReleaseStatus.CLOSED
     ).order_by('-version')
     
-    # Get parent items for the inline edit (filtered by project, exclude self)
-    # Note: Server-side validation in item_update_parent enforces status and parent rules
+    # Get parent items for the inline edit (filtered by project, exclude closed and self)
+    # Filter as per issue #306 - same project, status != closed
     parent_items = Item.objects.filter(
         project=item.project
+    ).exclude(
+        status=ItemStatus.CLOSED
     ).exclude(
         id=item.id
     ).order_by('title')
@@ -927,11 +929,7 @@ def item_update_parent(request, item_id):
             if parent_item.status == ItemStatus.CLOSED:
                 return HttpResponse('Cannot set a closed item as parent.', status=400)
             
-            # 3. Must not have a parent itself (no nested parents)
-            if parent_item.parent is not None:
-                return HttpResponse('Cannot set a child item as parent (no nested parents allowed).', status=400)
-            
-            # 4. Cannot be the item itself
+            # 3. Cannot be the item itself
             if parent_item.id == item.id:
                 return HttpResponse('Cannot set item as its own parent.', status=400)
             
@@ -3314,8 +3312,9 @@ def item_edit(request, item_id):
         # Get releases for the current project
         releases = Release.objects.filter(project=item.project).order_by('-version')
         
-        # Get potential parent items from the same project
-        parent_items = Item.objects.filter(project=item.project).exclude(id=item.id).order_by('title')
+        # Get potential parent items from the same project, exclude closed and self
+        # Filter as per issue #306 - same project, status != closed
+        parent_items = Item.objects.filter(project=item.project).exclude(status=ItemStatus.CLOSED).exclude(id=item.id).order_by('title')
         
         # Get nodes from the current project
         nodes = Node.objects.filter(project=item.project).order_by('name')
