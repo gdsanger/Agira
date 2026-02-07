@@ -150,6 +150,9 @@
                 <h6 class="mb-0"><i class="bi bi-gear"></i> Actions</h6>
             </div>
             <div class="card-body">
+                <button type="button" class="btn btn-sm btn-success w-100 mb-2" data-bs-toggle="modal" data-bs-target="#createIssueModal">
+                    <i class="bi bi-plus-circle"></i> Create Issue from Blueprint
+                </button>
                 <a href="{% url 'blueprint-edit' blueprint.id %}" class="btn btn-sm btn-primary w-100 mb-2">
                     <i class="bi bi-pencil"></i> Edit Blueprint
                 </a>
@@ -170,6 +173,44 @@
         </div>
         <div class="toast-body" id="toast-body">
             Message
+        </div>
+    </div>
+</div>
+
+<!-- Create Issue Modal -->
+<div class="modal fade" id="createIssueModal" tabindex="-1" aria-labelledby="createIssueModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createIssueModalLabel">Create Issue from Blueprint</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createIssueForm">
+                    <div class="mb-3">
+                        <label for="project_id" class="form-label">Project <span class="text-danger">*</span></label>
+                        <select class="form-select" id="project_id" name="project_id" required>
+                            <option value="">Select a project...</option>
+                            {% for project in projects %}
+                            <option value="{{ project.id }}">{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div id="variables-container"></div>
+                    
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle"></i>
+                        A new issue will be created in the selected project using this blueprint.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="create-issue-submit-btn">
+                    <i class="bi bi-plus-circle"></i> Create Issue
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -226,6 +267,128 @@ document.getElementById('delete-btn').addEventListener('click', async function()
     } catch (error) {
         const errorMessage = error.message || 'An unexpected error occurred';
         showToast('error', 'Failed to delete blueprint: ' + errorMessage);
+    }
+});
+
+// Parse blueprint description for variables
+const blueprintDescription = {{ blueprint.description_md|safe|escapejs }};
+const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+const variables = [];
+const seenVars = new Set();
+let match;
+
+while ((match = variablePattern.exec(blueprintDescription)) !== null) {
+    const varName = match[1];
+    if (!seenVars.has(varName)) {
+        seenVars.add(varName);
+        variables.push(varName);
+    }
+}
+
+// Show variable inputs when modal is opened
+document.getElementById('createIssueModal').addEventListener('show.bs.modal', function() {
+    const container = document.getElementById('variables-container');
+    container.innerHTML = '';
+    
+    if (variables.length > 0) {
+        const header = document.createElement('h6');
+        header.className = 'mb-3';
+        header.textContent = 'Blueprint Variables';
+        container.appendChild(header);
+        
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-warning small mb-3';
+        alert.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Please provide values for all variables below.';
+        container.appendChild(alert);
+        
+        variables.forEach(varName => {
+            const div = document.createElement('div');
+            div.className = 'mb-3';
+            
+            const label = document.createElement('label');
+            label.className = 'form-label';
+            label.htmlFor = `var_${varName}`;
+            label.innerHTML = `${varName} <span class="text-danger">*</span>`;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control';
+            input.id = `var_${varName}`;
+            input.name = `var_${varName}`;
+            input.required = true;
+            input.placeholder = `Enter value for ${varName}`;
+            
+            div.appendChild(label);
+            div.appendChild(input);
+            container.appendChild(div);
+        });
+    }
+});
+
+// Create issue handler
+document.getElementById('create-issue-submit-btn').addEventListener('click', async function() {
+    const projectId = document.getElementById('project_id').value;
+    
+    if (!projectId) {
+        showToast('error', 'Please select a project');
+        return;
+    }
+    
+    // Collect variable values
+    const variableValues = {};
+    let allProvided = true;
+    
+    variables.forEach(varName => {
+        const input = document.getElementById(`var_${varName}`);
+        if (input) {
+            const value = input.value.trim();
+            if (!value) {
+                allProvided = false;
+            }
+            variableValues[varName] = value;
+        }
+    });
+    
+    if (!allProvided) {
+        showToast('error', 'Please provide values for all variables');
+        return;
+    }
+    
+    // Disable button
+    this.disabled = true;
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const formData = new FormData();
+        formData.append('project_id', projectId);
+        formData.append('variables', JSON.stringify(variableValues));
+        
+        const response = await fetch('{% url "blueprint-create-issue" blueprint.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', data.message);
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createIssueModal'));
+            modal.hide();
+            
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to create issue');
+            this.disabled = false;
+        }
+    } catch (error) {
+        showToast('error', 'Failed to create issue: ' + error.message);
+        this.disabled = false;
     }
 });
 </script>

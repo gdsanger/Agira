@@ -183,6 +183,7 @@ urlpatterns = [
     path('configuration/blueprints/<uuid:id>/edit/', views.blueprint_edit, name='blueprint-edit'),
     path('configuration/blueprints/<uuid:id>/update/', views.blueprint_update, name='blueprint-update'),
     path('configuration/blueprints/<uuid:id>/delete/', views.blueprint_delete, name='blueprint-delete'),
+    path('configuration/blueprints/<uuid:id>/create-issue/', views.blueprint_create_issue, name='blueprint-create-issue'),
     
     # Item Blueprint Integration URLs
     path('items/<int:item_id>/create-blueprint/', views.item_create_blueprint, name='item-create-blueprint'),

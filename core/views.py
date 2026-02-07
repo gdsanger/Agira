@@ -8052,13 +8052,20 @@ def blueprints(request):
 @login_required
 def blueprint_detail(request, id):
     """Blueprint detail view."""
-    from .models import IssueBlueprint
+    from .models import IssueBlueprint, Project
     blueprint = get_object_or_404(IssueBlueprint.objects.select_related('category', 'created_by'), id=id)
+    
+    # Get all projects user has access to for creating issues
+    projects = Project.objects.filter(
+        organisation=request.user.organisation
+    ).order_by('name')
     
     context = {
         'blueprint': blueprint,
+        'projects': projects,
     }
     return render(request, 'blueprint_detail.html', context)
+
 
 
 @login_required
@@ -8260,6 +8267,85 @@ def blueprint_delete(request, id):
 
 
 @login_required
+@require_http_methods(["POST"])
+def blueprint_create_issue(request, id):
+    """Create a new issue from a blueprint."""
+    from .models import IssueBlueprint, Project, Item
+    from .utils.blueprint_variables import extract_variables, replace_variables, validate_variables
+    import json
+    
+    blueprint = get_object_or_404(IssueBlueprint, id=id, is_active=True)
+    
+    try:
+        # Parse form data
+        project_id = request.POST.get('project_id', '').strip()
+        variables_json = request.POST.get('variables', '{}')
+        
+        # Validate project
+        if not project_id:
+            return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
+        
+        try:
+            project = Project.objects.get(id=project_id, organisation=request.user.organisation)
+        except Project.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Invalid project or no access'}, status=400)
+        
+        # Parse variables
+        try:
+            variables = json.loads(variables_json)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid variables data'}, status=400)
+        
+        # Validate all required variables are provided
+        is_valid, missing_vars = validate_variables(blueprint.description_md, variables)
+        if not is_valid:
+            return JsonResponse({
+                'success': False,
+                'error': f'Missing required variables: {", ".join(missing_vars)}'
+            }, status=400)
+        
+        # Replace variables in blueprint content
+        title = replace_variables(blueprint.title, variables)
+        description = replace_variables(blueprint.description_md, variables)
+        
+        # Create the new item
+        item = Item.objects.create(
+            project=project,
+            title=title,
+            description=description,
+            created_by=request.user,
+            type=project.default_item_type if project.default_item_type else None,
+        )
+        
+        # Apply optional blueprint fields if they exist
+        if blueprint.default_risk_level:
+            item.risk_level = blueprint.default_risk_level
+        if blueprint.default_security_relevant is not None:
+            item.security_relevant = blueprint.default_security_relevant
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.created_from_blueprint',
+            target=item,
+            actor=request.user,
+            summary=f'Created issue #{item.id} from blueprint "{blueprint.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Issue #{item.id} created successfully from blueprint',
+            'redirect': reverse('item-detail', args=[item.id])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating issue from blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
 def item_create_blueprint(request, item_id):
     """Show form to create a blueprint from an existing issue."""
     from .models import IssueBlueprintCategory
@@ -8444,7 +8530,9 @@ def item_apply_blueprint(request, item_id):
 def item_apply_blueprint_submit(request, item_id):
     """Apply a blueprint to an issue."""
     from .models import IssueBlueprint
+    from .utils.blueprint_variables import replace_variables, validate_variables
     from datetime import datetime
+    import json
     
     item = get_object_or_404(Item, id=item_id)
     
@@ -8453,6 +8541,7 @@ def item_apply_blueprint_submit(request, item_id):
         blueprint_id = request.POST.get('blueprint_id', '').strip()
         replace_description = request.POST.get('replace_description') == 'on'
         use_blueprint_title = request.POST.get('use_blueprint_title') == 'on'
+        variables_json = request.POST.get('variables', '{}')
         
         # Validate blueprint_id
         if not blueprint_id:
@@ -8464,18 +8553,36 @@ def item_apply_blueprint_submit(request, item_id):
         except IssueBlueprint.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Invalid or inactive blueprint'}, status=400)
         
+        # Parse and validate variables
+        try:
+            variables = json.loads(variables_json)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid variables data'}, status=400)
+        
+        # Validate all required variables are provided
+        is_valid, missing_vars = validate_variables(blueprint.description_md, variables)
+        if not is_valid:
+            return JsonResponse({
+                'success': False,
+                'error': f'Missing required variables: {", ".join(missing_vars)}'
+            }, status=400)
+        
+        # Replace variables in blueprint content
+        blueprint_title = replace_variables(blueprint.title, variables)
+        blueprint_description = replace_variables(blueprint.description_md, variables)
+        
         # Apply blueprint to item
         if use_blueprint_title:
-            item.title = blueprint.title
+            item.title = blueprint_title
         
         if replace_description:
             # Replace entire description
-            item.description = blueprint.description_md
+            item.description = blueprint_description
         else:
             # Append blueprint description
             current_date = datetime.now().strftime('%Y-%m-%d')
             blueprint_header = f"\n\n## Blueprint angewendet: {blueprint.title} ({current_date})\n\n"
-            item.description = (item.description or '') + blueprint_header + blueprint.description_md
+            item.description = (item.description or '') + blueprint_header + blueprint_description
         
         item.save()
         
