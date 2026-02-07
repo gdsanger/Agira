@@ -1491,9 +1491,22 @@ def item_create_github_issue(request, item_id):
             if not notes:
                 return HttpResponse("Notes are required for creating a follow-up issue.", status=400)
             
+            # Check if user wants to send minimal description to GitHub
+            send_minimal = request.POST.get('send_minimal_description') == 'true'
+            
             # Update item description BEFORE creating GitHub issue
             # This ensures the notes and existing issue references are included in the GitHub issue body
             _append_followup_notes_to_item(item, notes)
+            
+            # Prepare the issue body based on user's choice
+            if send_minimal:
+                # Create minimal description with only references and notes
+                issue_body = _create_minimal_issue_description(item, notes)
+            else:
+                # Use default behavior (full description will be used by create_issue_for_item)
+                issue_body = None
+        else:
+            issue_body = None
         
         # Store old status to detect changes
         old_status = item.status
@@ -1502,7 +1515,8 @@ def item_create_github_issue(request, item_id):
         try:
             mapping = github_service.create_issue_for_item(
                 item=item,
-                actor=request.user
+                actor=request.user,
+                body=issue_body
             )
             
             # For follow-up issues, update the references section to include the newly created issue
@@ -1572,6 +1586,52 @@ def item_create_github_issue(request, item_id):
         return HttpResponse(f"Failed to create GitHub issue: {str(e)}", status=500)
 
 
+def _create_minimal_issue_description(item, notes):
+    """
+    Create a minimal issue description with only references to original issues/PRs and the notes.
+    
+    This is used when the user chooses to send minimal description to GitHub instead of the full item description.
+    The format follows the example from the issue: "Betrifft gdsanger/Agira#345 und gdsanger/Agira#456"
+    
+    Args:
+        item: Item instance
+        notes: User-provided notes for the follow-up
+        
+    Returns:
+        str: Minimal description formatted for GitHub
+    """
+    # Get existing issue and PR mappings (excluding the one we're about to create)
+    mappings = item.external_mappings.all().order_by('kind', 'number')
+    
+    # Build reference string using full repo format (owner/repo#number)
+    owner = item.project.github_owner or 'owner'
+    repo = item.project.github_repo or 'repo'
+    
+    if mappings.exists():
+        # Format: "Betrifft owner/repo#123 und owner/repo#456"
+        refs = [f"{owner}/{repo}#{m.number}" for m in mappings]
+        if len(refs) == 1:
+            ref_line = f"Betrifft {refs[0]}"
+        else:
+            # Join all but last with ", " and last with " und "
+            ref_line = f"Betrifft {', '.join(refs[:-1])} und {refs[-1]}"
+    else:
+        ref_line = ""
+    
+    # Build minimal description
+    parts = []
+    if ref_line:
+        parts.append(ref_line)
+    parts.append(notes)
+    
+    # Add metadata (same as default behavior)
+    parts.append(f"\n---\n**Agira Item ID:** {item.id}")
+    parts.append(f"**Project:** {item.project.name}")
+    parts.append(f"**Type:** {item.type.name}")
+    
+    return '\n\n'.join(parts)
+
+
 def _append_followup_notes_to_item(item, notes):
     """
     Append follow-up notes and issue/PR references to item description.
@@ -1586,8 +1646,8 @@ def _append_followup_notes_to_item(item, notes):
     """
     from datetime import datetime
     
-    # Get current date formatted for German locale
-    current_date = datetime.now().strftime("%d.%m.%Y")
+    # Get current date and time formatted for German locale
+    current_datetime = datetime.now().strftime("%d.%m.%Y %H:%M")
     
     # Get existing issue and PR numbers
     mappings = item.external_mappings.all().order_by('kind', 'number')
@@ -1606,8 +1666,8 @@ def _append_followup_notes_to_item(item, notes):
         original_desc = item.description
         item.description = f"## Original Item Issue Text\n{original_desc}"
     
-    # Add notes section
-    addition_parts.append(f"\n\n## Hinweise und Änderungen {current_date}")
+    # Add notes section with date and time
+    addition_parts.append(f"\n\n## Hinweise und Änderungen {current_datetime}")
     addition_parts.append(notes)
     
     # Add issue/PR references section

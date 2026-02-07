@@ -197,7 +197,26 @@
                             required
                             placeholder="Describe what additional work is needed and why a follow-up issue is necessary..."></textarea>
                         <div class="form-text">
-                            These notes will be appended to the item description with the current date.
+                            These notes will be appended to the item description with the current date and time.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input 
+                                class="form-check-input" 
+                                type="checkbox" 
+                                id="sendMinimalDescription" 
+                                name="send_minimal_description"
+                                value="true">
+                            <label class="form-check-label" for="sendMinimalDescription">
+                                <strong>Send minimal description to GitHub</strong>
+                            </label>
+                            <div class="form-text">
+                                If checked, only a reference to the original issues/PRs and your notes will be sent to GitHub. 
+                                If unchecked, the complete item description will be sent.
+                                <br>
+                                <small class="text-muted">Note: The item description in Agira will not be changed, only what is sent to GitHub.</small>
+                            </div>
                         </div>
                     </div>
                 </div>

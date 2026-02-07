@@ -345,7 +345,7 @@ class FollowupGitHubIssueTestCase(TestCase):
         self.assertNotIn('data-bs-toggle="modal" data-bs-target="#followupIssueModal"', content)
     
     def test_date_format_in_description_update(self):
-        """Test that date is formatted correctly in German format (DD.MM.YYYY)."""
+        """Test that date and time are formatted correctly in German format (DD.MM.YYYY HH:MM)."""
         from core.views import _append_followup_notes_to_item
         from datetime import datetime
         import re
@@ -360,11 +360,11 @@ class FollowupGitHubIssueTestCase(TestCase):
         
         _append_followup_notes_to_item(item, 'Test notes')
         
-        # Check date format - should match DD.MM.YYYY pattern
+        # Check date and time format - should match DD.MM.YYYY HH:MM pattern
         item.refresh_from_db()
-        # Pattern for German date format
-        date_pattern = r'## Hinweise und Änderungen \d{2}\.\d{2}\.\d{4}'
-        self.assertRegex(item.description, date_pattern)
+        # Pattern for German date and time format
+        datetime_pattern = r'## Hinweise und Änderungen \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}'
+        self.assertRegex(item.description, datetime_pattern)
         self.assertIn('Test notes', item.description)
     
     def test_empty_description_handling(self):
@@ -399,3 +399,198 @@ class FollowupGitHubIssueTestCase(TestCase):
         self.assertIn('## Hinweise und Änderungen', item.description)
         self.assertIn('Notes for empty item', item.description)
         self.assertIn('#1', item.description)
+    
+    def test_minimal_description_helper(self):
+        """Test the _create_minimal_issue_description helper function."""
+        from core.views import _create_minimal_issue_description
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Original description',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Create some mappings
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=12345,
+            number=345,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/345',
+        )
+        
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=67890,
+            number=456,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url='https://github.com/testowner/testrepo/pull/456',
+        )
+        
+        notes = "Additional work needed to fix edge cases"
+        minimal_desc = _create_minimal_issue_description(item, notes)
+        
+        # Check that it contains the reference line
+        self.assertIn('Betrifft testowner/testrepo#345', minimal_desc)
+        self.assertIn('testowner/testrepo#456', minimal_desc)
+        self.assertIn(' und ', minimal_desc)  # Should use "und" for joining
+        
+        # Check that it contains the notes
+        self.assertIn(notes, minimal_desc)
+        
+        # Check that it contains metadata
+        self.assertIn('**Agira Item ID:**', minimal_desc)
+        self.assertIn('**Project:**', minimal_desc)
+        self.assertIn('**Type:**', minimal_desc)
+        
+        # Check that it does NOT contain the original item description
+        self.assertNotIn('Original description', minimal_desc)
+    
+    def test_minimal_description_single_reference(self):
+        """Test minimal description with single reference (no 'und' needed)."""
+        from core.views import _create_minimal_issue_description
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Original description',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Create single mapping
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=12345,
+            number=345,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/345',
+        )
+        
+        notes = "Follow-up work"
+        minimal_desc = _create_minimal_issue_description(item, notes)
+        
+        # Should use "Betrifft" without "und" for single reference
+        self.assertIn('Betrifft testowner/testrepo#345', minimal_desc)
+        self.assertNotIn(' und ', minimal_desc)
+        self.assertIn(notes, minimal_desc)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    def test_followup_issue_with_minimal_description_option(self, mock_create_issue):
+        """Test that follow-up issue can send minimal description to GitHub."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Original long description with lots of details',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Create first issue mapping
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=12345,
+            number=345,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/345',
+        )
+        
+        # Mock the GitHub API response
+        mock_create_issue.return_value = {
+            'id': 23456,
+            'number': 456,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/456',
+            'title': 'Test Item',
+            'assignees': [],
+        }
+        
+        # Create follow-up issue with minimal description option enabled
+        url = reverse('item-create-github-issue', args=[item.id])
+        notes = 'Additional work needed'
+        response = self.client.post(url, {
+            'notes': notes,
+            'send_minimal_description': 'true'
+        })
+        
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that GitHub API was called
+        self.assertTrue(mock_create_issue.called)
+        
+        # Get the body that was sent to GitHub
+        call_args = mock_create_issue.call_args
+        sent_body = call_args.kwargs['body']
+        
+        # Minimal description should contain reference and notes
+        self.assertIn('Betrifft testowner/testrepo#345', sent_body)
+        self.assertIn(notes, sent_body)
+        
+        # Should NOT contain the original long description
+        self.assertNotIn('Original long description with lots of details', sent_body)
+        
+        # Item description in Agira should still be updated with the notes
+        item.refresh_from_db()
+        self.assertIn('## Hinweise und Änderungen', item.description)
+        self.assertIn(notes, item.description)
+    
+    @patch('core.services.github.client.GitHubClient.create_issue')
+    def test_followup_issue_with_full_description_option(self, mock_create_issue):
+        """Test that follow-up issue can send full description to GitHub when option is not checked."""
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Original long description with lots of details',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Create first issue mapping
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=12345,
+            number=345,
+            kind=ExternalIssueKind.ISSUE,
+            state='closed',
+            html_url='https://github.com/testowner/testrepo/issues/345',
+        )
+        
+        # Mock the GitHub API response
+        mock_create_issue.return_value = {
+            'id': 23456,
+            'number': 456,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/issues/456',
+            'title': 'Test Item',
+            'assignees': [],
+        }
+        
+        # Create follow-up issue WITHOUT minimal description option (default behavior)
+        url = reverse('item-create-github-issue', args=[item.id])
+        notes = 'Additional work needed'
+        response = self.client.post(url, {
+            'notes': notes,
+            # send_minimal_description is not set, so default to full description
+        })
+        
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+        
+        # Check that GitHub API was called
+        self.assertTrue(mock_create_issue.called)
+        
+        # Get the body that was sent to GitHub
+        call_args = mock_create_issue.call_args
+        sent_body = call_args.kwargs['body']
+        
+        # Full description should contain the original description plus the new notes
+        self.assertIn('Original long description with lots of details', sent_body)
+        self.assertIn(notes, sent_body)
+        self.assertIn('## Hinweise und Änderungen', sent_body)
