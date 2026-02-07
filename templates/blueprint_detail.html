@@ -271,7 +271,7 @@ document.getElementById('delete-btn').addEventListener('click', async function()
 });
 
 // Parse blueprint description for variables
-const blueprintDescription = {{ blueprint.description_md|safe|escapejs }};
+const blueprintDescription = {{ blueprint.description_md|escapejs }};
 const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
 const variables = [];
 const seenVars = new Set();

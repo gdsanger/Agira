@@ -3204,18 +3204,20 @@ def item_create(request):
             try:
                 blueprint = IssueBlueprint.objects.get(id=blueprint_id, is_active=True)
                 
-                # Parse blueprint variables
-                blueprint_variables_json = request.POST.get('blueprint_variables', '{}')
-                try:
-                    blueprint_variables = json.loads(blueprint_variables_json)
-                except json.JSONDecodeError:
-                    blueprint_variables = {}
-                
-                # Replace variables in blueprint content
-                if not title:  # Only use blueprint title if no title provided
-                    title = replace_variables(blueprint.title, blueprint_variables)
-                if not description:  # Only use blueprint description if no description provided
-                    description = replace_variables(blueprint.description_md, blueprint_variables)
+                # Only process variables if we'll use the blueprint content
+                if not title or not description:
+                    # Parse blueprint variables
+                    blueprint_variables_json = request.POST.get('blueprint_variables', '{}')
+                    try:
+                        blueprint_variables = json.loads(blueprint_variables_json)
+                    except json.JSONDecodeError:
+                        blueprint_variables = {}
+                    
+                    # Replace variables in blueprint content
+                    if not title:  # Only use blueprint title if no title provided
+                        title = replace_variables(blueprint.title, blueprint_variables)
+                    if not description:  # Only use blueprint description if no description provided
+                        description = replace_variables(blueprint.description_md, blueprint_variables)
                 
             except IssueBlueprint.DoesNotExist:
                 pass  # Ignore if blueprint doesn't exist or is inactive

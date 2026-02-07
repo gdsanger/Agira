@@ -3,7 +3,7 @@ Utility functions for blueprint variable parsing and replacement.
 Supports variables in the format {{ variable_name }}.
 """
 import re
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 
 def extract_variables(text: str) -> List[str]:
@@ -75,7 +75,7 @@ def replace_variables(text: str, variables: Dict[str, str]) -> str:
     return result
 
 
-def validate_variables(text: str, provided_variables: Dict[str, str]) -> tuple[bool, List[str]]:
+def validate_variables(text: str, provided_variables: Dict[str, str]) -> Tuple[bool, List[str]]:
     """
     Validate that all required variables are provided.
     
