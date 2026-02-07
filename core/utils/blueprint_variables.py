@@ -29,9 +29,9 @@ def extract_variables(text: str) -> List[str]:
         return []
     
     # Pattern to match {{ variable_name }}
-    # Allows alphanumeric, underscore, and hyphens in variable names
-    pattern = r'\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}'
-    matches = re.findall(pattern, text)
+    # Allows Unicode letters, digits, underscore, and hyphens in variable names
+    pattern = r'\{\{\s*([\w-]+)\s*\}\}'
+    matches = re.findall(pattern, text, re.UNICODE)
     
     # Return unique variables in order of first appearance
     seen = set()

@@ -252,3 +252,92 @@ Risk Level: {{ risk_level }}
         is_valid, missing = validate_variables(text, values)
         self.assertTrue(is_valid)
         self.assertEqual(missing, [])
+    
+    def test_extract_variables_with_unicode_german_umlauts(self):
+        """Test extracting variables with German umlauts (ä, ö, ü, Ä, Ö, Ü)"""
+        text = "Fehler bei {{ Entität }} in {{ Umgebung }}"
+        variables = extract_variables(text)
+        self.assertEqual(variables, ['Entität', 'Umgebung'])
+    
+    def test_extract_variables_mixed_unicode_and_ascii(self):
+        """Test extracting both Unicode and ASCII variables together"""
+        text = "{{ Entität }} und {{ Namespace }} in {{ environment }}"
+        variables = extract_variables(text)
+        self.assertEqual(variables, ['Entität', 'Namespace', 'environment'])
+    
+    def test_extract_variables_from_multiple_with_unicode(self):
+        """Test extracting Unicode variables from title and description"""
+        title = "Fehler bei {{ Entität }}"
+        description = "Bitte prüfe {{ Entität }} in {{ Namespace }}. {{ Entität }} tritt mehrfach auf."
+        variables = extract_variables_from_multiple([title, description])
+        # Should extract 'Entität' first from title, then 'Namespace' from description
+        # 'Entität' should only appear once despite multiple occurrences
+        self.assertEqual(variables, ['Entität', 'Namespace'])
+    
+    def test_replace_variables_with_unicode(self):
+        """Test replacing Unicode variables"""
+        text = "Fehler bei {{ Entität }} in {{ Namespace }}"
+        result = replace_variables(text, {
+            "Entität": "Datenbank",
+            "Namespace": "Production"
+        })
+        self.assertEqual(result, "Fehler bei Datenbank in Production")
+    
+    def test_replace_variables_unicode_multiple_occurrences(self):
+        """Test replacing Unicode variables that appear multiple times"""
+        text = "{{ Entität }} hat ein Problem. Bitte {{ Entität }} prüfen."
+        result = replace_variables(text, {"Entität": "Server"})
+        self.assertEqual(result, "Server hat ein Problem. Bitte Server prüfen.")
+    
+    def test_validate_variables_with_unicode(self):
+        """Test validation with Unicode variables"""
+        text = "{{ Entität }} in {{ Namespace }}"
+        
+        # All provided
+        is_valid, missing = validate_variables(text, {
+            "Entität": "Database",
+            "Namespace": "Production"
+        })
+        self.assertTrue(is_valid)
+        self.assertEqual(missing, [])
+        
+        # Missing Namespace
+        is_valid, missing = validate_variables(text, {
+            "Entität": "Database"
+        })
+        self.assertFalse(is_valid)
+        self.assertEqual(missing, ["Namespace"])
+    
+    def test_issue_330_scenario(self):
+        """Test the exact scenario from issue #330"""
+        # This is the bug scenario: Two different variables where only one was shown
+        title = "Fehler bei {{ Entität }}"
+        description = "Bitte prüfe {{ Entität }} in {{ Namespace }}. {{ Entität }} tritt mehrfach auf."
+        
+        # Extract all variables from both title and description
+        variables = extract_variables_from_multiple([title, description])
+        
+        # Should find both Entität and Namespace
+        self.assertEqual(len(variables), 2)
+        self.assertIn('Entität', variables)
+        self.assertIn('Namespace', variables)
+        
+        # Variables should be in order of first appearance
+        self.assertEqual(variables[0], 'Entität')  # First in title
+        self.assertEqual(variables[1], 'Namespace')  # First in description
+        
+        # Replace variables
+        values = {
+            'Entität': 'Service',
+            'Namespace': 'test-env'
+        }
+        
+        replaced_title = replace_variables(title, values)
+        replaced_description = replace_variables(description, values)
+        
+        self.assertEqual(replaced_title, "Fehler bei Service")
+        self.assertEqual(replaced_description, "Bitte prüfe Service in test-env. Service tritt mehrfach auf.")
+        
+        # Ensure all occurrences of Entität are replaced
+        self.assertNotIn('{{ Entität }}', replaced_description)
+        self.assertEqual(replaced_description.count('Service'), 2)
