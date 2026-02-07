@@ -5,6 +5,7 @@
         <option value="">Choose a blueprint...</option>
         {% for blueprint in blueprints %}
         <option value="{{ blueprint.id }}" 
+                data-title="{{ blueprint.title|escapejs }}"
                 data-description="{{ blueprint.description_md|truncatewords:20 }}"
                 data-full-description="{{ blueprint.description_md|escapejs }}">
             {{ blueprint.title }} ({{ blueprint.category.name }})
@@ -70,18 +71,34 @@ document.getElementById('blueprint_id').addEventListener('change', function() {
     currentVariables = [];
     
     if (selectedOption.value) {
+        const title = selectedOption.getAttribute('data-title');
         const description = selectedOption.getAttribute('data-description');
         const fullDescription = selectedOption.getAttribute('data-full-description');
         
         previewText.textContent = description || 'No description available';
         preview.classList.remove('d-none');
         
-        // Extract variables from blueprint description
-        if (fullDescription) {
-            const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
-            const seenVars = new Set();
+        // Extract variables from both blueprint title and description
+        const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+        const seenVars = new Set();
+        
+        // Extract from title
+        if (title) {
             let match;
-            
+            while ((match = variablePattern.exec(title)) !== null) {
+                const varName = match[1];
+                if (!seenVars.has(varName)) {
+                    seenVars.add(varName);
+                    currentVariables.push(varName);
+                }
+            }
+            // Reset lastIndex for reuse of the same pattern
+            variablePattern.lastIndex = 0;
+        }
+        
+        // Extract from description
+        if (fullDescription) {
+            let match;
             while ((match = variablePattern.exec(fullDescription)) !== null) {
                 const varName = match[1];
                 if (!seenVars.has(varName)) {
@@ -89,41 +106,41 @@ document.getElementById('blueprint_id').addEventListener('change', function() {
                     currentVariables.push(varName);
                 }
             }
+        }
+        
+        // Show variable inputs if any found
+        if (currentVariables.length > 0) {
+            const header = document.createElement('h6');
+            header.className = 'mb-3 mt-3';
+            header.textContent = 'Blueprint Variables';
+            variablesContainer.appendChild(header);
             
-            // Show variable inputs if any found
-            if (currentVariables.length > 0) {
-                const header = document.createElement('h6');
-                header.className = 'mb-3 mt-3';
-                header.textContent = 'Blueprint Variables';
-                variablesContainer.appendChild(header);
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-warning small mb-3';
+            alert.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Please provide values for all variables below.';
+            variablesContainer.appendChild(alert);
+            
+            currentVariables.forEach(varName => {
+                const div = document.createElement('div');
+                div.className = 'mb-3';
                 
-                const alert = document.createElement('div');
-                alert.className = 'alert alert-warning small mb-3';
-                alert.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Please provide values for all variables below.';
-                variablesContainer.appendChild(alert);
+                const label = document.createElement('label');
+                label.className = 'form-label';
+                label.htmlFor = `var_${varName}`;
+                label.innerHTML = `${varName} <span class="text-danger">*</span>`;
                 
-                currentVariables.forEach(varName => {
-                    const div = document.createElement('div');
-                    div.className = 'mb-3';
-                    
-                    const label = document.createElement('label');
-                    label.className = 'form-label';
-                    label.htmlFor = `var_${varName}`;
-                    label.innerHTML = `${varName} <span class="text-danger">*</span>`;
-                    
-                    const input = document.createElement('input');
-                    input.type = 'text';
-                    input.className = 'form-control';
-                    input.id = `var_${varName}`;
-                    input.name = `var_${varName}`;
-                    input.required = true;
-                    input.placeholder = `Enter value for ${varName}`;
-                    
-                    div.appendChild(label);
-                    div.appendChild(input);
-                    variablesContainer.appendChild(div);
-                });
-            }
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control';
+                input.id = `var_${varName}`;
+                input.name = `var_${varName}`;
+                input.required = true;
+                input.placeholder = `Enter value for ${varName}`;
+                
+                div.appendChild(label);
+                div.appendChild(input);
+                variablesContainer.appendChild(div);
+            });
         }
     } else {
         preview.classList.add('d-none');

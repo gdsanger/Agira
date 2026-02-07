@@ -2,7 +2,13 @@
 Tests for blueprint variable utility functions.
 """
 from django.test import TestCase
-from core.utils.blueprint_variables import extract_variables, replace_variables, validate_variables
+from core.utils.blueprint_variables import (
+    extract_variables, 
+    replace_variables, 
+    validate_variables,
+    extract_variables_from_multiple,
+    validate_variables_from_multiple
+)
 
 
 class BlueprintVariableUtilsTestCase(TestCase):
@@ -45,6 +51,42 @@ class BlueprintVariableUtilsTestCase(TestCase):
         text = "{{ project_name }} and {{ risk-level }}"
         variables = extract_variables(text)
         self.assertEqual(variables, ['project_name', 'risk-level'])
+    
+    def test_extract_variables_from_multiple(self):
+        """Test extracting variables from multiple text strings"""
+        texts = ["{{ name }}", "{{ age }} and {{ name }}"]
+        variables = extract_variables_from_multiple(texts)
+        self.assertEqual(variables, ['name', 'age'])
+    
+    def test_extract_variables_from_multiple_with_title_and_description(self):
+        """Test extracting variables from title and description"""
+        title = "Error in {{ entity }}"
+        description = "Please check {{ entity }} in {{ environment }}. {{ entity }} occurs multiple times."
+        variables = extract_variables_from_multiple([title, description])
+        # Should get entity first from title, then environment from description
+        self.assertEqual(variables, ['entity', 'environment'])
+    
+    def test_extract_variables_from_multiple_empty_texts(self):
+        """Test extracting variables from empty texts"""
+        variables = extract_variables_from_multiple([])
+        self.assertEqual(variables, [])
+        
+        variables = extract_variables_from_multiple(["", None, ""])
+        self.assertEqual(variables, [])
+    
+    def test_extract_variables_from_multiple_only_in_title(self):
+        """Test extracting variables that only appear in title"""
+        title = "{{ feature_name }}"
+        description = "This is a plain description without variables."
+        variables = extract_variables_from_multiple([title, description])
+        self.assertEqual(variables, ['feature_name'])
+    
+    def test_extract_variables_from_multiple_only_in_description(self):
+        """Test extracting variables that only appear in description"""
+        title = "Simple Title"
+        description = "Description with {{ variable1 }} and {{ variable2 }}"
+        variables = extract_variables_from_multiple([title, description])
+        self.assertEqual(variables, ['variable1', 'variable2'])
     
     def test_replace_variables_simple(self):
         """Test replacing variables in simple text"""
@@ -126,6 +168,46 @@ class BlueprintVariableUtilsTestCase(TestCase):
         is_valid, missing = validate_variables(text, {})
         self.assertTrue(is_valid)
         self.assertEqual(missing, [])
+    
+    def test_validate_variables_from_multiple_all_provided(self):
+        """Test validation from multiple texts when all variables provided"""
+        texts = ["{{ name }}", "{{ age }}"]
+        is_valid, missing = validate_variables_from_multiple(texts, {
+            "name": "John",
+            "age": "30"
+        })
+        self.assertTrue(is_valid)
+        self.assertEqual(missing, [])
+    
+    def test_validate_variables_from_multiple_missing(self):
+        """Test validation from multiple texts with missing variables"""
+        texts = ["{{ greeting }}", "{{ name }}"]
+        is_valid, missing = validate_variables_from_multiple(texts, {
+            "greeting": "Hi"
+        })
+        self.assertFalse(is_valid)
+        self.assertEqual(missing, ["name"])
+    
+    def test_validate_variables_from_multiple_title_and_description(self):
+        """Test validation from title and description"""
+        title = "Error in {{ entity }}"
+        description = "Check {{ entity }} in {{ environment }}"
+        
+        # All provided
+        is_valid, missing = validate_variables_from_multiple(
+            [title, description],
+            {"entity": "Database", "environment": "Production"}
+        )
+        self.assertTrue(is_valid)
+        self.assertEqual(missing, [])
+        
+        # Missing environment
+        is_valid, missing = validate_variables_from_multiple(
+            [title, description],
+            {"entity": "Database"}
+        )
+        self.assertFalse(is_valid)
+        self.assertEqual(missing, ["environment"])
     
     def test_complex_markdown_scenario(self):
         """Test with realistic markdown blueprint content"""

@@ -75,6 +75,39 @@ def replace_variables(text: str, variables: Dict[str, str]) -> str:
     return result
 
 
+def extract_variables_from_multiple(texts: List[str]) -> List[str]:
+    """
+    Extract all unique variables from multiple text strings.
+    
+    Variables are in the format {{ variable_name }}.
+    Returns a de-duplicated list of unique variable names in order of first appearance.
+    
+    Args:
+        texts: List of text strings to parse for variables
+        
+    Returns:
+        List of unique variable names found across all texts
+        
+    Examples:
+        >>> extract_variables_from_multiple(["{{ name }}", "{{ age }} and {{ name }}"])
+        ['name', 'age']
+        >>> extract_variables_from_multiple(["Title: {{ entity }}", "Desc: {{ entity }} in {{ env }}"])
+        ['entity', 'env']
+    """
+    seen = set()
+    unique_vars = []
+    
+    for text in texts:
+        if text:
+            vars_in_text = extract_variables(text)
+            for var in vars_in_text:
+                if var not in seen:
+                    seen.add(var)
+                    unique_vars.append(var)
+    
+    return unique_vars
+
+
 def validate_variables(text: str, provided_variables: Dict[str, str]) -> Tuple[bool, List[str]]:
     """
     Validate that all required variables are provided.
@@ -95,6 +128,32 @@ def validate_variables(text: str, provided_variables: Dict[str, str]) -> Tuple[b
         (False, ['name'])
     """
     required_vars = extract_variables(text)
+    missing_vars = [var for var in required_vars if var not in provided_variables or not provided_variables[var]]
+    
+    is_valid = len(missing_vars) == 0
+    return is_valid, missing_vars
+
+
+def validate_variables_from_multiple(texts: List[str], provided_variables: Dict[str, str]) -> Tuple[bool, List[str]]:
+    """
+    Validate that all required variables from multiple texts are provided.
+    
+    Args:
+        texts: List of text strings containing variables
+        provided_variables: Dictionary of provided variable values
+        
+    Returns:
+        Tuple of (is_valid, missing_variables)
+        where is_valid is True if all variables are provided,
+        and missing_variables is a list of variable names that are missing
+        
+    Examples:
+        >>> validate_variables_from_multiple(["{{ name }}", "{{ age }}"], {"name": "John", "age": "30"})
+        (True, [])
+        >>> validate_variables_from_multiple(["{{ greeting }}", "{{ name }}"], {"greeting": "Hi"})
+        (False, ['name'])
+    """
+    required_vars = extract_variables_from_multiple(texts)
     missing_vars = [var for var in required_vars if var not in provided_variables or not provided_variables[var]]
     
     is_valid = len(missing_vars) == 0
