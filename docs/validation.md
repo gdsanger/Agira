@@ -94,13 +94,15 @@ if self.release and self.release.project != self.project:
 
 The Item model has the most comprehensive validation rules:
 
-#### Parent Item Project Validation
-```python
-if self.parent and self.parent.project != self.project:
-    errors['parent'] = _('Parent item must belong to the same project.')
-```
-- **Purpose**: Ensures hierarchical integrity within a project
-- **Impact**: Cannot create parent-child relationships across projects
+#### Parent Item Project Validation (REMOVED as of Feb 2026)
+**Historical Note**: This validation was removed as per issue #306 to allow cross-project parent-child relationships.
+The validation previously ensured parent items belonged to the same project, but was removed to provide
+more flexibility when managing large numbers of items (200+).
+
+Current behavior:
+- Parent items can be from any project
+- Only validation: Parent item status must not be "closed" and cannot be the item itself
+- Validation enforced in view layer (`item_update_parent` in `views.py`)
 
 #### Solution Release Project Validation
 ```python
