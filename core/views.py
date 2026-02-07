@@ -921,19 +921,19 @@ def item_update_parent(request, item_id):
             # Validate parent item criteria
             # 1. Must be in the same project
             if parent_item.project != item.project:
-                return HttpResponse(status=400)
+                return HttpResponse('Parent item must belong to the same project.', status=400)
             
             # 2. Status must not be closed
             if parent_item.status == ItemStatus.CLOSED:
-                return HttpResponse(status=400)
+                return HttpResponse('Cannot set a closed item as parent.', status=400)
             
             # 3. Must not have a parent itself (no nested parents)
             if parent_item.parent is not None:
-                return HttpResponse(status=400)
+                return HttpResponse('Cannot set a child item as parent (no nested parents allowed).', status=400)
             
             # 4. Cannot be the item itself
             if parent_item.id == item.id:
-                return HttpResponse(status=400)
+                return HttpResponse('Cannot set item as its own parent.', status=400)
             
             item.parent = parent_item
             new_value = parent_item.title
@@ -955,7 +955,7 @@ def item_update_parent(request, item_id):
         return HttpResponse(status=200)
     except Exception as e:
         logger.error(f"Error updating item parent: {str(e)}", exc_info=True)
-        return HttpResponse(status=400)
+        return HttpResponse(f'Error updating parent: {str(e)}', status=400)
 
 
 @login_required
