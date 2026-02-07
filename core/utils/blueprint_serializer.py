@@ -15,6 +15,9 @@ from core.models import IssueBlueprint, IssueBlueprintCategory, RiskLevel
 CURRENT_SCHEMA_VERSION = "1.0"
 SUPPORTED_SCHEMA_VERSIONS = ["1.0"]
 
+# Cache valid risk level choices
+VALID_RISK_LEVELS = [choice[0] for choice in RiskLevel.choices]
+
 
 class BlueprintSerializationError(Exception):
     """Raised when blueprint serialization fails"""
@@ -172,10 +175,10 @@ def import_blueprint(
         notes = blueprint_data.get("notes", "")
         
         # Validate risk level if provided
-        if default_risk_level and default_risk_level not in [choice[0] for choice in RiskLevel.choices]:
+        if default_risk_level and default_risk_level not in VALID_RISK_LEVELS:
             raise BlueprintDeserializationError(
                 f"Invalid default_risk_level: {default_risk_level}. "
-                f"Valid values: {', '.join([choice[0] for choice in RiskLevel.choices])}"
+                f"Valid values: {', '.join(VALID_RISK_LEVELS)}"
             )
         
         # Check if we should update existing blueprint
