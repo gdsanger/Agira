@@ -824,12 +824,10 @@ def item_detail(request, item_id):
         status=ReleaseStatus.CLOSED
     ).order_by('-version')
     
-    # Get parent items for the inline edit (filtered by project, status != closed, no parent, exclude self)
+    # Get parent items for the inline edit (filtered by project, exclude self)
+    # Note: Server-side validation in item_update_parent enforces status and parent rules
     parent_items = Item.objects.filter(
-        project=item.project,
-        parent__isnull=True
-    ).exclude(
-        status=ItemStatus.CLOSED
+        project=item.project
     ).exclude(
         id=item.id
     ).order_by('title')
