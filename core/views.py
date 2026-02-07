@@ -3130,6 +3130,8 @@ def item_create(request):
     """Item create page view."""
     if request.method == 'GET':
         # Show the create form
+        from .models import IssueBlueprint
+        
         projects = Project.objects.all().order_by('name')
         item_types = ItemType.objects.filter(is_active=True).order_by('name')
         organisations = Organisation.objects.all().order_by('name')
@@ -3138,6 +3140,9 @@ def item_create(request):
             'user_organisations__organisation'
         ).all().order_by('name')
         statuses = ItemStatus.choices
+        
+        # Get active blueprints for the create form
+        blueprints = IssueBlueprint.objects.filter(is_active=True).select_related('category').order_by('-updated_at')
         
         # Auto-populate default values for requester and organisation
         default_requester = None
@@ -3172,11 +3177,16 @@ def item_create(request):
             'default_organisation': default_organisation,
             'default_project': default_project,
             'nodes': nodes,
+            'blueprints': blueprints,
         }
         return render(request, 'item_form.html', context)
     
     # Handle POST request (HTMX form submission)
     try:
+        from .models import IssueBlueprint
+        from .utils.blueprint_variables import replace_variables
+        import json
+        
         project_id = request.POST.get('project')
         project = get_object_or_404(Project, id=project_id)
         
@@ -3187,6 +3197,28 @@ def item_create(request):
         title = request.POST.get('title', '').strip()
         description = request.POST.get('description', '')
         user_input = request.POST.get('user_input', '')
+        
+        # Apply blueprint if selected
+        blueprint_id = request.POST.get('blueprint')
+        if blueprint_id:
+            try:
+                blueprint = IssueBlueprint.objects.get(id=blueprint_id, is_active=True)
+                
+                # Parse blueprint variables
+                blueprint_variables_json = request.POST.get('blueprint_variables', '{}')
+                try:
+                    blueprint_variables = json.loads(blueprint_variables_json)
+                except json.JSONDecodeError:
+                    blueprint_variables = {}
+                
+                # Replace variables in blueprint content
+                if not title:  # Only use blueprint title if no title provided
+                    title = replace_variables(blueprint.title, blueprint_variables)
+                if not description:  # Only use blueprint description if no description provided
+                    description = replace_variables(blueprint.description_md, blueprint_variables)
+                
+            except IssueBlueprint.DoesNotExist:
+                pass  # Ignore if blueprint doesn't exist or is inactive
         
         # Auto-generate title from description if title is empty
         if not title and description:
