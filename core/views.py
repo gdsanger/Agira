@@ -8088,9 +8088,11 @@ def blueprint_detail(request, id):
     blueprint = get_object_or_404(IssueBlueprint.objects.select_related('category', 'created_by'), id=id)
     
     # Get all projects user has access to for creating issues
+    # Get user's organizations
+    user_orgs = request.user.user_organisations.values_list('organisation', flat=True)
     projects = Project.objects.filter(
-        organisation=request.user.organisation
-    ).order_by('name')
+        clients__id__in=user_orgs
+    ).distinct().order_by('name')
     
     context = {
         'blueprint': blueprint,
@@ -8318,9 +8320,13 @@ def blueprint_create_issue(request, id):
             return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
         
         try:
-            project = Project.objects.get(id=project_id, organisation=request.user.organisation)
+            project = Project.objects.get(id=project_id)
+            # Check if user has access to this project (via client relationship)
+            user_orgs = request.user.user_organisations.values_list('organisation', flat=True)
+            if not project.clients.filter(id__in=user_orgs).exists():
+                return JsonResponse({'success': False, 'error': 'No access to this project'}, status=403)
         except Project.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Invalid project or no access'}, status=400)
+            return JsonResponse({'success': False, 'error': 'Invalid project'}, status=400)
         
         # Parse variables
         try:
@@ -8340,13 +8346,22 @@ def blueprint_create_issue(request, id):
         title = replace_variables(blueprint.title, variables)
         description = replace_variables(blueprint.description_md, variables)
         
+        # Get default item type if available
+        default_type = None
+        if hasattr(project, 'default_item_type') and project.default_item_type:
+            default_type = project.default_item_type
+        else:
+            # Try to get the first active item type
+            from .models import ItemType
+            default_type = ItemType.objects.filter(is_active=True).first()
+        
         # Create the new item
         item = Item.objects.create(
             project=project,
             title=title,
             description=description,
             created_by=request.user,
-            type=project.default_item_type if project.default_item_type else None,
+            type=default_type,
         )
         
         # Apply optional blueprint fields if they exist
