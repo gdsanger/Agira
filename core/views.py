@@ -803,7 +803,7 @@ def item_detail(request, item_id):
     item = get_object_or_404(
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
-            'assigned_to', 'solution_release'
+            'assigned_to', 'solution_release', 'parent'
         ).prefetch_related('nodes'),
         id=item_id
     )
@@ -823,6 +823,16 @@ def item_detail(request, item_id):
     ).exclude(
         status=ReleaseStatus.CLOSED
     ).order_by('-version')
+    
+    # Get parent items for the inline edit (filtered by project, status != closed, no parent, exclude self)
+    parent_items = Item.objects.filter(
+        project=item.project,
+        parent__isnull=True
+    ).exclude(
+        status=ItemStatus.CLOSED
+    ).exclude(
+        id=item.id
+    ).order_by('title')
     
     # Get requester's primary organisation short code
     requester_org_short = None
@@ -848,6 +858,7 @@ def item_detail(request, item_id):
         'users': users,
         'projects': projects,
         'releases': releases,
+        'parent_items': parent_items,
         'requester_org_short': requester_org_short,
         'organisations': organisations,
         'active_tab': active_tab,
@@ -890,6 +901,62 @@ def item_update_release(request, item_id):
         
         return HttpResponse(status=200)
     except Exception as e:
+        return HttpResponse(status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_update_parent(request, item_id):
+    """HTMX endpoint to update item parent field."""
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Track old value for activity log
+    old_parent = item.parent
+    old_value = old_parent.title if old_parent else 'None'
+    
+    parent_id = request.POST.get('parent_item')
+    
+    try:
+        if parent_id:
+            parent_item = get_object_or_404(Item, id=parent_id)
+            
+            # Validate parent item criteria
+            # 1. Must be in the same project
+            if parent_item.project != item.project:
+                return HttpResponse(status=400)
+            
+            # 2. Status must not be closed
+            if parent_item.status == ItemStatus.CLOSED:
+                return HttpResponse(status=400)
+            
+            # 3. Must not have a parent itself (no nested parents)
+            if parent_item.parent is not None:
+                return HttpResponse(status=400)
+            
+            # 4. Cannot be the item itself
+            if parent_item.id == item.id:
+                return HttpResponse(status=400)
+            
+            item.parent = parent_item
+            new_value = parent_item.title
+        else:
+            item.parent = None
+            new_value = 'None'
+        
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.field_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Changed parent_item from {old_value} to {new_value}'
+        )
+        
+        return HttpResponse(status=200)
+    except Exception as e:
+        logger.error(f"Error updating item parent: {str(e)}", exc_info=True)
         return HttpResponse(status=400)
 
 
