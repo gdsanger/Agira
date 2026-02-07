@@ -91,14 +91,13 @@ class ActivityService:
             'verb': verb,
             'actor': actor,
             'summary': summary or '',
-            'created_at': timezone.now(),
         }
         
         # Set target via GenericForeignKey if provided
         if target is not None:
             content_type = ContentType.objects.get_for_model(target)
             activity_data['target_content_type'] = content_type
-            activity_data['target_object_id'] = target.pk
+            activity_data['target_object_id'] = str(target.pk)
         else:
             # For global activities without a target, we use a dummy ContentType
             # to satisfy the non-null FK constraint. We use the Activity model itself
@@ -106,7 +105,7 @@ class ActivityService:
             # This is an intentional design choice to avoid creating additional models.
             dummy_content_type = ContentType.objects.get_for_model(Activity)
             activity_data['target_content_type'] = dummy_content_type
-            activity_data['target_object_id'] = 0
+            activity_data['target_object_id'] = '0'
         
         try:
             activity = Activity.objects.create(**activity_data)
@@ -228,7 +227,7 @@ class ActivityService:
             content_type = ContentType.objects.get_for_model(item)
             queryset = queryset.filter(
                 target_content_type=content_type,
-                target_object_id=item.pk,
+                target_object_id=str(item.pk),
             )
         
         # Filter by project if provided (and no item filter)
@@ -237,12 +236,12 @@ class ActivityService:
             project_ct = ContentType.objects.get_for_model(Project)
             project_filter = Q(
                 target_content_type=project_ct,
-                target_object_id=project.pk,
+                target_object_id=str(project.pk),
             )
             
             # Also get activities for items in this project
             item_ct = ContentType.objects.get_for_model(Item)
-            item_ids = list(project.items.values_list('id', flat=True))
+            item_ids = [str(item_id) for item_id in project.items.values_list('id', flat=True)]
             if item_ids:
                 item_filter = Q(
                     target_content_type=item_ct,

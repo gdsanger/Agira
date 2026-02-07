@@ -935,7 +935,7 @@ class AttachmentLink(models.Model):
 
 class Activity(models.Model):
     target_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    target_object_id = models.PositiveIntegerField()
+    target_object_id = models.CharField(max_length=255)
     target = GenericForeignKey('target_content_type', 'target_object_id')
     verb = models.CharField(max_length=255)
     actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='activities')
