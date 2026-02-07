@@ -1484,6 +1484,9 @@ def item_create_github_issue(request, item_id):
         # Check if this is a follow-up issue (item already has issues)
         existing_issues = item.external_mappings.filter(kind='Issue').exists()
         
+        # Initialize issue_body to None (default: use full description from item)
+        issue_body = None
+        
         if existing_issues:
             # For follow-up issues, get the notes from the request
             notes = request.POST.get('notes', '').strip()
@@ -1502,11 +1505,6 @@ def item_create_github_issue(request, item_id):
             if send_minimal:
                 # Create minimal description with only references and notes
                 issue_body = _create_minimal_issue_description(item, notes)
-            else:
-                # Use default behavior (full description will be used by create_issue_for_item)
-                issue_body = None
-        else:
-            issue_body = None
         
         # Store old status to detect changes
         old_status = item.status
