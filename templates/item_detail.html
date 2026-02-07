@@ -1648,24 +1648,25 @@
     // Load saved tab on page load
     document.addEventListener('DOMContentLoaded', loadActiveDetailTab);
     
-    // Show release save indicator
+    // Show save indicators for inline field updates
     document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (!event.detail.successful) return;
+        
+        // Handle release update
         if (event.detail.pathInfo.requestPath.includes('update-release')) {
             const indicator = document.getElementById('release-save-indicator');
-            if (indicator && event.detail.successful) {
+            if (indicator) {
                 indicator.style.display = 'inline';
                 setTimeout(() => {
                     indicator.style.display = 'none';
                 }, 2000);
             }
         }
-    });
-    
-    // Show parent save indicator
-    document.body.addEventListener('htmx:afterRequest', function(event) {
+        
+        // Handle parent update
         if (event.detail.pathInfo.requestPath.includes('update-parent')) {
             const indicator = document.getElementById('parent-save-indicator');
-            if (indicator && event.detail.successful) {
+            if (indicator) {
                 indicator.style.display = 'inline';
                 setTimeout(() => {
                     indicator.style.display = 'none';

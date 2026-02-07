@@ -955,7 +955,7 @@ def item_update_parent(request, item_id):
         return HttpResponse(status=200)
     except Exception as e:
         logger.error(f"Error updating item parent: {str(e)}", exc_info=True)
-        return HttpResponse(f'Error updating parent: {str(e)}', status=400)
+        return HttpResponse('An error occurred while updating the parent item.', status=400)
 
 
 @login_required
