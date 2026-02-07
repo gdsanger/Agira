@@ -1660,6 +1660,19 @@
             }
         }
     });
+    
+    // Show parent save indicator
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.pathInfo.requestPath.includes('update-parent')) {
+            const indicator = document.getElementById('parent-save-indicator');
+            if (indicator && event.detail.successful) {
+                indicator.style.display = 'inline';
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                }, 2000);
+            }
+        }
+    });
 </script>
 
 <!-- Include mail confirmation modal -->
