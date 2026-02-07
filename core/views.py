@@ -1599,13 +1599,22 @@ def _create_minimal_issue_description(item, notes):
         
     Returns:
         str: Minimal description formatted for GitHub
+        
+    Raises:
+        ValueError: If project doesn't have GitHub owner/repo configured
     """
     # Get existing issue and PR mappings (excluding the one we're about to create)
     mappings = item.external_mappings.all().order_by('kind', 'number')
     
-    # Build reference string using full repo format (owner/repo#number)
-    owner = item.project.github_owner or 'owner'
-    repo = item.project.github_repo or 'repo'
+    # Get GitHub owner and repo from project (must be configured at this point)
+    owner = item.project.github_owner
+    repo = item.project.github_repo
+    
+    if not owner or not repo:
+        raise ValueError(
+            f"Project '{item.project.name}' does not have GitHub repository configured. "
+            f"Cannot create minimal description without valid owner/repo."
+        )
     
     if mappings.exists():
         # Format: "Betrifft owner/repo#123 und owner/repo#456"

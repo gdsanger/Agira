@@ -594,3 +594,28 @@ class FollowupGitHubIssueTestCase(TestCase):
         self.assertIn('Original long description with lots of details', sent_body)
         self.assertIn(notes, sent_body)
         self.assertIn('## Hinweise und Änderungen', sent_body)
+    
+    def test_minimal_description_validation_missing_repo_config(self):
+        """Test that _create_minimal_issue_description raises error when repo config is missing."""
+        from core.views import _create_minimal_issue_description
+        
+        # Create project without GitHub config
+        project_no_config = Project.objects.create(
+            name='No GitHub Config',
+            github_owner=None,  # Missing owner
+            github_repo=None,   # Missing repo
+        )
+        
+        item = Item.objects.create(
+            project=project_no_config,
+            title='Test Item',
+            description='Test',
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        
+        # Should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            _create_minimal_issue_description(item, 'Test notes')
+        
+        self.assertIn('does not have GitHub repository configured', str(context.exception))
