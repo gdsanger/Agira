@@ -8370,6 +8370,116 @@ def blueprint_delete(request, id):
 
 
 @login_required
+def blueprint_export(request, id):
+    """Export a blueprint as JSON."""
+    from .models import IssueBlueprint
+    from .utils.blueprint_serializer import export_blueprint_json, BlueprintSerializationError
+    
+    blueprint = get_object_or_404(IssueBlueprint, id=id)
+    
+    try:
+        json_data = export_blueprint_json(blueprint, indent=2)
+        
+        # Create filename from blueprint title
+        safe_title = re.sub(r'[^\w\s-]', '', blueprint.title).strip().replace(' ', '_')
+        filename = f"blueprint_{safe_title}_v{blueprint.version}.json"
+        
+        response = HttpResponse(json_data, content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='blueprint.exported',
+            target=blueprint,
+            actor=request.user,
+            summary=f'Exported blueprint "{blueprint.title}"'
+        )
+        
+        return response
+        
+    except BlueprintSerializationError as e:
+        logger.error(f"Error exporting blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"Unexpected error exporting blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': 'An unexpected error occurred'}, status=500)
+
+
+@login_required
+def blueprint_import_form(request):
+    """Show import form for blueprints."""
+    return render(request, 'blueprint_import.html')
+
+
+@login_required
+@require_http_methods(["POST"])
+def blueprint_import(request):
+    """Import a blueprint from JSON."""
+    from .models import IssueBlueprint
+    from .utils.blueprint_serializer import import_blueprint_json, BlueprintDeserializationError
+    
+    try:
+        # Get JSON data from file upload or text input
+        json_data = None
+        
+        if 'json_file' in request.FILES:
+            # Handle file upload
+            json_file = request.FILES['json_file']
+            try:
+                json_data = json_file.read().decode('utf-8')
+            except UnicodeDecodeError:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'Invalid file encoding. Please upload a UTF-8 encoded JSON file.'
+                }, status=400)
+        elif 'json_text' in request.POST:
+            # Handle text input
+            json_data = request.POST.get('json_text', '').strip()
+        
+        if not json_data:
+            return JsonResponse({
+                'success': False,
+                'error': 'No JSON data provided. Please upload a file or paste JSON text.'
+            }, status=400)
+        
+        # Parse update_if_exists option
+        update_if_exists = request.POST.get('update_if_exists') == 'on'
+        
+        # Import blueprint
+        blueprint, created = import_blueprint_json(
+            json_data,
+            created_by=request.user,
+            update_if_exists=update_if_exists
+        )
+        
+        # Log activity
+        activity_service = ActivityService()
+        verb = 'blueprint.imported' if created else 'blueprint.updated_from_import'
+        action = 'Imported' if created else 'Updated from import'
+        activity_service.log(
+            verb=verb,
+            target=blueprint,
+            actor=request.user,
+            summary=f'{action} blueprint "{blueprint.title}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Blueprint "{blueprint.title}" {"created" if created else "updated"} successfully',
+            'blueprint_id': str(blueprint.id),
+            'redirect': reverse('blueprint-detail', kwargs={'id': blueprint.id})
+        })
+        
+    except BlueprintDeserializationError as e:
+        logger.warning(f"Blueprint import validation error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"Unexpected error importing blueprint: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+
+
+@login_required
 @require_http_methods(["POST"])
 def blueprint_create_issue(request, id):
     """Create a new issue from a blueprint."""

@@ -179,10 +179,13 @@ urlpatterns = [
     # IssueBlueprint URLs
     path('configuration/blueprints/', views.blueprints, name='blueprints'),
     path('configuration/blueprints/new/', views.blueprint_create, name='blueprint-create'),
+    path('configuration/blueprints/import/', views.blueprint_import_form, name='blueprint-import-form'),
+    path('configuration/blueprints/import/submit/', views.blueprint_import, name='blueprint-import'),
     path('configuration/blueprints/<uuid:id>/', views.blueprint_detail, name='blueprint-detail'),
     path('configuration/blueprints/<uuid:id>/edit/', views.blueprint_edit, name='blueprint-edit'),
     path('configuration/blueprints/<uuid:id>/update/', views.blueprint_update, name='blueprint-update'),
     path('configuration/blueprints/<uuid:id>/delete/', views.blueprint_delete, name='blueprint-delete'),
+    path('configuration/blueprints/<uuid:id>/export/', views.blueprint_export, name='blueprint-export'),
     path('configuration/blueprints/<uuid:id>/create-issue/', views.blueprint_create_issue, name='blueprint-create-issue'),
     
     # Item Blueprint Integration URLs
