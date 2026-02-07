@@ -803,7 +803,7 @@ def item_detail(request, item_id):
     item = get_object_or_404(
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
-            'assigned_to', 'solution_release'
+            'assigned_to', 'solution_release', 'parent'
         ).prefetch_related('nodes'),
         id=item_id
     )
