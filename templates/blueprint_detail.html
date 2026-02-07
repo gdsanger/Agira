@@ -156,6 +156,9 @@
                 <a href="{% url 'blueprint-edit' blueprint.id %}" class="btn btn-sm btn-primary w-100 mb-2">
                     <i class="bi bi-pencil"></i> Edit Blueprint
                 </a>
+                <a href="{% url 'blueprint-export' blueprint.id %}" class="btn btn-sm btn-info w-100 mb-2">
+                    <i class="bi bi-download"></i> Export Blueprint
+                </a>
                 <button type="button" class="btn btn-sm btn-danger w-100" id="delete-btn">
                     <i class="bi bi-trash"></i> Delete Blueprint
                 </button>

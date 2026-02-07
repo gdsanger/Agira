@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Import Blueprint - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'blueprints' %}">Blueprints</a></li>
+        <li class="breadcrumb-item active">Import</li>
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>Import Blueprint</h1>
+    <p class="text-muted">Import a blueprint from JSON file or text</p>
+</div>
+
+<!-- Import Form -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-upload"></i> Import Blueprint</h5>
+            </div>
+            <div class="card-body">
+                <form id="importForm" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- Import Method Selection -->
+                    <div class="mb-4">
+                        <label class="form-label">Import Method</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="import_method" id="method_file" value="file" checked>
+                            <label class="btn btn-outline-primary" for="method_file">
+                                <i class="bi bi-file-earmark-arrow-up"></i> Upload File
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="import_method" id="method_text" value="text">
+                            <label class="btn btn-outline-primary" for="method_text">
+                                <i class="bi bi-code-square"></i> Paste JSON
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- File Upload Method -->
+                    <div id="file-upload-section" class="mb-3">
+                        <label for="json_file" class="form-label">JSON File</label>
+                        <input type="file" 
+                               class="form-control" 
+                               id="json_file" 
+                               name="json_file"
+                               accept=".json,application/json">
+                        <div class="form-text">Select a JSON file exported from another Agira instance.</div>
+                    </div>
+                    
+                    <!-- Text Paste Method -->
+                    <div id="text-paste-section" class="mb-3" style="display: none;">
+                        <label for="json_text" class="form-label">JSON Text</label>
+                        <textarea class="form-control font-monospace" 
+                                  id="json_text" 
+                                  name="json_text"
+                                  rows="15"
+                                  placeholder='Paste JSON content here...'></textarea>
+                        <div class="form-text">Paste the JSON content of an exported blueprint.</div>
+                    </div>
+                    
+                    <!-- Options -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="update_if_exists" 
+                                   name="update_if_exists">
+                            <label class="form-check-label" for="update_if_exists">
+                                Update if blueprint with same title and category exists
+                            </label>
+                            <div class="form-text">If unchecked, a new blueprint will always be created.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Buttons -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'blueprints' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-success" id="import-btn">
+                            <i class="bi bi-upload"></i> Import Blueprint
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Right Column: Help Panel -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-question-circle"></i> Import Help</h6>
+            </div>
+            <div class="card-body">
+                <h6>What is Blueprint Import?</h6>
+                <p class="small">Import allows you to load blueprints that were exported from this or another Agira instance.</p>
+                
+                <h6 class="mt-3">Expected Format</h6>
+                <p class="small">The JSON file must contain:</p>
+                <ul class="small">
+                    <li><code>schema_version</code>: Version identifier (currently "1.0")</li>
+                    <li><code>blueprint</code>: Blueprint data including title, description, category, etc.</li>
+                </ul>
+                
+                <h6 class="mt-3">Category Handling</h6>
+                <p class="small">If the category from the imported blueprint doesn't exist, it will be created automatically.</p>
+                
+                <h6 class="mt-3">Update vs. Create</h6>
+                <p class="small">By default, import always creates a new blueprint. Enable "Update if exists" to update an existing blueprint with the same title and category instead.</p>
+                
+                <h6 class="mt-3">Example Export</h6>
+                <pre class="small bg-light p-2 rounded"><code>{
+  "schema_version": "1.0",
+  "blueprint": {
+    "title": "Example",
+    "description_md": "...",
+    "category": {
+      "name": "Features",
+      "slug": "features"
+    },
+    ...
+  }
+}</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container for Notifications -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
+    <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto" id="toast-title">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-body">
+            Message
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle import method switching
+    const fileUploadSection = document.getElementById('file-upload-section');
+    const textPasteSection = document.getElementById('text-paste-section');
+    const methodRadios = document.querySelectorAll('input[name="import_method"]');
+    
+    methodRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'file') {
+                fileUploadSection.style.display = 'block';
+                textPasteSection.style.display = 'none';
+                document.getElementById('json_file').required = true;
+                document.getElementById('json_text').required = false;
+            } else {
+                fileUploadSection.style.display = 'none';
+                textPasteSection.style.display = 'block';
+                document.getElementById('json_file').required = false;
+                document.getElementById('json_text').required = true;
+            }
+        });
+    });
+    
+    // Handle form submission
+    const form = document.getElementById('importForm');
+    const importBtn = document.getElementById('import-btn');
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Disable button to prevent double submission
+        importBtn.disabled = true;
+        importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Importing...';
+        
+        // Prepare form data
+        const formData = new FormData(form);
+        
+        // Send request
+        fetch('{% url "blueprint-import" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Success', data.message, 'success');
+                // Redirect after a short delay
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1000);
+            } else {
+                showToast('Error', data.error, 'danger');
+                importBtn.disabled = false;
+                importBtn.innerHTML = '<i class="bi bi-upload"></i> Import Blueprint';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showToast('Error', 'An unexpected error occurred. Please try again.', 'danger');
+            importBtn.disabled = false;
+            importBtn.innerHTML = '<i class="bi bi-upload"></i> Import Blueprint';
+        });
+    });
+    
+    function showToast(title, message, type) {
+        const toastEl = document.getElementById('notification-toast');
+        const toastTitle = document.getElementById('toast-title');
+        const toastBody = document.getElementById('toast-body');
+        
+        toastTitle.textContent = title;
+        toastBody.textContent = message;
+        
+        // Update toast styling based on type
+        toastEl.className = 'toast';
+        if (type === 'success') {
+            toastEl.classList.add('bg-success', 'text-white');
+        } else if (type === 'danger') {
+            toastEl.classList.add('bg-danger', 'text-white');
+        }
+        
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    }
+});
+</script>
+{% endblock %}
