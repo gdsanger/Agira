@@ -57,6 +57,7 @@ urlpatterns = [
     path('items/<int:item_id>/edit/', views.item_edit, name='item-edit'),
     path('items/<int:item_id>/update/', views.item_update, name='item-update'),
     path('items/<int:item_id>/update-release/', views.item_update_release, name='item-update-release'),
+    path('items/<int:item_id>/update-parent/', views.item_update_parent, name='item-update-parent'),
     path('items/<int:item_id>/update-intern/', views.item_update_intern, name='item-update-intern'),
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
