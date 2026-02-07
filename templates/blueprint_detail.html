@@ -270,13 +270,27 @@ document.getElementById('delete-btn').addEventListener('click', async function()
     }
 });
 
-// Parse blueprint description for variables
-const blueprintDescription = {{ blueprint.description_md|escapejs }};
+// Parse blueprint title and description for variables
+const blueprintTitle = "{{ blueprint.title|escapejs }}";
+const blueprintDescription = "{{ blueprint.description_md|escapejs }}";
 const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
 const variables = [];
 const seenVars = new Set();
 let match;
 
+// Extract from title
+while ((match = variablePattern.exec(blueprintTitle)) !== null) {
+    const varName = match[1];
+    if (!seenVars.has(varName)) {
+        seenVars.add(varName);
+        variables.push(varName);
+    }
+}
+
+// Reset lastIndex for reuse of the same pattern
+variablePattern.lastIndex = 0;
+
+// Extract from description
 while ((match = variablePattern.exec(blueprintDescription)) !== null) {
     const varName = match[1];
     if (!seenVars.has(varName)) {

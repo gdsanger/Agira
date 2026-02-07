@@ -151,8 +151,7 @@ This will be implemented in {{ project_name }}.
             project=self.project,
             title="Original Title",
             description="Original description",
-            type=self.item_type,
-            created_by=self.user
+            type=self.item_type
         )
         
         url = reverse('item-apply-blueprint-submit', args=[item.id])
@@ -188,8 +187,7 @@ This will be implemented in {{ project_name }}.
             project=self.project,
             title="Existing Item",
             description="Existing content",
-            type=self.item_type,
-            created_by=self.user
+            type=self.item_type
         )
         
         url = reverse('item-apply-blueprint-submit', args=[item.id])
@@ -280,8 +278,7 @@ This will be implemented in {{ project_name }}.
             project=self.project,
             title="Test Item",
             description="Test",
-            type=self.item_type,
-            created_by=self.user
+            type=self.item_type
         )
         
         url = reverse('item-apply-blueprint', args=[item.id])
@@ -291,3 +288,153 @@ This will be implemented in {{ project_name }}.
         self.assertContains(response, 'variables-container')
         # Check for variable extraction logic in JavaScript
         self.assertContains(response, 'variablePattern')
+    
+    def test_apply_blueprint_with_title_variables_only(self):
+        """Test applying blueprint with variables only in title"""
+        # Create blueprint with variable only in title
+        blueprint = IssueBlueprint.objects.create(
+            title="Error in {{ entity }}",
+            category=self.category,
+            description_md="This is a plain description without variables.",
+            is_active=True,
+            created_by=self.user
+        )
+        
+        item = Item.objects.create(
+            project=self.project,
+            title="Original Title",
+            description="Original description",
+            type=self.item_type
+        )
+        
+        url = reverse('item-apply-blueprint-submit', args=[item.id])
+        
+        variables = {
+            'entity': 'Database'
+        }
+        
+        response = self.client.post(url, {
+            'blueprint_id': str(blueprint.id),
+            'variables': json.dumps(variables),
+            'use_blueprint_title': 'on'
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Reload item and verify title was replaced
+        item.refresh_from_db()
+        self.assertEqual(item.title, 'Error in Database')
+        self.assertNotIn('{{', item.title)
+    
+    def test_apply_blueprint_with_title_and_description_variables(self):
+        """Test applying blueprint with variables in both title and description"""
+        # Create blueprint with variables in both title and description
+        blueprint = IssueBlueprint.objects.create(
+            title="Error in {{ entity }}",
+            category=self.category,
+            description_md="Please check {{ entity }} in {{ environment }}. {{ entity }} occurs multiple times.",
+            is_active=True,
+            created_by=self.user
+        )
+        
+        item = Item.objects.create(
+            project=self.project,
+            title="Original Title",
+            description="Original description",
+            type=self.item_type
+        )
+        
+        url = reverse('item-apply-blueprint-submit', args=[item.id])
+        
+        variables = {
+            'entity': 'Database',
+            'environment': 'Production'
+        }
+        
+        response = self.client.post(url, {
+            'blueprint_id': str(blueprint.id),
+            'variables': json.dumps(variables),
+            'use_blueprint_title': 'on',
+            'replace_description': 'on'
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Reload item and verify both title and description were replaced
+        item.refresh_from_db()
+        self.assertEqual(item.title, 'Error in Database')
+        self.assertIn('Please check Database in Production', item.description)
+        # Verify all occurrences were replaced
+        self.assertEqual(item.description.count('Database'), 2)
+        self.assertNotIn('{{', item.title)
+        self.assertNotIn('{{', item.description)
+    
+    def test_apply_blueprint_missing_title_variable(self):
+        """Test that missing title variables are caught in validation"""
+        # Create blueprint with variable in title
+        blueprint = IssueBlueprint.objects.create(
+            title="Error in {{ entity }}",
+            category=self.category,
+            description_md="Some description",
+            is_active=True,
+            created_by=self.user
+        )
+        
+        item = Item.objects.create(
+            project=self.project,
+            title="Original Title",
+            description="Original description",
+            type=self.item_type
+        )
+        
+        url = reverse('item-apply-blueprint-submit', args=[item.id])
+        
+        # Don't provide the entity variable
+        response = self.client.post(url, {
+            'blueprint_id': str(blueprint.id),
+            'variables': json.dumps({})
+        })
+        
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('Missing required variables', data['error'])
+        self.assertIn('entity', data['error'])
+    
+    def test_create_issue_with_title_variables(self):
+        """Test creating issue from blueprint with title variables"""
+        # Create blueprint with variables in title
+        blueprint = IssueBlueprint.objects.create(
+            title="{{ feature_name }} Implementation",
+            category=self.category,
+            description_md="Implement {{ feature_name }} with {{ technology }}",
+            is_active=True,
+            created_by=self.user
+        )
+        
+        url = reverse('blueprint-create-issue', args=[blueprint.id])
+        
+        variables = {
+            'feature_name': 'Authentication',
+            'technology': 'OAuth2'
+        }
+        
+        response = self.client.post(url, {
+            'project_id': self.project.id,
+            'variables': json.dumps(variables)
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify the item was created with replaced variables in both title and description
+        item = Item.objects.latest('created_at')
+        self.assertEqual(item.title, 'Authentication Implementation')
+        self.assertIn('Implement Authentication with OAuth2', item.description)
+        self.assertNotIn('{{', item.title)
+        self.assertNotIn('{{', item.description)

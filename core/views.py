@@ -8307,7 +8307,7 @@ def blueprint_delete(request, id):
 def blueprint_create_issue(request, id):
     """Create a new issue from a blueprint."""
     from .models import IssueBlueprint, Project, Item
-    from .utils.blueprint_variables import extract_variables, replace_variables, validate_variables
+    from .utils.blueprint_variables import extract_variables, replace_variables, validate_variables_from_multiple
     import json
     
     blueprint = get_object_or_404(IssueBlueprint, id=id, is_active=True)
@@ -8336,8 +8336,11 @@ def blueprint_create_issue(request, id):
         except json.JSONDecodeError:
             return JsonResponse({'success': False, 'error': 'Invalid variables data'}, status=400)
         
-        # Validate all required variables are provided
-        is_valid, missing_vars = validate_variables(blueprint.description_md, variables)
+        # Validate all required variables are provided from both title and description
+        is_valid, missing_vars = validate_variables_from_multiple(
+            [blueprint.title, blueprint.description_md],
+            variables
+        )
         if not is_valid:
             return JsonResponse({
                 'success': False,
@@ -8362,7 +8365,6 @@ def blueprint_create_issue(request, id):
             project=project,
             title=title,
             description=description,
-            created_by=request.user,
             type=default_type,
         )
         
@@ -8579,7 +8581,7 @@ def item_apply_blueprint(request, item_id):
 def item_apply_blueprint_submit(request, item_id):
     """Apply a blueprint to an issue."""
     from .models import IssueBlueprint
-    from .utils.blueprint_variables import replace_variables, validate_variables
+    from .utils.blueprint_variables import replace_variables, validate_variables_from_multiple
     from datetime import datetime
     import json
     
@@ -8608,8 +8610,11 @@ def item_apply_blueprint_submit(request, item_id):
         except json.JSONDecodeError:
             return JsonResponse({'success': False, 'error': 'Invalid variables data'}, status=400)
         
-        # Validate all required variables are provided
-        is_valid, missing_vars = validate_variables(blueprint.description_md, variables)
+        # Validate all required variables are provided from both title and description
+        is_valid, missing_vars = validate_variables_from_multiple(
+            [blueprint.title, blueprint.description_md],
+            variables
+        )
         if not is_valid:
             return JsonResponse({
                 'success': False,

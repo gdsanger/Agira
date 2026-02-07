@@ -404,7 +404,9 @@
                     <select class="form-select" id="blueprint" name="blueprint" form="itemForm">
                         <option value="">None</option>
                         {% for bp in blueprints %}
-                        <option value="{{ bp.id }}" data-description="{{ bp.description_md|escapejs }}">
+                        <option value="{{ bp.id }}" 
+                                data-title="{{ bp.title|escapejs }}"
+                                data-description="{{ bp.description_md|escapejs }}">
                             {{ bp.title }} ({{ bp.category.name }})
                         </option>
                         {% endfor %}
@@ -592,14 +594,29 @@ document.getElementById('blueprint').addEventListener('change', function() {
     currentBlueprintVariables = [];
     
     if (selectedOption.value) {
+        const blueprintTitle = selectedOption.getAttribute('data-title');
         const blueprintDescription = selectedOption.getAttribute('data-description');
         
+        // Extract variables from both title and description
+        const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+        const seenVars = new Set();
+        let match;
+        
+        // Extract from title
+        if (blueprintTitle) {
+            while ((match = variablePattern.exec(blueprintTitle)) !== null) {
+                const varName = match[1];
+                if (!seenVars.has(varName)) {
+                    seenVars.add(varName);
+                    currentBlueprintVariables.push(varName);
+                }
+            }
+            // Reset lastIndex for reuse of the same pattern
+            variablePattern.lastIndex = 0;
+        }
+        
+        // Extract from description
         if (blueprintDescription) {
-            // Extract variables
-            const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
-            const seenVars = new Set();
-            let match;
-            
             while ((match = variablePattern.exec(blueprintDescription)) !== null) {
                 const varName = match[1];
                 if (!seenVars.has(varName)) {
@@ -607,9 +624,10 @@ document.getElementById('blueprint').addEventListener('change', function() {
                     currentBlueprintVariables.push(varName);
                 }
             }
-            
-            // Show variable inputs if any found
-            if (currentBlueprintVariables.length > 0) {
+        }
+        
+        // Show variable inputs if any found
+        if (currentBlueprintVariables.length > 0) {
                 const header = document.createElement('div');
                 header.className = 'mb-3';
                 header.innerHTML = '<h6 class="mb-2">Blueprint Variables</h6><div class="alert alert-info small"><i class="bi bi-info-circle"></i> The blueprint contains variables. Please provide values below.</div>';
