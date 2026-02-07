@@ -574,6 +574,10 @@ class Item(models.Model):
         super().clean()
         errors = {}
 
+        # Parent must be in same project
+        if self.parent and self.parent.project != self.project:
+            errors['parent'] = _('Parent item must belong to the same project.')
+
         # Solution release must be in same project
         if self.solution_release and self.solution_release.project != self.project:
             errors['solution_release'] = _('Solution release must belong to the same project.')
