@@ -397,6 +397,25 @@
                     </select>
                 </div>
                 
+                <!-- Blueprint (only for new items) -->
+                {% if not item %}
+                <div class="mb-3">
+                    <label for="blueprint" class="form-label">Apply Blueprint (optional)</label>
+                    <select class="form-select" id="blueprint" name="blueprint" form="itemForm">
+                        <option value="">None</option>
+                        {% for bp in blueprints %}
+                        <option value="{{ bp.id }}" data-description="{{ bp.description_md|escapejs }}">
+                            {{ bp.title }} ({{ bp.category.name }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">Select a blueprint to pre-fill title and description</small>
+                </div>
+                
+                <!-- Blueprint Variables Container -->
+                <div id="blueprint-variables-container"></div>
+                {% endif %}
+                
                 <!-- Parent Item -->
                 <div class="mb-3">
                     <label for="parent" class="form-label">Parent Item</label>
@@ -541,7 +560,88 @@ document.getElementById('itemForm').addEventListener('submit', function() {
     document.getElementById('description').value = descriptionEditor.getMarkdown();
     document.getElementById('user_input').value = userInputEditor.getMarkdown();
     document.getElementById('solution_description').value = solutionEditor.getMarkdown();
+    
+    // Add blueprint variables to form if any
+    {% if not item %}
+    const variableInputs = document.querySelectorAll('[id^="blueprint_var_"]');
+    const variables = {};
+    variableInputs.forEach(input => {
+        const varName = input.id.replace('blueprint_var_', '');
+        variables[varName] = input.value;
+    });
+    if (Object.keys(variables).length > 0) {
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'blueprint_variables';
+        hiddenInput.value = JSON.stringify(variables);
+        this.appendChild(hiddenInput);
+    }
+    {% endif %}
 });
+
+{% if not item %}
+// Blueprint selection handler (only for new items)
+let currentBlueprintVariables = [];
+
+document.getElementById('blueprint').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const variablesContainer = document.getElementById('blueprint-variables-container');
+    
+    // Clear previous variables
+    variablesContainer.innerHTML = '';
+    currentBlueprintVariables = [];
+    
+    if (selectedOption.value) {
+        const blueprintDescription = selectedOption.getAttribute('data-description');
+        
+        if (blueprintDescription) {
+            // Extract variables
+            const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+            const seenVars = new Set();
+            let match;
+            
+            while ((match = variablePattern.exec(blueprintDescription)) !== null) {
+                const varName = match[1];
+                if (!seenVars.has(varName)) {
+                    seenVars.add(varName);
+                    currentBlueprintVariables.push(varName);
+                }
+            }
+            
+            // Show variable inputs if any found
+            if (currentBlueprintVariables.length > 0) {
+                const header = document.createElement('div');
+                header.className = 'mb-3';
+                header.innerHTML = '<h6 class="mb-2">Blueprint Variables</h6><div class="alert alert-info small"><i class="bi bi-info-circle"></i> The blueprint contains variables. Please provide values below.</div>';
+                variablesContainer.appendChild(header);
+                
+                currentBlueprintVariables.forEach(varName => {
+                    const div = document.createElement('div');
+                    div.className = 'mb-3';
+                    
+                    const label = document.createElement('label');
+                    label.className = 'form-label';
+                    label.htmlFor = `blueprint_var_${varName}`;
+                    label.innerHTML = `${varName} <span class="text-danger">*</span>`;
+                    
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'form-control';
+                    input.id = `blueprint_var_${varName}`;
+                    input.name = `blueprint_var_${varName}`;
+                    input.required = true;
+                    input.placeholder = `Enter value for ${varName}`;
+                    input.setAttribute('form', 'itemForm');
+                    
+                    div.appendChild(label);
+                    div.appendChild(input);
+                    variablesContainer.appendChild(div);
+                });
+            }
+        }
+    }
+});
+{% endif %}
 
 // AI Title Generation Button
 document.getElementById('ai-title-btn').addEventListener('click', async function() {

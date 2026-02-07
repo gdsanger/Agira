@@ -4,12 +4,17 @@
     <select class="form-select" id="blueprint_id" name="blueprint_id" required>
         <option value="">Choose a blueprint...</option>
         {% for blueprint in blueprints %}
-        <option value="{{ blueprint.id }}" data-description="{{ blueprint.description_md|truncatewords:20 }}">
+        <option value="{{ blueprint.id }}" 
+                data-description="{{ blueprint.description_md|truncatewords:20 }}"
+                data-full-description="{{ blueprint.description_md|escapejs }}">
             {{ blueprint.title }} ({{ blueprint.category.name }})
         </option>
         {% endfor %}
     </select>
 </div>
+
+<!-- Variable Inputs Container -->
+<div id="variables-container"></div>
 
 <!-- Blueprint Preview -->
 <div id="blueprint-preview" class="mb-3 d-none">
@@ -51,16 +56,75 @@
 </div>
 
 <script>
-// Blueprint preview
+let currentVariables = [];
+
+// Blueprint preview and variable extraction
 document.getElementById('blueprint_id').addEventListener('change', function() {
     const preview = document.getElementById('blueprint-preview');
     const previewText = document.getElementById('blueprint-preview-text');
+    const variablesContainer = document.getElementById('variables-container');
     const selectedOption = this.options[this.selectedIndex];
+    
+    // Clear variables container
+    variablesContainer.innerHTML = '';
+    currentVariables = [];
     
     if (selectedOption.value) {
         const description = selectedOption.getAttribute('data-description');
+        const fullDescription = selectedOption.getAttribute('data-full-description');
+        
         previewText.textContent = description || 'No description available';
         preview.classList.remove('d-none');
+        
+        // Extract variables from blueprint description
+        if (fullDescription) {
+            const variablePattern = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+            const seenVars = new Set();
+            let match;
+            
+            while ((match = variablePattern.exec(fullDescription)) !== null) {
+                const varName = match[1];
+                if (!seenVars.has(varName)) {
+                    seenVars.add(varName);
+                    currentVariables.push(varName);
+                }
+            }
+            
+            // Show variable inputs if any found
+            if (currentVariables.length > 0) {
+                const header = document.createElement('h6');
+                header.className = 'mb-3 mt-3';
+                header.textContent = 'Blueprint Variables';
+                variablesContainer.appendChild(header);
+                
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-warning small mb-3';
+                alert.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Please provide values for all variables below.';
+                variablesContainer.appendChild(alert);
+                
+                currentVariables.forEach(varName => {
+                    const div = document.createElement('div');
+                    div.className = 'mb-3';
+                    
+                    const label = document.createElement('label');
+                    label.className = 'form-label';
+                    label.htmlFor = `var_${varName}`;
+                    label.innerHTML = `${varName} <span class="text-danger">*</span>`;
+                    
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'form-control';
+                    input.id = `var_${varName}`;
+                    input.name = `var_${varName}`;
+                    input.required = true;
+                    input.placeholder = `Enter value for ${varName}`;
+                    
+                    div.appendChild(label);
+                    div.appendChild(input);
+                    variablesContainer.appendChild(div);
+                });
+            }
+        }
     } else {
         preview.classList.add('d-none');
     }
@@ -80,6 +144,31 @@ document.getElementById('apply-blueprint-submit-btn').addEventListener('click', 
         return;
     }
     formData.set('blueprint_id', blueprintId);
+    
+    // Collect variable values
+    const variableValues = {};
+    let allProvided = true;
+    
+    currentVariables.forEach(varName => {
+        const input = document.getElementById(`var_${varName}`);
+        if (input) {
+            const value = input.value.trim();
+            if (!value) {
+                allProvided = false;
+            }
+            variableValues[varName] = value;
+        }
+    });
+    
+    if (!allProvided) {
+        alert('Please provide values for all variables');
+        return;
+    }
+    
+    // Add variables to form data
+    if (currentVariables.length > 0) {
+        formData.set('variables', JSON.stringify(variableValues));
+    }
     
     // Add checkboxes
     const replaceDescription = document.getElementById('replace_description').checked;
