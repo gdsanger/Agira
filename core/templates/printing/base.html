@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Document{% endblock %}</title>
+    
+    {# Load print CSS - WeasyPrint will use this for paged media #}
+    <link rel="stylesheet" href="{% block print_css_url %}{{ STATIC_URL }}printing/print.css{% endblock %}">
+    
+    {# Additional CSS blocks for template-specific styles #}
+    {% block extra_css %}{% endblock %}
+    
+    <style>
+        {# Inline styles can be added here if needed #}
+        {% block inline_styles %}{% endblock %}
+    </style>
+</head>
+<body>
+    {# Header content - will be repeated on each page via @page in CSS #}
+    <header class="page-header">
+        {% block header %}
+        {# Default header - can be overridden in child templates #}
+        <div class="header-content">
+            {% block header_content %}
+            {# Empty by default - modules can add logo, company info, etc. #}
+            {% endblock %}
+        </div>
+        {% endblock %}
+    </header>
+    
+    {# Main content area #}
+    <main class="page-content">
+        {% block content %}
+        {# This is where the actual document content goes #}
+        <p>No content provided.</p>
+        {% endblock %}
+    </main>
+    
+    {# Footer content - will be repeated on each page via @page in CSS #}
+    <footer class="page-footer">
+        {% block footer %}
+        {# Default footer with page numbers #}
+        <div class="footer-content">
+            {% block footer_content %}
+            <div class="footer-left">
+                {% block footer_left %}{% endblock %}
+            </div>
+            <div class="footer-center">
+                {% block footer_center %}{% endblock %}
+            </div>
+            <div class="footer-right">
+                {% block footer_right %}
+                {# Page numbers are injected via CSS content #}
+                <span class="page-number"></span>
+                {% endblock %}
+            </div>
+        </div>
+        {% endblock %}
+    </footer>
+</body>
+</html>

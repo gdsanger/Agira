@@ -1,0 +1,286 @@
+/*
+ * Print CSS for WeasyPrint PDF Generation
+ * 
+ * Implements paged media with:
+ * - Running headers and footers on each page
+ * - Different layout for first page
+ * - Page numbers (Page X of Y)
+ * - Print-friendly typography and spacing
+ */
+
+/* ========================================
+   Page Setup (@page rules)
+   ======================================== */
+
+/* Default page setup for all pages */
+@page {
+    size: A4;
+    margin: 2.5cm 2cm 2.5cm 2cm; /* top, right, bottom, left */
+    
+    /* Running header */
+    @top-center {
+        content: element(header);
+    }
+    
+    /* Running footer with page numbers */
+    @bottom-center {
+        content: element(footer);
+    }
+}
+
+/* First page with different margins/header */
+@page :first {
+    margin-top: 3cm; /* More space for potential logo/letterhead */
+    
+    /* First page can have different header if needed */
+    @top-center {
+        content: element(header-first);
+    }
+}
+
+/* ========================================
+   Running Headers and Footers
+   ======================================== */
+
+/* Position header element for running header */
+header.page-header {
+    position: running(header);
+    width: 100%;
+}
+
+/* Optional: Different header for first page */
+.header-first {
+    position: running(header-first);
+    width: 100%;
+}
+
+/* Position footer element for running footer */
+footer.page-footer {
+    position: running(footer);
+    width: 100%;
+    font-size: 9pt;
+    color: #666;
+}
+
+/* ========================================
+   Page Counters and Numbers
+   ======================================== */
+
+/* Page counter for "Page X of Y" */
+.page-number::before {
+    content: "Seite " counter(page) " von " counter(pages);
+}
+
+/* ========================================
+   Typography and Base Styles
+   ======================================== */
+
+body {
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #000;
+}
+
+h1 {
+    font-size: 18pt;
+    font-weight: bold;
+    margin: 0 0 0.5em 0;
+    color: #000;
+}
+
+h2 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 1em 0 0.5em 0;
+    color: #000;
+}
+
+h3 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 0.8em 0 0.4em 0;
+    color: #000;
+}
+
+p {
+    margin: 0 0 0.5em 0;
+}
+
+/* ========================================
+   Tables
+   ======================================== */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5em 0 1em 0;
+    page-break-inside: avoid; /* Try to keep tables together */
+}
+
+thead {
+    display: table-header-group; /* Repeat header on each page */
+}
+
+th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+    padding: 0.3em 0.5em;
+    border: 1px solid #ccc;
+    text-align: left;
+}
+
+td {
+    padding: 0.3em 0.5em;
+    border: 1px solid #ccc;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* ========================================
+   Footer Layout
+   ======================================== */
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5em 0;
+    border-top: 1px solid #ccc;
+}
+
+.footer-left,
+.footer-center,
+.footer-right {
+    flex: 1;
+}
+
+.footer-center {
+    text-align: center;
+}
+
+.footer-right {
+    text-align: right;
+}
+
+/* ========================================
+   Page Break Helpers
+   ======================================== */
+
+/* Avoid breaking inside these elements */
+.keep-together,
+.no-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+/* Force page break before element */
+.page-break-before {
+    page-break-before: always;
+    break-before: page;
+}
+
+/* Force page break after element */
+.page-break-after {
+    page-break-after: always;
+    break-after: page;
+}
+
+/* Avoid page break before element */
+.avoid-break-before {
+    page-break-before: avoid;
+    break-before: avoid;
+}
+
+/* Avoid page break after element */
+.avoid-break-after {
+    page-break-after: avoid;
+    break-after: avoid;
+}
+
+/* ========================================
+   Lists
+   ======================================== */
+
+ul, ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+li {
+    margin: 0.2em 0;
+}
+
+/* ========================================
+   Print-Specific Utilities
+   ======================================== */
+
+/* Hide elements in print */
+.no-print {
+    display: none;
+}
+
+/* Monospace for code blocks */
+pre, code {
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+    background-color: #f5f5f5;
+    padding: 0.2em 0.4em;
+}
+
+pre {
+    padding: 0.5em;
+    overflow-x: auto;
+    page-break-inside: avoid;
+}
+
+/* Links in print */
+a {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+/* Show URLs in print (optional) */
+a[href]::after {
+    /* Uncomment to show URLs after links:
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666;
+    */
+}
+
+/* ========================================
+   Section Styling
+   ======================================== */
+
+.section {
+    margin: 1em 0;
+}
+
+.section-title {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 0.8em 0 0.4em 0;
+    padding-bottom: 0.2em;
+    border-bottom: 2px solid #333;
+}
+
+/* ========================================
+   Header Content Styling
+   ======================================== */
+
+.header-content {
+    padding: 0.5em 0;
+    border-bottom: 1px solid #ccc;
+    font-size: 9pt;
+}
+
+/* ========================================
+   Main Content
+   ======================================== */
+
+.page-content {
+    /* Main content area - headers and footers are positioned separately */
+}
