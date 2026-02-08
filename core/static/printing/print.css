@@ -66,7 +66,14 @@ footer.page-footer {
    Page Counters and Numbers
    ======================================== */
 
-/* Page counter for "Page X of Y" */
+/* 
+ * Page counter for "Page X of Y"
+ * 
+ * Note: The text is in German to match the application's LANGUAGE_CODE ('de-DE').
+ * To change to English, replace with:
+ *   content: "Page " counter(page) " of " counter(pages);
+ * Or for other languages, update accordingly.
+ */
 .page-number::before {
     content: "Seite " counter(page) " von " counter(pages);
 }

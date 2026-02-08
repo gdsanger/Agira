@@ -170,6 +170,15 @@ The print.css provides utility classes:
 <p>Content that should stay with title...</p>
 ```
 
+**Note on Localization**: The default page numbers are in German ("Seite X von Y") to match the application's default language setting. To customize:
+
+1. Edit `core/static/printing/print.css`
+2. Find `.page-number::before`
+3. Change the content to your preferred language:
+   - English: `"Page " counter(page) " of " counter(pages)`
+   - French: `"Page " counter(page) " sur " counter(pages)`
+   - Spanish: `"Página " counter(page) " de " counter(pages)`
+
 ### Custom Page Layout
 
 For a custom first page (e.g., letterhead):
