@@ -557,6 +557,44 @@ const solutionEditor = new toastui.Editor({
 document.querySelector('#solution-editor .toastui-editor-defaultUI').style.maxHeight = '400px';
 document.querySelector('#solution-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
+// Workaround for Toast UI Editor RangeError in code blocks with paste/Enter
+// This fixes the issue where pasted content in code blocks causes RangeError exceptions
+// Reference: https://github.com/nhn/tui.editor/issues/1349
+function setupEditorWorkaround(editor) {
+    let isProcessing = false;
+    
+    editor.on('change', function() {
+        if (isProcessing) return;
+        
+        try {
+            isProcessing = true;
+            const mdtext = editor.getMarkdown();
+            
+            // Clean up problematic HTML tags that may appear after paste
+            const cleanedup_mdtext = mdtext
+                .replace(/<\/?span[^>]*>/g, '')  // Remove span tags
+                .replace(/<br[\s/]*>/g, '')      // Remove <br>
+                .replace(/<\/?u>/g, '')          // Remove underline tags
+                .replace(/<\/?strong>/g, '**')   // Convert strong to markdown
+                .replace(/<\/?em>/g, '_');       // Convert em to markdown
+            
+            if (cleanedup_mdtext !== mdtext) {
+                editor.setMarkdown(cleanedup_mdtext, false);
+            }
+        } catch (e) {
+            // Silently catch errors to prevent disrupting user experience
+            console.warn('Editor cleanup warning:', e);
+        } finally {
+            isProcessing = false;
+        }
+    });
+}
+
+// Apply workaround to all editors
+setupEditorWorkaround(descriptionEditor);
+setupEditorWorkaround(userInputEditor);
+setupEditorWorkaround(solutionEditor);
+
 // Sync editor content to hidden fields on form submit
 document.getElementById('itemForm').addEventListener('submit', function() {
     document.getElementById('description').value = descriptionEditor.getMarkdown();

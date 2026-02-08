@@ -171,6 +171,42 @@ const editor = new toastui.Editor({
     theme: 'dark'
 });
 
+// Workaround for Toast UI Editor RangeError in code blocks with paste/Enter
+// This fixes the issue where pasted content in code blocks causes RangeError exceptions
+// Reference: https://github.com/nhn/tui.editor/issues/1349
+function setupEditorWorkaround(editorInstance) {
+    let isProcessing = false;
+    
+    editorInstance.on('change', function() {
+        if (isProcessing) return;
+        
+        try {
+            isProcessing = true;
+            const mdtext = editorInstance.getMarkdown();
+            
+            // Clean up problematic HTML tags that may appear after paste
+            const cleanedup_mdtext = mdtext
+                .replace(/<\/?span[^>]*>/g, '')  // Remove span tags
+                .replace(/<br[\s/]*>/g, '')      // Remove <br>
+                .replace(/<\/?u>/g, '')          // Remove underline tags
+                .replace(/<\/?strong>/g, '**')   // Convert strong to markdown
+                .replace(/<\/?em>/g, '_');       // Convert em to markdown
+            
+            if (cleanedup_mdtext !== mdtext) {
+                editorInstance.setMarkdown(cleanedup_mdtext, false);
+            }
+        } catch (e) {
+            // Silently catch errors to prevent disrupting user experience
+            console.warn('Editor cleanup warning:', e);
+        } finally {
+            isProcessing = false;
+        }
+    });
+}
+
+// Apply workaround to the editor
+setupEditorWorkaround(editor);
+
 // Sync editor content to hidden field on form submit
 document.getElementById('projectForm').addEventListener('submit', function() {
     document.getElementById('description').value = editor.getMarkdown();
