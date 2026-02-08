@@ -10,6 +10,7 @@ from typing import Optional
 
 try:
     import bleach
+    from bleach.css_sanitizer import CSSSanitizer
     BLEACH_AVAILABLE = True
 except ImportError:
     BLEACH_AVAILABLE = False
@@ -33,7 +34,7 @@ ALLOWED_ATTRIBUTES = {
     'table': ['border', 'cellpadding', 'cellspacing'],
 }
 
-ALLOWED_STYLES = [
+ALLOWED_CSS_PROPERTIES = [
     'color', 'background-color', 'font-size', 'font-weight', 'font-style',
     'text-align', 'text-decoration', 'margin', 'padding',
 ]
@@ -66,7 +67,12 @@ def sanitize_html(html: str, *, strict: bool = False) -> str:
     try:
         # Determine allowed attributes
         attrs = ALLOWED_ATTRIBUTES.copy()
-        if strict:
+        
+        # Configure CSS sanitizer
+        css_sanitizer = None
+        if not strict:
+            css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES)
+        else:
             # Remove style attribute in strict mode
             attrs['*'] = [a for a in attrs.get('*', []) if a != 'style']
         
@@ -75,7 +81,7 @@ def sanitize_html(html: str, *, strict: bool = False) -> str:
             html,
             tags=ALLOWED_TAGS,
             attributes=attrs,
-            styles=ALLOWED_STYLES if not strict else [],
+            css_sanitizer=css_sanitizer,
             strip=True
         )
         
