@@ -201,33 +201,64 @@ pip install weasyprint>=62.0
 
 ### System Dependencies
 
-WeasyPrint requires system libraries:
+**IMPORTANT**: WeasyPrint requires system libraries to be installed. Without these, PDF generation will fail with errors like `'super' object has no attribute 'transform'` or similar.
 
 **Ubuntu/Debian:**
 ```bash
+sudo apt-get update
 sudo apt-get install -y \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf2.0-0 \
     libffi-dev \
-    shared-mime-info
+    shared-mime-info \
+    fonts-liberation
+```
+
+**Alpine Linux (for Docker):**
+```bash
+apk add --no-cache \
+    cairo \
+    pango \
+    gdk-pixbuf \
+    libffi-dev \
+    shared-mime-info \
+    ttf-liberation
 ```
 
 **macOS:**
 ```bash
-brew install pango gdk-pixbuf libffi
+brew install cairo pango gdk-pixbuf libffi
 ```
 
-**Docker:**
+**Docker Example:**
 ```dockerfile
+FROM python:3.12-slim
+
+# Install WeasyPrint system dependencies
 RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf2.0-0 \
     libffi-dev \
     shared-mime-info \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 ```
+
+**Verification:**
+
+Test that WeasyPrint works correctly:
+
+```bash
+python -c "from weasyprint import HTML; HTML(string='<h1>Test</h1>').write_pdf('/tmp/test.pdf'); print('✓ WeasyPrint working')"
+```
+
+If you see errors about missing libraries, the system dependencies are not properly installed.
 
 ## Configuration
 
