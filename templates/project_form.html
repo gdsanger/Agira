@@ -185,15 +185,15 @@ function setupEditorWorkaround(editorInstance) {
             const mdtext = editorInstance.getMarkdown();
             
             // Clean up problematic HTML tags that may appear after paste
-            const cleanedup_mdtext = mdtext
+            const cleanedMdText = mdtext
                 .replace(/<\/?span[^>]*>/g, '')  // Remove span tags
                 .replace(/<br[\s/]*>/g, '')      // Remove <br>
                 .replace(/<\/?u>/g, '')          // Remove underline tags
                 .replace(/<\/?strong>/g, '**')   // Convert strong to markdown
                 .replace(/<\/?em>/g, '_');       // Convert em to markdown
             
-            if (cleanedup_mdtext !== mdtext) {
-                editorInstance.setMarkdown(cleanedup_mdtext, false);
+            if (cleanedMdText !== mdtext) {
+                editorInstance.setMarkdown(cleanedMdText, false);
             }
         } catch (e) {
             // Silently catch errors to prevent disrupting user experience
