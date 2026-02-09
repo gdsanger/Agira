@@ -360,8 +360,8 @@ def example():
         self.item.refresh_from_db()
         self.assertIsNone(self.item.parent)
     
-    def test_item_update_parent_rejects_different_project(self):
-        """Test that parent from different project is rejected."""
+    def test_item_update_parent_allows_different_project(self):
+        """Test that parent from different project is now allowed (as per issue #352)."""
         # Create another project
         other_project = Project.objects.create(
             name='Other Project',
@@ -380,11 +380,11 @@ def example():
         url = reverse('item-update-parent', args=[self.item.id])
         response = self.client.post(url, {'parent_item': other_item.id})
         
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         
-        # Check that item parent was not updated
+        # Check that item parent was updated
         self.item.refresh_from_db()
-        self.assertIsNone(self.item.parent)
+        self.assertEqual(self.item.parent, other_item)
     
     def test_item_update_parent_allows_item_with_parent(self):
         """Test that item with parent (nested parent) is now allowed (as per issue #306)."""
