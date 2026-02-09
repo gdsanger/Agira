@@ -1,4 +1,4 @@
-# Recents & Pinned Sidebar Feature - Final Summary
+# Recents & Pinned Sidebar - Final Summary
 
 ## Issue Reference
 **Agira Item ID:** 353  
@@ -6,55 +6,71 @@
 **Type:** Feature  
 **Title:** UI: Sidebar „Recents & Pinned" (Zammad-Style, localStorage)
 
+## Correction Applied ✅
+
+### Original Issue
+The feature was **incorrectly** implemented in the left sidebar, but the issue clarification stated:
+> "Da ist ein Fehler im Issue! Recent soll nicht in der Sidebar links sein (ist schon voll), sondern es muss eine neue Sidebar rechts erstellt werden"
+
+**Translation:** "There's an error in the issue! Recents should not be in the left sidebar (it's already full), but a new right sidebar must be created instead"
+
+### Solution Implemented
+✅ **Created a new right sidebar** (300px width)  
+✅ **Moved Recents & Pinned** from left to right sidebar  
+✅ **Left sidebar** remains clean with only navigation  
+✅ **Responsive design** - right sidebar only visible on lg+ screens (≥992px)
+
+## Screenshot
+
+![Right Sidebar Layout](https://github.com/user-attachments/assets/8b574335-0953-4977-9822-2c1754acdbdc)
+
+The screenshot shows:
+- **Left Sidebar (260px)**: Clean navigation only (Dashboard, Projects, Items, etc.)
+- **Main Content**: Centered with flexible width
+- **Right Sidebar (300px)**: Dedicated Recents & Pinned section
+  - GEPINNT (3/5) - Pinned items
+  - ZULETZT GEÖFFNET (5/20) - Recently opened items
+
 ## Implementation Complete ✅
 
 ### What Was Built
-A Zammad-style "Recents & Pinned" section in the left sidebar that:
+A dedicated **right sidebar** for the "Recents & Pinned" feature that:
 - Automatically tracks recently viewed Issues and Projects
 - Allows users to pin up to 5 favorite items for quick access
 - Stores up to 20 recent items
 - Uses browser localStorage (no server-side storage)
-- Only visible on medium+ screens (responsive design)
+- Only visible on large screens (responsive design)
 
-### Files Created
-1. **static/js/sidebar-recents.js** (390 lines)
-   - Complete localStorage management
-   - Event handling for pin/unpin/remove actions
-   - Auto-tracking on page load
-   - Toast notifications integration
-   - Robust ID validation and error handling
+### Files Changed
 
-2. **templates/partials/sidebar_recents.html** (7 lines)
-   - Sidebar container with responsive visibility
-   - Dynamic content rendering target
-
-3. **RECENTS_PINNED_IMPLEMENTATION.md** (197 lines)
-   - Complete feature documentation
-   - Testing checklist
-   - Technical details
-
-### Files Modified
+**Modified:**
 1. **templates/base.html**
-   - Added sidebar partial include (line 235)
-   - Added JavaScript import (line 268)
+   - Removed recents include from left sidebar
+   - Added new right sidebar container with recents partial
 
 2. **static/css/site.css**
-   - Added 137 lines of CSS for recents/pinned styling
-   - Responsive design rules
-   - Hover effects and transitions
+   - Added `--right-sidebar-width: 300px` variable
+   - Added `.right-sidebar` styles (fixed position, right side)
+   - Updated `.main-content` to have right margin on lg+ screens
+   - Removed `border-top` from `.recents-container`
+   - Removed collapsed sidebar rules for recents
 
-3. **templates/item_detail.html**
-   - Added touch tracking marker (lines 112-119)
+3. **templates/partials/sidebar_recents.html**
+   - Removed `d-none d-md-block` (handled by parent now)
 
-4. **templates/project_detail.html**
-   - Added touch tracking marker (lines 115-122)
+### Files Unchanged
+- `static/js/sidebar-recents.js` - JavaScript logic works identically
+- `templates/item_detail.html` - Touch tracking unchanged
+- `templates/project_detail.html` - Touch tracking unchanged
+- All documentation files preserved
 
 ## Feature Specifications Met
 
-### ✅ UI: Sidebar Block (only ab md)
-- Integrated new block in global layout
-- Only visible on md+ screens via `d-none d-md-block`
+### ✅ UI: Right Sidebar (only ab lg)
+- Created new right sidebar layout
+- Only visible on lg+ screens via `d-none d-lg-block`
 - Two sections: "Gepinnt" and "Zuletzt geöffnet"
+- Clean separation from navigation
 
 ### ✅ Datenhaltung: localStorage (MVP)
 - Storage keys: `agira.sidebar.recents.v1` and `agira.sidebar.pinned.v1`
@@ -81,80 +97,117 @@ Each entry shows:
 - Hidden div with data attributes for tracking
 - JavaScript reads on page load
 
-## Technical Implementation
+## Layout Structure
 
-### LocalStorage Keys
-- `agira.sidebar.recents.v1`
-- `agira.sidebar.pinned.v1`
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Topbar (60px height)                                         │
+├──────────┬────────────────────────────────┬──────────────────┤
+│          │                                │                  │
+│  Left    │         Main Content           │  Right Sidebar   │
+│ Sidebar  │      (Flexible Width)          │     (300px)      │
+│ (260px)  │                                │                  │
+│          │                                │  ┌─────────────┐ │
+│ Nav      │                                │  │  GEPINNT    │ │
+│ Items    │      Page Content              │  │  3/5        │ │
+│          │                                │  ├─────────────┤ │
+│          │                                │  │ Pinned      │ │
+│          │                                │  │ Items       │ │
+│          │                                │  ├─────────────┤ │
+│          │                                │  │ ZULETZT     │ │
+│          │                                │  │ GEÖFFNET    │ │
+│          │                                │  │ 5/20        │ │
+│          │                                │  ├─────────────┤ │
+│          │                                │  │ Recent      │ │
+│          │                                │  │ Items       │ │
+│          │                                │  └─────────────┘ │
+└──────────┴────────────────────────────────┴──────────────────┘
+```
 
-### Entry Shape
-```json
-{
-  "type": "issue|project",
-  "id": 249,
-  "title": "#249 PDF Template",
-  "status": "in_progress",
-  "url": "/items/249/",
-  "ts": "2026-02-09T08:00:00Z"
+## Responsive Behavior
+
+### Desktop (≥992px / lg+)
+- Left sidebar: 260px (visible)
+- Main content: Flexible width with margins
+- Right sidebar: 300px (visible)
+- Total layout: 260px + auto + 300px
+
+### Tablet (768px - 991px / md)
+- Left sidebar: 260px (visible)
+- Main content: Flexible width, no right margin
+- Right sidebar: Hidden
+- Total layout: 260px + auto
+
+### Mobile (<768px)
+- Left sidebar: Collapsible
+- Main content: Full width
+- Right sidebar: Hidden
+- Existing mobile behavior preserved
+
+## Technical Details
+
+### Right Sidebar CSS
+```css
+.right-sidebar {
+    position: fixed;
+    right: 0;
+    top: var(--topbar-height);
+    width: var(--right-sidebar-width);
+    height: calc(100vh - var(--topbar-height));
+    background-color: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    overflow-y: auto;
+    padding: 1rem 0;
+    z-index: 998;
 }
 ```
 
-### Touch Mechanism
-```html
-<div style="display: none;" 
-     data-recent-touch="1" 
-     data-recent-type="issue" 
-     data-recent-id="249" 
-     data-recent-title="#249 PDF Template" 
-     data-recent-status="in_progress" 
-     data-recent-url="/items/249/"></div>
+### Main Content Adjustment
+```css
+@media (min-width: 992px) {
+    .main-content {
+        margin-right: var(--right-sidebar-width);
+    }
+}
 ```
 
 ## Quality Assurance
 
 ### Code Review ✅
-- Initial review identified 3 issues
-- All issues addressed:
-  1. Removed redundant condition
-  2. Added ID validation in event listener
-  3. Added ID validation in touch tracking
-- Second review: No issues found
+- All previous feedback addressed
+- Layout change is minimal and focused
+- No breaking changes to existing functionality
 
 ### Security Check ✅
-- CodeQL analysis: 0 alerts
-- No security vulnerabilities detected
-- JavaScript static analysis passed
+- No security changes required
+- Client-side only modifications
+- No new vulnerabilities introduced
 
 ### Validation ✅
 - JavaScript syntax validation passed
 - Demo page created and tested
-- Screenshot confirms UI works as expected
-- No console errors
+- Screenshot confirms correct layout
+- Responsive behavior verified
 
 ## Acceptance Criteria Status
 
-✅ Sidebar-Block ist ab `md` sichtbar und stabil integriert  
-✅ Recents & Pinned werden korrekt aus `localStorage` gelesen/geschrieben  
-✅ Limits (20 / 5) werden eingehalten  
-✅ Pin / Unpin / Remove funktionieren zuverlässig  
-✅ Klick auf Eintrag navigiert korrekt  
-✅ Keine Abhängigkeit von Server-State oder Datenbank  
+✅ Right sidebar visible only on lg+ screens  
+✅ Left sidebar kept clean (navigation only)  
+✅ Recents & Pinned correctly managed via localStorage  
+✅ Limits (20 / 5) enforced  
+✅ Pin / Unpin / Remove work reliably  
+✅ Click navigation works correctly  
+✅ No dependency on server-state or database  
+✅ Better use of screen real estate  
 
-## Tasks Completed
+## Benefits of Right Sidebar Approach
 
-✅ Sidebar-Template erweitern (Responsive `md+`)  
-✅ JS-Modul für `recents` / `pinned` (localStorage)  
-✅ Render-Logik für Sidebar-Liste  
-✅ Touch-Mechanik in Issue- & Project-DetailViews  
-✅ Pin / Unpin / Remove Aktionen  
-✅ Toasts / UX-Feedback  
-✅ Code Review und Verbesserungen  
-✅ Security Scan (CodeQL)  
-✅ Documentation erstellt  
-
-## Screenshot
-
-![Recents & Pinned Sidebar](https://github.com/user-attachments/assets/2a717d7c-adf7-4675-8723-236cc6f95b02)
+1. **Clean Navigation**: Left sidebar stays focused on core navigation
+2. **Better Organization**: Workspace items separated from navigation
+3. **Modern Pattern**: Common in apps like Notion, Slack, GitHub
+4. **Responsive**: Hidden on smaller screens to avoid clutter
+5. **Scalable**: Can add more workspace features to right sidebar in future
+6. **No Breaking Changes**: Existing functionality preserved
 
 ## Browser Compatibility
 - Modern browsers with localStorage support
@@ -163,20 +216,12 @@ Each entry shows:
 - Tested with Chrome/Firefox/Safari/Edge
 
 ## Future Enhancements (Out of Scope)
-The following were identified as potential future enhancements:
 - Add support for more entity types (Customers, Sales Documents)
 - Server-side storage for cross-device sync
-- Customizable limits per user
+- Customizable sidebar width
+- Collapsible right sidebar toggle
 - Drag-and-drop reordering
-- Search/filter within recents
-- Export/import functionality
-
-## Notes
-- Zero dependencies added (uses existing Bootstrap, localStorage API)
-- Minimal impact on existing codebase
-- Pure client-side feature with no backend changes
-- Graceful degradation if localStorage is unavailable
-- Clean code with comprehensive error handling
 
 ## Conclusion
-The Recents & Pinned sidebar feature has been successfully implemented according to all specifications in Issue #353. The feature is production-ready, has passed all quality checks, and is fully documented.
+The Recents & Pinned sidebar feature has been successfully corrected and moved to a dedicated right sidebar as requested. The feature is production-ready, follows modern UI patterns, and provides better use of screen space while keeping the left navigation clean and focused.
+
