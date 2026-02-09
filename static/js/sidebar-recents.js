@@ -201,7 +201,12 @@
         const statusDisplay = entry.status ? formatStatus(entry.status) : '';
         
         // Escape HTML entities in title for safe attribute usage
-        const escapedTitle = entry.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const escapedTitle = entry.title
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
         
         const pinButton = isPinned
             ? `<button class="btn btn-sm btn-link text-warning p-0 ms-1 recents-action" data-action="unpin" title="Entpinnen">
@@ -222,7 +227,6 @@
                data-id="${entry.id}"
                data-is-pinned="${isPinned}"
                data-bs-toggle="tooltip"
-               data-bs-placement="left"
                title="${escapedTitle}">
                 <div class="recents-entry-content">
                     <div class="recents-entry-header">
@@ -299,16 +303,7 @@
      * Initialize Bootstrap tooltips for recent entries
      */
     function initializeTooltips() {
-        // Dispose of any existing tooltips first to prevent memory leaks
-        const existingTooltips = document.querySelectorAll('.recents-entry[data-bs-toggle="tooltip"]');
-        existingTooltips.forEach(el => {
-            const tooltipInstance = bootstrap.Tooltip.getInstance(el);
-            if (tooltipInstance) {
-                tooltipInstance.dispose();
-            }
-        });
-        
-        // Initialize new tooltips
+        // Initialize tooltips for all recent entries
         const tooltipTriggerList = document.querySelectorAll('.recents-entry[data-bs-toggle="tooltip"]');
         tooltipTriggerList.forEach(tooltipTriggerEl => {
             new bootstrap.Tooltip(tooltipTriggerEl, {
