@@ -200,6 +200,14 @@
         const typeLabel = getTypeLabel(entry.type);
         const statusDisplay = entry.status ? formatStatus(entry.status) : '';
         
+        // Escape HTML entities in title for safe attribute usage
+        const escapedTitle = entry.title
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        
         const pinButton = isPinned
             ? `<button class="btn btn-sm btn-link text-warning p-0 ms-1 recents-action" data-action="unpin" title="Entpinnen">
                    <i class="bi bi-pin-fill"></i>
@@ -217,7 +225,9 @@
                class="recents-entry ${activeClass}" 
                data-type="${entry.type}" 
                data-id="${entry.id}"
-               data-is-pinned="${isPinned}">
+               data-is-pinned="${isPinned}"
+               data-bs-toggle="tooltip"
+               title="${escapedTitle}">
                 <div class="recents-entry-content">
                     <div class="recents-entry-header">
                         <i class="bi ${typeIcon} me-1"></i>
@@ -242,6 +252,9 @@
     function renderSidebar() {
         const container = document.getElementById('recents-pinned-container');
         if (!container) return;
+        
+        // Dispose tooltips before clearing container
+        disposeTooltips();
         
         let html = '';
         
@@ -284,6 +297,36 @@
         }
         
         container.innerHTML = html;
+        
+        // Initialize Bootstrap tooltips for the rendered entries
+        initializeTooltips();
+    }
+    
+    /**
+     * Dispose of existing tooltips to prevent memory leaks
+     */
+    function disposeTooltips() {
+        const existingTooltips = document.querySelectorAll('.recents-entry[data-bs-toggle="tooltip"]');
+        existingTooltips.forEach(el => {
+            const tooltipInstance = bootstrap.Tooltip.getInstance(el);
+            if (tooltipInstance) {
+                tooltipInstance.dispose();
+            }
+        });
+    }
+    
+    /**
+     * Initialize Bootstrap tooltips for recent entries
+     */
+    function initializeTooltips() {
+        // Initialize tooltips for all recent entries
+        const tooltipTriggerList = document.querySelectorAll('.recents-entry[data-bs-toggle="tooltip"]');
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            new bootstrap.Tooltip(tooltipTriggerEl, {
+                placement: 'left',
+                trigger: 'hover'
+            });
+        });
     }
 
     /**
