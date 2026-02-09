@@ -1326,16 +1326,16 @@ a:hover {
     transform: scale(0.95);
 }
 
-.recents-action.text-warning:hover {
-    color: var(--warning) !important;
+.recents-entry:hover .recents-action.text-warning:hover {
+    color: var(--warning);
 }
 
-.recents-action.text-danger:hover {
-    color: var(--danger) !important;
+.recents-entry:hover .recents-action.text-danger:hover {
+    color: var(--danger);
 }
 
-.recents-action.text-muted:hover {
-    color: var(--text-secondary) !important;
+.recents-entry:hover .recents-action.text-muted:hover {
+    color: var(--text-secondary);
 }
 
 .recents-clear {
