@@ -272,11 +272,9 @@
                 html += renderEntry(entry, false);
             });
             html += '</div>';
-            if (recents.length > 0) {
-                html += '<div class="recents-clear">';
-                html += '<button class="btn btn-sm btn-link text-muted" id="clear-recents">Alle löschen</button>';
-                html += '</div>';
-            }
+            html += '<div class="recents-clear">';
+            html += '<button class="btn btn-sm btn-link text-muted" id="clear-recents">Alle löschen</button>';
+            html += '</div>';
             html += '</div>';
         }
         
@@ -304,9 +302,17 @@
                 const entry = actionButton.closest('.recents-entry');
                 if (!entry) return;
                 
+                // Validate and parse ID
+                const idValue = entry.dataset.id;
+                const parsedId = parseInt(idValue, 10);
+                if (isNaN(parsedId) || parsedId <= 0) {
+                    console.error('Invalid entry ID:', idValue);
+                    return;
+                }
+                
                 const entryData = {
                     type: entry.dataset.type,
-                    id: parseInt(entry.dataset.id, 10),
+                    id: parsedId,
                     title: entry.querySelector('.recents-entry-title').textContent,
                     url: entry.getAttribute('href'),
                     status: entry.querySelector('.recents-entry-status')?.textContent || ''
@@ -342,9 +348,17 @@
         const touchMarker = document.querySelector('[data-recent-touch="1"]');
         if (!touchMarker) return;
         
+        // Validate and parse ID
+        const idValue = touchMarker.dataset.recentId;
+        const parsedId = parseInt(idValue, 10);
+        if (isNaN(parsedId) || parsedId <= 0) {
+            console.error('Invalid recent touch ID:', idValue);
+            return;
+        }
+        
         const entry = {
             type: touchMarker.dataset.recentType,
-            id: parseInt(touchMarker.dataset.recentId, 10),
+            id: parsedId,
             title: touchMarker.dataset.recentTitle,
             status: touchMarker.dataset.recentStatus || '',
             url: touchMarker.dataset.recentUrl
