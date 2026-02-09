@@ -825,7 +825,7 @@ def item_detail(request, item_id):
     ).order_by('-version')
     
     # Get parent items for the inline edit (exclude closed and self)
-    # Filter as per issue #352 - all projects, status != closed
+    # Filter as per issue #352 - allow items from all projects, status != closed
     parent_items = Item.objects.exclude(
         status=ItemStatus.CLOSED
     ).exclude(
@@ -3408,7 +3408,7 @@ def item_edit(request, item_id):
         releases = Release.objects.filter(project=item.project).order_by('-version')
         
         # Get potential parent items, exclude closed and self
-        # Filter as per issue #352 - all projects, status != closed
+        # Filter as per issue #352 - allow items from all projects, status != closed
         parent_items = Item.objects.exclude(status=ItemStatus.CLOSED).exclude(id=item.id).order_by('title')
         
         # Get nodes from the current project
