@@ -574,9 +574,9 @@ class Item(models.Model):
         super().clean()
         errors = {}
 
-        # Parent must be in same project
-        if self.parent and self.parent.project != self.project:
-            errors['parent'] = _('Parent item must belong to the same project.')
+        # Parent status must not be closed
+        if self.parent and self.parent.status == ItemStatus.CLOSED:
+            errors['parent'] = _('Cannot set a closed item as parent.')
 
         # Solution release must be in same project
         if self.solution_release and self.solution_release.project != self.project:
