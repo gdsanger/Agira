@@ -237,6 +237,11 @@
         <main class="main-content">
             {% block content %}{% endblock %}
         </main>
+        
+        <!-- Right Sidebar: Recents & Pinned -->
+        <aside class="right-sidebar d-none d-lg-block" id="rightSidebar">
+            {% include "partials/sidebar_recents.html" %}
+        </aside>
     </div>
 
     <!-- Toast Container for notifications -->
@@ -260,6 +265,9 @@
     
     <!-- Release utilities -->
     <script src="{% static 'js/release-utils.js' %}"></script>
+    
+    <!-- Sidebar Recents & Pinned -->
+    <script src="{% static 'js/sidebar-recents.js' %}"></script>
     
     <!-- Sidebar Toggle Script -->
     <script>

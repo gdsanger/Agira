@@ -109,6 +109,15 @@
 {% endblock %}
 
 {% block content %}
+<!-- Recent touch marker for sidebar -->
+<div style="display: none;" 
+     data-recent-touch="1" 
+     data-recent-type="issue" 
+     data-recent-id="{{ item.id }}" 
+     data-recent-title="#{{ item.id }} {{ item.title }}" 
+     data-recent-status="{{ item.status }}" 
+     data-recent-url="{% url 'item-detail' item.id %}"></div>
+
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start">
         <div>
