@@ -1,0 +1,64 @@
+{% extends "printing/base.html" %}
+
+{# Example template showing basic usage of the printing framework #}
+
+{% block title %}Example Document{% endblock %}
+
+{% block header_content %}
+<div style="text-align: center; font-weight: bold;">
+    Example Company Ltd.
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Example Document</h1>
+
+<div class="section">
+    <h2>Introduction</h2>
+    <p>This is an example template demonstrating the core printing framework.</p>
+    <p>You can use this as a starting point for creating your own print templates.</p>
+</div>
+
+<div class="section">
+    <h2>Key Features</h2>
+    <ul>
+        <li>Template inheritance from base.html</li>
+        <li>Automatic headers and footers</li>
+        <li>Page numbers</li>
+        <li>Print-optimized CSS</li>
+    </ul>
+</div>
+
+<div class="section">
+    <h2>Sample Table</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Column 1</th>
+                <th>Column 2</th>
+                <th>Column 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Data 1</td>
+                <td>Data 2</td>
+                <td>Data 3</td>
+            </tr>
+            <tr>
+                <td>Data 4</td>
+                <td>Data 5</td>
+                <td>Data 6</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block footer_left %}
+Example Company • www.example.com
+{% endblock %}
+
+{% block footer_center %}
+Confidential
+{% endblock %}
