@@ -230,9 +230,6 @@
                     <i class="bi bi-gear sidebar-icon"></i>
                     <span class="sidebar-text">Admin</span>
                 </a>
-                
-                <!-- Recents & Pinned Section -->
-                {% include "partials/sidebar_recents.html" %}
             </nav>
         </aside>
 
@@ -240,6 +237,11 @@
         <main class="main-content">
             {% block content %}{% endblock %}
         </main>
+        
+        <!-- Right Sidebar: Recents & Pinned -->
+        <aside class="right-sidebar d-none d-lg-block" id="rightSidebar">
+            {% include "partials/sidebar_recents.html" %}
+        </aside>
     </div>
 
     <!-- Toast Container for notifications -->
