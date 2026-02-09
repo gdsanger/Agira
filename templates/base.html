@@ -230,6 +230,9 @@
                     <i class="bi bi-gear sidebar-icon"></i>
                     <span class="sidebar-text">Admin</span>
                 </a>
+                
+                <!-- Recents & Pinned Section -->
+                {% include "partials/sidebar_recents.html" %}
             </nav>
         </aside>
 
@@ -260,6 +263,9 @@
     
     <!-- Release utilities -->
     <script src="{% static 'js/release-utils.js' %}"></script>
+    
+    <!-- Sidebar Recents & Pinned -->
+    <script src="{% static 'js/sidebar-recents.js' %}"></script>
     
     <!-- Sidebar Toggle Script -->
     <script>

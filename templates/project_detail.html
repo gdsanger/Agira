@@ -112,6 +112,15 @@
 {% endblock %}
 
 {% block content %}
+<!-- Recent touch marker for sidebar -->
+<div style="display: none;" 
+     data-recent-touch="1" 
+     data-recent-type="project" 
+     data-recent-id="{{ project.id }}" 
+     data-recent-title="Projekt: {{ project.name }}" 
+     data-recent-status="" 
+     data-recent-url="{% url 'project-detail' project.id %}"></div>
+
 <!-- Breadcrumb -->
 <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
