@@ -253,6 +253,9 @@
         const container = document.getElementById('recents-pinned-container');
         if (!container) return;
         
+        // Dispose tooltips before clearing container
+        disposeTooltips();
+        
         let html = '';
         
         // Render pinned items
@@ -297,6 +300,19 @@
         
         // Initialize Bootstrap tooltips for the rendered entries
         initializeTooltips();
+    }
+    
+    /**
+     * Dispose of existing tooltips to prevent memory leaks
+     */
+    function disposeTooltips() {
+        const existingTooltips = document.querySelectorAll('.recents-entry[data-bs-toggle="tooltip"]');
+        existingTooltips.forEach(el => {
+            const tooltipInstance = bootstrap.Tooltip.getInstance(el);
+            if (tooltipInstance) {
+                tooltipInstance.dispose();
+            }
+        });
     }
     
     /**
