@@ -118,79 +118,64 @@
      data-recent-status="{{ item.status }}" 
      data-recent-url="{% url 'item-detail' item.id %}"></div>
 
-<div class="page-header">
-    <div class="d-flex justify-content-between align-items-start">
+<div class="page-header d-flex justify-content-between align-items-start">
+    
         <div>
-            <h1>{{ item.title }}</h1>
+            <h3>{{ item.title }}</h3>
             <p class="text-muted">
                 <a href="{% url 'project-detail' item.project.id %}" class="text-decoration-none">{{ item.project.name }}</a> • {{ item.type.name }}
             </p>
         </div>
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-            <a href="{% url 'project-detail' item.project.id %}" class="btn btn-outline-secondary btn-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
-                </svg>
-                Back to Project
-            </a>
-            <!-- Status Selector in Toolbar -->
-            <div class="d-flex gap-1 align-items-center">
-                <form id="status-form-toolbar" class="d-flex gap-1 align-items-center">
-                    {% csrf_token %}
-                    <select class="form-select form-select-sm" id="status-select" style="width: auto;">
-                        {% for value, display in available_statuses %}
-                        <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>
-                            {{ display }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <button 
-                        type="button"
-                        class="btn btn-sm btn-primary"
-                        id="apply-status-btn"
-                        onclick="handleStatusChange()">
-                        Apply
-                    </button>
-                </form>
-            </div>
-            <!-- Weaviate Status Button -->
-            <div 
-                hx-get="{% url 'weaviate-status' 'item' item.id %}"
-                hx-trigger="load"
-                hx-swap="innerHTML">
-                <!-- Button will be loaded via HTMX -->
-            </div>
-            <a href="{% url 'item-edit' item.id %}" class="btn btn-outline-primary btn-sm">
+   
+        <div class="btn-group" role="group" aria-label="Item Actions">
+            <a href="{% url 'project-detail' item.project.id %}" class="btn btn-outline-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+                            </svg>
+                            Back to Project
+                        </a>
+                         <a href="{% url 'item-edit' item.id %}" class="btn btn-outline-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil" viewBox="0 0 16 16">
                     <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                 </svg>
                 Edit
             </a>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#moveItemModal">
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#moveItemModal">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left-right" viewBox="0 0 16 16">
                     <path fill-rule="evenodd" d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-3.147 3.146a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 1 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"/>
                 </svg>
                 Move
             </button>
-            <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#applyBlueprintModal">
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#applyBlueprintModal">
                 <i class="bi bi-file-earmark-text"></i>
                 Apply Blueprint
             </button>
-            <a href="{% url 'item-create-blueprint' item.id %}" class="btn btn-outline-secondary btn-sm">
+            <a href="{% url 'item-create-blueprint' item.id %}" class="btn btn-outline-primary">
                 <i class="bi bi-clipboard-plus"></i>
                 Create Blueprint
             </a>
-            <button type="button" class="btn btn-outline-danger btn-sm" onclick="confirmDelete()">
+              <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
                     <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
                     <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
                 </svg>
                 Delete
-            </button>
+            </button>         
         </div>
-    </div>
+ 
 </div>
-
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        {% if item %}
+        <li class="breadcrumb-item"><a href="{% url 'project-detail' item.project.id %}">{{ item.project.name }}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'item-detail' item.id %}">{{ item.title }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active">New Item</li>
+        {% endif %}
+    </ol>
+</nav>
 <!-- Hidden CSRF token for delete operation -->
 {% csrf_token %}
 
@@ -297,7 +282,16 @@
             <div class="col-lg-8">
                 <div class="card mb-4">
                     <div class="card-header">
+                         <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">Details</h5>
+     <!-- Weaviate Status Button -->
+            <div 
+                hx-get="{% url 'weaviate-status' 'item' item.id %}"
+                hx-trigger="load"
+                hx-swap="innerHTML">
+                <!-- Button will be loaded via HTMX -->
+            </div>
+                    </div>
                     </div>
                     <div class="card-body">
                         <!-- Detail Content Tabs -->
@@ -416,6 +410,10 @@
                                             <span class="text-muted">—</span>
                                         {% endif %}
                                     </div>
+                                    <div class="d-flex justify-content-between align-items-center m-3">
+                                        <small class="text-muted"><strong>Created: </strong>{{ item.created_at|date:"Y-m-d H:i" }}</small>
+                                        <small class="text-muted"><strong>Updated: </strong>{{ item.updated_at|date:"Y-m-d H:i" }}</small>
+                                    </div>
                                     
                                     <!-- Open Questions Warning and Section -->
                                     <div id="open-questions-container" class="mt-4"></div>
@@ -517,13 +515,27 @@
                             </div>
                         </div>
                         <div class="mb-3">
+                             <form id="status-form-toolbar">
+                            {% csrf_token %}
+                             
                             <strong>Status:</strong>
-                            <div id="status-section" class="mt-2">
-                                <span id="status-badge-sidebar" class="badge bg-primary">
-                                    {{ item.get_status_display }}
-                                </span>
-                                <small class="text-muted d-block mt-1">Use the status selector in the page toolbar to change status</small>
-                            </div>
+                    <select class="form-select form-select-sm" id="status-select" style="width: auto;">
+                        {% for value, display in available_statuses %}
+                        <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>
+                            {{ display }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button 
+                        type="button"
+                        class="btn btn-sm btn-primary"
+                        id="apply-status-btn"
+                        onclick="handleStatusChange()">
+                        Apply
+                    </button>
+                </form>
+                       
+                         
                         </div>
                         <div class="mb-3">
                             <strong>Organisation:</strong>
@@ -656,18 +668,7 @@
                                 Gespeichert
                             </small>
                         </div>
-                        <div class="mb-3">
-                            <strong>Node:</strong>
-                            <div>{% if item.nodes.first %}{{ item.nodes.first.name }} ({{ item.nodes.first.type }}){% else %}<span class="text-muted">—</span>{% endif %}</div>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Created:</strong>
-                            <div><small class="text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</small></div>
-                        </div>
-                        <div class="mb-0">
-                            <strong>Updated:</strong>
-                            <div><small class="text-muted">{{ item.updated_at|date:"Y-m-d H:i" }}</small></div>
-                        </div>
+                                   
                     </div>
                 </div>
                 
