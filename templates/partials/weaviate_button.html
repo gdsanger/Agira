@@ -3,7 +3,7 @@
     <!-- Weaviate is not configured/available -->
     <button 
         type="button" 
-        class="btn btn-outline-secondary btn-sm"
+        class="btn btn-outline-secondary"
         disabled
         title="Weaviate service is not configured">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-database" viewBox="0 0 16 16">
@@ -15,7 +15,7 @@
     <!-- Weaviate is available, show status -->
     <button 
         type="button" 
-        class="btn btn-sm {% if exists %}btn-success{% else %}btn-danger{% endif %}"
+        class="btn {% if exists %}btn-outline-success{% else %}btn-outline-danger{% endif %}"
         data-bs-toggle="modal" 
         data-bs-target="#weaviateModal"
         hx-get="{% url 'weaviate-object' object_type object_id %}"
