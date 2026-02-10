@@ -207,10 +207,5 @@
         const toast = new bootstrap.Toast(toastEl);
         toast.show();
     }
-    
-    // Listen for toast trigger from HTMX
-    document.body.addEventListener('showToast', function(evt) {
-        showToast('Settings updated successfully', 'success');
-    });
 </script>
 {% endblock %}
