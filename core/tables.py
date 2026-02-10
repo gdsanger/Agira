@@ -242,8 +242,6 @@ class RelatedItemsTable(tables.Table):
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
             'ReadyForRelease': 'bg-success',
-            'Planing': 'bg-info',
-            'Specification': 'bg-info',
             'Closed': 'bg-dark',
         }
         color = status_colors.get(value, 'bg-secondary')
@@ -367,8 +365,6 @@ class EmbedItemTable(tables.Table):
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
             'ReadyForRelease': 'bg-success',
-            'Planing': 'bg-info',
-            'Specification': 'bg-info',
             'Closed': 'bg-dark',
         }
         color = status_colors.get(value, 'bg-secondary')
@@ -518,8 +514,6 @@ class ReleaseItemsTable(tables.Table):
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
             'ReadyForRelease': 'bg-success',
-            'Planing': 'bg-info',
-            'Specification': 'bg-info',
             'Closed': 'bg-dark',
         }
         color = status_colors.get(value, 'bg-secondary')

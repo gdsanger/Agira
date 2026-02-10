@@ -158,23 +158,6 @@ class ItemsReadyView(StatusItemListView):
     page_description = "Items ready to be released"
 
 
-class ItemsPlanningView(StatusItemListView):
-    """Items Planning - items in planning phase.
-    
-    Note: Uses ItemStatus.PLANING (not PLANNING) to match model definition.
-    """
-    item_status = ItemStatus.PLANING
-    page_title = "Items - Planning"
-    page_description = "Items in planning phase"
-
-
-class ItemsSpecificationView(StatusItemListView):
-    """Items Specification - items in specification phase."""
-    item_status = ItemStatus.SPECIFICATION
-    page_title = "Items - Specification"
-    page_description = "Items in specification phase"
-
-
 class ItemsKanbanView(LoginRequiredMixin, FilterView):
     """
     Kanban board view for all non-closed items.
@@ -208,8 +191,6 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
         status_order = [
             ItemStatus.INBOX,
             ItemStatus.BACKLOG,
-            ItemStatus.PLANING,
-            ItemStatus.SPECIFICATION,
             ItemStatus.WORKING,
             ItemStatus.TESTING,
             ItemStatus.READY_FOR_RELEASE,

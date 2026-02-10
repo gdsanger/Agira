@@ -694,8 +694,6 @@ class GitHubSyncWorkerTestCase(TestCase):
             ItemStatus.WORKING,
             ItemStatus.TESTING,
             ItemStatus.READY_FOR_RELEASE,
-            ItemStatus.PLANING,
-            ItemStatus.SPECIFICATION,
         ]
         
         for i, status in enumerate(statuses_to_test):
