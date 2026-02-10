@@ -198,6 +198,10 @@ urlpatterns = [
     path('global-settings/', views.global_settings_detail, name='global-settings'),
     path('global-settings/update/', views.global_settings_update, name='global-settings-update'),
     
+    # System Setting URLs
+    path('system-setting/', views.system_setting_detail, name='system-setting'),
+    path('system-setting/update/', views.system_setting_update, name='system-setting-update'),
+    
     # Public URLs (no authentication required)
     path('public/logo.png', views.public_logo, name='public-logo'),
     # Change Policy URLs

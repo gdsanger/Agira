@@ -1556,6 +1556,68 @@ class GlobalSettings(models.Model):
         return instance
 
 
+class SystemSetting(models.Model):
+    """
+    System settings (Singleton).
+    Only one instance should exist in the database.
+    Stores system-wide configuration like system name, company info, and logo.
+    """
+    # ID is auto-increment by default, no need to explicitly define it
+    system_name = models.CharField(
+        max_length=255,
+        default="Agira Issue Tracking v1.0",
+        help_text="System name"
+    )
+    company = models.CharField(
+        max_length=255,
+        default="Agira Software Enterprises",
+        help_text="Company name"
+    )
+    company_logo = models.ImageField(
+        upload_to='system_settings/',
+        blank=True,
+        null=True,
+        help_text="Company logo (PNG, JPG, WEBP, GIF - max 5 MB). Stored as relative path."
+    )
+    email = models.EmailField(
+        default="agira@angermeier.net",
+        help_text="Company contact email address"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'System Setting'
+        verbose_name_plural = 'System Settings'
+
+    def __str__(self):
+        return f"System Settings - {self.system_name}"
+
+    def save(self, *args, **kwargs):
+        """
+        Enforce singleton pattern - ensure only one instance exists.
+        """
+        if not self.pk and SystemSetting.objects.exists():
+            # If trying to create a new instance when one already exists
+            raise ValidationError("Only one SystemSetting instance can exist.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """
+        Prevent deletion of system settings.
+        """
+        # Do nothing - prevent deletion
+        pass
+
+    @classmethod
+    def get_instance(cls):
+        """
+        Get the singleton instance, creating it with defaults if it doesn't exist.
+        """
+        instance, created = cls.objects.get_or_create(pk=1)
+        return instance
+
+
 class IssueBlueprintCategory(models.Model):
     """
     Global categories for issue blueprints.

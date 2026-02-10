@@ -10,7 +10,7 @@ from .models import (
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
     ExternalIssueKind, MailTemplate, OrganisationEmbedProject,
-    IssueOpenQuestion, IssueStandardAnswer, GlobalSettings,
+    IssueOpenQuestion, IssueStandardAnswer, GlobalSettings, SystemSetting,
     IssueBlueprintCategory, IssueBlueprint
 )
 from core.services.github.service import GitHubService
@@ -625,6 +625,26 @@ class GlobalSettingsAdmin(ConfigurationAdmin):
         (None, {'fields': ('company_name', 'email', 'base_url')}),
         ('Address', {'fields': ('address',)}),
         ('Logo', {'fields': ('logo',)}),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(SystemSetting)
+class SystemSettingAdmin(ConfigurationAdmin):
+    """Admin for SystemSetting singleton"""
+    
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of system settings
+        return False
+    
+    fieldsets = (
+        (None, {'fields': ('system_name', 'company', 'email')}),
+        ('Logo', {'fields': ('company_logo',)}),
         ('Metadata', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
