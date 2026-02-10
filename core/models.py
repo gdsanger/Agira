@@ -580,12 +580,6 @@ class Item(models.Model):
         if self.solution_release and self.solution_release.project != self.project:
             errors['solution_release'] = _('Solution release must belong to the same project.')
 
-        # If project has clients, organisation must be one of them
-        if self.organisation:
-            project_clients = list(self.project.clients.all())
-            if project_clients and self.organisation not in project_clients:
-                errors['organisation'] = _('Organisation must be one of the project clients.')
-
         # Requester must be member of organisation (if organisation is set)
         if self.requester and self.organisation:
             if not UserOrganisation.objects.filter(user=self.requester, organisation=self.organisation).exists():
