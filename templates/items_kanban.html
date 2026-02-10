@@ -208,7 +208,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!response.ok) {
                 throw new Error('Failed to update status');
             }
-            return response.json().catch(() => response.text());
+            // Check content type to determine how to parse the response
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            }
+            return response.text();
         })
         .then(data => {
             // Move card to new column
