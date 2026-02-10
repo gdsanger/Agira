@@ -199,6 +199,10 @@
                         <span class="sidebar-section-title">Configuration</span>
                     </a>
                     <div class="collapse" id="configCollapse">
+                        <a href="{% url 'system-setting' %}" class="sidebar-link sidebar-link-sub {% if 'system-setting' in request.resolver_match.url_name %}active{% endif %}">
+                            <i class="bi bi-sliders sidebar-icon"></i>
+                            <span class="sidebar-text">System Settings</span>
+                        </a>
                         <a href="{% url 'global-settings' %}" class="sidebar-link sidebar-link-sub {% if 'global-settings' in request.resolver_match.url_name %}active{% endif %}">
                             <i class="bi bi-gear-fill sidebar-icon"></i>
                             <span class="sidebar-text">Global Settings</span>

@@ -27,7 +27,7 @@ from .models import (
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
-    GlobalSettings, ChangePolicy, ChangePolicyRole)
+    GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -7854,6 +7854,63 @@ def public_logo(request):
     except Exception as e:
         logger.error(f"Error serving logo: {e}")
         raise Http404("Logo file not found")
+
+
+# System Setting Views
+
+@login_required
+def system_setting_detail(request):
+    """System Setting detail view (singleton)."""
+    setting = SystemSetting.get_instance()
+    
+    context = {
+        'setting': setting,
+    }
+    return render(request, 'system_setting_detail.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def system_setting_update(request):
+    """Update System Setting."""
+    setting = SystemSetting.get_instance()
+    
+    try:
+        # Update fields only if they have a value (not empty string)
+        system_name = request.POST.get('system_name', '').strip()
+        if system_name:
+            setting.system_name = system_name
+        
+        company = request.POST.get('company', '').strip()
+        if company:
+            setting.company = company
+        
+        email = request.POST.get('email', '').strip()
+        if email:
+            setting.email = email
+        
+        # Handle logo upload
+        if 'company_logo' in request.FILES:
+            # Delete old logo if exists
+            if setting.company_logo:
+                setting.company_logo.delete(save=False)
+            setting.company_logo = request.FILES['company_logo']
+        
+        setting.full_clean()  # Validate before saving
+        setting.save()
+        
+        # Return success toast trigger
+        response = HttpResponse()
+        response['HX-Trigger'] = 'showToast'
+        return response
+        
+    except ValidationError as e:
+        error_msg = ', '.join([f"{k}: {', '.join(v)}" for k, v in e.message_dict.items()])
+        return HttpResponse(f"Validation error: {error_msg}", status=400)
+    except Exception as e:
+        return HttpResponse(f"Error updating settings: {str(e)}", status=400)
+
+
 # Change Policy Views
 
 @login_required
