@@ -6285,9 +6285,9 @@ def change_delete(request, id):
 
 @login_required
 def change_print(request, id):
-    """Generate and return PDF report for a change."""
-    from io import BytesIO
-    from reports.change_pdf import build_change_pdf
+    """Generate and return PDF report for a change using Weasyprint."""
+    from datetime import datetime
+    from core.printing import PdfRenderService
     
     # Get the change with all related data
     change = get_object_or_404(
@@ -6297,17 +6297,36 @@ def change_print(request, id):
         id=id
     )
     
-    # Create PDF in memory
-    buffer = BytesIO()
-    build_change_pdf(change, buffer)
+    # Get associated items
+    items = change.get_associated_items()
     
-    # Get PDF bytes
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
+    # Get approvals
+    approvals = change.approvals.select_related('approver').all()
+    
+    # Get organisations
+    organisations = change.organisations.all()
+    
+    # Prepare context for template
+    context = {
+        'change': change,
+        'items': items,
+        'approvals': approvals,
+        'organisations': organisations,
+        'now': datetime.now(),
+    }
+    
+    # Render PDF using Weasyprint
+    service = PdfRenderService()
+    result = service.render(
+        template_name='printing/change_report.html',
+        context=context,
+        base_url=request.build_absolute_uri('/'),
+        filename=f'change_{id}.pdf'
+    )
     
     # Create response with PDF
-    response = HttpResponse(pdf_bytes, content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="change_{id}.pdf"'
+    response = HttpResponse(result.pdf_bytes, content_type=result.content_type)
+    response['Content-Disposition'] = f'inline; filename="{result.filename}"'
     
     return response
 
