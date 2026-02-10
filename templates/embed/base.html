@@ -13,6 +13,10 @@
     
     <style>
         /* Footer styles for embed view */
+        :root {
+            --footer-height: 50px;
+        }
+        
         body {
             display: flex;
             flex-direction: column;
@@ -28,7 +32,7 @@
             bottom: 0;
             left: 0;
             right: 0;
-            height: 50px;
+            height: var(--footer-height);
             background-color: #121720;
             border-top: 1px solid #2a3140;
             display: flex;
