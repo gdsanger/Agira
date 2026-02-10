@@ -119,8 +119,10 @@ The chosen solution (vanilla Fetch API) is:
 - `/core/views.py` - No changes needed (backend already correct)
 
 ## References
-- Issue: gdsanger/Agira#368
-- Related PRs: gdsanger/Agira#478, gdsanger/Agira#479
+- Original Issue: gdsanger/Agira#368 (SystemSetting model and UserUI integration)
+- Related PRs: 
+  - gdsanger/Agira#478 (Initial implementation attempt)
+  - gdsanger/Agira#479 (SystemSetting model implementation)
 - HTMX 2.x file upload limitations: Known issue in HTMX community
 
 ## Future Considerations

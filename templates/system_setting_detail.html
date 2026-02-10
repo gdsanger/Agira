@@ -220,11 +220,16 @@
             const formData = new FormData(form);
             
             // Send request
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            if (!csrfToken) {
+                throw new Error('CSRF token not found');
+            }
+            
             fetch('{% url "system-setting-update" %}', {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    'X-CSRFToken': csrfToken
                 }
             })
             .then(response => {
