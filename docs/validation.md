@@ -111,7 +111,18 @@ if self.solution_release and self.solution_release.project != self.project:
 - **Impact**: Cannot assign an item to a release from a different project
 
 #### Organisation Client Validation
-**REMOVED** - This validation has been removed to allow users without complete organization assignment to create issues in the Customer Portal. Agents will manually verify organization assignments when processing issues.
+**Status**: REMOVED (2026-02)
+
+Previously enforced:
+```python
+if self.organisation:
+    project_clients = list(self.project.clients.all())
+    if project_clients and self.organisation not in project_clients:
+        errors['organisation'] = _('Organisation must be one of the project clients.')
+```
+- **Removal Reason**: This validation was preventing users without complete organisation assignment from creating issues in the Customer Portal Embed
+- **Impact**: Items can now be created with any organisation, regardless of project client relationships
+- **Note**: Agents will manually verify and correct organisation assignments when processing issues
 
 #### Requester Organisation Membership Validation
 ```python
