@@ -9,6 +9,19 @@
     margin: 18mm 20mm 18mm 20mm; /* top, right, bottom, left */
 }
 
+/* Header-specific styles */
+.header-content h2 {
+    margin: 0;
+    padding: 0;
+    border: none;
+    font-size: 14pt;
+    color: #1a202c;
+}
+
+.header-content img {
+    display: block;
+}
+
 /* Typography */
 body {
     font-family: 'Helvetica', 'Arial', sans-serif;
@@ -123,8 +136,15 @@ table.data-table tbody tr:nth-child(even) {
 {% endblock %}
 
 {% block header_content %}
-<div style="text-align: center; font-size: 9pt; color: #4a5568;">
-    <strong>Change Report</strong> – {{ change.project.name }}
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5em 0;">
+    <div style="flex: 1;">
+        <h2 style="margin: 0; font-size: 14pt; color: #1a202c;">{{ system_setting.system_name }}</h2>
+    </div>
+    {% if system_setting.company_logo %}
+    <div style="flex: 0 0 auto; text-align: right;">
+        <img src="{{ system_setting.company_logo.url }}" alt="Company Logo" style="max-height: 40px; max-width: 150px;" />
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -330,9 +350,9 @@ table.data-table tbody tr:nth-child(even) {
 {% endblock %}
 
 {% block footer_left %}
-{{ change.project.name }} – Change {{ change.id }}
+{{ change_reference }}_Change.pdf
 {% endblock %}
 
 {% block footer_center %}
-Vertraulich
+{{ now|date:"Y-m-d H:i" }}
 {% endblock %}

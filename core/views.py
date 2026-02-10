@@ -6306,6 +6306,14 @@ def change_print(request, id):
     # Get organisations
     organisations = change.organisations.all()
     
+    # Get system settings for header/footer
+    system_setting = SystemSetting.get_instance()
+    
+    # Generate filename following pattern: {Change-Referenz}_Change.pdf
+    # Change-Referenz format: YYYYMMDD-ID (e.g., 20260209-324)
+    change_reference = f"{change.created_at.strftime('%Y%m%d')}-{change.id}"
+    filename = f"{change_reference}_Change.pdf"
+    
     # Prepare context for template
     context = {
         'change': change,
@@ -6313,6 +6321,8 @@ def change_print(request, id):
         'approvals': approvals,
         'organisations': organisations,
         'now': datetime.now(),
+        'system_setting': system_setting,
+        'change_reference': change_reference,
     }
     
     # Render PDF using Weasyprint
@@ -6321,7 +6331,7 @@ def change_print(request, id):
         template_name='printing/change_report.html',
         context=context,
         base_url=request.build_absolute_uri('/'),
-        filename=f'change_{id}.pdf'
+        filename=filename
     )
     
     # Create response with PDF
