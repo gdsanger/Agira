@@ -81,8 +81,6 @@ class ItemStatus(models.TextChoices):
     WORKING = 'Working', _('🚧 Working')
     TESTING = 'Testing', _('🧪 Testing')
     READY_FOR_RELEASE = 'ReadyForRelease', _('✅ Ready for Release')
-    PLANING = 'Planing', _('📅 Planing')
-    SPECIFICATION = 'Specification', _('📝 Specification')
     CLOSED = 'Closed', _('✔ Closed')
 
 

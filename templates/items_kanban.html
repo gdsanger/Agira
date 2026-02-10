@@ -333,15 +333,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function updateItemStatus(itemId, newStatus, cardElement, targetColumn) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         const formData = new FormData();
         formData.append('status', newStatus);
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
         
         fetch(`/items/${itemId}/change-status/`, {
             method: 'POST',
             body: formData,
             headers: {
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': csrfToken
             }
         })
         .then(response => {
