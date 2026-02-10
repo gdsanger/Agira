@@ -7,7 +7,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import Change, ChangeStatus, Project, User, RiskLevel
+from core.models import Change, ChangeStatus, Project, User, RiskLevel, SystemSetting
 from core.printing import PdfRenderService
 
 
@@ -98,7 +98,11 @@ class ChangePDFReportTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertIn('inline', response['Content-Disposition'])
-        self.assertIn(f'change_{self.change.id}.pdf', response['Content-Disposition'])
+        
+        # Verify new filename format: {YYYYMMDD-ID}_Change.pdf
+        expected_reference = f"{self.change.created_at.strftime('%Y%m%d')}-{self.change.id}"
+        expected_filename = f"{expected_reference}_Change.pdf"
+        self.assertIn(expected_filename, response['Content-Disposition'])
         
         # Verify PDF content
         pdf_content = response.content
@@ -166,6 +170,41 @@ class ChangePDFReportTestCase(TestCase):
         # Should generate valid PDF
         self.assertGreater(len(result.pdf_bytes), 0)
         self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
+    
+    def test_pdf_generation_with_system_setting(self):
+        """Test that PDF generation includes SystemSetting context"""
+        # Get or create system settings
+        system_setting = SystemSetting.get_instance()
+        
+        service = PdfRenderService()
+        
+        # Generate change reference
+        change_reference = f"{self.change.created_at.strftime('%Y%m%d')}-{self.change.id}"
+        
+        context = {
+            'change': self.change,
+            'items': self.change.get_associated_items(),
+            'approvals': self.change.approvals.all(),
+            'organisations': self.change.organisations.all(),
+            'now': datetime.now(),
+            'system_setting': system_setting,
+            'change_reference': change_reference,
+        }
+        
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'{change_reference}_Change.pdf'
+        )
+        
+        # Should generate valid PDF
+        self.assertGreater(len(result.pdf_bytes), 0)
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
+        
+        # Verify filename format
+        expected_filename = f"{change_reference}_Change.pdf"
+        self.assertEqual(result.filename, expected_filename)
 
 
 class ChangeAssociatedItemsTestCase(TestCase):
