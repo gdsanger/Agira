@@ -114,6 +114,7 @@ urlpatterns = [
     path('changes/<int:id>/approvers/<int:approval_id>/attachments/<int:attachment_id>/remove/', views.change_remove_approver_attachment, name='change-remove-approver-attachment'),
     path('changes/<int:id>/approvals/<int:approval_id>/approve/', views.change_approve, name='change-approve'),
     path('changes/<int:id>/approvals/<int:approval_id>/reject/', views.change_reject, name='change-reject'),
+    path('changes/<int:id>/approvals/<int:approval_id>/abstain/', views.change_abstain, name='change-abstain'),
     # AI-assisted Change Management endpoints
     path('changes/<int:id>/ai/polish-risk-description/', views.change_polish_risk_description, name='change-polish-risk-description'),
     path('changes/<int:id>/ai/optimize-mitigation/', views.change_optimize_mitigation, name='change-optimize-mitigation'),

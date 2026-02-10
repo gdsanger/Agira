@@ -6418,14 +6418,18 @@ def change_remove_approver(request, id, approval_id):
 
 @require_http_methods(["POST"])
 def change_approve(request, id, approval_id):
-    """Approve a change."""
+    """Approve a change - Sets status to Accept and approved_at to current time."""
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
     try:
-        approval.status = ApprovalStatus.APPROVED
+        # Set approved_at to current server time
+        approval.approved_at = timezone.now()
+        # Set status to Accept (new enum value)
+        approval.status = ApprovalStatus.ACCEPT
+        # Set decision_at
         approval.decision_at = timezone.now()
-        approval.comment = request.POST.get('comment', '')
+        
         approval.save()
         
         # Log activity
@@ -6447,17 +6451,29 @@ def change_approve(request, id, approval_id):
 
 
 @login_required
-
 @require_http_methods(["POST"])
 def change_reject(request, id, approval_id):
-    """Reject a change."""
+    """Reject a change - Sets status to Reject and saves required comment."""
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
     try:
-        approval.status = ApprovalStatus.REJECTED
+        # Get comment from request - it's required for reject
+        comment = request.POST.get('comment', '').strip()
+        
+        if not comment:
+            return JsonResponse({
+                'success': False,
+                'error': 'Comment is required for rejection'
+            }, status=400)
+        
+        # Set status to Reject (new enum value)
+        approval.status = ApprovalStatus.REJECT
+        # Save the comment
+        approval.comment = comment
+        # Set decision_at
         approval.decision_at = timezone.now()
-        approval.comment = request.POST.get('comment', '')
+        
         approval.save()
         
         # Log activity
@@ -6480,6 +6496,45 @@ def change_reject(request, id, approval_id):
 
 @login_required
 @require_http_methods(["POST"])
+def change_abstain(request, id, approval_id):
+    """Abstain from a change - Sets status to Abstained and saves optional comment."""
+    change = get_object_or_404(Change, id=id)
+    approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
+    
+    try:
+        # Get comment from request - it's optional for abstained
+        comment = request.POST.get('comment', '').strip()
+        
+        # Set status to Abstained
+        approval.status = ApprovalStatus.ABSTAINED
+        # Save the comment if provided
+        if comment:
+            approval.comment = comment
+        # Set decision_at
+        approval.decision_at = timezone.now()
+        
+        approval.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='change.abstained',
+            target=change,
+            actor=request.user if request.user.is_authenticated else None,
+            summary=f'{approval.approver.name} abstained from approving the change'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Abstention recorded',
+            'reload': True
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
 def change_update_approver(request, id, approval_id):
     """Update approver details including new fields and attachment."""
     from core.services.storage.service import AttachmentStorageService
@@ -6491,16 +6546,6 @@ def change_update_approver(request, id, approval_id):
     MAX_FILE_SIZE = 10 * 1024 * 1024
     
     try:
-        # Update informed_at
-        informed_at = request.POST.get('informed_at')
-        if informed_at:
-            approval.informed_at = informed_at
-        else:
-            approval.informed_at = None
-        
-        # Update approved flag - checkbox sends 'true' when checked, nothing when unchecked
-        approval.approved = request.POST.get('approved') == 'true'
-        
         # Update approved_at
         approved_at = request.POST.get('approved_at')
         if approved_at:
@@ -6511,12 +6556,6 @@ def change_update_approver(request, id, approval_id):
         # Update notes and comment
         approval.notes = request.POST.get('notes', '')
         approval.comment = request.POST.get('comment', '')
-        
-        # Update status based on approved flag
-        if approval.approved:
-            approval.status = ApprovalStatus.APPROVED
-            if not approval.decision_at:
-                approval.decision_at = approval.approved_at or timezone.now()
         
         approval.save()
         
