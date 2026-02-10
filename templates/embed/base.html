@@ -11,6 +11,77 @@
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
+    <style>
+        /* Footer styles for embed view */
+        :root {
+            --footer-height: 50px;
+        }
+        
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        .container-fluid {
+            flex: 1;
+        }
+        
+        .app-footer {
+            position: sticky;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--footer-height);
+            background-color: #121720;
+            border-top: 1px solid #2a3140;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 900;
+            margin-top: auto;
+        }
+
+        .footer-content {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.875rem;
+            color: #cbd5e1;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 0 1rem;
+        }
+
+        .footer-content a {
+            color: #6366f1;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .footer-content a:hover {
+            color: #8b5cf6;
+            text-decoration: underline;
+        }
+
+        .footer-separator {
+            color: #64748b;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 768px) {
+            .app-footer {
+                height: auto;
+                padding: 0.75rem 0;
+            }
+            
+            .footer-content {
+                font-size: 0.75rem;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+    
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -39,6 +110,19 @@
         
         {% block content %}{% endblock %}
     </div>
+    
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <span>© {% now "Y" %} Christian Angermeier</span>
+            <span class="footer-separator">|</span>
+            <span>Licensed under <a href="https://github.com/gdsanger/Agira/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Business Source License 1.1</a></span>
+            <span class="footer-separator">|</span>
+            <a href="https://github.com/gdsanger/Agira" target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-github"></i> GitHub Repository
+            </a>
+        </div>
+    </footer>
     
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
