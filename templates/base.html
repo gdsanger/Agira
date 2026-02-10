@@ -133,6 +133,10 @@
                         <span class="sidebar-section-title">Items</span>
                     </a>
                     <div class="collapse show" id="itemsCollapse">
+                        <a href="{% url 'items-kanban' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-kanban' %}active{% endif %}">
+                            <i class="bi bi-kanban sidebar-icon"></i>
+                            <span class="sidebar-text">Kanban</span>
+                        </a>
                         <a href="{% url 'items-inbox' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-inbox' %}active{% endif %}">
                             <i class="bi bi-inbox sidebar-icon"></i>
                             <span class="sidebar-text">Inbox</span>

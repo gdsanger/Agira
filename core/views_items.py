@@ -7,9 +7,9 @@ from django_tables2 import SingleTableMixin
 from django_filters.views import FilterView
 from django.conf import settings
 
-from .models import Item, ItemStatus, Project, ItemType, Organisation, User
+from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
 from .tables import ItemTable
-from .filters import ItemFilter
+from .filters import ItemFilter, KanbanFilter
 
 
 class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
@@ -173,3 +173,58 @@ class ItemsSpecificationView(StatusItemListView):
     item_status = ItemStatus.SPECIFICATION
     page_title = "Items - Specification"
     page_description = "Items in specification phase"
+
+
+class ItemsKanbanView(LoginRequiredMixin, FilterView):
+    """
+    Kanban board view for all non-closed items.
+    Shows items organized by status columns with drag-and-drop support.
+    """
+    model = Item
+    filterset_class = KanbanFilter
+    template_name = 'items_kanban.html'
+    context_object_name = 'items'
+    
+    def get_queryset(self):
+        """
+        Get all non-closed items with related data.
+        """
+        queryset = Item.objects.exclude(status=ItemStatus.CLOSED).select_related(
+            'project', 'type', 'organisation', 'requester', 'assigned_to', 'solution_release'
+        ).prefetch_related('external_mappings')
+        
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add items grouped by status and other context data.
+        """
+        context = super().get_context_data(**kwargs)
+        
+        # Get filtered items
+        filtered_items = context['object_list']
+        
+        # Define status order for Kanban columns
+        status_order = [
+            ItemStatus.INBOX,
+            ItemStatus.BACKLOG,
+            ItemStatus.PLANING,
+            ItemStatus.SPECIFICATION,
+            ItemStatus.WORKING,
+            ItemStatus.TESTING,
+            ItemStatus.READY_FOR_RELEASE,
+        ]
+        
+        # Group items by status
+        items_by_status = {}
+        for status in status_order:
+            items_by_status[status] = [
+                item for item in filtered_items if item.status == status
+            ]
+        
+        context['items_by_status'] = items_by_status
+        context['status_order'] = status_order
+        context['page_title'] = 'Kanban Board'
+        context['page_description'] = 'All non-closed items organized by status'
+        
+        return context
