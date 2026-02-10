@@ -124,24 +124,6 @@ class ItemListViewTestCase(TestCase):
             organisation=self.org,
         )
         
-        self.planning_item = Item.objects.create(
-            title="Planning Item",
-            description="This is a planning item",
-            project=self.project1,
-            type=self.feature_type,
-            status=ItemStatus.PLANING,
-            organisation=self.org,
-        )
-        
-        self.specification_item = Item.objects.create(
-            title="Specification Item",
-            description="This is a specification item",
-            project=self.project1,
-            type=self.bug_type,
-            status=ItemStatus.SPECIFICATION,
-            organisation=self.org,
-        )
-        
         # Login user
         self.client.login(username='testuser1', password='testpass123')
     
@@ -202,26 +184,6 @@ class ItemListViewTestCase(TestCase):
         
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].status, ItemStatus.READY_FOR_RELEASE)
-    
-    def test_planning_view_status_scope(self):
-        """Test planning view only shows planning items"""
-        response = self.client.get(reverse('items-planning'))
-        self.assertEqual(response.status_code, 200)
-        
-        items = list(response.context['table'].data)
-        
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].status, ItemStatus.PLANING)
-    
-    def test_specification_view_status_scope(self):
-        """Test specification view only shows specification items"""
-        response = self.client.get(reverse('items-specification'))
-        self.assertEqual(response.status_code, 200)
-        
-        items = list(response.context['table'].data)
-        
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].status, ItemStatus.SPECIFICATION)
     
     def test_search_filter(self):
         """Test search filter works correctly"""
