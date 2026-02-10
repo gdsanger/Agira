@@ -683,9 +683,9 @@ def changes(request):
     # Annotate with approval counts
     changes_list = changes_list.annotate(
         total_approvals=Count('approvals'),
-        approved_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.APPROVED)),
+        approved_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.ACCEPT)),
         pending_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.PENDING)),
-        rejected_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.REJECTED))
+        rejected_count=Count('approvals', filter=Q(approvals__status=ApprovalStatus.REJECT))
     )
     
     # Get all projects, statuses and risk levels for filter dropdowns
