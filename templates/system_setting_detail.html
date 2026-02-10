@@ -29,11 +29,7 @@
                 <h5 class="mb-0">System Information</h5>
             </div>
             <div class="card-body">
-                <form hx-post="{% url 'system-setting-update' %}" 
-                      hx-swap="none"
-                      hx-encoding="multipart/form-data"
-                      enctype="multipart/form-data"
-                      hx-on::after-request="if(event.detail.successful) { showToast('Settings updated successfully', 'success'); location.reload(); }">
+                <form id="settingsForm" enctype="multipart/form-data">
                     {% csrf_token %}
                     
                     <div class="mb-3">
@@ -106,7 +102,7 @@
                     </div>
                     
                     <div class="d-flex justify-content-end gap-2">
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary" id="save-btn">
                             <i class="bi bi-save"></i> Save Settings
                         </button>
                     </div>
@@ -207,5 +203,55 @@
         const toast = new bootstrap.Toast(toastEl);
         toast.show();
     }
+    
+    // Handle form submission with fetch API (HTMX 2.x has issues with file uploads)
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('settingsForm');
+        const saveBtn = document.getElementById('save-btn');
+        
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Disable button to prevent double submission
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+            
+            // Prepare form data
+            const formData = new FormData(form);
+            
+            // Send request
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            if (!csrfToken) {
+                throw new Error('CSRF token not found');
+            }
+            
+            fetch('{% url "system-setting-update" %}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': csrfToken
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    showToast('Settings updated successfully', 'success');
+                    // Reload page after a short delay to show the updated values
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to update settings');
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast(error.message || 'An error occurred while updating settings', 'error');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-save"></i> Save Settings';
+            });
+        });
+    });
 </script>
 {% endblock %}
