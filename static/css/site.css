@@ -46,6 +46,7 @@
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 70px;
     --right-sidebar-width: 350px;
+    --footer-height: 50px;
 }
 
 body {
@@ -166,7 +167,7 @@ body {
 .layout-container {
     display: flex;
     margin-top: var(--topbar-height);
-    min-height: calc(100vh - var(--topbar-height) - 50px); /* Subtract footer height */
+    min-height: calc(100vh - var(--topbar-height) - var(--footer-height));
 }
 
 /* Sidebar */
@@ -307,7 +308,7 @@ body {
     margin-left: var(--sidebar-width);
     flex: 1;
     padding: 2rem;
-    min-height: calc(100vh - var(--topbar-height) - 50px); /* Subtract footer height */
+    min-height: calc(100vh - var(--topbar-height) - var(--footer-height));
     transition: margin-left 0.3s ease, margin-right 0.3s ease;
 }
 
@@ -1373,7 +1374,7 @@ a:hover {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 50px;
+    height: var(--footer-height);
     background-color: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
     display: flex;
