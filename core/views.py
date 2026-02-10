@@ -580,7 +580,6 @@ def items_ready(request):
     }
     return render(request, 'items_ready.html', context)
 
-@login_required
 def get_open_github_issues_count():
     """
     Get count of open GitHub issues linked to items with status Working or Testing.

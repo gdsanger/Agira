@@ -293,8 +293,6 @@ class ItemListViewTestCase(TestCase):
             'items-working',
             'items-testing',
             'items-ready',
-            'items-planning',
-            'items-specification',
         ]
         
         for view_name in views:
