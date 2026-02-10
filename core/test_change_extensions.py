@@ -103,21 +103,34 @@ class ChangeModelExtensionsTestCase(TestCase):
         self.assertIn(self.org2, self.change.organisations.all())
     
     def test_change_approval_new_fields(self):
-        """Test that ChangeApproval has the new fields"""
+        """Test that ChangeApproval has the new fields and status enum"""
         approval = ChangeApproval.objects.create(
             change=self.change,
             approver=self.approver_user,
             is_required=True,
-            informed_at=timezone.now(),
-            approved=True,
+            status=ApprovalStatus.ACCEPT,
             approved_at=timezone.now(),
             notes="Test notes"
         )
         
-        self.assertIsNotNone(approval.informed_at)
-        self.assertTrue(approval.approved)
+        self.assertEqual(approval.status, ApprovalStatus.ACCEPT)
         self.assertIsNotNone(approval.approved_at)
         self.assertEqual(approval.notes, "Test notes")
+        
+        # Test all status values
+        approval2 = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.regular_user,
+            status=ApprovalStatus.REJECT
+        )
+        self.assertEqual(approval2.status, ApprovalStatus.REJECT)
+        
+        approval3 = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.admin_user,
+            status=ApprovalStatus.ABSTAINED
+        )
+        self.assertEqual(approval3.status, ApprovalStatus.ABSTAINED)
     
     def test_approver_attachment_role_exists(self):
         """Test that APPROVER_ATTACHMENT role exists in AttachmentRole"""
@@ -272,14 +285,11 @@ class ChangeApproverManagementTestCase(TestCase):
             approver=self.approver
         )
         
-        informed_time = timezone.now()
         approved_time = timezone.now()
         
         response = self.client.post(
             reverse('change-update-approver', args=[self.change.id, approval.id]),
             {
-                'informed_at': informed_time.strftime('%Y-%m-%dT%H:%M'),
-                'approved': 'true',
                 'approved_at': approved_time.strftime('%Y-%m-%dT%H:%M'),
                 'notes': 'Test notes',
                 'comment': 'Test comment'
@@ -293,43 +303,118 @@ class ChangeApproverManagementTestCase(TestCase):
         if response.status_code == 200:
             response_data = response.json()
             if response_data.get('success'):
-                self.assertTrue(approval.approved)
-                self.assertIsNotNone(approval.informed_at)
                 self.assertIsNotNone(approval.approved_at)
                 self.assertEqual(approval.notes, 'Test notes')
                 self.assertEqual(approval.comment, 'Test comment')
 
-    def test_update_approver_uncheck_approved(self):
-        """Test unchecking the approved checkbox when editing an approver"""
-        # Create an already approved approval
+    def test_approve_action(self):
+        """Test the approve action sets status to Accept and approved_at"""
         approval = ChangeApproval.objects.create(
             change=self.change,
             approver=self.approver,
-            approved=True,
-            status=ApprovalStatus.APPROVED,
-            approved_at=timezone.now()
+            status=ApprovalStatus.PENDING
         )
         
-        # Update without the 'approved' field (simulating unchecked checkbox)
         response = self.client.post(
-            reverse('change-update-approver', args=[self.change.id, approval.id]),
-            {
-                'notes': 'Updated notes',
-                'comment': 'Updated comment'
-                # Note: 'approved' is not sent when checkbox is unchecked
-            }
+            reverse('change-approve', args=[self.change.id, approval.id])
         )
         
         # Refresh from database
         approval.refresh_from_db()
         
-        # Verify that approved flag is now False
+        # Verify
         self.assertEqual(response.status_code, 200)
         response_data = response.json()
         self.assertTrue(response_data.get('success'))
-        self.assertFalse(approval.approved)
-        self.assertEqual(approval.notes, 'Updated notes')
-        self.assertEqual(approval.comment, 'Updated comment')
+        self.assertEqual(approval.status, ApprovalStatus.ACCEPT)
+        self.assertIsNotNone(approval.approved_at)
+        self.assertIsNotNone(approval.decision_at)
+    
+    def test_reject_action_requires_comment(self):
+        """Test that reject action requires a comment"""
+        approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.approver,
+            status=ApprovalStatus.PENDING
+        )
+        
+        # Try to reject without comment
+        response = self.client.post(
+            reverse('change-reject', args=[self.change.id, approval.id]),
+            {}
+        )
+        
+        # Should fail
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data.get('success'))
+        self.assertIn('required', response_data.get('error', '').lower())
+        
+        # Now reject with comment
+        response = self.client.post(
+            reverse('change-reject', args=[self.change.id, approval.id]),
+            {'comment': 'This change has issues'}
+        )
+        
+        # Refresh from database
+        approval.refresh_from_db()
+        
+        # Verify
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data.get('success'))
+        self.assertEqual(approval.status, ApprovalStatus.REJECT)
+        self.assertEqual(approval.comment, 'This change has issues')
+        self.assertIsNotNone(approval.decision_at)
+    
+    def test_abstain_action_optional_comment(self):
+        """Test that abstain action allows optional comment"""
+        approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.approver,
+            status=ApprovalStatus.PENDING
+        )
+        
+        # Abstain without comment
+        response = self.client.post(
+            reverse('change-abstain', args=[self.change.id, approval.id]),
+            {}
+        )
+        
+        # Refresh from database
+        approval.refresh_from_db()
+        
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data.get('success'))
+        self.assertEqual(approval.status, ApprovalStatus.ABSTAINED)
+        self.assertEqual(approval.comment, '')
+        self.assertIsNotNone(approval.decision_at)
+        
+        # Create another approval to test with comment
+        approval2 = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.admin,
+            status=ApprovalStatus.PENDING
+        )
+        
+        # Abstain with comment
+        response = self.client.post(
+            reverse('change-abstain', args=[self.change.id, approval2.id]),
+            {'comment': 'Not my area of expertise'}
+        )
+        
+        # Refresh from database
+        approval2.refresh_from_db()
+        
+        # Verify
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data.get('success'))
+        self.assertEqual(approval2.status, ApprovalStatus.ABSTAINED)
+        self.assertEqual(approval2.comment, 'Not my area of expertise')
+        self.assertIsNotNone(approval2.decision_at)
 
 
 class ChangeAITextImprovementTestCase(TestCase):
