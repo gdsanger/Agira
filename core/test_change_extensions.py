@@ -291,8 +291,7 @@ class ChangeApproverManagementTestCase(TestCase):
             reverse('change-update-approver', args=[self.change.id, approval.id]),
             {
                 'approved_at': approved_time.strftime('%Y-%m-%dT%H:%M'),
-                'notes': 'Test notes',
-                'comment': 'Test comment'
+                'notes': 'Test notes'
             }
         )
         
@@ -305,7 +304,6 @@ class ChangeApproverManagementTestCase(TestCase):
             if response_data.get('success'):
                 self.assertIsNotNone(approval.approved_at)
                 self.assertEqual(approval.notes, 'Test notes')
-                self.assertEqual(approval.comment, 'Test comment')
 
     def test_approve_action(self):
         """Test the approve action sets status to Accept and approved_at"""

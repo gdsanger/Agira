@@ -364,7 +364,7 @@
                                         <button type="button"
                                                 class="btn btn-success btn-sm"
                                                 hx-post="{% url 'change-approve' change.id approval.id %}"
-                                                hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
+                                                hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
                                             <i class="bi bi-check-lg"></i> Approve
                                         </button>
                                         <button type="button"
@@ -413,16 +413,6 @@
                                                   name="notes" 
                                                   rows="3">{{ approval.notes }}</textarea>
                                         <small class="text-muted">Internal notes about the approval process</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="comment_{{ approval.id }}" class="form-label">Comment</label>
-                                        <textarea class="form-control" 
-                                                  id="comment_{{ approval.id }}" 
-                                                  name="comment" 
-                                                  rows="2" 
-                                                  readonly>{{ approval.comment }}</textarea>
-                                        <small class="text-muted">Public comment from approver (set via actions)</small>
                                     </div>
                                     
                                     <!-- Attachments Section -->
@@ -521,7 +511,7 @@
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <form hx-post="{% url 'change-abstain' change.id approval.id %}" 
-                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) { bootstrap.Modal.getInstance(document.getElementById('abstainModal{{ approval.id }}')).hide(); location.reload(); } }">
+                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) { bootstrap.Modal.getInstance(document.getElementById('abstainModal{{ approval.id }}')).hide(); location.reload(); } } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
                                     {% csrf_token %}
                                     <div class="modal-body">
                                         <div class="alert alert-info">

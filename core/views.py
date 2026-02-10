@@ -6553,9 +6553,8 @@ def change_update_approver(request, id, approval_id):
         else:
             approval.approved_at = None
         
-        # Update notes and comment
+        # Update notes (comment is only updated via approve/reject/abstain actions)
         approval.notes = request.POST.get('notes', '')
-        approval.comment = request.POST.get('comment', '')
         
         approval.save()
         
