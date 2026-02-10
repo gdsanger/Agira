@@ -186,13 +186,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function updateItemStatus(itemId, newStatus, cardElement, targetColumn) {
-        const csrfTokenElement = document.querySelector('[name=csrfmiddlewaretoken]');
+        const csrfTokenElement = document.querySelector('meta[name="csrf-token"]');
         if (!csrfTokenElement) {
             console.error('CSRF token not found');
             showToast('Failed to update status: Security token missing', 'danger');
             return;
         }
-        const csrfToken = csrfTokenElement.value;
+        const csrfToken = csrfTokenElement.getAttribute('content');
         const formData = new FormData();
         formData.append('status', newStatus);
         
