@@ -1,0 +1,338 @@
+{% extends "printing/base.html" %}
+
+{% block title %}Change Report - {{ change.id }}{% endblock %}
+
+{% block inline_styles %}
+/* Custom styles for Change PDF report with specified margins */
+@page {
+    size: A4;
+    margin: 18mm 20mm 18mm 20mm; /* top, right, bottom, left */
+}
+
+/* Typography */
+body {
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #333;
+}
+
+h1 {
+    font-size: 18pt;
+    font-weight: bold;
+    margin-bottom: 10pt;
+    color: #1a202c;
+}
+
+h2 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin-top: 15pt;
+    margin-bottom: 8pt;
+    color: #2d3748;
+    border-bottom: 1px solid #cbd5e0;
+    padding-bottom: 3pt;
+}
+
+/* Key-value table styles */
+table.kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15pt;
+}
+
+table.kv-table th,
+table.kv-table td {
+    border: 0.5pt solid #cbd5e0;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+}
+
+table.kv-table th {
+    background-color: #4a5568;
+    color: white;
+    font-weight: bold;
+}
+
+table.kv-table tbody tr:nth-child(odd) {
+    background-color: #f7fafc;
+}
+
+table.kv-table tbody tr:nth-child(even) {
+    background-color: white;
+}
+
+table.kv-table td:first-child {
+    font-weight: bold;
+    width: 35%;
+}
+
+/* Data table styles */
+table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15pt;
+}
+
+table.data-table th,
+table.data-table td {
+    border: 0.5pt solid #cbd5e0;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+}
+
+table.data-table th {
+    background-color: #4a5568;
+    color: white;
+    font-weight: bold;
+}
+
+table.data-table tbody tr:nth-child(odd) {
+    background-color: #f7fafc;
+}
+
+table.data-table tbody tr:nth-child(even) {
+    background-color: white;
+}
+
+/* Metadata section */
+.metadata {
+    font-size: 9pt;
+    color: #718096;
+    margin-bottom: 15pt;
+}
+
+/* Text content */
+.text-content {
+    margin-bottom: 10pt;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.text-label {
+    font-weight: bold;
+    margin-bottom: 5pt;
+}
+
+.empty-value {
+    color: #a0aec0;
+    font-style: italic;
+}
+{% endblock %}
+
+{% block header_content %}
+<div style="text-align: center; font-size: 9pt; color: #4a5568;">
+    <strong>Change Report</strong> – {{ change.project.name }}
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- 1. HEADER SECTION -->
+<h1>Change Report</h1>
+
+<div class="metadata">
+    <strong>Change-Referenz:</strong> {{ change.created_at|date:"Ymd" }}-{{ change.id }}<br>
+    <strong>Report erstellt:</strong> {{ now|date:"Y-m-d H:i:s" }}
+</div>
+
+<!-- 2. CHANGE OVERVIEW SECTION -->
+<h2>Change-Übersicht</h2>
+
+<table class="kv-table">
+    <thead>
+        <tr>
+            <th>Feld</th>
+            <th>Wert</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Titel</td>
+            <td>{{ change.title|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Projekt</td>
+            <td>{{ change.project.name|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>{{ change.get_status_display|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Risikostufe</td>
+            <td>{{ change.get_risk_display|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Safety Relevant</td>
+            <td>{% if change.is_safety_relevant %}Ja{% else %}Nein{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Release</td>
+            <td>{% if change.release %}{{ change.release.version }} ({{ change.release.get_type_display }}){% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Erstellt von</td>
+            <td>{{ change.created_by.name|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Erstellt am</td>
+            <td>{% if change.created_at %}{{ change.created_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Aktualisiert am</td>
+            <td>{% if change.updated_at %}{{ change.updated_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- 3. DESCRIPTION & JUSTIFICATION SECTION -->
+<h2>Beschreibung &amp; Begründung</h2>
+
+<div class="text-label">Beschreibung:</div>
+<div class="text-content">
+    {% if change.description %}{{ change.description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}
+</div>
+
+<div class="text-label">Risikobeschreibung:</div>
+<div class="text-content">
+    {% if change.risk_description %}{{ change.risk_description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}
+</div>
+
+<!-- 4. IMPLEMENTATION / PLAN SECTION -->
+<h2>Implementierung &amp; Planung</h2>
+
+<table class="kv-table">
+    <thead>
+        <tr>
+            <th>Planungsaspekt</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Geplanter Start</td>
+            <td>{% if change.planned_start %}{{ change.planned_start|date:"Y-m-d H:i:s" }}{% else %}Nicht geplant{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Geplantes Ende</td>
+            <td>{% if change.planned_end %}{{ change.planned_end|date:"Y-m-d H:i:s" }}{% else %}Nicht geplant{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Geplantes Datum</td>
+            <td>{% if change.planned_date %}{{ change.planned_date|date:"Y-m-d" }}{% else %}Nicht geplant{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Ausgeführt am</td>
+            <td>{% if change.executed_at %}{{ change.executed_at|date:"Y-m-d H:i:s" }}{% else %}Noch nicht ausgeführt{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="text-label">Mitigation Plan:</div>
+<div class="text-content">
+    {% if change.mitigation %}{{ change.mitigation }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}
+</div>
+
+<div class="text-label">Rollback Plan:</div>
+<div class="text-content">
+    {% if change.rollback_plan %}{{ change.rollback_plan }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}
+</div>
+
+<div class="text-label">Kommunikationsplan:</div>
+<div class="text-content">
+    {% if change.communication_plan %}{{ change.communication_plan }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}
+</div>
+
+<!-- 5. APPROVALS / REVIEW / AUDIT TRAIL SECTION -->
+<h2>Genehmigungen &amp; Review</h2>
+
+{% if approvals %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Genehmiger</th>
+            <th>Status</th>
+            <th>Erforderlich</th>
+            <th>Genehmigt am</th>
+            <th>Kommentar</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for approval in approvals %}
+        <tr>
+            <td>{{ approval.approver.name|default:"—" }}</td>
+            <td>{{ approval.get_status_display|default:"—" }}</td>
+            <td>{% if approval.is_required %}Ja{% else %}Nein{% endif %}</td>
+            <td>{% if approval.approved_at %}{{ approval.approved_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+            <td>{% if approval.comment %}{% if approval.comment|length > 50 %}{{ approval.comment|slice:":50" }}...{% else %}{{ approval.comment }}{% endif %}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty-value">Keine Genehmiger zugewiesen</p>
+{% endif %}
+
+<!-- 6. ITEMS SECTION -->
+{% if items %}
+<h2>Items aus Release</h2>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Item ID</th>
+            <th>Typ</th>
+            <th>Titel</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.id }}</td>
+            <td>{{ item.type.name|default:"—" }}</td>
+            <td>{{ item.title|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- 7. ORGANISATIONS SECTION -->
+{% if organisations %}
+<h2>Zugeordnete Organisationen</h2>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Organisationsname</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for org in organisations %}
+        <tr>
+            <td>{{ org.name }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- 8. ATTACHMENTS / REFERENCES SECTION -->
+<h2>Anhänge &amp; Referenzen</h2>
+
+<p class="empty-value">
+    Anhangslisten würden hier erscheinen (nur Metadaten).<br>
+    Hinweis: Binärdaten werden aus Compliance-Gründen nicht in diesem Bericht eingebettet.
+</p>
+
+{% endblock %}
+
+{% block footer_left %}
+{{ change.project.name }} – Change {{ change.id }}
+{% endblock %}
+
+{% block footer_center %}
+Vertraulich
+{% endblock %}

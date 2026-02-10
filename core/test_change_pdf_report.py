@@ -2,13 +2,13 @@
 Tests for Change PDF Report functionality
 """
 
-from io import BytesIO
+from datetime import datetime
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Change, ChangeStatus, Project, User, RiskLevel
-from reports.change_pdf import build_change_pdf
+from core.printing import PdfRenderService
 
 
 class ChangePDFReportTestCase(TestCase):
@@ -46,15 +46,30 @@ class ChangePDFReportTestCase(TestCase):
         )
     
     def test_pdf_generation_function(self):
-        """Test that PDF generation function works"""
-        buffer = BytesIO()
-        build_change_pdf(self.change, buffer)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        """Test that PDF generation function works with Weasyprint"""
+        service = PdfRenderService()
+        
+        # Prepare context
+        context = {
+            'change': self.change,
+            'items': self.change.get_associated_items(),
+            'approvals': self.change.approvals.all(),
+            'organisations': self.change.organisations.all(),
+            'now': datetime.now(),
+        }
+        
+        # Generate PDF
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'change_{self.change.id}.pdf'
+        )
         
         # Verify PDF was generated
-        self.assertGreater(len(pdf_bytes), 0, "PDF should not be empty")
-        self.assertTrue(pdf_bytes.startswith(b'%PDF'), "Output should be a valid PDF")
+        self.assertGreater(len(result.pdf_bytes), 0, "PDF should not be empty")
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'), "Output should be a valid PDF")
+        self.assertEqual(result.content_type, 'application/pdf')
     
     def test_change_print_url_exists(self):
         """Test that the print URL is configured"""
@@ -86,7 +101,7 @@ class ChangePDFReportTestCase(TestCase):
         self.assertIn(f'change_{self.change.id}.pdf', response['Content-Disposition'])
         
         # Verify PDF content
-        pdf_content = b''.join(response.streaming_content) if hasattr(response, 'streaming_content') else response.content
+        pdf_content = response.content
         self.assertTrue(pdf_content.startswith(b'%PDF'), "Response should be a valid PDF")
     
     def test_pdf_generation_with_empty_fields(self):
@@ -99,14 +114,25 @@ class ChangePDFReportTestCase(TestCase):
             risk=RiskLevel.LOW
         )
         
-        buffer = BytesIO()
-        build_change_pdf(minimal_change, buffer)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        service = PdfRenderService()
+        context = {
+            'change': minimal_change,
+            'items': minimal_change.get_associated_items(),
+            'approvals': minimal_change.approvals.all(),
+            'organisations': minimal_change.organisations.all(),
+            'now': datetime.now(),
+        }
+        
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'change_{minimal_change.id}.pdf'
+        )
         
         # Should still generate valid PDF
-        self.assertGreater(len(pdf_bytes), 0)
-        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+        self.assertGreater(len(result.pdf_bytes), 0)
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
     
     def test_pdf_generation_with_multiline_text(self):
         """Test PDF generation handles multiline text correctly"""
@@ -121,14 +147,25 @@ class ChangePDFReportTestCase(TestCase):
             risk=RiskLevel.HIGH
         )
         
-        buffer = BytesIO()
-        build_change_pdf(multiline_change, buffer)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        service = PdfRenderService()
+        context = {
+            'change': multiline_change,
+            'items': multiline_change.get_associated_items(),
+            'approvals': multiline_change.approvals.all(),
+            'organisations': multiline_change.organisations.all(),
+            'now': datetime.now(),
+        }
+        
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'change_{multiline_change.id}.pdf'
+        )
         
         # Should generate valid PDF
-        self.assertGreater(len(pdf_bytes), 0)
-        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+        self.assertGreater(len(result.pdf_bytes), 0)
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
 
 
 class ChangeAssociatedItemsTestCase(TestCase):
@@ -273,25 +310,44 @@ class ChangeAssociatedItemsTestCase(TestCase):
     
     def test_pdf_includes_release_items(self):
         """Test that PDF report includes release items"""
-        buffer = BytesIO()
-        build_change_pdf(self.change_with_release, buffer)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        service = PdfRenderService()
+        context = {
+            'change': self.change_with_release,
+            'items': self.change_with_release.get_associated_items(),
+            'approvals': self.change_with_release.approvals.all(),
+            'organisations': self.change_with_release.organisations.all(),
+            'now': datetime.now(),
+        }
+        
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'change_{self.change_with_release.id}.pdf'
+        )
         
         # Verify PDF was generated
-        self.assertGreater(len(pdf_bytes), 0)
-        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
-        
-        # Note: Full PDF content verification would require PDF parsing library
-        # For now, we verify that the PDF is generated without errors
+        self.assertGreater(len(result.pdf_bytes), 0)
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
     
     def test_pdf_without_items(self):
         """Test that PDF generation works for change without items"""
-        buffer = BytesIO()
-        build_change_pdf(self.change_without_release, buffer)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        service = PdfRenderService()
+        context = {
+            'change': self.change_without_release,
+            'items': self.change_without_release.get_associated_items(),
+            'approvals': self.change_without_release.approvals.all(),
+            'organisations': self.change_without_release.organisations.all(),
+            'now': datetime.now(),
+        }
+        
+        result = service.render(
+            template_name='printing/change_report.html',
+            context=context,
+            base_url='http://localhost:8000/',
+            filename=f'change_{self.change_without_release.id}.pdf'
+        )
         
         # Should still generate valid PDF
-        self.assertGreater(len(pdf_bytes), 0)
-        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+        self.assertGreater(len(result.pdf_bytes), 0)
+        self.assertTrue(result.pdf_bytes.startswith(b'%PDF'))
