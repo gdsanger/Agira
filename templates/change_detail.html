@@ -352,6 +352,10 @@
                                         <div class="col-md-6">
                                             <strong>Approved At:</strong> {{ approval.approved_at|date:"Y-m-d H:i" }}
                                         </div>
+                                        {% elif approval.decision_at %}
+                                        <div class="col-md-6">
+                                            <strong>Decision At:</strong> {{ approval.decision_at|date:"Y-m-d H:i" }}
+                                        </div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -397,13 +401,13 @@
                                     {% csrf_token %}
                                     
                                     <div class="mb-3">
-                                        <label for="approved_at_{{ approval.id }}" class="form-label">Approved At</label>
+                                        <label for="approved_at_{{ approval.id }}" class="form-label">Approved At (Accept only)</label>
                                         <input type="datetime-local" 
                                                class="form-control" 
                                                id="approved_at_{{ approval.id }}" 
                                                name="approved_at"
                                                value="{% if approval.approved_at %}{{ approval.approved_at|date:'Y-m-d\TH:i' }}{% endif %}">
-                                        <small class="text-muted">Manual override for approved date/time</small>
+                                        <small class="text-muted">Manual override for approval date/time (only applicable for Accept status)</small>
                                     </div>
                                     
                                     <div class="mb-3">
