@@ -4,7 +4,7 @@ Django filters for Item model.
 import django_filters
 from django import forms
 from functools import cached_property
-from .models import Item, Project, ItemType, Organisation, User
+from .models import Item, Project, ItemType, Organisation, User, Release
 
 
 class ItemFilter(django_filters.FilterSet):
@@ -75,6 +75,66 @@ class ItemFilter(django_filters.FilterSet):
             return queryset.filter(
                 Q(title__icontains=value) | Q(description__icontains=value)
             )
+        return queryset
+
+
+class KanbanFilter(django_filters.FilterSet):
+    """
+    FilterSet for Kanban view.
+    Supports filtering by search query (title only), project, release, organisation, and requester.
+    """
+    # Search filter (title only for Kanban)
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Search',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by title...'
+        })
+    )
+    
+    # Project filter
+    project = django_filters.ModelChoiceFilter(
+        queryset=Project.objects.all().order_by('name'),
+        label='Project',
+        empty_label='All Projects',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Release filter
+    solution_release = django_filters.ModelChoiceFilter(
+        queryset=Release.objects.all().order_by('-planned_date'),
+        label='Release',
+        empty_label='All Releases',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Organisation filter
+    organisation = django_filters.ModelChoiceFilter(
+        queryset=Organisation.objects.all().order_by('name'),
+        label='Organisation',
+        empty_label='All Organisations',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    # Requester filter
+    requester = django_filters.ModelChoiceFilter(
+        queryset=User.objects.filter(active=True).order_by('username'),
+        label='Requester',
+        empty_label='All Requesters',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        model = Item
+        fields = ['q', 'project', 'solution_release', 'organisation', 'requester']
+    
+    def filter_search(self, queryset, name, value):
+        """
+        Filter items by search query in title only.
+        """
+        if value:
+            return queryset.filter(title__icontains=value)
         return queryset
 
 

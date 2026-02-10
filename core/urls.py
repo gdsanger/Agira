@@ -43,6 +43,7 @@ urlpatterns = [
     path('projects/attachments/<int:attachment_id>/view/', views.project_view_attachment, name='project-view-attachment'),
     path('projects/attachments/<int:attachment_id>/download/', views.project_download_attachment, name='project-download-attachment'),
     path('projects/<int:id>/import-github-issues/', views.project_import_github_issues, name='project-import-github-issues'),
+    path('items/kanban/', views_items.ItemsKanbanView.as_view(), name='items-kanban'),
     path('items/inbox/', views_items.ItemsInboxView.as_view(), name='items-inbox'),
     path('items/backlog/', views_items.ItemsBacklogView.as_view(), name='items-backlog'),
     path('items/working/', views_items.ItemsWorkingView.as_view(), name='items-working'),

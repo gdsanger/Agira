@@ -97,3 +97,20 @@ def release_status_badge_class(status):
     }
     return status_colors.get(status, 'bg-secondary')  # Default to secondary if unknown
 
+
+@register.filter
+def lookup(dictionary, key):
+    """
+    Lookup a key in a dictionary.
+    
+    Args:
+        dictionary: Dictionary to lookup
+        key: Key to lookup
+        
+    Returns:
+        Value for the key or empty list if not found
+    """
+    if dictionary is None:
+        return []
+    return dictionary.get(key, [])
+
