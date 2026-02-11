@@ -92,3 +92,98 @@ class BlueprintDetailViewTestCase(TestCase):
         
         # Should show created by
         self.assertContains(response, self.user.username)
+
+
+class BlueprintCreateViewTestCase(TestCase):
+    """Test cases for blueprint create view"""
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create client
+        self.client = Client()
+        
+        # Create test user
+        self.user = User.objects.create(
+            username="testuser",
+            email="test@example.com",
+            name="Test User"
+        )
+        
+        # Log in the user
+        self.client.force_login(self.user)
+        
+        # Create blueprint category
+        self.category = IssueBlueprintCategory.objects.create(
+            name="Features",
+            slug="features",
+            is_active=True
+        )
+    
+    def test_blueprint_create_page_renders_without_error(self):
+        """Test that blueprint create page renders without NoReverseMatch error (Issue #373)"""
+        url = reverse('blueprint-create')
+        response = self.client.get(url)
+        
+        # Should return HTTP 200, not 500
+        # This test specifically addresses Issue #373 where the page failed
+        # with NoReverseMatch error when trying to use '0' as blueprint ID
+        self.assertEqual(response.status_code, 200)
+        
+        # Should not have any NoReverseMatch errors
+        self.assertNotContains(response, 'NoReverseMatch')
+        
+        # Should contain the form
+        self.assertContains(response, 'blueprintForm')
+
+
+class BlueprintEditViewTestCase(TestCase):
+    """Test cases for blueprint edit view"""
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create client
+        self.client = Client()
+        
+        # Create test user
+        self.user = User.objects.create(
+            username="testuser",
+            email="test@example.com",
+            name="Test User"
+        )
+        
+        # Log in the user
+        self.client.force_login(self.user)
+        
+        # Create blueprint category
+        self.category = IssueBlueprintCategory.objects.create(
+            name="Features",
+            slug="features",
+            is_active=True
+        )
+        
+        # Create blueprint
+        self.blueprint = IssueBlueprint.objects.create(
+            title="User Authentication",
+            category=self.category,
+            description_md="# Authentication\n\nImplement user authentication.",
+            is_active=True,
+            version=1,
+            created_by=self.user
+        )
+    
+    def test_blueprint_edit_page_renders_without_error(self):
+        """Test that blueprint edit page renders without NoReverseMatch error"""
+        url = reverse('blueprint-edit', kwargs={'id': self.blueprint.id})
+        response = self.client.get(url)
+        
+        # Should return HTTP 200, not 500
+        self.assertEqual(response.status_code, 200)
+        
+        # Should not have any NoReverseMatch errors
+        self.assertNotContains(response, 'NoReverseMatch')
+        
+        # Should contain the form
+        self.assertContains(response, 'blueprintForm')
+        
+        # Should contain the blueprint title in the form
+        self.assertContains(response, self.blueprint.title)
