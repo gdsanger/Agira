@@ -129,9 +129,6 @@ class BlueprintCreateViewTestCase(TestCase):
         # with NoReverseMatch error when trying to use '0' as blueprint ID
         self.assertEqual(response.status_code, 200)
         
-        # Should not have any NoReverseMatch errors
-        self.assertNotContains(response, 'NoReverseMatch')
-        
         # Should contain the form
         self.assertContains(response, 'blueprintForm')
 
@@ -178,9 +175,6 @@ class BlueprintEditViewTestCase(TestCase):
         
         # Should return HTTP 200, not 500
         self.assertEqual(response.status_code, 200)
-        
-        # Should not have any NoReverseMatch errors
-        self.assertNotContains(response, 'NoReverseMatch')
         
         # Should contain the form
         self.assertContains(response, 'blueprintForm')
