@@ -52,7 +52,7 @@ class ChangeApprovalInline(admin.TabularInline):
     extra = 1
     autocomplete_fields = ['approver']
     readonly_fields = ['decision_at', 'approved_at']
-    fields = ['approver', 'is_required', 'status', 'informed_at', 'approved', 'approved_at', 'decision_at', 'comment', 'notes']
+    fields = ['approver', 'is_required', 'status', 'approved_at', 'decision_at', 'comment', 'notes']
 
 
 class ChangePolicyRoleInline(admin.TabularInline):
@@ -196,16 +196,15 @@ class ChangeAdmin(admin.ModelAdmin):
 
 @admin.register(ChangeApproval)
 class ChangeApprovalAdmin(admin.ModelAdmin):
-    list_display = ['change', 'approver', 'is_required', 'status', 'informed_at', 'approved', 'approved_at', 'decision_at']
-    list_filter = ['status', 'is_required', 'approved']
+    list_display = ['change', 'approver', 'is_required', 'status', 'approved_at', 'decision_at']
+    list_filter = ['status', 'is_required']
     search_fields = ['change__title', 'approver__username']
     autocomplete_fields = ['change', 'approver']
     readonly_fields = ['decision_at', 'approved_at']
     
     fieldsets = (
         (None, {'fields': ('change', 'approver', 'is_required')}),
-        ('Status', {'fields': ('status', 'approved', 'decision_at', 'approved_at')}),
-        ('Timeline', {'fields': ('informed_at',)}),
+        ('Status', {'fields': ('status', 'decision_at', 'approved_at')}),
         ('Comments & Notes', {'fields': ('comment', 'notes')}),
     )
 
