@@ -4612,6 +4612,91 @@ def project_import_github_issues(request, id):
         }, status=500)
 
 
+@login_required
+@require_POST
+def project_sync_markdown(request, id):
+    """Synchronize markdown files from GitHub repository for a project."""
+    from core.services.github.service import GitHubService
+    from core.services.github_sync.markdown_sync import MarkdownSyncService
+    from core.services.integrations.base import IntegrationDisabled, IntegrationNotConfigured
+    
+    project = get_object_or_404(Project, id=id)
+    
+    # Check if project has GitHub repo configured
+    if not project.github_owner or not project.github_repo:
+        return JsonResponse({
+            'success': False,
+            'error': 'Project does not have a GitHub repository configured'
+        }, status=400)
+    
+    try:
+        # Initialize GitHub service
+        github_service = GitHubService()
+        
+        # Get GitHub client
+        client = github_service._get_client()
+        
+        # Initialize markdown sync service
+        markdown_service = MarkdownSyncService(github_client=client)
+        
+        # Sync markdown files for this project
+        stats = markdown_service.sync_project_markdown_files(project)
+        
+        # Prepare response message
+        if stats['files_created'] > 0 or stats['files_updated'] > 0:
+            message = (
+                f"Successfully synced {stats['files_found']} markdown file(s). "
+                f"Created: {stats['files_created']}, "
+                f"Updated: {stats['files_updated']}, "
+                f"Skipped: {stats['files_skipped']}"
+            )
+        elif stats['files_found'] > 0:
+            message = (
+                f"Found {stats['files_found']} markdown file(s), but all were up to date. "
+                f"No changes needed."
+            )
+        else:
+            message = "No markdown files found in the repository."
+        
+        # Add error info if there were errors
+        if stats['errors']:
+            message += f" Note: {len(stats['errors'])} error(s) occurred during sync."
+        
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'stats': stats,
+        })
+    
+    except IntegrationDisabled:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub integration is not enabled'
+        }, status=400)
+    
+    except IntegrationNotConfigured:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub integration is not configured. Please configure GitHub token in admin.'
+        }, status=400)
+    
+    except ValueError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error syncing markdown files: {e}", exc_info=True)
+        
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred while syncing markdown files'
+        }, status=500)
+
+
 # ============================================================================
 # Organisation CRUD Views
 # ============================================================================
