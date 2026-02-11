@@ -179,6 +179,7 @@ urlpatterns = [
     # IssueBlueprint URLs
     path('configuration/blueprints/', views.blueprints, name='blueprints'),
     path('configuration/blueprints/new/', views.blueprint_create, name='blueprint-create'),
+    path('configuration/blueprints/create/submit/', views.blueprint_create_submit, name='blueprint-create-submit'),
     path('configuration/blueprints/import/', views.blueprint_import_form, name='blueprint-import-form'),
     path('configuration/blueprints/import/submit/', views.blueprint_import, name='blueprint-import'),
     path('configuration/blueprints/<uuid:id>/', views.blueprint_detail, name='blueprint-detail'),

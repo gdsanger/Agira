@@ -8238,6 +8238,14 @@ def blueprint_create(request):
 
 
 @login_required
+@require_http_methods(["POST"])
+def blueprint_create_submit(request):
+    """Handle POST request for creating a new blueprint."""
+    # Delegate to blueprint_update with id='0' to indicate creation
+    return blueprint_update(request, id='0')
+
+
+@login_required
 def blueprint_edit(request, id):
     """Show edit form for existing blueprint."""
     from .models import IssueBlueprint, IssueBlueprintCategory, RiskLevel

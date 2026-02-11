@@ -254,7 +254,7 @@ document.getElementById('blueprintForm').addEventListener('submit', async functi
     try {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         
-        const response = await fetch('{% if blueprint %}{% url "blueprint-update" blueprint.id %}{% else %}{% url "blueprint-update" "0" %}{% endif %}', {
+        const response = await fetch('{% if blueprint %}{% url "blueprint-update" blueprint.id %}{% else %}{% url "blueprint-create-submit" %}{% endif %}', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken
