@@ -457,6 +457,20 @@
                     </span>
                 </button>
             </div>
+            <div class="mt-2">
+                <button 
+                    id="syncMarkdownBtn"
+                    class="btn btn-sm btn-outline-secondary w-100"
+                    hx-post="{% url 'project-sync-markdown' project.id %}"
+                    hx-swap="none"
+                    hx-indicator="#syncMarkdownSpinner"
+                    hx-on::after-request="handleSyncMarkdownResponse(event)">
+                    <span id="syncMarkdownBtnText">📝 Sync Markdown from GitHub</span>
+                    <span id="syncMarkdownSpinner" class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </span>
+                </button>
+            </div>
         </div>
         {% endif %}
 
@@ -862,6 +876,35 @@ function handleImportResponse(event) {
             showToast('error', 'Import Failed', response.error || 'Failed to import issues');
         } catch (e) {
             showToast('error', 'Error', 'Failed to import issues');
+        }
+    }
+}
+
+function handleSyncMarkdownResponse(event) {
+    const xhr = event.detail.xhr;
+    const btn = document.getElementById('syncMarkdownBtn');
+    
+    if (xhr.status === 200) {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                showToast('success', 'Sync Complete', response.message);
+                // Reload page to show newly synced attachments
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', 'Sync Failed', response.error || 'Failed to sync markdown files');
+            }
+        } catch (e) {
+            showToast('error', 'Error', 'An unexpected error occurred');
+        }
+    } else {
+        try {
+            const response = JSON.parse(xhr.responseText);
+            showToast('error', 'Sync Failed', response.error || 'Failed to sync markdown files');
+        } catch (e) {
+            showToast('error', 'Error', 'Failed to sync markdown files');
         }
     }
 }
