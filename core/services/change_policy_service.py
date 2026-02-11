@@ -6,7 +6,7 @@ import logging
 from django.db import transaction
 from core.models import (
     Change, ChangePolicy, ChangeApproval, ChangePolicyRole,
-    UserRole, User
+    UserRole, User, ApprovalStatus
 )
 
 logger = logging.getLogger(__name__)
@@ -139,23 +139,23 @@ class ChangePolicyService:
                         f"No user found with role {required_role} for change {change.id}"
                     )
         
-        # Remove obsolete approvers (only if they haven't approved)
+        # Remove obsolete approvers (only if they haven't approved/rejected/abstained)
         for role, approvals in existing_roles.items():
             if role not in required_roles:
                 # This role is no longer required
                 for approval in approvals:
-                    # Only remove if not approved
-                    if not approval.approved and not approval.approved_at:
+                    # Only remove if still pending (not approved, rejected, or abstained)
+                    if approval.status == ApprovalStatus.PENDING:
                         logger.info(
                             f"Removing approver {approval.approver.username} with role {role} "
-                            f"for change {change.id} (no longer required and not approved)"
+                            f"for change {change.id} (no longer required and still pending)"
                         )
                         approval.delete()
                         approvers_removed += 1
                     else:
                         logger.info(
                             f"Keeping approver {approval.approver.username} with role {role} "
-                            f"for change {change.id} (already approved)"
+                            f"for change {change.id} (already processed with status: {approval.status})"
                         )
         
         return {

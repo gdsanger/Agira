@@ -310,13 +310,17 @@
                                         {% if approval.is_required %}
                                         <span class="badge bg-warning text-dark ms-1">Required</span>
                                         {% endif %}
-                                        {% if approval.approved %}
+                                        {% if approval.status == 'Accept' %}
                                         <span class="badge bg-success ms-1">
-                                            <i class="bi bi-check-lg"></i> Approved
+                                            <i class="bi bi-check-lg"></i> Accepted
                                         </span>
-                                        {% elif approval.status == 'Rejected' %}
+                                        {% elif approval.status == 'Reject' %}
                                         <span class="badge bg-danger ms-1">
                                             <i class="bi bi-x-lg"></i> Rejected
+                                        </span>
+                                        {% elif approval.status == 'Abstained' %}
+                                        <span class="badge bg-secondary ms-1">
+                                            <i class="bi bi-dash-circle"></i> Abstained
                                         </span>
                                         {% else %}
                                         <span class="badge bg-secondary ms-1">
@@ -329,44 +333,81 @@
                         </h2>
                         <div id="collapse{{ approval.id }}" class="accordion-collapse collapse" data-bs-parent="#approversAccordion">
                             <div class="accordion-body">
-                                <!-- Approver Details Form -->
+                                <!-- Status Information -->
+                                <div class="mb-3">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <strong>Status:</strong> 
+                                            {% if approval.status == 'Accept' %}
+                                                <span class="badge bg-success">Accepted</span>
+                                            {% elif approval.status == 'Reject' %}
+                                                <span class="badge bg-danger">Rejected</span>
+                                            {% elif approval.status == 'Abstained' %}
+                                                <span class="badge bg-secondary">Abstained</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Pending</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if approval.approved_at %}
+                                        <div class="col-md-6">
+                                            <strong>Approved At:</strong> {{ approval.approved_at|date:"Y-m-d H:i" }}
+                                        </div>
+                                        {% elif approval.decision_at %}
+                                        <div class="col-md-6">
+                                            <strong>Decision At:</strong> {{ approval.decision_at|date:"Y-m-d H:i" }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <!-- Actions (only if pending) -->
+                                {% if approval.status == 'Pending' %}
+                                <div class="mb-3">
+                                    <h6>Actions</h6>
+                                    <div class="btn-group" role="group">
+                                        <button type="button"
+                                                class="btn btn-success btn-sm"
+                                                hx-post="{% url 'change-approve' change.id approval.id %}"
+                                                hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
+                                            <i class="bi bi-check-lg"></i> Approve
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-danger btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#rejectModal{{ approval.id }}">
+                                            <i class="bi bi-x-lg"></i> Reject
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-secondary btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#abstainModal{{ approval.id }}">
+                                            <i class="bi bi-dash-circle"></i> Abstain
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <!-- Comment Display -->
+                                {% if approval.comment %}
+                                <div class="mb-3">
+                                    <strong>Comment:</strong>
+                                    <p class="mb-0">{{ approval.comment }}</p>
+                                </div>
+                                {% endif %}
+                                
+                                <!-- Approver Details Form (for notes and attachments) -->
                                 <form hx-post="{% url 'change-update-approver' change.id approval.id %}"
                                       hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
                                     {% csrf_token %}
                                     
                                     <div class="mb-3">
-                                        <label class="form-label">Approver</label>
-                                        <input type="text" class="form-control" value="{{ approval.approver.name }} ({{ approval.approver.username }})" readonly>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="informed_at_{{ approval.id }}" class="form-label">Informed At</label>
-                                        <input type="datetime-local" 
-                                               class="form-control" 
-                                               id="informed_at_{{ approval.id }}" 
-                                               name="informed_at"
-                                               value="{% if approval.informed_at %}{{ approval.informed_at|date:'Y-m-d\TH:i' }}{% endif %}">
-                                    </div>
-                                    
-                                    <div class="form-check mb-3">
-                                        <input class="form-check-input" 
-                                               type="checkbox" 
-                                               id="approved_{{ approval.id }}" 
-                                               name="approved" 
-                                               value="true" 
-                                               {% if approval.approved %}checked{% endif %}>
-                                        <label class="form-check-label" for="approved_{{ approval.id }}">
-                                            Approval granted
-                                        </label>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="approved_at_{{ approval.id }}" class="form-label">Approved At</label>
+                                        <label for="approved_at_{{ approval.id }}" class="form-label">Approved At (Accept only)</label>
                                         <input type="datetime-local" 
                                                class="form-control" 
                                                id="approved_at_{{ approval.id }}" 
                                                name="approved_at"
                                                value="{% if approval.approved_at %}{{ approval.approved_at|date:'Y-m-d\TH:i' }}{% endif %}">
+                                        <small class="text-muted">Manual override for approval date/time (only applicable for Accept status)</small>
                                     </div>
                                     
                                     <div class="mb-3">
@@ -376,15 +417,6 @@
                                                   name="notes" 
                                                   rows="3">{{ approval.notes }}</textarea>
                                         <small class="text-muted">Internal notes about the approval process</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="comment_{{ approval.id }}" class="form-label">Comment</label>
-                                        <textarea class="form-control" 
-                                                  id="comment_{{ approval.id }}" 
-                                                  name="comment" 
-                                                  rows="2">{{ approval.comment }}</textarea>
-                                        <small class="text-muted">Public comment from approver</small>
                                     </div>
                                     
                                     <!-- Attachments Section -->
@@ -430,6 +462,79 @@
                                                 hx-confirm="Remove this approver?"
                                                 hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); }">
                                             <i class="bi bi-trash"></i> Remove Approver
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Reject Modal for {{ approval.id }} -->
+                    <div class="modal fade" id="rejectModal{{ approval.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Reject Change</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form hx-post="{% url 'change-reject' change.id approval.id %}" 
+                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) { bootstrap.Modal.getInstance(document.getElementById('rejectModal{{ approval.id }}')).hide(); location.reload(); } } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <div class="alert alert-warning">
+                                            <i class="bi bi-exclamation-triangle"></i>
+                                            You are about to reject this change. A comment explaining the rejection is required.
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="reject_comment_{{ approval.id }}" class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
+                                            <textarea class="form-control" 
+                                                      id="reject_comment_{{ approval.id }}" 
+                                                      name="comment" 
+                                                      rows="4" 
+                                                      required
+                                                      placeholder="Please explain why you are rejecting this change..."></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-danger">
+                                            <i class="bi bi-x-lg"></i> Reject Change
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Abstain Modal for {{ approval.id }} -->
+                    <div class="modal fade" id="abstainModal{{ approval.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Abstain from Approval</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form hx-post="{% url 'change-abstain' change.id approval.id %}" 
+                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) { bootstrap.Modal.getInstance(document.getElementById('abstainModal{{ approval.id }}')).hide(); location.reload(); } } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-info-circle"></i>
+                                            You are about to abstain from approving this change. You may optionally provide a comment.
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="abstain_comment_{{ approval.id }}" class="form-label">Comment (Optional)</label>
+                                            <textarea class="form-control" 
+                                                      id="abstain_comment_{{ approval.id }}" 
+                                                      name="comment" 
+                                                      rows="4" 
+                                                      placeholder="Optional: Explain why you are abstaining..."></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-secondary">
+                                            <i class="bi bi-dash-circle"></i> Abstain
                                         </button>
                                     </div>
                                 </form>

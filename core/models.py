@@ -71,8 +71,9 @@ class ChangeStatus(models.TextChoices):
 
 class ApprovalStatus(models.TextChoices):
     PENDING = 'Pending', _('Pending')
-    APPROVED = 'Approved', _('Approved')
-    REJECTED = 'Rejected', _('Rejected')
+    ACCEPT = 'Accept', _('Accept')
+    REJECT = 'Reject', _('Reject')
+    ABSTAINED = 'Abstained', _('Abstained')
 
 
 class ItemStatus(models.TextChoices):
@@ -483,9 +484,7 @@ class ChangeApproval(models.Model):
     status = models.CharField(max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING)
     decision_at = models.DateTimeField(null=True, blank=True)
     comment = models.TextField(blank=True)
-    # New fields for enhanced approver management
-    informed_at = models.DateTimeField(null=True, blank=True, help_text="When the approver was informed about the change")
-    approved = models.BooleanField(default=False, help_text="Whether the approval has been granted")
+    # Enhanced approver management fields
     approved_at = models.DateTimeField(null=True, blank=True, help_text="When the approval was granted")
     notes = models.TextField(blank=True, help_text="Internal notes about the approval process")
 
