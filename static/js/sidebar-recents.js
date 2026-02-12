@@ -187,6 +187,19 @@
         if (!status) return '';
         return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
+    
+    /**
+     * Escape HTML entities for safe insertion into HTML
+     */
+    function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     /**
      * Render a single entry
@@ -198,15 +211,10 @@
         
         const typeIcon = getTypeIcon(entry.type);
         const typeLabel = getTypeLabel(entry.type);
-        const statusDisplay = entry.status ? formatStatus(entry.status) : '';
+        const statusDisplay = entry.status ? escapeHtml(formatStatus(entry.status)) : '';
         
         // Escape HTML entities in title for safe attribute usage
-        const escapedTitle = entry.title
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+        const escapedTitle = escapeHtml(entry.title);
         
         const pinButton = isPinned
             ? `<button class="btn btn-sm btn-link text-warning p-0 ms-1 recents-action" data-action="unpin" title="Entpinnen">
@@ -219,6 +227,21 @@
         const removeButton = `<button class="btn btn-sm btn-link text-danger p-0 ms-1 recents-action" data-action="remove" title="Entfernen">
                                   <i class="bi bi-x-circle"></i>
                               </button>`;
+        
+        // Build status container with HTMX attributes for periodic updates
+        // Only add HTMX for issue types that have an ID (not projects currently)
+        let statusHtml = '';
+        if (entry.type === 'issue' && entry.id) {
+            // Status container with HTMX polling - attributes on single line for HTML compatibility
+            const statusId = `recent-status-${entry.id}`;
+            // Note: URL hardcoded here as this is client-side JS. If URL pattern changes,
+            // update both here and in urls.py. Alternative would be to inject from Django template.
+            const statusEndpoint = `/items/${entry.id}/status/`;
+            statusHtml = `<span id="${statusId}" class="recents-entry-status" hx-get="${statusEndpoint}" hx-trigger="load, every 30s" hx-swap="innerHTML">${statusDisplay}</span>`;
+        } else if (statusDisplay) {
+            // Fallback for non-HTMX status display
+            statusHtml = `<span class="recents-entry-status">${statusDisplay}</span>`;
+        }
         
         return `
             <a href="${entry.url}" 
@@ -235,7 +258,7 @@
                     </div>
                     <div class="recents-entry-meta">
                         <span class="recents-entry-type">${typeLabel}</span>
-                        ${statusDisplay ? `<span class="recents-entry-status">${statusDisplay}</span>` : ''}
+                        ${statusHtml}
                     </div>
                 </div>
                 <div class="recents-entry-actions">
@@ -297,6 +320,11 @@
         }
         
         container.innerHTML = html;
+        
+        // Process HTMX attributes in the newly rendered content
+        if (typeof htmx !== 'undefined') {
+            htmx.process(container);
+        }
         
         // Initialize Bootstrap tooltips for the rendered entries
         initializeTooltips();
