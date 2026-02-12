@@ -1871,6 +1871,14 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="showAnswerForm(${q.id})">
                                 Beantworten
                             </button>
+                            {% if user.role == 'Agent' %}
+                            <button type="button" 
+                                    class="btn btn-sm btn-outline-success" 
+                                    id="ai-answer-btn-${q.id}"
+                                    onclick="answerWithAI(${q.id})">
+                                <i class="bi bi-robot"></i> Mit KI beantworten
+                            </button>
+                            {% endif %}
                             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissQuestion(${q.id})">
                                 Als erledigt markieren
                             </button>
@@ -2010,6 +2018,42 @@
         .catch(error => {
             console.error('Error:', error);
             alert('Fehler beim Markieren der Frage');
+        });
+    }
+    
+    function answerWithAI(questionId) {
+        const btn = document.getElementById('ai-answer-btn-' + questionId);
+        
+        // Disable button and show spinner
+        btn.disabled = true;
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>KI arbeitet...';
+        
+        fetch(`/open-questions/${questionId}/answer-ai/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Reload questions to show the AI answer
+                loadOpenQuestions();
+            } else {
+                // Re-enable button on error
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            // Re-enable button on error
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            alert('Fehler beim Beantworten mit KI');
         });
     }
     
