@@ -7,10 +7,20 @@ This module provides a centralized RAG service that performs hybrid search
 
 from .service import RAGPipelineService, build_context
 from .models import RAGContext, RAGContextObject
+from .extended_service import (
+    ExtendedRAGPipelineService,
+    build_extended_context,
+    ExtendedRAGContext,
+    OptimizedQuery,
+)
 
 __all__ = [
     "RAGPipelineService",
     "build_context",
     "RAGContext",
     "RAGContextObject",
+    "ExtendedRAGPipelineService",
+    "build_extended_context",
+    "ExtendedRAGContext",
+    "OptimizedQuery",
 ]

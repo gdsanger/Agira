@@ -1730,7 +1730,7 @@ def item_optimize_description_ai(request, item_id):
     
     Only available to users with Agent role.
     """
-    from core.services.rag import build_context
+    from core.services.rag import build_extended_context
     
     # Check user role
     if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
@@ -1751,15 +1751,17 @@ def item_optimize_description_ai(request, item_id):
                 'message': 'Item has no description to optimize'
             }, status=400)
         
-        # Build RAG context
-        rag_context = build_context(
+        # Build extended RAG context with question optimization
+        rag_context = build_extended_context(
             query=current_description,
             project_id=str(item.project.id),
-            limit=10
+            item_id=str(item.id),
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
         )
         
         # Build input text for agent: description + RAG context
-        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        context_text = rag_context.to_context_text() if rag_context.all_items else "No additional context found."
         
         agent_input = f"""Original Description:
 {current_description}
@@ -1912,7 +1914,7 @@ def item_generate_solution_ai(request, item_id):
     
     Only available to users with Agent role.
     """
-    from core.services.rag import build_context
+    from core.services.rag import build_extended_context
     
     # Check user role
     if request.user.role != UserRole.AGENT:
@@ -1933,15 +1935,17 @@ def item_generate_solution_ai(request, item_id):
                 'message': 'Item has no description. Please provide a description first.'
             }, status=400)
         
-        # Build RAG context
-        rag_context = build_context(
+        # Build extended RAG context with question optimization
+        rag_context = build_extended_context(
             query=current_description,
             project_id=str(item.project.id),
-            limit=10
+            item_id=str(item.id),
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
         )
         
         # Build input text for agent: description + RAG context
-        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        context_text = rag_context.to_context_text() if rag_context.all_items else "No additional context found."
         
         agent_input = f"""Item Description:
 {current_description}
@@ -2007,7 +2011,7 @@ def item_pre_review(request, item_id):
     Only available to users with Agent role.
     """
     import json
-    from core.services.rag import build_context
+    from core.services.rag import build_extended_context
     
     # Check user role
     if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
@@ -2028,15 +2032,17 @@ def item_pre_review(request, item_id):
                 'error': 'Item has no description to review'
             }, status=400)
         
-        # Build RAG context
-        rag_context = build_context(
+        # Build extended RAG context with question optimization
+        rag_context = build_extended_context(
             query=current_description,
             project_id=str(item.project.id),
-            limit=10
+            item_id=str(item.id),
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
         )
         
         # Build input text for agent: description + RAG context
-        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        context_text = rag_context.to_context_text() if rag_context.all_items else "No additional context found."
         
         agent_input = f"""Item Title: {item.title}
 
@@ -2177,7 +2183,7 @@ def item_rag_retrieval_raw(request, item_id):
     
     Only available to users with Agent role.
     """
-    from core.services.rag import build_context
+    from core.services.rag import build_extended_context
     from datetime import datetime
     
     # Check user role
@@ -2202,11 +2208,13 @@ def item_rag_retrieval_raw(request, item_id):
         # Record start time for duration calculation
         start_time = datetime.now()
         
-        # Build RAG context using the same configuration as item_optimize_description_ai
-        rag_context = build_context(
+        # Build extended RAG context with question optimization
+        rag_context = build_extended_context(
             query=query,
             project_id=str(item.project.id),
-            limit=10
+            item_id=str(item.id),
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
         )
         
         # Calculate duration
@@ -2242,7 +2250,7 @@ def _format_rag_results_as_markdown(query: str, rag_context, duration_ms: int) -
     
     Args:
         query: The original search query
-        rag_context: RAGContext object with search results
+        rag_context: RAGContext or ExtendedRAGContext object with search results
         duration_ms: Duration of the search in milliseconds
         
     Returns:
@@ -2253,15 +2261,31 @@ def _format_rag_results_as_markdown(query: str, rag_context, duration_ms: int) -
     
     lines = []
     
+    # Get items - handle both RAGContext and ExtendedRAGContext
+    items = getattr(rag_context, 'all_items', None) or getattr(rag_context, 'items', [])
+    alpha = getattr(rag_context, 'alpha', None)
+    
     # Header section
     lines.append("## RAG Retrieval (raw)")
     lines.append("")
     lines.append("### Header")
     lines.append(f"- **query:** `{query[:MAX_QUERY_DISPLAY_LENGTH]}{'...' if len(query) > MAX_QUERY_DISPLAY_LENGTH else ''}`")
     lines.append(f"- **search_type:** `hybrid`")
-    lines.append(f"- **alpha:** `{rag_context.alpha:.2f}`")
+    if alpha is not None:
+        lines.append(f"- **alpha:** `{alpha:.2f}`")
     lines.append(f"- **duration_ms:** `{duration_ms}`")
-    lines.append(f"- **hits:** `{len(rag_context.items)}`")
+    lines.append(f"- **hits:** `{len(items)}`")
+    
+    # Add extended RAG stats if available
+    if hasattr(rag_context, 'stats'):
+        stats = rag_context.stats
+        if stats.get('optimization_success'):
+            lines.append(f"- **optimization:** `success`")
+        if 'sem_results' in stats:
+            lines.append(f"- **semantic_results:** `{stats.get('sem_results', 0)}`")
+        if 'kw_results' in stats:
+            lines.append(f"- **keyword_results:** `{stats.get('kw_results', 0)}`")
+    
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -2270,11 +2294,10 @@ def _format_rag_results_as_markdown(query: str, rag_context, duration_ms: int) -
     lines.append("### Hits")
     lines.append("")
     
-    if not rag_context.items:
+    if not items:
         lines.append("*No hits found*")
     else:
         # Sort by score if available (descending), otherwise keep order as delivered
-        items = rag_context.items
         if items and items[0].relevance_score is not None:
             # Sort by score descending
             items = sorted(items, key=lambda x: x.relevance_score or 0, reverse=True)
@@ -2523,7 +2546,7 @@ def item_answer_question_ai(request, question_id):
     
     Only available to users with Agent role.
     """
-    from core.services.rag import build_context
+    from core.services.rag import build_extended_context
     from core.models import OpenQuestionAnswerType
     
     # Check user role
@@ -2552,15 +2575,16 @@ def item_answer_question_ai(request, question_id):
                 'message': 'Question has no text'
             }, status=400)
         
-        # Build RAG context using the question as search query
-        rag_context = build_context(
+        # Build extended RAG context using the question as search query
+        rag_context = build_extended_context(
             query=question_text,
             project_id=str(question.issue.project.id),
-            limit=10
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
         )
         
         # Build input text for agent: question + RAG context
-        context_text = rag_context.to_context_text() if rag_context.items else RAG_NO_CONTEXT_MESSAGE
+        context_text = rag_context.to_context_text() if rag_context.all_items else RAG_NO_CONTEXT_MESSAGE
         
         agent_input = f"""Question:
 {question_text}
