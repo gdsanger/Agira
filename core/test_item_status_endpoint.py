@@ -3,7 +3,7 @@ Tests for the item status HTMX endpoint.
 """
 from django.test import TestCase, Client
 from django.urls import reverse
-from core.models import Item, Project, ItemStatus, User
+from core.models import Item, Project, ItemStatus, ItemType, User
 
 
 class ItemStatusEndpointTestCase(TestCase):
@@ -30,7 +30,6 @@ class ItemStatusEndpointTestCase(TestCase):
         )
         
         # Create an item type
-        from core.models import ItemType
         self.item_type = ItemType.objects.create(
             key='bug',
             name='Bug',

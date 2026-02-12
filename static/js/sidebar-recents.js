@@ -224,8 +224,10 @@
         // Only add HTMX for issue types that have an ID (not projects currently)
         let statusHtml = '';
         if (entry.type === 'issue' && entry.id) {
-            // Status container with HTMX polling
-            statusHtml = `<span id="recent-status-${entry.id}" class="recents-entry-status" hx-get="/items/${entry.id}/status/" hx-trigger="load, every 30s" hx-swap="innerHTML">${statusDisplay}</span>`;
+            // Status container with HTMX polling - attributes on single line for HTML compatibility
+            const statusId = `recent-status-${entry.id}`;
+            const statusEndpoint = `/items/${entry.id}/status/`;
+            statusHtml = `<span id="${statusId}" class="recents-entry-status" hx-get="${statusEndpoint}" hx-trigger="load, every 30s" hx-swap="innerHTML">${statusDisplay}</span>`;
         } else if (statusDisplay) {
             // Fallback for non-HTMX status display
             statusHtml = `<span class="recents-entry-status">${statusDisplay}</span>`;
