@@ -733,6 +733,24 @@ def item_lookup(request, item_id):
         }, status=404)
 
 @login_required
+def item_status(request, item_id):
+    """
+    HTMX endpoint: Returns the current status of an item as HTML fragment.
+    Used for periodic status updates in the sidebar Recent Items.
+    
+    Authorization: Uses same visibility/permission logic as item_detail.
+    Returns: HTML fragment containing just the status badge.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Note: Currently no additional authorization beyond login is required.
+    # If item visibility/permission logic is added in the future, it should be checked here.
+    
+    return render(request, 'partials/item_status_badge.html', {
+        'item': item
+    })
+
+@login_required
 def item_detail(request, item_id):
     """Item detail page with tabs."""
     item = get_object_or_404(

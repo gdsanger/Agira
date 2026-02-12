@@ -220,6 +220,22 @@
                                   <i class="bi bi-x-circle"></i>
                               </button>`;
         
+        // Build status container with HTMX attributes for periodic updates
+        // Only add HTMX for issue types that have an ID (not projects currently)
+        let statusHtml = '';
+        if (entry.type === 'issue' && entry.id) {
+            // Status container with HTMX polling
+            statusHtml = `<span 
+                id="recent-status-${entry.id}" 
+                class="recents-entry-status"
+                hx-get="/items/${entry.id}/status/"
+                hx-trigger="load, every 30s"
+                hx-swap="innerHTML">${statusDisplay}</span>`;
+        } else if (statusDisplay) {
+            // Fallback for non-HTMX status display
+            statusHtml = `<span class="recents-entry-status">${statusDisplay}</span>`;
+        }
+        
         return `
             <a href="${entry.url}" 
                class="recents-entry ${activeClass}" 
@@ -235,7 +251,7 @@
                     </div>
                     <div class="recents-entry-meta">
                         <span class="recents-entry-type">${typeLabel}</span>
-                        ${statusDisplay ? `<span class="recents-entry-status">${statusDisplay}</span>` : ''}
+                        ${statusHtml}
                     </div>
                 </div>
                 <div class="recents-entry-actions">
@@ -297,6 +313,11 @@
         }
         
         container.innerHTML = html;
+        
+        // Process HTMX attributes in the newly rendered content
+        if (typeof htmx !== 'undefined') {
+            htmx.process(container);
+        }
         
         // Initialize Bootstrap tooltips for the rendered entries
         initializeTooltips();

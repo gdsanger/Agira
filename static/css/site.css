@@ -1288,6 +1288,9 @@ a:hover {
     color: var(--accent-primary);
     font-weight: 500;
     opacity: 0.8;
+    min-width: 80px;
+    display: inline-block;
+    text-align: left;
 }
 
 .recents-entry-actions {
