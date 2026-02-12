@@ -94,8 +94,13 @@ class ItemStatusEndpointTestCase(TestCase):
         # Login
         self.client.login(username='testuser', password='testpass123')
         
+        # Get a guaranteed non-existent item ID
+        from django.db.models import Max
+        max_id = Item.objects.aggregate(Max('id'))['id__max'] or 0
+        nonexistent_id = max_id + 1
+        
         # Try to get status for nonexistent item
-        url = reverse('item-status', args=[99999])
+        url = reverse('item-status', args=[nonexistent_id])
         response = self.client.get(url)
         
         # Should return 404

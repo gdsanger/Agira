@@ -187,6 +187,19 @@
         if (!status) return '';
         return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
+    
+    /**
+     * Escape HTML entities for safe insertion into HTML
+     */
+    function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     /**
      * Render a single entry
@@ -198,15 +211,10 @@
         
         const typeIcon = getTypeIcon(entry.type);
         const typeLabel = getTypeLabel(entry.type);
-        const statusDisplay = entry.status ? formatStatus(entry.status) : '';
+        const statusDisplay = entry.status ? escapeHtml(formatStatus(entry.status)) : '';
         
         // Escape HTML entities in title for safe attribute usage
-        const escapedTitle = entry.title
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+        const escapedTitle = escapeHtml(entry.title);
         
         const pinButton = isPinned
             ? `<button class="btn btn-sm btn-link text-warning p-0 ms-1 recents-action" data-action="unpin" title="Entpinnen">
