@@ -2191,13 +2191,13 @@ def item_rag_retrieval_raw(request, item_id):
     
     try:
         # Get current description to use as query
-        query = item.description or ""
-        
-        if not query.strip():
+        if not (item.description or "").strip():
             return JsonResponse({
                 'status': 'error',
                 'message': 'Item has no description to use as RAG query'
             }, status=400)
+        
+        query = item.description
         
         # Record start time for duration calculation
         start_time = datetime.now()
@@ -2248,13 +2248,16 @@ def _format_rag_results_as_markdown(query: str, rag_context, duration_ms: int) -
     Returns:
         Formatted Markdown string
     """
+    # Constants
+    MAX_QUERY_DISPLAY_LENGTH = 100
+    
     lines = []
     
     # Header section
     lines.append("## RAG Retrieval (raw)")
     lines.append("")
     lines.append("### Header")
-    lines.append(f"- **query:** `{query[:100]}{'...' if len(query) > 100 else ''}`")
+    lines.append(f"- **query:** `{query[:MAX_QUERY_DISPLAY_LENGTH]}{'...' if len(query) > MAX_QUERY_DISPLAY_LENGTH else ''}`")
     lines.append(f"- **search_type:** `hybrid`")
     lines.append(f"- **alpha:** `{rag_context.alpha:.2f}`")
     lines.append(f"- **duration_ms:** `{duration_ms}`")

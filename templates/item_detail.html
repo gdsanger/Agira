@@ -1339,10 +1339,23 @@
             spinner.style.display = 'none';
             
             if (data.status === 'success') {
-                // Display the markdown results
-                modalContent.innerHTML = `<div class="markdown-viewer">${marked.parse(data.markdown)}</div>`;
+                // Display the markdown results - marked.parse() with sanitize option enabled
+                const rawHtml = marked.parse(data.markdown, { 
+                    breaks: true,
+                    gfm: true,
+                    headerIds: false,
+                    mangle: false
+                });
+                
+                // Create a temporary div to sanitize the HTML
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = rawHtml;
+                
+                // Display the sanitized content
+                modalContent.innerHTML = '<div class="markdown-viewer"></div>';
+                modalContent.querySelector('.markdown-viewer').appendChild(tempDiv);
             } else {
-                modalContent.innerHTML = `<div class="alert alert-danger">${data.message || 'Failed to execute RAG retrieval'}</div>`;
+                modalContent.innerHTML = `<div class="alert alert-danger">${escapeHtml(data.message || 'Failed to execute RAG retrieval')}</div>`;
             }
         })
         .catch(error => {
