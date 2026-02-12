@@ -1875,7 +1875,8 @@
                             <button type="button" 
                                     class="btn btn-sm btn-outline-success" 
                                     id="ai-answer-btn-${q.id}"
-                                    onclick="answerWithAI(${q.id})">
+                                    onclick="answerWithAI(${q.id})"
+                                    aria-label="Mit KI beantworten">
                                 <i class="bi bi-robot"></i> Mit KI beantworten
                             </button>
                             {% endif %}
@@ -2027,7 +2028,9 @@
         // Disable button and show spinner
         btn.disabled = true;
         const originalContent = btn.innerHTML;
+        const originalLabel = btn.getAttribute('aria-label') || '';
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>KI arbeitet...';
+        btn.setAttribute('aria-label', 'KI arbeitet an der Beantwortung');
         
         fetch(`/open-questions/${questionId}/answer-ai/`, {
             method: 'POST',
@@ -2045,6 +2048,7 @@
                 // Re-enable button on error
                 btn.disabled = false;
                 btn.innerHTML = originalContent;
+                btn.setAttribute('aria-label', originalLabel);
                 alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
             }
         })
@@ -2053,6 +2057,7 @@
             // Re-enable button on error
             btn.disabled = false;
             btn.innerHTML = originalContent;
+            btn.setAttribute('aria-label', originalLabel);
             alert('Fehler beim Beantworten mit KI');
         });
     }

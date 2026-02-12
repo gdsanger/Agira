@@ -64,6 +64,9 @@ ALLOWED_ATTRIBUTES = {
     'span': ['class'],
 }
 
+# RAG context constants
+RAG_NO_CONTEXT_MESSAGE = "No additional context found."
+
 def home(request):
     """Home page view."""
     return render(request, 'home.html')
@@ -2402,7 +2405,7 @@ def item_answer_question_ai(request, question_id):
         )
         
         # Build input text for agent: question + RAG context
-        context_text = rag_context.to_context_text() if rag_context.items else "No additional context found."
+        context_text = rag_context.to_context_text() if rag_context.items else RAG_NO_CONTEXT_MESSAGE
         
         agent_input = f"""Question:
 {question_text}

@@ -14,6 +14,7 @@ from core.models import (
     IssueOpenQuestion, IssueStandardAnswer, 
     OpenQuestionStatus, OpenQuestionSource, OpenQuestionAnswerType
 )
+from core.views import RAG_NO_CONTEXT_MESSAGE
 
 
 class IssueStandardAnswerModelTest(TestCase):
@@ -872,4 +873,4 @@ class ItemAnswerQuestionAITest(TestCase):
         
         # Verify the agent input included the "no context" message
         call_kwargs = mock_service_instance.execute_agent.call_args[1]
-        self.assertIn('No additional context found', call_kwargs['input_text'])
+        self.assertIn(RAG_NO_CONTEXT_MESSAGE, call_kwargs['input_text'])
