@@ -2370,6 +2370,7 @@ def item_answer_question_ai(request, question_id):
     Only available to users with Agent role.
     """
     from core.services.rag import build_context
+    from core.models import OpenQuestionAnswerType
     
     # Check user role
     if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
