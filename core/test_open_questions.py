@@ -14,6 +14,7 @@ from core.models import (
     IssueOpenQuestion, IssueStandardAnswer, 
     OpenQuestionStatus, OpenQuestionSource, OpenQuestionAnswerType
 )
+from core.views import RAG_NO_CONTEXT_MESSAGE
 
 
 class IssueStandardAnswerModelTest(TestCase):
@@ -611,3 +612,265 @@ class OpenQuestionsAPITest(TestCase):
         self.assertIn('[x]', self.item.description)
         self.assertIn(self.question.question, self.item.description)
 
+
+
+class ItemAnswerQuestionAITest(TestCase):
+    """Test cases for AI-powered question answering"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.org = Organisation.objects.create(name='Test Org')
+        self.project = Project.objects.create(name='Test Project')
+        self.item_type = ItemType.objects.create(key='feature', name='Feature', is_active=True)
+        
+        # Create agent user
+        self.agent_user = User.objects.create_user(
+            username='agent',
+            email='agent@test.com',
+            password='testpass123',
+            name='Agent User',
+            role=UserRole.AGENT
+        )
+        
+        # Create regular user
+        self.regular_user = User.objects.create_user(
+            username='regular',
+            email='regular@test.com',
+            password='testpass123',
+            name='Regular User',
+            role=UserRole.TEAM_MEMBER
+        )
+        
+        self.item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Test description',
+            type=self.item_type,
+            status=ItemStatus.INBOX
+        )
+        
+        self.question = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='How should the authentication be implemented?',
+            source=OpenQuestionSource.AI_AGENT,
+            status=OpenQuestionStatus.OPEN
+        )
+        
+        self.client = Client()
+    
+    @patch('core.views.AgentService')
+    @patch('core.views.build_context')
+    def test_answer_question_with_ai_success(self, mock_build_context, mock_agent_service):
+        """Test successfully answering a question with AI"""
+        # Mock RAG context
+        mock_rag_context = Mock()
+        mock_rag_context.items = [Mock()]
+        mock_rag_context.to_context_text.return_value = "Context: Use OAuth 2.0 for authentication"
+        mock_build_context.return_value = mock_rag_context
+        
+        # Mock agent response
+        mock_service_instance = Mock()
+        mock_service_instance.execute_agent.return_value = "- Use OAuth 2.0\n- Implement JWT tokens\n- Add refresh token rotation"
+        mock_agent_service.return_value = mock_service_instance
+        
+        # Login as agent
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data['status'], 'success')
+        self.assertIn('Use OAuth 2.0', data['answer'])
+        self.assertEqual(data['question_id'], self.question.id)
+        
+        # Verify question was updated in database
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.status, OpenQuestionStatus.ANSWERED)
+        self.assertEqual(self.question.answer_type, OpenQuestionAnswerType.FREE_TEXT)
+        self.assertIn('Use OAuth 2.0', self.question.answer_text)
+        self.assertEqual(self.question.answered_by, self.agent_user)
+        self.assertIsNotNone(self.question.answered_at)
+        
+        # Verify RAG context was built correctly
+        mock_build_context.assert_called_once()
+        call_kwargs = mock_build_context.call_args[1]
+        self.assertEqual(call_kwargs['query'], self.question.question)
+        self.assertEqual(call_kwargs['project_id'], str(self.item.project.id))
+        self.assertEqual(call_kwargs['limit'], 10)
+        
+        # Verify agent was called correctly
+        mock_service_instance.execute_agent.assert_called_once()
+        call_kwargs = mock_service_instance.execute_agent.call_args[1]
+        self.assertEqual(call_kwargs['filename'], 'item-answer-question.yml')
+        self.assertIn(self.question.question, call_kwargs['input_text'])
+        self.assertIn("Context: Use OAuth 2.0", call_kwargs['input_text'])
+        self.assertEqual(call_kwargs['user'], self.agent_user)
+    
+    def test_answer_question_ai_requires_agent_role(self):
+        """Test that AI answering requires AGENT role"""
+        self.client.login(username='regular', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('Agent role', data['message'])
+        
+        # Question should remain unchanged
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.status, OpenQuestionStatus.OPEN)
+        self.assertIsNone(self.question.answer_text)
+    
+    def test_answer_question_ai_requires_authentication(self):
+        """Test that AI answering requires authentication"""
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+    
+    def test_answer_question_ai_only_open_questions(self):
+        """Test that AI can only answer open questions"""
+        # Mark question as already answered
+        self.question.status = OpenQuestionStatus.ANSWERED
+        self.question.answer_text = "Already answered"
+        self.question.save()
+        
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('Only open questions', data['message'])
+    
+    def test_answer_question_ai_nonexistent_question(self):
+        """Test handling of non-existent question"""
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': 99999})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 404)
+    
+    @patch('core.views.AgentService')
+    @patch('core.views.build_context')
+    def test_answer_question_ai_handles_agent_error(self, mock_build_context, mock_agent_service):
+        """Test handling of agent execution errors"""
+        # Mock RAG context
+        mock_rag_context = Mock()
+        mock_rag_context.items = [Mock()]
+        mock_rag_context.to_context_text.return_value = "Some context"
+        mock_build_context.return_value = mock_rag_context
+        
+        # Mock agent error
+        mock_service_instance = Mock()
+        mock_service_instance.execute_agent.side_effect = Exception("AI service unavailable")
+        mock_agent_service.return_value = mock_service_instance
+        
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 500)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('AI service unavailable', data['message'])
+        
+        # Question should remain unanswered
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.status, OpenQuestionStatus.OPEN)
+        self.assertIsNone(self.question.answer_text)
+    
+    @patch('core.views.AgentService')
+    @patch('core.views.build_context')
+    def test_answer_question_ai_empty_response(self, mock_build_context, mock_agent_service):
+        """Test handling of empty AI response"""
+        # Mock RAG context
+        mock_rag_context = Mock()
+        mock_rag_context.items = [Mock()]
+        mock_rag_context.to_context_text.return_value = "Some context"
+        mock_build_context.return_value = mock_rag_context
+        
+        # Mock empty agent response
+        mock_service_instance = Mock()
+        mock_service_instance.execute_agent.return_value = "  "  # Empty/whitespace
+        mock_agent_service.return_value = mock_service_instance
+        
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 500)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertIn('empty answer', data['message'])
+    
+    @patch('core.views.AgentService')
+    @patch('core.views.build_context')
+    def test_answer_question_ai_syncs_to_description(self, mock_build_context, mock_agent_service):
+        """Test that answering updates the item description"""
+        # Mock RAG context
+        mock_rag_context = Mock()
+        mock_rag_context.items = [Mock()]
+        mock_rag_context.to_context_text.return_value = "Context"
+        mock_build_context.return_value = mock_rag_context
+        
+        # Mock agent response
+        mock_service_instance = Mock()
+        mock_service_instance.execute_agent.return_value = "- Answer point 1\n- Answer point 2"
+        mock_agent_service.return_value = mock_service_instance
+        
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify item description was updated with the answered question
+        self.item.refresh_from_db()
+        self.assertIn('## Offene Fragen', self.item.description)
+        self.assertIn(self.question.question, self.item.description)
+        self.assertIn('[x]', self.item.description)
+        self.assertIn('Answer point 1', self.item.description)
+    
+    @patch('core.views.AgentService')
+    @patch('core.views.build_context')
+    def test_answer_question_ai_with_no_rag_context(self, mock_build_context, mock_agent_service):
+        """Test answering when no RAG context is available"""
+        # Mock empty RAG context
+        mock_rag_context = Mock()
+        mock_rag_context.items = []
+        mock_rag_context.to_context_text.return_value = ""
+        mock_build_context.return_value = mock_rag_context
+        
+        # Mock agent response indicating no context
+        mock_service_instance = Mock()
+        mock_service_instance.execute_agent.return_value = "Nicht beantwortbar auf Basis des gegebenen Kontexts."
+        mock_agent_service.return_value = mock_service_instance
+        
+        self.client.login(username='agent', password='testpass123')
+        
+        url = reverse('item-answer-question-ai', kwargs={'question_id': self.question.id})
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Should still succeed, but with a "not answerable" response
+        self.assertEqual(data['status'], 'success')
+        self.assertIn('Nicht beantwortbar', data['answer'])
+        
+        # Verify the agent input included the "no context" message
+        call_kwargs = mock_service_instance.execute_agent.call_args[1]
+        self.assertIn(RAG_NO_CONTEXT_MESSAGE, call_kwargs['input_text'])

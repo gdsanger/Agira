@@ -64,6 +64,9 @@ ALLOWED_ATTRIBUTES = {
     'span': ['class'],
 }
 
+# RAG context constants
+RAG_NO_CONTEXT_MESSAGE = "No additional context found."
+
 def home(request):
     """Home page view."""
     return render(request, 'home.html')
@@ -2353,6 +2356,113 @@ def item_open_questions_list(request, item_id):
         'standard_answers': standard_answers_data,
         'has_open': has_open,
     })
+
+
+@login_required
+@require_POST
+def item_answer_question_ai(request, question_id):
+    """
+    Answer an open question using AI with RAG context from Weaviate.
+    
+    Uses the item-answer-question agent to generate a short, bullet-point
+    answer based exclusively on the RAG context retrieved from Weaviate.
+    
+    Only available to users with Agent role.
+    """
+    from core.services.rag import build_context
+    
+    # Check user role
+    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Only allow answering open questions
+    if question.status != OpenQuestionStatus.OPEN:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Only open questions can be answered with AI'
+        }, status=400)
+    
+    try:
+        # Get the question text
+        question_text = question.question
+        
+        if not question_text.strip():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Question has no text'
+            }, status=400)
+        
+        # Build RAG context using the question as search query
+        rag_context = build_context(
+            query=question_text,
+            project_id=str(question.issue.project.id),
+            limit=10
+        )
+        
+        # Build input text for agent: question + RAG context
+        context_text = rag_context.to_context_text() if rag_context.items else RAG_NO_CONTEXT_MESSAGE
+        
+        agent_input = f"""Question:
+{question_text}
+
+---
+Relevant context from knowledge base:
+{context_text}
+"""
+        
+        # Execute the item-answer-question agent
+        agent_service = AgentService()
+        agent_response = agent_service.execute_agent(
+            filename='item-answer-question.yml',
+            input_text=agent_input,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Clean the response
+        answer_text = agent_response.strip()
+        
+        # Validate we have an answer
+        if not answer_text:
+            raise ValueError("AI agent returned empty answer")
+        
+        # Update question with AI-generated answer
+        question.answer_type = OpenQuestionAnswerType.FREE_TEXT
+        question.answer_text = answer_text
+        question.status = OpenQuestionStatus.ANSWERED
+        question.answered_at = timezone.now()
+        question.answered_by = request.user
+        question.save()
+        
+        # Update item description with answered questions
+        _sync_answered_questions_to_description(question.issue)
+        
+        # Log activity - success
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.open_question.ai_answered',
+            target=question.issue,
+            actor=request.user,
+            summary=f'Question answered by AI: {question_text[:50]}...',
+        )
+        
+        return JsonResponse({
+            'status': 'success',
+            'answer': answer_text,
+            'question_id': question.id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error answering question {question_id} with AI: {str(e)}")
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
 
 
 @login_required
