@@ -2168,6 +2168,157 @@ def item_save_pre_review(request, item_id):
 
 
 @login_required
+def item_rag_retrieval_raw(request, item_id):
+    """
+    Execute RAG retrieval for the item and return raw results as deterministic Markdown.
+    
+    This feature allows users to inspect the RAG retrieval results without any
+    content transformation. Results are formatted as structured Markdown for readability.
+    
+    Only available to users with Agent role.
+    """
+    from core.services.rag import build_context
+    from datetime import datetime
+    
+    # Check user role
+    if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get current description to use as query
+        query = item.description or ""
+        
+        if not query.strip():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Item has no description to use as RAG query'
+            }, status=400)
+        
+        # Record start time for duration calculation
+        start_time = datetime.now()
+        
+        # Build RAG context using the same configuration as item_optimize_description_ai
+        rag_context = build_context(
+            query=query,
+            project_id=str(item.project.id),
+            limit=10
+        )
+        
+        # Calculate duration
+        duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+        
+        # Format results as deterministic Markdown
+        markdown_output = _format_rag_results_as_markdown(
+            query=query,
+            rag_context=rag_context,
+            duration_ms=duration_ms
+        )
+        
+        return JsonResponse({
+            'status': 'success',
+            'markdown': markdown_output
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to execute RAG retrieval for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        }, status=500)
+
+
+def _format_rag_results_as_markdown(query: str, rag_context, duration_ms: int) -> str:
+    """
+    Format RAG context results as deterministic Markdown output.
+    
+    This function creates a structured, deterministic Markdown representation of
+    RAG retrieval results without any content transformation.
+    
+    Args:
+        query: The original search query
+        rag_context: RAGContext object with search results
+        duration_ms: Duration of the search in milliseconds
+        
+    Returns:
+        Formatted Markdown string
+    """
+    lines = []
+    
+    # Header section
+    lines.append("## RAG Retrieval (raw)")
+    lines.append("")
+    lines.append("### Header")
+    lines.append(f"- **query:** `{query[:100]}{'...' if len(query) > 100 else ''}`")
+    lines.append(f"- **search_type:** `hybrid`")
+    lines.append(f"- **alpha:** `{rag_context.alpha:.2f}`")
+    lines.append(f"- **duration_ms:** `{duration_ms}`")
+    lines.append(f"- **hits:** `{len(rag_context.items)}`")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    
+    # Hits section
+    lines.append("### Hits")
+    lines.append("")
+    
+    if not rag_context.items:
+        lines.append("*No hits found*")
+    else:
+        # Sort by score if available (descending), otherwise keep order as delivered
+        items = rag_context.items
+        if items and items[0].relevance_score is not None:
+            # Sort by score descending
+            items = sorted(items, key=lambda x: x.relevance_score or 0, reverse=True)
+        
+        for idx, hit in enumerate(items, 1):
+            lines.append(f"#### {idx}) Hit")
+            lines.append("")
+            
+            # Score (if available)
+            if hit.relevance_score is not None:
+                lines.append(f"- **score:** `{hit.relevance_score:.4f}`")
+            
+            # Source/Object reference
+            source_parts = []
+            if hit.object_type:
+                source_parts.append(f"type={hit.object_type}")
+            if hit.object_id:
+                source_parts.append(f"id={hit.object_id}")
+            if hit.source:
+                source_parts.append(f"source={hit.source}")
+            if source_parts:
+                lines.append(f"- **source:** `{', '.join(source_parts)}`")
+            
+            # Link
+            if hit.link:
+                lines.append(f"- **link:** `{hit.link}`")
+            
+            # Title
+            if hit.title:
+                lines.append(f"- **title:** `{hit.title}`")
+            
+            # Updated timestamp
+            if hit.updated_at:
+                lines.append(f"- **updated_at:** `{hit.updated_at}`")
+            
+            # Context/Content in code block
+            lines.append("")
+            lines.append("**context:**")
+            lines.append("```")
+            lines.append(hit.content or "")
+            lines.append("```")
+            lines.append("")
+    
+    return "\n".join(lines)
+
+
+@login_required
 @require_POST
 def item_open_question_answer(request, question_id):
     """

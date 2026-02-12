@@ -91,6 +91,7 @@ urlpatterns = [
     path('items/<int:item_id>/ai/generate-solution/', views.item_generate_solution_ai, name='item-generate-solution-ai'),
     path('items/<int:item_id>/ai/pre-review/', views.item_pre_review, name='item-pre-review'),
     path('items/<int:item_id>/ai/save-pre-review/', views.item_save_pre_review, name='item-save-pre-review'),
+    path('items/<int:item_id>/ai/rag-retrieval-raw/', views.item_rag_retrieval_raw, name='item-rag-retrieval-raw'),
     path('items/<int:item_id>/quick-create-user/', views.item_quick_create_user, name='item-quick-create-user'),
     
     # Open Questions endpoints
