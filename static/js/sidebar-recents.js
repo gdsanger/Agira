@@ -234,6 +234,8 @@
         if (entry.type === 'issue' && entry.id) {
             // Status container with HTMX polling - attributes on single line for HTML compatibility
             const statusId = `recent-status-${entry.id}`;
+            // Note: URL hardcoded here as this is client-side JS. If URL pattern changes,
+            // update both here and in urls.py. Alternative would be to inject from Django template.
             const statusEndpoint = `/items/${entry.id}/status/`;
             statusHtml = `<span id="${statusId}" class="recents-entry-status" hx-get="${statusEndpoint}" hx-trigger="load, every 30s" hx-swap="innerHTML">${statusDisplay}</span>`;
         } else if (statusDisplay) {

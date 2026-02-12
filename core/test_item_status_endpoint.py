@@ -3,6 +3,7 @@ Tests for the item status HTMX endpoint.
 """
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.db.models import Max
 from core.models import Item, Project, ItemStatus, ItemType, User
 
 
@@ -95,7 +96,6 @@ class ItemStatusEndpointTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         
         # Get a guaranteed non-existent item ID
-        from django.db.models import Max
         max_id = Item.objects.aggregate(Max('id'))['id__max'] or 0
         nonexistent_id = max_id + 1
         
