@@ -589,7 +589,7 @@ class ExtendedRAGPipelineService:
         )
         stats['sem_results'] = len(sem_results)
         
-        # Keyword/Tag search (alpha ≈ 0.7 for more BM25 weight - actually 0.3 for keyword)
+        # Keyword/Tag search (alpha = 0.3 for more BM25/keyword weight)
         kw_results = ExtendedRAGPipelineService._perform_search(
             query_text=kw_query,
             alpha=0.3,  # Lower alpha = more BM25/keyword weight
