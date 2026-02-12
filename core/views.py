@@ -738,13 +738,14 @@ def item_status(request, item_id):
     HTMX endpoint: Returns the current status of an item as HTML fragment.
     Used for periodic status updates in the sidebar Recent Items.
     
-    Authorization: Uses same visibility/permission logic as item_detail.
+    Authorization: Requires login (same as item_detail view).
+    Currently, there are no additional item-level permissions in the system.
+    If item-level visibility/permission logic is added in the future,
+    it should be applied here as well.
+    
     Returns: HTML fragment containing just the status badge.
     """
     item = get_object_or_404(Item, id=item_id)
-    
-    # Note: Currently no additional authorization beyond login is required.
-    # If item visibility/permission logic is added in the future, it should be checked here.
     
     return render(request, 'partials/item_status_badge.html', {
         'item': item

@@ -225,12 +225,7 @@
         let statusHtml = '';
         if (entry.type === 'issue' && entry.id) {
             // Status container with HTMX polling
-            statusHtml = `<span 
-                id="recent-status-${entry.id}" 
-                class="recents-entry-status"
-                hx-get="/items/${entry.id}/status/"
-                hx-trigger="load, every 30s"
-                hx-swap="innerHTML">${statusDisplay}</span>`;
+            statusHtml = `<span id="recent-status-${entry.id}" class="recents-entry-status" hx-get="/items/${entry.id}/status/" hx-trigger="load, every 30s" hx-swap="innerHTML">${statusDisplay}</span>`;
         } else if (statusDisplay) {
             // Fallback for non-HTMX status display
             statusHtml = `<span class="recents-entry-status">${statusDisplay}</span>`;
