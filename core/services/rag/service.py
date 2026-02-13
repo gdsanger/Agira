@@ -23,6 +23,7 @@ from .config import (
     DEDUP_FETCH_MULTIPLIER,
     TYPE_PRIORITY,
     FIELD_MAPPING,
+    ALLOWED_OBJECT_TYPES,
 )
 
 logger = logging.getLogger(__name__)
@@ -194,6 +195,7 @@ class RAGPipelineService:
         query: str,
         project_id: Optional[str] = None,
         item_id: Optional[str] = None,
+        current_item_id: Optional[str] = None,
         object_types: Optional[list[str]] = None,
         limit: int = DEFAULT_LIMIT,
         alpha: Optional[float] = None,
@@ -209,7 +211,9 @@ class RAGPipelineService:
             query: Search query text
             project_id: Optional project ID filter
             item_id: Optional item ID filter (filters on parent_object_id)
-            object_types: Optional list of object types to filter (e.g., ["item", "comment"])
+            current_item_id: Optional current item ID to exclude from results (Issue #392)
+            object_types: Optional list of object types to filter (e.g., ["item", "github_issue", "github_pr", "file"]).
+                         If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             limit: Maximum number of results (default: 20)
             alpha: Hybrid search alpha value (0-1). If None, determined by heuristic
             include_debug: Include debug information in response
@@ -221,6 +225,7 @@ class RAGPipelineService:
             >>> context = RAGPipelineService.build_context(
             ...     query="login bug with special characters",
             ...     project_id="1",
+            ...     current_item_id="123",  # Exclude item 123 from results
             ...     limit=10
             ... )
             >>> print(context.summary)
@@ -268,6 +273,10 @@ class RAGPipelineService:
                 # Build filters
                 where_filter = None
                 
+                # Default to ALLOWED_OBJECT_TYPES if not specified (Issue #392)
+                if object_types is None:
+                    object_types = ALLOWED_OBJECT_TYPES
+                
                 if project_id:
                     where_filter = Filter.by_property(
                         FIELD_MAPPING['project_id']
@@ -282,6 +291,18 @@ class RAGPipelineService:
                         where_filter & item_filter
                         if where_filter
                         else item_filter
+                    )
+                
+                # Exclude current item from results (Issue #392)
+                if current_item_id:
+                    current_item_filter = Filter.by_property(
+                        FIELD_MAPPING['object_id']
+                    ).not_equal(str(current_item_id))
+                    
+                    where_filter = (
+                        where_filter & current_item_filter
+                        if where_filter
+                        else current_item_filter
                     )
                 
                 if object_types:
@@ -304,6 +325,17 @@ class RAGPipelineService:
                         if where_filter
                         else type_filter
                     )
+                
+                # Exclude files without text content (Issue #392)
+                # Files with only title but no text are worthless
+                # is_none(False) means: keep only items where text IS NOT NULL
+                text_filter = Filter.by_property(FIELD_MAPPING['content']).is_none(False)
+                
+                where_filter = (
+                    where_filter & text_filter
+                    if where_filter
+                    else text_filter
+                )
                 
                 # Perform hybrid search
                 response = collection.query.hybrid(

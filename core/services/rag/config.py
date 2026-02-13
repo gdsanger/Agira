@@ -30,13 +30,28 @@ MAX_CONTENT_LENGTH = 600  # Maximum characters per content snippet
 # Deduplication
 DEDUP_FETCH_MULTIPLIER = 2  # Fetch this many times limit for deduplication
 
+# Allowed object types for RAG search (based on Issue #392)
+# Only search in: Item, GitHub Issues, GitHubPRs, and Files (not Comments)
+ALLOWED_OBJECT_TYPES = [
+    "item",
+    "github_issue",
+    "github_pr",
+    "file",
+]
+
 # Type priority for ranking (higher number = higher priority)
+# Note: Even though ALLOWED_OBJECT_TYPES excludes some types (like comment, change, etc.),
+# we keep all priorities here for:
+# 1. Custom searches that override object_types
+# 2. Backward compatibility with existing code
+# 3. Future flexibility
 TYPE_PRIORITY = {
     "item": 6,
     "github_issue": 5,
     "github_pr": 5,
-    "comment": 4,
-    "change": 3,
-    "attachment": 2,
-    "project": 1,
+    "file": 4,
+    "comment": 3,
+    "change": 2,
+    "attachment": 1,
+    "project": 0,
 }

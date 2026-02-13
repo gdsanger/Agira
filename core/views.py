@@ -1782,6 +1782,7 @@ def item_optimize_description_ai(request, item_id):
             query=current_description,
             project_id=str(item.project.id),
             item_id=str(item.id),
+            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )
@@ -1966,6 +1967,7 @@ def item_generate_solution_ai(request, item_id):
             query=current_description,
             project_id=str(item.project.id),
             item_id=str(item.id),
+            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )
@@ -2063,6 +2065,7 @@ def item_pre_review(request, item_id):
             query=current_description,
             project_id=str(item.project.id),
             item_id=str(item.id),
+            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )
@@ -2239,6 +2242,7 @@ def item_rag_retrieval_raw(request, item_id):
             query=query,
             project_id=str(item.project.id),
             item_id=str(item.id),
+            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )
@@ -2605,6 +2609,7 @@ def item_answer_question_ai(request, question_id):
         rag_context = build_extended_context(
             query=question_text,
             project_id=str(question.issue.project.id),
+            current_item_id=str(question.issue.id),  # Exclude current item from results (Issue #392)
             user=request.user,
             client_ip=request.META.get('REMOTE_ADDR')
         )

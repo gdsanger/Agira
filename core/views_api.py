@@ -526,6 +526,7 @@ def api_item_context(request, item_id):
             query=query,
             project_id=str(item.project_id),
             item_id=str(item.id),
+            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
             limit=20,
         )
         

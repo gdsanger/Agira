@@ -20,7 +20,7 @@ from core.services.exceptions import ServiceDisabled
 from weaviate.classes.query import Filter, HybridFusion
 
 from .models import RAGContextObject
-from .config import FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY
+from .config import FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +252,7 @@ class ExtendedRAGPipelineService:
         alpha: float,
         project_id: Optional[str] = None,
         item_id: Optional[str] = None,
+        current_item_id: Optional[str] = None,
         object_types: Optional[List[str]] = None,
         limit: int = 24
     ) -> List[Dict[str, Any]]:
@@ -263,7 +264,9 @@ class ExtendedRAGPipelineService:
             alpha: Hybrid search alpha (0-1)
             project_id: Optional project filter
             item_id: Optional item filter
-            object_types: Optional type filter
+            current_item_id: Optional current item ID to exclude from results (Issue #392)
+            object_types: Optional type filter (e.g., ["item", "github_issue", "github_pr", "file"]).
+                         If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             limit: Maximum results
             
         Returns:
@@ -281,6 +284,10 @@ class ExtendedRAGPipelineService:
                 # Build filters
                 where_filter = None
                 
+                # Default to ALLOWED_OBJECT_TYPES if not specified (Issue #392)
+                if object_types is None:
+                    object_types = ALLOWED_OBJECT_TYPES
+                
                 if project_id:
                     where_filter = Filter.by_property(
                         FIELD_MAPPING['project_id']
@@ -294,6 +301,18 @@ class ExtendedRAGPipelineService:
                         where_filter & item_filter
                         if where_filter
                         else item_filter
+                    )
+                
+                # Exclude current item from results (Issue #392)
+                if current_item_id:
+                    current_item_filter = Filter.by_property(
+                        FIELD_MAPPING['object_id']
+                    ).not_equal(str(current_item_id))
+                    
+                    where_filter = (
+                        where_filter & current_item_filter
+                        if where_filter
+                        else current_item_filter
                     )
                 
                 if object_types:
@@ -312,6 +331,17 @@ class ExtendedRAGPipelineService:
                         if where_filter
                         else type_filter
                     )
+                
+                # Exclude files without text content (Issue #392)
+                # Files with only title but no text are worthless
+                # is_none(False) means: keep only items where text IS NOT NULL
+                text_filter = Filter.by_property(FIELD_MAPPING['content']).is_none(False)
+                
+                where_filter = (
+                    where_filter & text_filter
+                    if where_filter
+                    else text_filter
+                )
                 
                 # Perform search
                 response = collection.query.hybrid(
@@ -496,6 +526,7 @@ class ExtendedRAGPipelineService:
         query: str,
         project_id: Optional[str] = None,
         item_id: Optional[str] = None,
+        current_item_id: Optional[str] = None,
         object_types: Optional[List[str]] = None,
         user=None,
         client_ip: Optional[str] = None,
@@ -515,7 +546,9 @@ class ExtendedRAGPipelineService:
             query: Raw user question
             project_id: Optional project filter
             item_id: Optional item filter
-            object_types: Optional object types filter
+            current_item_id: Optional current item ID to exclude from results (Issue #392)
+            object_types: Optional object types filter (e.g., ["item", "github_issue", "github_pr", "file"]).
+                         If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             user: Optional user for AI tracking
             client_ip: Optional client IP
             skip_optimization: Skip question optimization (use raw query)
@@ -584,6 +617,7 @@ class ExtendedRAGPipelineService:
             alpha=0.6,
             project_id=project_id,
             item_id=item_id,
+            current_item_id=current_item_id,
             object_types=object_types,
             limit=24,
         )
@@ -595,6 +629,7 @@ class ExtendedRAGPipelineService:
             alpha=0.3,  # Lower alpha = more BM25/keyword weight
             project_id=project_id,
             item_id=item_id,
+            current_item_id=current_item_id,
             object_types=object_types,
             limit=24,
         )
