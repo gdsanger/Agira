@@ -1075,3 +1075,355 @@ class ItemAnswerQuestionAITest(TestCase):
         # Verify the agent input included the "no context" message
         call_kwargs = mock_service_instance.execute_agent.call_args[1]
         self.assertIn(RAG_NO_CONTEXT_MESSAGE, call_kwargs['input_text'])
+
+
+class OpenQuestionAnswerEditTest(TestCase):
+    """Test cases for editing answers to open questions"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.org = Organisation.objects.create(name='Test Org')
+        self.project = Project.objects.create(name='Test Project')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug', is_active=True)
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass',
+            name='Test User'
+        )
+        
+        self.item = Item.objects.create(
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            title='Test Item',
+            description='Test description'
+        )
+        
+        # Create standard answer
+        self.standard_answer1 = IssueStandardAnswer.objects.create(
+            key='answer1',
+            label='Standard Answer 1',
+            text='This is standard answer 1',
+            is_active=True,
+            sort_order=1
+        )
+        
+        self.standard_answer2 = IssueStandardAnswer.objects.create(
+            key='answer2',
+            label='Standard Answer 2',
+            text='This is standard answer 2',
+            is_active=True,
+            sort_order=2
+        )
+        
+        # Create an answered question
+        self.question = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Test question?',
+            status=OpenQuestionStatus.ANSWERED,
+            answer_type=OpenQuestionAnswerType.FREE_TEXT,
+            answer_text='Original answer',
+            answered_by=self.user,
+            answered_at=timezone.now()
+        )
+        
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_edit_answer_free_text_to_standard(self):
+        """Test editing answer from free text to standard answer"""
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': self.question.id})
+        data = {
+            'answer_type': 'standard_answer',
+            'standard_answer_id': self.standard_answer1.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify question was updated
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.answer_type, OpenQuestionAnswerType.STANDARD_ANSWER)
+        self.assertEqual(self.question.standard_answer, self.standard_answer1)
+        self.assertIsNone(self.question.answer_text)
+        self.assertEqual(self.question.status, OpenQuestionStatus.ANSWERED)
+    
+    def test_edit_answer_standard_to_free_text(self):
+        """Test editing answer from standard answer to free text"""
+        # First set up question with standard answer
+        self.question.answer_type = OpenQuestionAnswerType.STANDARD_ANSWER
+        self.question.standard_answer = self.standard_answer1
+        self.question.answer_text = None
+        self.question.save()
+        
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': self.question.id})
+        data = {
+            'answer_type': 'free_text',
+            'answer_text': 'New free text answer'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify question was updated
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.answer_type, OpenQuestionAnswerType.FREE_TEXT)
+        self.assertEqual(self.question.answer_text, 'New free text answer')
+        self.assertIsNone(self.question.standard_answer)
+        self.assertEqual(self.question.status, OpenQuestionStatus.ANSWERED)
+    
+    def test_edit_answer_change_standard_answer(self):
+        """Test changing from one standard answer to another"""
+        # Set up question with standard answer
+        self.question.answer_type = OpenQuestionAnswerType.STANDARD_ANSWER
+        self.question.standard_answer = self.standard_answer1
+        self.question.answer_text = None
+        self.question.save()
+        
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': self.question.id})
+        data = {
+            'answer_type': 'standard_answer',
+            'standard_answer_id': self.standard_answer2.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify question was updated to new standard answer
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.standard_answer, self.standard_answer2)
+    
+    def test_edit_answer_requires_authentication(self):
+        """Test that editing answer requires authentication"""
+        self.client.logout()
+        
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': self.question.id})
+        data = {
+            'answer_type': 'free_text',
+            'answer_text': 'New answer'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+    
+    def test_edit_answer_unanswered_question_fails(self):
+        """Test that editing answer fails for unanswered questions"""
+        # Create an open question
+        open_question = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Open question?',
+            status=OpenQuestionStatus.OPEN
+        )
+        
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': open_question.id})
+        data = {
+            'answer_type': 'free_text',
+            'answer_text': 'New answer'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('must be answered', response_data['error'])
+    
+    def test_edit_answer_validates_empty_free_text(self):
+        """Test that empty free text is rejected"""
+        url = reverse('item-open-question-answer-edit', kwargs={'question_id': self.question.id})
+        data = {
+            'answer_type': 'free_text',
+            'answer_text': '   '  # Empty/whitespace
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+
+
+class OpenQuestionAnswerDeleteTest(TestCase):
+    """Test cases for deleting answers to open questions"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.org = Organisation.objects.create(name='Test Org')
+        self.project = Project.objects.create(name='Test Project')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug', is_active=True)
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass',
+            name='Test User'
+        )
+        
+        self.item = Item.objects.create(
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            title='Test Item',
+            description='Test description'
+        )
+        
+        # Create standard answer
+        self.standard_answer = IssueStandardAnswer.objects.create(
+            key='answer1',
+            label='Standard Answer 1',
+            text='This is standard answer 1',
+            is_active=True,
+            sort_order=1
+        )
+        
+        # Create an answered question with free text
+        self.question_free_text = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Test question with free text?',
+            status=OpenQuestionStatus.ANSWERED,
+            answer_type=OpenQuestionAnswerType.FREE_TEXT,
+            answer_text='Test answer',
+            answered_by=self.user,
+            answered_at=timezone.now()
+        )
+        
+        # Create an answered question with standard answer
+        self.question_standard = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Test question with standard answer?',
+            status=OpenQuestionStatus.ANSWERED,
+            answer_type=OpenQuestionAnswerType.STANDARD_ANSWER,
+            standard_answer=self.standard_answer,
+            standard_answer_key=self.standard_answer.key,
+            answered_by=self.user,
+            answered_at=timezone.now()
+        )
+        
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_delete_answer_free_text(self):
+        """Test deleting a free text answer"""
+        url = reverse('item-open-question-answer-delete', kwargs={'question_id': self.question_free_text.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify answer was deleted and question reverted to Open
+        self.question_free_text.refresh_from_db()
+        self.assertEqual(self.question_free_text.status, OpenQuestionStatus.OPEN)
+        self.assertEqual(self.question_free_text.answer_type, OpenQuestionAnswerType.NONE)
+        self.assertIsNone(self.question_free_text.answer_text)
+        self.assertIsNone(self.question_free_text.answered_by)
+        self.assertIsNone(self.question_free_text.answered_at)
+    
+    def test_delete_answer_standard(self):
+        """Test deleting a standard answer"""
+        url = reverse('item-open-question-answer-delete', kwargs={'question_id': self.question_standard.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify answer was deleted and question reverted to Open
+        self.question_standard.refresh_from_db()
+        self.assertEqual(self.question_standard.status, OpenQuestionStatus.OPEN)
+        self.assertEqual(self.question_standard.answer_type, OpenQuestionAnswerType.NONE)
+        self.assertIsNone(self.question_standard.standard_answer)
+        self.assertIsNone(self.question_standard.standard_answer_key)
+        self.assertIsNone(self.question_standard.answered_by)
+        self.assertIsNone(self.question_standard.answered_at)
+    
+    def test_delete_answer_dismissed_question(self):
+        """Test deleting answer from a dismissed question"""
+        # Create a dismissed question
+        dismissed_question = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Dismissed question?',
+            status=OpenQuestionStatus.DISMISSED,
+            answer_type=OpenQuestionAnswerType.NONE,
+            answered_by=self.user,
+            answered_at=timezone.now()
+        )
+        
+        url = reverse('item-open-question-answer-delete', kwargs={'question_id': dismissed_question.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify question reverted to Open
+        dismissed_question.refresh_from_db()
+        self.assertEqual(dismissed_question.status, OpenQuestionStatus.OPEN)
+    
+    def test_delete_answer_requires_authentication(self):
+        """Test that deleting answer requires authentication"""
+        self.client.logout()
+        
+        url = reverse('item-open-question-answer-delete', kwargs={'question_id': self.question_free_text.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+    
+    def test_delete_answer_open_question_fails(self):
+        """Test that deleting answer fails for open questions"""
+        # Create an open question
+        open_question = IssueOpenQuestion.objects.create(
+            issue=self.item,
+            question='Open question?',
+            status=OpenQuestionStatus.OPEN
+        )
+        
+        url = reverse('item-open-question-answer-delete', kwargs={'question_id': open_question.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertFalse(response_data['success'])
+        self.assertIn('must be answered or dismissed', response_data['error'])
+
