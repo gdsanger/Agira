@@ -1376,13 +1376,16 @@
         // Get CSRF token
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         
+        const formData = new FormData();
+        formData.append('status', newStatus);
+
         fetch('{% url 'item-change-status' item.id %}', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': csrfToken
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            body: 'status=' + encodeURIComponent(newStatus)
+            body: formData
         })
         .then(response => {
             // Check if response is ok

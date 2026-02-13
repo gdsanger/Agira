@@ -2676,14 +2676,23 @@ Relevant context from knowledge base:
 
 
 @login_required
-
 @require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""
     item = get_object_or_404(Item, id=item_id)
     old_status = item.status
-    new_status = request.POST.get('status')
-    
+
+    # Accept status from form-data, x-www-form-urlencoded, or JSON payloads.
+    # This keeps the endpoint compatible with multiple frontend callers.
+    new_status = (request.POST.get('status') or request.POST.get('new_status') or '').strip()
+
+    if not new_status and request.body:
+        try:
+            payload = json.loads(request.body)
+            new_status = (payload.get('status') or payload.get('new_status') or '').strip()
+        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+            new_status = ''
+
     if not new_status:
         return JsonResponse({'success': False, 'error': 'Missing status parameter'}, status=400)
     
