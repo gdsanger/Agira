@@ -10,6 +10,7 @@ This service extends the basic RAG pipeline with:
 
 import json
 import logging
+import os
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 
@@ -22,7 +23,24 @@ from weaviate.classes.query import Filter, HybridFusion
 from .models import RAGContextObject
 from .config import FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES
 
+# Configure logger for RAG pipeline with dedicated log file
 logger = logging.getLogger(__name__)
+
+# Setup RAG pipeline logger with file handler
+rag_logger = logging.getLogger('rag_pipeline')
+rag_logger.setLevel(logging.DEBUG)
+
+# Create logs directory if it doesn't exist
+log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+# Add file handler if not already present
+if not rag_logger.handlers:
+    file_handler = logging.FileHandler(os.path.join(log_dir, 'rag_pipeline.log'))
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    rag_logger.addHandler(file_handler)
 
 
 @dataclass
@@ -147,6 +165,7 @@ class ExtendedRAGPipelineService:
         Returns:
             OptimizedQuery object or None if optimization fails
         """
+        rag_logger.info(f"Starting question optimization for query: {query[:100]}...")
         try:
             agent_service = AgentService()
             response = agent_service.execute_agent(
@@ -155,6 +174,7 @@ class ExtendedRAGPipelineService:
                 user=user,
                 client_ip=client_ip
             )
+            rag_logger.debug(f"Agent response received: {response[:200]}...")
             
             # Clean response: remove markdown code fences if present
             cleaned_response = response.strip()
@@ -181,9 +201,10 @@ class ExtendedRAGPipelineService:
             for field in required_fields:
                 if field not in data:
                     logger.warning(f"Missing field '{field}' in question optimization response")
+                    rag_logger.warning(f"Question optimization failed: missing field '{field}'")
                     return None
             
-            return OptimizedQuery(
+            optimized = OptimizedQuery(
                 language=data.get('language', 'de'),
                 core=data.get('core', ''),
                 synonyms=data.get('synonyms', []),
@@ -195,12 +216,17 @@ class ExtendedRAGPipelineService:
                 raw_response=cleaned_response
             )
             
+            rag_logger.info(f"Question optimization successful: core='{optimized.core}', tags={optimized.tags}")
+            return optimized
+            
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse question optimization response as JSON: {e}")
+            rag_logger.error(f"Question optimization failed: JSON parse error - {e}")
             logger.debug(f"Raw response: {response}")
             return None
         except Exception as e:
             logger.error(f"Error optimizing question: {e}", exc_info=True)
+            rag_logger.error(f"Question optimization failed: {e}", exc_info=True)
             return None
     
     @staticmethod
@@ -263,8 +289,8 @@ class ExtendedRAGPipelineService:
             query_text: Query string
             alpha: Hybrid search alpha (0-1)
             project_id: Optional project filter
-            item_id: Optional item filter
-            current_item_id: Optional current item ID to exclude from results (Issue #392)
+            item_id: DEPRECATED - No longer used. Use current_item_id instead.
+            current_item_id: Optional current item ID to exclude from results (Issue #395)
             object_types: Optional type filter (e.g., ["item", "github_issue", "github_pr", "file"]).
                          If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             limit: Maximum results
@@ -272,8 +298,11 @@ class ExtendedRAGPipelineService:
         Returns:
             List of result dictionaries
         """
+        rag_logger.info(f"Starting search: query='{query_text[:50]}...', alpha={alpha}, project_id={project_id}, current_item_id={current_item_id}, limit={limit}")
+        
         if not is_available():
             logger.warning("Weaviate is not available")
+            rag_logger.warning("Search aborted: Weaviate not available")
             return []
         
         try:
@@ -283,6 +312,7 @@ class ExtendedRAGPipelineService:
                 
                 # Build filters
                 where_filter = None
+                filter_details = []
                 
                 # Default to ALLOWED_OBJECT_TYPES if not specified (Issue #392)
                 if object_types is None:
@@ -292,18 +322,14 @@ class ExtendedRAGPipelineService:
                     where_filter = Filter.by_property(
                         FIELD_MAPPING['project_id']
                     ).equal(str(project_id))
+                    filter_details.append(f"project_id={project_id}")
                 
-                if item_id:
-                    item_filter = Filter.by_property(
-                        FIELD_MAPPING['item_id']
-                    ).equal(str(item_id))
-                    where_filter = (
-                        where_filter & item_filter
-                        if where_filter
-                        else item_filter
-                    )
+                # NOTE: item_id filter REMOVED in Issue #395
+                # Previously this was filtering by item_id, which conflicted with current_item_id exclusion
+                # Now we search across ALL items in the project, excluding only current_item_id
                 
-                # Exclude current item from results (Issue #392)
+                # Exclude current item from results (Issue #395)
+                # This prevents the item itself from appearing in its own RAG context
                 if current_item_id:
                     current_item_filter = Filter.by_property(
                         FIELD_MAPPING['object_id']
@@ -314,6 +340,7 @@ class ExtendedRAGPipelineService:
                         if where_filter
                         else current_item_filter
                     )
+                    filter_details.append(f"exclude_object_id={current_item_id}")
                 
                 if object_types:
                     type_filters = [
@@ -331,6 +358,7 @@ class ExtendedRAGPipelineService:
                         if where_filter
                         else type_filter
                     )
+                    filter_details.append(f"object_types={object_types}")
                 
                 # Exclude files without text content (Issue #392)
                 # Files with only title but no text are worthless
@@ -342,8 +370,12 @@ class ExtendedRAGPipelineService:
                     if where_filter
                     else text_filter
                 )
+                filter_details.append("content_not_null=true")
+                
+                rag_logger.debug(f"Applied filters: {', '.join(filter_details)}")
                 
                 # Perform search
+                rag_logger.debug(f"Executing Weaviate hybrid search...")
                 response = collection.query.hybrid(
                     query=query_text,
                     limit=limit,
@@ -369,6 +401,8 @@ class ExtendedRAGPipelineService:
                     }
                     results.append(result)
                 
+                rag_logger.info(f"Search completed: {len(results)} results found")
+                rag_logger.debug(f"Top 3 results: {[r['object_id'] + ' (' + r['object_type'] + ')' for r in results[:3]]}")
                 return results
                 
             finally:
@@ -376,6 +410,7 @@ class ExtendedRAGPipelineService:
                 
         except Exception as e:
             logger.error(f"Error performing Weaviate search: {e}", exc_info=True)
+            rag_logger.error(f"Search failed with error: {e}", exc_info=True)
             return []
     
     @staticmethod
@@ -400,6 +435,8 @@ class ExtendedRAGPipelineService:
         Returns:
             Top-N fused and reranked results
         """
+        rag_logger.info(f"Starting fusion: {len(sem_results)} semantic + {len(kw_results)} keyword results")
+        
         # Deduplicate by object_id, keeping both scores
         results_map = {}
         
@@ -453,6 +490,9 @@ class ExtendedRAGPipelineService:
         # Sort by final score descending
         fused_results.sort(key=lambda x: (-x['final_score'], -TYPE_PRIORITY.get(x.get('object_type', ''), 0)))
         
+        rag_logger.info(f"Fusion completed: {len(fused_results)} unique results, returning top {limit}")
+        rag_logger.debug(f"Top fused results: {[(r['object_id'], r['object_type'], '{:.3f}'.format(r['final_score'])) for r in fused_results[:3]]}")
+        
         # Return top N
         return fused_results[:limit]
     
@@ -475,6 +515,7 @@ class ExtendedRAGPipelineService:
         Returns:
             Tuple of (layer_a, layer_b, layer_c)
         """
+        rag_logger.info(f"Separating {len(results)} results into A/B/C layers")
         layer_a = []
         layer_b = []
         layer_c = []
@@ -518,6 +559,7 @@ class ExtendedRAGPipelineService:
             elif len(layer_c) < 2:
                 layer_c.append(item)
         
+        rag_logger.info(f"Layer separation complete: A={len(layer_a)}, B={len(layer_b)}, C={len(layer_c)}")
         return layer_a, layer_b, layer_c
     
     @staticmethod
@@ -545,8 +587,8 @@ class ExtendedRAGPipelineService:
         Args:
             query: Raw user question
             project_id: Optional project filter
-            item_id: Optional item filter
-            current_item_id: Optional current item ID to exclude from results (Issue #392)
+            item_id: DEPRECATED - No longer used (Issue #395)
+            current_item_id: Optional current item ID to exclude from results (Issue #395)
             object_types: Optional object types filter (e.g., ["item", "github_issue", "github_pr", "file"]).
                          If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             user: Optional user for AI tracking
@@ -557,6 +599,12 @@ class ExtendedRAGPipelineService:
         Returns:
             ExtendedRAGContext with layered results
         """
+        rag_logger.info("="*80)
+        rag_logger.info(f"BUILD EXTENDED RAG CONTEXT - START")
+        rag_logger.info(f"Query: {query[:100]}...")
+        rag_logger.info(f"Filters: project_id={project_id}, current_item_id={current_item_id}")
+        rag_logger.info(f"Options: skip_optimization={skip_optimization}, include_debug={include_debug}")
+        
         stats = {
             'optimization_success': False,
             'sem_results': 0,
@@ -570,6 +618,7 @@ class ExtendedRAGPipelineService:
         debug_info = {} if include_debug else None
         
         # Step 1: Optimize question
+        rag_logger.info("STEP 1: Question Optimization")
         optimized = None
         if not skip_optimization:
             optimized = ExtendedRAGPipelineService._optimize_question(
@@ -584,10 +633,13 @@ class ExtendedRAGPipelineService:
                         'tags': optimized.tags,
                         'phrases': optimized.phrases,
                     }
+        else:
+            rag_logger.info("Question optimization skipped by request")
         
         # Fallback: use raw query if optimization failed
         if not optimized:
             logger.info("Question optimization failed or skipped, using raw query")
+            rag_logger.info("Falling back to raw query (optimization failed or skipped)")
             # Create a minimal OptimizedQuery
             optimized = OptimizedQuery(
                 language='unknown',
@@ -601,8 +653,12 @@ class ExtendedRAGPipelineService:
             )
         
         # Step 2: Build queries
+        rag_logger.info("STEP 2: Query Building")
         sem_query = ExtendedRAGPipelineService._build_semantic_query(optimized)
         kw_query = ExtendedRAGPipelineService._build_keyword_query(optimized)
+        
+        rag_logger.info(f"Semantic query: {sem_query[:80]}...")
+        rag_logger.info(f"Keyword query: {kw_query[:80]}...")
         
         if include_debug:
             debug_info['queries'] = {
@@ -611,12 +667,14 @@ class ExtendedRAGPipelineService:
             }
         
         # Step 3: Parallel searches
+        rag_logger.info("STEP 3: Parallel Searches")
         # Semantic/Hybrid search (alpha ≈ 0.6)
+        rag_logger.info("Running semantic/hybrid search (alpha=0.6)...")
         sem_results = ExtendedRAGPipelineService._perform_search(
             query_text=sem_query,
             alpha=0.6,
             project_id=project_id,
-            item_id=item_id,
+            item_id=item_id,  # Deprecated but kept for backward compatibility
             current_item_id=current_item_id,
             object_types=object_types,
             limit=24,
@@ -624,11 +682,12 @@ class ExtendedRAGPipelineService:
         stats['sem_results'] = len(sem_results)
         
         # Keyword/Tag search (alpha = 0.3 for more BM25/keyword weight)
+        rag_logger.info("Running keyword/tag search (alpha=0.3)...")
         kw_results = ExtendedRAGPipelineService._perform_search(
             query_text=kw_query,
             alpha=0.3,  # Lower alpha = more BM25/keyword weight
             project_id=project_id,
-            item_id=item_id,
+            item_id=item_id,  # Deprecated but kept for backward compatibility
             current_item_id=current_item_id,
             object_types=object_types,
             limit=24,
@@ -636,18 +695,20 @@ class ExtendedRAGPipelineService:
         stats['kw_results'] = len(kw_results)
         
         # Step 4: Fusion and reranking
+        rag_logger.info("STEP 4: Fusion and Reranking")
         fused_results = ExtendedRAGPipelineService._fuse_and_rerank(
             sem_results=sem_results,
             kw_results=kw_results,
-            item_id=item_id,
+            item_id=item_id,  # Deprecated but kept for backward compatibility
             limit=6,
         )
         stats['fused_results'] = len(fused_results)
         
         # Step 5: Separate into A/B/C layers
+        rag_logger.info("STEP 5: Layer Separation")
         layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
             fused_results,
-            item_id=item_id
+            item_id=item_id  # Deprecated but kept for backward compatibility
         )
         
         stats['layer_a_count'] = len(layer_a)
@@ -660,6 +721,12 @@ class ExtendedRAGPipelineService:
         # Generate summary
         total_items = len(all_items)
         summary = f"Retrieved {total_items} relevant items across {stats['layer_a_count']} thread-related, {stats['layer_b_count']} item-context, and {stats['layer_c_count']} background snippets."
+        
+        rag_logger.info("="*80)
+        rag_logger.info(f"BUILD EXTENDED RAG CONTEXT - COMPLETE")
+        rag_logger.info(f"Summary: {summary}")
+        rag_logger.info(f"Stats: {stats}")
+        rag_logger.info("="*80)
         
         return ExtendedRAGContext(
             query=query,
