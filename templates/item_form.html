@@ -625,13 +625,23 @@ function syncEditorContent() {
 }
 
 // Sync editor content to hidden fields on form submit (for non-HTMX submissions)
-document.getElementById('itemForm').addEventListener('submit', function() {
+document.getElementById('itemForm').addEventListener('submit', function(event) {
     syncEditorContent();
 });
 
 // Sync editor content to hidden fields before HTMX request
-document.getElementById('itemForm').addEventListener('htmx:configRequest', function() {
+// HTMX collects form parameters before htmx:configRequest, so we need to update during configRequest
+// This fixes issue #397 where description was not being saved on item creation
+document.getElementById('itemForm').addEventListener('htmx:configRequest', function(event) {
     syncEditorContent();
+    
+    // Update the HTMX request parameters with the synced values
+    // This ensures HTMX sends the latest content from the Toast UI editors
+    if (event.detail && event.detail.parameters) {
+        event.detail.parameters.description = document.getElementById('description').value;
+        event.detail.parameters.user_input = document.getElementById('user_input').value;
+        event.detail.parameters.solution_description = document.getElementById('solution_description').value;
+    }
 });
 
 {% if not item %}
