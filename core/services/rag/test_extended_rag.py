@@ -208,6 +208,89 @@ class SearchTestCase(TestCase):
         self.assertEqual(results[0]['object_type'], 'item')
         self.assertEqual(results[0]['title'], 'Test Item')
         self.assertEqual(results[0]['score'], 0.85)
+    
+    @patch('core.services.rag.extended_service.get_client')
+    @patch('core.services.rag.extended_service.is_available')
+    def test_search_returns_non_null_scores(self, mock_is_available, mock_get_client):
+        """Search should return non-null scores from Weaviate metadata (Issue #401)."""
+        mock_is_available.return_value = True
+        
+        # Mock Weaviate response with multiple results with different scores
+        mock_obj1 = Mock()
+        mock_obj1.properties = {
+            'object_id': '1',
+            'type': 'item',
+            'title': 'First Item',
+            'text': 'First content',
+            'url': '/items/1/',
+            'source_system': 'agira',
+            'updated_at': '2024-01-01',
+        }
+        mock_obj1.metadata.score = 0.95
+        
+        mock_obj2 = Mock()
+        mock_obj2.properties = {
+            'object_id': '2',
+            'type': 'item',
+            'title': 'Second Item',
+            'text': 'Second content',
+            'url': '/items/2/',
+            'source_system': 'agira',
+            'updated_at': '2024-01-02',
+        }
+        mock_obj2.metadata.score = 0.72
+        
+        mock_obj3 = Mock()
+        mock_obj3.properties = {
+            'object_id': '3',
+            'type': 'item',
+            'title': 'Third Item',
+            'text': 'Third content',
+            'url': '/items/3/',
+            'source_system': 'agira',
+            'updated_at': '2024-01-03',
+        }
+        mock_obj3.metadata.score = 0.58
+        
+        mock_response = Mock()
+        mock_response.objects = [mock_obj1, mock_obj2, mock_obj3]
+        
+        mock_collection = Mock()
+        mock_collection.query.hybrid.return_value = mock_response
+        
+        mock_client = Mock()
+        mock_client.collections.get.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+        
+        results = ExtendedRAGPipelineService._perform_search(
+            query_text="test query",
+            alpha=0.6,
+            limit=10
+        )
+        
+        # Assert: all results have non-null scores
+        self.assertEqual(len(results), 3)
+        for result in results:
+            self.assertIsNotNone(result['score'], 
+                f"Score should not be None for result {result['object_id']}")
+        
+        # Assert: scores are different (not all constant 0.075)
+        scores = [r['score'] for r in results]
+        unique_scores = set(scores)
+        self.assertGreater(len(unique_scores), 1, 
+            "Scores should vary between results, not be constant")
+        
+        # Assert: specific score values match mock data
+        self.assertEqual(results[0]['score'], 0.95)
+        self.assertEqual(results[1]['score'], 0.72)
+        self.assertEqual(results[2]['score'], 0.58)
+        
+        # Verify that return_metadata was passed to the hybrid query
+        mock_collection.query.hybrid.assert_called_once()
+        call_kwargs = mock_collection.query.hybrid.call_args[1]
+        self.assertIn('return_metadata', call_kwargs, 
+            "return_metadata should be passed to hybrid query")
+
 
 
 class FusionAndRerankingTestCase(TestCase):
@@ -272,6 +355,52 @@ class FusionAndRerankingTestCase(TestCase):
         )
         
         self.assertEqual(len(fused), 3)
+    
+    def test_fusion_avoids_constant_075_score(self):
+        """Fusion should produce varying scores when input scores are non-zero (Issue #401)."""
+        # Test that when both semantic and keyword searches return proper scores,
+        # the final fusion scores vary and don't degenerate to constant 0.075
+        sem_results = [
+            {'object_id': '1', 'object_type': 'item', 'score': 0.9, 'content': 'High match', 'title': 'Item 1'},
+            {'object_id': '2', 'object_type': 'item', 'score': 0.6, 'content': 'Medium match', 'title': 'Item 2'},
+            {'object_id': '3', 'object_type': 'item', 'score': 0.3, 'content': 'Low match', 'title': 'Item 3'},
+        ]
+        kw_results = [
+            {'object_id': '1', 'object_type': 'item', 'score': 0.8, 'content': 'High match', 'title': 'Item 1'},
+            {'object_id': '2', 'object_type': 'item', 'score': 0.4, 'content': 'Medium match', 'title': 'Item 2'},
+        ]
+        
+        fused = ExtendedRAGPipelineService._fuse_and_rerank(
+            sem_results=sem_results,
+            kw_results=kw_results,
+            limit=10
+        )
+        
+        # All results should have final_score > 0.075 (the problematic default)
+        for result in fused:
+            self.assertGreater(result['final_score'], 0.075, 
+                f"Final score {result['final_score']} should be > 0.075 for {result['object_id']}")
+        
+        # Scores should be different, not all constant
+        final_scores = [r['final_score'] for r in fused]
+        unique_scores = set(final_scores)
+        self.assertGreater(len(unique_scores), 1, 
+            "Final scores should vary, not be constant 0.075")
+        
+        # Item 1 should have highest score (appears in both with high scores)
+        # Item 1: 0.6*0.9 + 0.2*0.8 + 0.15*1.0 = 0.54 + 0.16 + 0.15 = 0.85
+        self.assertAlmostEqual(fused[0]['final_score'], 0.85, places=2)
+        self.assertEqual(fused[0]['object_id'], '1')
+        
+        # Item 2 should have middle score
+        # Item 2: 0.6*0.6 + 0.2*0.4 + 0.15*1.0 = 0.36 + 0.08 + 0.15 = 0.59
+        item2 = next(r for r in fused if r['object_id'] == '2')
+        self.assertAlmostEqual(item2['final_score'], 0.59, places=2)
+        
+        # Item 3 should have lowest score (only semantic, no keyword)
+        # Item 3: 0.6*0.3 + 0.2*0 + 0.15*0.5 = 0.18 + 0 + 0.075 = 0.255
+        item3 = next(r for r in fused if r['object_id'] == '3')
+        self.assertAlmostEqual(item3['final_score'], 0.255, places=2)
 
 
 class LayerSeparationTestCase(TestCase):

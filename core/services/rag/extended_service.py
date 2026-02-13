@@ -18,7 +18,7 @@ from core.services.agents.agent_service import AgentService
 from core.services.weaviate.client import get_client, is_available
 from core.services.weaviate.schema import COLLECTION_NAME
 from core.services.exceptions import ServiceDisabled
-from weaviate.classes.query import Filter, HybridFusion
+from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
 
 from .models import RAGContextObject
 from .config import FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES
@@ -395,6 +395,7 @@ class ExtendedRAGPipelineService:
                     alpha=alpha,
                     filters=where_filter,
                     fusion_type=HybridFusion.RELATIVE_SCORE,
+                    return_metadata=MetadataQuery(score=True),
                 )
                 
                 # Extract results and filter empty content (Issue #398)
