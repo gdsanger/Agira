@@ -623,25 +623,25 @@ solutionEditor.on('change', syncEditorContent);
 // Ensure hidden fields are initialized with the editors' initial state
 syncEditorContent();
 
-// Sync editor content to hidden fields on form submit (for non-HTMX submissions)
+// Sync editor content early on submit (capture phase), before HTMX serializes parameters
 document.getElementById('itemForm').addEventListener('submit', function(event) {
     syncEditorContent();
-});
+}, true);
 
-// Sync editor content to hidden fields before HTMX request
-// HTMX collects form parameters before htmx:configRequest, so we need to update during configRequest
-// This fixes issue #397 where description was not being saved on item creation
-document.getElementById('itemForm').addEventListener('htmx:configRequest', function(event) {
+// Ensure HTMX requests always include the latest editor content.
+// Read directly from editor instances instead of relying only on hidden fields.
+function syncEditorContentToHtmxRequest(event) {
     syncEditorContent();
-    
-    // Update the HTMX request parameters with the synced values
-    // This ensures HTMX sends the latest content from the Toast UI editors
+
     if (event.detail && event.detail.parameters) {
-        event.detail.parameters.description = document.getElementById('description').value;
-        event.detail.parameters.user_input = document.getElementById('user_input').value;
-        event.detail.parameters.solution_description = document.getElementById('solution_description').value;
+        event.detail.parameters.description = descriptionEditor.getMarkdown();
+        event.detail.parameters.user_input = userInputEditor.getMarkdown();
+        event.detail.parameters.solution_description = solutionEditor.getMarkdown();
     }
-});
+}
+
+document.getElementById('itemForm').addEventListener('htmx:beforeRequest', syncEditorContentToHtmxRequest);
+document.getElementById('itemForm').addEventListener('htmx:configRequest', syncEditorContentToHtmxRequest);
 
 {% if not item %}
 // Blueprint selection handler (only for new items)
