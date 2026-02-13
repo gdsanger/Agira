@@ -381,7 +381,9 @@ class ExtendedRAGPipelineService:
                 
                 # Note: is_none filter removed (Issue #398)
                 # Filter for empty content is now done in Python after query
-                # to avoid Weaviate schema requirement for indexNullState
+                # to avoid Weaviate schema requirement for indexNullState.
+                # Trade-off: This may retrieve some items that will be filtered out,
+                # but in practice most items have content and this ensures the query works.
                 
                 rag_logger.debug(f"Applied filters: {', '.join(filter_details)}")
                 
