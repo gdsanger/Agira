@@ -227,7 +227,7 @@
                                 </button>
                             </div>
                             <div id="description-editor"></div>
-                            <input type="hidden" id="description" name="description">
+                            <textarea id="description" name="description" class="d-none">{% if item %}{{ item.description }}{% endif %}</textarea>
                         </div>
                         
                         <!-- Original Mail Text Tab -->
@@ -235,14 +235,14 @@
                             <h6 class="mb-3">Original Mail Text (unverändert)</h6>
                             <small class="text-muted d-block mb-3">Enthält den ursprünglichen Nachrichtentext der eingegangenen E-Mail. Dieses Feld wird nicht automatisch durch KI verändert.</small>
                             <div id="user-input-editor"></div>
-                            <input type="hidden" id="user_input" name="user_input">
+                            <textarea id="user_input" name="user_input" class="d-none">{% if item %}{{ item.user_input }}{% endif %}</textarea>
                         </div>
                         
                         <!-- Solution Tab -->
                         <div class="tab-pane fade" id="edit-solution" role="tabpanel">
                             <h6 class="mb-3">Solution Description</h6>
                             <div id="solution-editor"></div>
-                            <input type="hidden" id="solution_description" name="solution_description">
+                            <textarea id="solution_description" name="solution_description" class="d-none">{% if item %}{{ item.solution_description }}{% endif %}</textarea>
                         </div>
                     </div>
                 </div>
@@ -500,16 +500,13 @@
 
 <script>
 // Initialize ToastUI Editor for Description
+const descriptionInitialValue = document.getElementById('description').value || '';
 const descriptionEditor = new toastui.Editor({
     el: document.querySelector('#description-editor'),
     height: '400px',
     initialEditType: 'markdown',
     previewStyle: 'vertical',
-    {% if item and item.description %}
-    initialValue: '{{ item.description|escapejs }}',
-    {% else %}
-    initialValue: '',
-    {% endif %}
+    initialValue: descriptionInitialValue,
     theme: 'dark',
     usageStatistics: false
 });
@@ -519,16 +516,13 @@ document.querySelector('#description-editor .toastui-editor-defaultUI').style.ma
 document.querySelector('#description-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
 // Initialize ToastUI Editor for User Input (Original Mail Text)
+const userInputInitialValue = document.getElementById('user_input').value || '';
 const userInputEditor = new toastui.Editor({
     el: document.querySelector('#user-input-editor'),
     height: '400px',
     initialEditType: 'markdown',
     previewStyle: 'vertical',
-    {% if item and item.user_input %}
-    initialValue: '{{ item.user_input|escapejs }}',
-    {% else %}
-    initialValue: '',
-    {% endif %}
+    initialValue: userInputInitialValue,
     theme: 'dark',
     usageStatistics: false
 });
@@ -538,16 +532,13 @@ document.querySelector('#user-input-editor .toastui-editor-defaultUI').style.max
 document.querySelector('#user-input-editor .toastui-editor-defaultUI').style.overflow = 'hidden';
 
 // Initialize ToastUI Editor for Solution Description
+const solutionInitialValue = document.getElementById('solution_description').value || '';
 const solutionEditor = new toastui.Editor({
     el: document.querySelector('#solution-editor'),
     height: '400px',
     initialEditType: 'markdown',
     previewStyle: 'vertical',
-    {% if item and item.solution_description %}
-    initialValue: '{{ item.solution_description|escapejs }}',
-    {% else %}
-    initialValue: '',
-    {% endif %}
+    initialValue: solutionInitialValue,
     theme: 'dark',
     usageStatistics: false
 });
