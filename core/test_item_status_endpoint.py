@@ -90,8 +90,12 @@ class ItemStatusEndpointTestCase(TestCase):
         self.assertContains(response, 'Working')
         self.assertNotContains(response, 'Inbox')
     
-    def test_status_endpoint_404_for_nonexistent_item(self):
-        """Test that the endpoint returns 404 for nonexistent items."""
+    def test_status_endpoint_204_for_nonexistent_item(self):
+        """Test that the endpoint returns 204 No Content for nonexistent items.
+        
+        This is HTMX-friendly and prevents full 404 error pages from being
+        rendered in the sidebar when items are deleted or no longer accessible.
+        """
         # Login
         self.client.login(username='testuser', password='testpass123')
         
@@ -103,5 +107,7 @@ class ItemStatusEndpointTestCase(TestCase):
         url = reverse('item-status', args=[nonexistent_id])
         response = self.client.get(url)
         
-        # Should return 404
-        self.assertEqual(response.status_code, 404)
+        # Should return 204 No Content (HTMX-friendly, no error page)
+        self.assertEqual(response.status_code, 204)
+        # 204 responses should have no content
+        self.assertEqual(response.content, b'')
