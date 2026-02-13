@@ -31,7 +31,9 @@ rag_logger = logging.getLogger('rag_pipeline')
 rag_logger.setLevel(logging.DEBUG)
 
 # Create logs directory if it doesn't exist
-log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'logs')
+# Path is: /path/to/Agira/logs/rag_pipeline.log
+base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+log_dir = os.path.join(base_dir, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 
 # Add file handler if not already present
@@ -289,7 +291,9 @@ class ExtendedRAGPipelineService:
             query_text: Query string
             alpha: Hybrid search alpha (0-1)
             project_id: Optional project filter
-            item_id: DEPRECATED - No longer used. Use current_item_id instead.
+            item_id: DEPRECATED - No longer used (Issue #395). Will be removed in future version.
+                     This parameter is kept for backward compatibility but has no effect.
+                     Use current_item_id instead.
             current_item_id: Optional current item ID to exclude from results (Issue #395)
             object_types: Optional type filter (e.g., ["item", "github_issue", "github_pr", "file"]).
                          If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
@@ -298,6 +302,13 @@ class ExtendedRAGPipelineService:
         Returns:
             List of result dictionaries
         """
+        # Log deprecation warning if item_id is used
+        if item_id is not None:
+            rag_logger.warning(
+                f"Parameter 'item_id' is deprecated and will be removed in a future version. "
+                f"It is being ignored. Use 'current_item_id' instead. (item_id={item_id})"
+            )
+        
         rag_logger.info(f"Starting search: query='{query_text[:50]}...', alpha={alpha}, project_id={project_id}, current_item_id={current_item_id}, limit={limit}")
         
         if not is_available():
