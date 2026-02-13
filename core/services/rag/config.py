@@ -25,7 +25,7 @@ DEFAULT_ALPHA_SEMANTIC = 0.7  # High alpha = more vector/semantic weight
 DEFAULT_ALPHA_BALANCED = 0.5  # Balanced
 
 # Content truncation
-MAX_CONTENT_LENGTH = 600  # Maximum characters per content snippet
+MAX_CONTENT_LENGTH = 4000  # Maximum characters per content snippet
 
 # Deduplication
 DEDUP_FETCH_MULTIPLIER = 2  # Fetch this many times limit for deduplication
