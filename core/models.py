@@ -698,7 +698,7 @@ class Item(models.Model):
                         # Update the item's organisation to the requester's primary organisation
                         self.organisation = primary_org
                     # If requester has no primary organisation, leave organisation unchanged
-                    # (as per requirement: "Unverändert lassen, aber Warnung an User ausgeben")
+                    # (as per requirement: leave unchanged, but display warning to user)
             except Item.DoesNotExist:
                 # This shouldn't happen, but handle gracefully
                 pass
