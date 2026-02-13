@@ -265,7 +265,8 @@ class ExtendedRAGPipelineService:
             project_id: Optional project filter
             item_id: Optional item filter
             current_item_id: Optional current item ID to exclude from results (Issue #392)
-            object_types: Optional type filter. If None, defaults to ALLOWED_OBJECT_TYPES
+            object_types: Optional type filter (e.g., ["item", "github_issue", "github_pr", "file"]).
+                         If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             limit: Maximum results
             
         Returns:
@@ -545,7 +546,8 @@ class ExtendedRAGPipelineService:
             project_id: Optional project filter
             item_id: Optional item filter
             current_item_id: Optional current item ID to exclude from results (Issue #392)
-            object_types: Optional object types filter. If None, defaults to ALLOWED_OBJECT_TYPES
+            object_types: Optional object types filter (e.g., ["item", "github_issue", "github_pr", "file"]).
+                         If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             user: Optional user for AI tracking
             client_ip: Optional client IP
             skip_optimization: Skip question optimization (use raw query)

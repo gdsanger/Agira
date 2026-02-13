@@ -212,7 +212,7 @@ class RAGPipelineService:
             project_id: Optional project ID filter
             item_id: Optional item ID filter (filters on parent_object_id)
             current_item_id: Optional current item ID to exclude from results (Issue #392)
-            object_types: Optional list of object types to filter (e.g., ["item", "comment"]).
+            object_types: Optional list of object types to filter (e.g., ["item", "github_issue", "github_pr", "file"]).
                          If None, defaults to ALLOWED_OBJECT_TYPES (item, github_issue, github_pr, file)
             limit: Maximum number of results (default: 20)
             alpha: Hybrid search alpha value (0-1). If None, determined by heuristic
