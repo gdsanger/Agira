@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 
 from core.models import (
-    Organisation, UserOrganisation, Project, ItemType, Item, 
+    Organisation, UserOrganisation, Project, ItemType, Item, Node,
     ItemStatus, ProjectStatus
 )
 
@@ -203,3 +203,31 @@ def test():
         # Assert
         self.assertEqual(reloaded_item.description, existing_description,
                         "Existing items should retain their description")
+
+    def test_item_update_with_empty_node_param_preserves_description(self):
+        """Description should survive updates even when node is posted as empty string."""
+        item = Item.objects.create(
+            project=self.project,
+            title="Item to update",
+            description="Beschreibung bleibt erhalten",
+            type=self.item_type,
+            status=ItemStatus.BACKLOG
+        )
+        Node.objects.create(project=self.project, name='Root')
+
+        response = self.client.post(
+            reverse('item-update', args=[item.id]),
+            {
+                'project': self.project.id,
+                'type': self.item_type.id,
+                'title': item.title,
+                'description': item.description,
+                'status': ItemStatus.BACKLOG,
+                'node': '',
+            },
+            HTTP_HX_REQUEST='true'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item.refresh_from_db()
+        self.assertEqual(item.description, "Beschreibung bleibt erhalten")
