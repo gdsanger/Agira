@@ -611,6 +611,209 @@ class OpenQuestionsAPITest(TestCase):
         self.assertIn('## Offene Fragen', self.item.description)
         self.assertIn('[x]', self.item.description)
         self.assertIn(self.question.question, self.item.description)
+    
+    def test_edit_open_question(self):
+        """Test editing an open (unanswered) question"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        url = reverse('item-open-question-edit', kwargs={'question_id': self.question.id})
+        payload = {
+            'question': 'Updated question text'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertTrue(data['success'])
+        self.assertEqual(data['question'], 'Updated question text')
+        
+        # Verify in database
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.question, 'Updated question text')
+        self.assertEqual(self.question.status, OpenQuestionStatus.OPEN)
+    
+    def test_edit_answered_question_keeps_answer(self):
+        """Test editing an answered question keeps the answer intact"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # First, answer the question
+        self.question.status = OpenQuestionStatus.ANSWERED
+        self.question.answer_text = 'Original answer'
+        self.question.answer_type = OpenQuestionAnswerType.FREE_TEXT
+        self.question.answered_by = self.user
+        self.question.answered_at = timezone.now()
+        self.question.save()
+        
+        # Now edit the question text
+        url = reverse('item-open-question-edit', kwargs={'question_id': self.question.id})
+        payload = {
+            'question': 'Edited question while answered'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify question text changed but answer remains
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.question, 'Edited question while answered')
+        self.assertEqual(self.question.status, OpenQuestionStatus.ANSWERED)
+        self.assertEqual(self.question.answer_text, 'Original answer')
+        self.assertEqual(self.question.answer_type, OpenQuestionAnswerType.FREE_TEXT)
+        self.assertIsNotNone(self.question.answered_at)
+        self.assertEqual(self.question.answered_by, self.user)
+    
+    def test_edit_dismissed_question(self):
+        """Test editing a dismissed question"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # First, dismiss the question
+        self.question.status = OpenQuestionStatus.DISMISSED
+        self.question.answered_by = self.user
+        self.question.answered_at = timezone.now()
+        self.question.save()
+        
+        # Now edit the question text
+        url = reverse('item-open-question-edit', kwargs={'question_id': self.question.id})
+        payload = {
+            'question': 'Edited dismissed question'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify question text changed
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.question, 'Edited dismissed question')
+        self.assertEqual(self.question.status, OpenQuestionStatus.DISMISSED)
+    
+    def test_edit_question_requires_authentication(self):
+        """Test that editing requires authentication"""
+        url = reverse('item-open-question-edit', kwargs={'question_id': self.question.id})
+        payload = {
+            'question': 'Should not work'
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_edit_question_empty_text_fails(self):
+        """Test that editing with empty text fails"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        url = reverse('item-open-question-edit', kwargs={'question_id': self.question.id})
+        payload = {
+            'question': '   '  # Only whitespace
+        }
+        
+        response = self.client.post(
+            url,
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('empty', data['error'].lower())
+    
+    def test_delete_open_question(self):
+        """Test deleting an open (unanswered) question"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        question_id = self.question.id
+        url = reverse('item-open-question-delete', kwargs={'question_id': question_id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify question was deleted
+        self.assertFalse(IssueOpenQuestion.objects.filter(id=question_id).exists())
+    
+    def test_delete_answered_question(self):
+        """Test deleting an answered question"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # First, answer the question
+        self.question.status = OpenQuestionStatus.ANSWERED
+        self.question.answer_text = 'Some answer'
+        self.question.answer_type = OpenQuestionAnswerType.FREE_TEXT
+        self.question.answered_by = self.user
+        self.question.answered_at = timezone.now()
+        self.question.save()
+        
+        question_id = self.question.id
+        url = reverse('item-open-question-delete', kwargs={'question_id': question_id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify answered question was deleted
+        self.assertFalse(IssueOpenQuestion.objects.filter(id=question_id).exists())
+    
+    def test_delete_dismissed_question(self):
+        """Test deleting a dismissed question"""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # First, dismiss the question
+        self.question.status = OpenQuestionStatus.DISMISSED
+        self.question.answered_by = self.user
+        self.question.answered_at = timezone.now()
+        self.question.save()
+        
+        question_id = self.question.id
+        url = reverse('item-open-question-delete', kwargs={'question_id': question_id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify dismissed question was deleted
+        self.assertFalse(IssueOpenQuestion.objects.filter(id=question_id).exists())
+    
+    def test_delete_question_requires_authentication(self):
+        """Test that deleting requires authentication"""
+        url = reverse('item-open-question-delete', kwargs={'question_id': self.question.id})
+        
+        response = self.client.post(url, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertFalse(data['success'])
 
 
 
