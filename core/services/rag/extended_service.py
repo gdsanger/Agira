@@ -525,7 +525,7 @@ class ExtendedRAGPipelineService:
         Separate results into A/B/C layers.
         
         Layer A: Thread/Task-related (2-3 snippets) - comments, related items
-        Layer B: Item context (2-3 snippets) - same item or closely related
+        Layer B: Item context (2-3 snippets) - items and attachments
         Layer C: Global background (1-2 snippets) - general context
         
         Args:
@@ -565,8 +565,8 @@ class ExtendedRAGPipelineService:
             # Layer A: Comments and closely related items (high relevance)
             if obj_type == 'comment' and len(layer_a) < 3:
                 layer_a.append(item)
-            # Layer B: Same item or item-level context
-            elif (obj_type == 'item' or (item_id and obj_id == item_id)) and len(layer_b) < 3:
+            # Layer B: Item-level context (items + attachments)
+            elif (obj_type in {'item', 'attachment'} or (item_id and obj_id == item_id)) and len(layer_b) < 3:
                 layer_b.append(item)
             # Layer C: Global background
             elif len(layer_c) < 2:

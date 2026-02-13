@@ -282,6 +282,7 @@ class LayerSeparationTestCase(TestCase):
         results = [
             {'object_id': '1', 'object_type': 'comment', 'content': 'Comment 1', 'title': 'C1', 'score': 0.9},
             {'object_id': '2', 'object_type': 'item', 'content': 'Item 1', 'title': 'I1', 'score': 0.8},
+            {'object_id': '5', 'object_type': 'attachment', 'content': 'Attachment 1', 'title': 'A1', 'score': 0.75},
             {'object_id': '3', 'object_type': 'project', 'content': 'Project 1', 'title': 'P1', 'score': 0.7},
             {'object_id': '4', 'object_type': 'comment', 'content': 'Comment 2', 'title': 'C2', 'score': 0.6},
         ]
@@ -293,10 +294,12 @@ class LayerSeparationTestCase(TestCase):
         for item in layer_a:
             self.assertEqual(item.object_type, 'comment')
         
-        # Layer B should have items (up to 3)
+        # Layer B should have item-level context (items + attachments) (up to 3)
         self.assertLessEqual(len(layer_b), 3)
         for item in layer_b:
-            self.assertEqual(item.object_type, 'item')
+            self.assertIn(item.object_type, {'item', 'attachment'})
+
+        self.assertTrue(any(item.object_type == 'attachment' for item in layer_b))
         
         # Layer C should have global context (up to 2)
         self.assertLessEqual(len(layer_c), 2)
