@@ -743,9 +743,16 @@ def item_status(request, item_id):
     If item-level visibility/permission logic is added in the future,
     it should be applied here as well.
     
-    Returns: HTML fragment containing just the status badge.
+    Returns: 
+        - 200 with HTML fragment containing the status badge if item exists
+        - 204 No Content if item does not exist (HTMX-friendly, no error page)
     """
-    item = get_object_or_404(Item, id=item_id)
+    try:
+        item = Item.objects.get(id=item_id)
+    except Item.DoesNotExist:
+        # Return 204 No Content for non-existent items
+        # This is HTMX-friendly and prevents 404 error pages in the sidebar
+        return HttpResponse(status=204)
     
     return render(request, 'partials/item_status_badge.html', {
         'item': item
