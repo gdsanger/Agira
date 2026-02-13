@@ -1991,15 +1991,25 @@
                             Als erledigt markieren
                         </button>
                 `;
+            } else {
+                // Show edit/delete answer buttons for answered/dismissed questions
+                html += `
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="showEditAnswerForm(${q.id})" title="Antwort bearbeiten">
+                            <i class="bi bi-pencil"></i> Antwort bearbeiten
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAnswer(${q.id})" title="Antwort löschen">
+                            <i class="bi bi-trash"></i> Antwort löschen
+                        </button>
+                `;
             }
             
             // Always show edit and delete buttons for all questions
             html += `
                         <button type="button" class="btn btn-sm btn-outline-warning" onclick="showEditForm(${q.id})" title="Frage bearbeiten">
-                            <i class="bi bi-pencil"></i> Bearbeiten
+                            <i class="bi bi-pencil"></i> Frage bearbeiten
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${q.id})" title="Frage löschen">
-                            <i class="bi bi-trash"></i> Löschen
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deleteQuestion(${q.id})" title="Frage löschen">
+                            <i class="bi bi-trash"></i> Frage löschen
                         </button>
                     </div>
             `;
@@ -2051,6 +2061,42 @@
                             Antwort speichern
                         </button>
                         <button type="button" class="btn btn-sm btn-secondary" onclick="hideAnswerForm(${q.id})">
+                            Abbrechen
+                        </button>
+                    </div>
+                `;
+            } else {
+                // Edit answer form for answered/dismissed questions (hidden by default)
+                html += `
+                    <div id="edit-answer-form-${q.id}" class="mt-3" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Antworttyp wählen:</label>
+                            <select class="form-select mb-2" id="edit-answer-type-${q.id}" onchange="toggleEditAnswerInput(${q.id})">
+                                <option value="standard" ${q.answer_type === 'StandardAnswer' ? 'selected' : ''}>Standardantwort</option>
+                                <option value="free" ${q.answer_type === 'FreeText' ? 'selected' : ''}>Freie Antwort</option>
+                            </select>
+                            
+                            <div id="edit-standard-answer-${q.id}" style="display:${q.answer_type === 'StandardAnswer' ? 'block' : 'none'};">
+                                <select class="form-select" id="edit-standard-select-${q.id}">
+            `;
+                
+                data.standard_answers.forEach(sa => {
+                    const selected = q.standard_answer && q.standard_answer.id === sa.id ? 'selected' : '';
+                    html += `<option value="${escapeHtml(sa.id)}" ${selected}>${escapeHtml(sa.label)}</option>`;
+                });
+                
+                html += `
+                                </select>
+                            </div>
+                            
+                            <div id="edit-free-answer-${q.id}" style="display:${q.answer_type === 'FreeText' ? 'block' : 'none'};">
+                                <textarea class="form-control" id="edit-free-text-${q.id}" rows="3" placeholder="Geben Sie Ihre Antwort ein...">${q.answer_type === 'FreeText' ? escapeHtml(q.answer_text) : ''}</textarea>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="submitEditAnswer(${q.id})">
+                            Änderung speichern
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="hideEditAnswerForm(${q.id})">
                             Abbrechen
                         </button>
                     </div>
@@ -2245,6 +2291,104 @@
         .catch(error => {
             console.error('Error:', error);
             alert('Fehler beim Speichern der Änderung');
+        });
+    }
+    
+    function showEditAnswerForm(questionId) {
+        // Hide any open answer/edit forms
+        const answerForm = document.getElementById('answer-form-' + questionId);
+        if (answerForm) {
+            answerForm.style.display = 'none';
+        }
+        const editForm = document.getElementById('edit-form-' + questionId);
+        if (editForm) {
+            editForm.style.display = 'none';
+        }
+        // Show edit answer form
+        document.getElementById('edit-answer-form-' + questionId).style.display = 'block';
+    }
+    
+    function hideEditAnswerForm(questionId) {
+        document.getElementById('edit-answer-form-' + questionId).style.display = 'none';
+    }
+    
+    function toggleEditAnswerInput(questionId) {
+        const answerType = document.getElementById('edit-answer-type-' + questionId).value;
+        const standardDiv = document.getElementById('edit-standard-answer-' + questionId);
+        const freeDiv = document.getElementById('edit-free-answer-' + questionId);
+        
+        if (answerType === 'standard') {
+            standardDiv.style.display = 'block';
+            freeDiv.style.display = 'none';
+        } else {
+            standardDiv.style.display = 'none';
+            freeDiv.style.display = 'block';
+        }
+    }
+    
+    function submitEditAnswer(questionId) {
+        const answerType = document.getElementById('edit-answer-type-' + questionId).value;
+        
+        const payload = {
+            answer_type: answerType === 'standard' ? 'standard_answer' : 'free_text'
+        };
+        
+        if (answerType === 'standard') {
+            payload.standard_answer_id = document.getElementById('edit-standard-select-' + questionId).value;
+        } else {
+            const freeText = document.getElementById('edit-free-text-' + questionId).value.trim();
+            if (!freeText) {
+                alert('Bitte geben Sie eine Antwort ein.');
+                return;
+            }
+            payload.answer_text = freeText;
+        }
+        
+        fetch(`/open-questions/${questionId}/answer/edit/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to show updated answer
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Speichern der Änderung');
+        });
+    }
+    
+    function deleteAnswer(questionId) {
+        if (!confirm('Möchten Sie diese Antwort wirklich löschen? Die Frage wird wieder als offen markiert.')) {
+            return;
+        }
+        
+        fetch(`/open-questions/${questionId}/answer/delete/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to show question as open again
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Löschen der Antwort');
         });
     }
     
