@@ -30,8 +30,9 @@ MAX_CONTENT_LENGTH = 600  # Maximum characters per content snippet
 # Deduplication
 DEDUP_FETCH_MULTIPLIER = 2  # Fetch this many times limit for deduplication
 
-# Allowed object types for RAG search (based on Issue #392)
-# Only search in: Item, GitHub Issues, GitHubPRs, and Files (not Comments)
+# Allowed object types for RAG search (Issue #392, #407)
+# Documentation-centric retrieval strategy: Only search in Item, GitHub Issues, GitHub PRs, and Attachments
+# Excludes comments and other object types to focus on structured technical documentation
 ALLOWED_OBJECT_TYPES = [
     "item",
     "github_issue",
