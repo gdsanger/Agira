@@ -36,7 +36,7 @@ ALLOWED_OBJECT_TYPES = [
     "item",
     "github_issue",
     "github_pr",
-    "file",
+    "attachment",
 ]
 
 # Type priority for ranking (higher number = higher priority)
@@ -47,11 +47,11 @@ ALLOWED_OBJECT_TYPES = [
 # 3. Future flexibility
 TYPE_PRIORITY = {
     "item": 6,
-    "file": 5,    
+    "attachment": 5,    
     "github_pr": 5,    
     "github_issue": 4,
-    "comment": 3,
+    "comment": 3,    
     "change": 2,
-    "attachment": 1,
+    "file": 1,
     "project": 0,
 }
