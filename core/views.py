@@ -2529,6 +2529,14 @@ def item_open_questions_list(request, item_id):
     # Format questions
     questions_data = []
     for q in questions:
+        standard_answer_data = None
+        if q.standard_answer:
+            standard_answer_data = {
+                'id': q.standard_answer.id,
+                'key': q.standard_answer.key,
+                'label': q.standard_answer.label,
+            }
+        
         questions_data.append({
             'id': q.id,
             'question': q.question,
@@ -2536,11 +2544,7 @@ def item_open_questions_list(request, item_id):
             'status_display': q.get_status_display(),
             'answer_type': q.answer_type if q.answer_type != 'None' else None,
             'answer_text': q.get_answer_display_text(),
-            'standard_answer': {
-                'id': q.standard_answer.id,
-                'key': q.standard_answer.key,
-                'label': q.standard_answer.label,
-            } if q.standard_answer else None,
+            'standard_answer': standard_answer_data,
             'source': q.source,
             'source_display': q.get_source_display(),
             'created_at': q.created_at.isoformat(),
