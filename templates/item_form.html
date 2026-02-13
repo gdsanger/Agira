@@ -624,6 +624,14 @@ function syncEditorContent() {
     {% endif %}
 }
 
+// Keep hidden form fields in sync while typing so HTMX always picks up latest editor values
+descriptionEditor.on('change', syncEditorContent);
+userInputEditor.on('change', syncEditorContent);
+solutionEditor.on('change', syncEditorContent);
+
+// Ensure hidden fields are initialized with the editors' initial state
+syncEditorContent();
+
 // Sync editor content to hidden fields on form submit (for non-HTMX submissions)
 document.getElementById('itemForm').addEventListener('submit', function(event) {
     syncEditorContent();
