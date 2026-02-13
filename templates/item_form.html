@@ -134,7 +134,6 @@
     <div class="detail-main">
         <form id="itemForm" 
               hx-post="{% if item %}{% url 'item-update' item.id %}{% else %}{% url 'item-create' %}{% endif %}"
-              hx-vals='js:getEditorPayload()'
               hx-swap="none"
               hx-on::after-request="handleFormResponse(event)">
             {% csrf_token %}
@@ -640,16 +639,6 @@ function syncEditorContentToHtmxRequest(event) {
         event.detail.parameters.solution_description = solutionEditor.getMarkdown();
     }
 }
-
-
-function getEditorPayload() {
-    return {
-        description: descriptionEditor.getMarkdown(),
-        user_input: userInputEditor.getMarkdown(),
-        solution_description: solutionEditor.getMarkdown(),
-    };
-}
-
 
 
 document.getElementById('itemForm').addEventListener('htmx:beforeRequest', syncEditorContentToHtmxRequest);
