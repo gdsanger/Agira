@@ -1946,7 +1946,9 @@ def _get_newest_pr_context(item):
         str: Formatted PR context block or None
     """
     from core.services.github.service import GitHubService
+    from core.services.github.client import GitHubClient
     from core.services.integrations.base import IntegrationError
+    from core.models import GitHubConfiguration
     
     try:
         # Get all PR mappings for this item, ordered by number (descending = newest first)
@@ -1960,7 +1962,7 @@ def _get_newest_pr_context(item):
         # Get the newest PR (highest number)
         newest_pr_mapping = pr_mappings.first()
         
-        # Initialize GitHub service and get PR details
+        # Initialize GitHub service to check if enabled
         github_service = GitHubService()
         
         # Check if GitHub is enabled and configured
@@ -1968,9 +1970,21 @@ def _get_newest_pr_context(item):
             logger.info(f"GitHub integration not enabled/configured, skipping PR context for item {item.id}")
             return None
         
-        # Get repository info
-        owner, repo = github_service._get_repo_info(item)
-        client = github_service._get_client()
+        # Get repository info from project
+        project = item.project
+        if not project.github_owner or not project.github_repo:
+            logger.info(f"Project {project.name} does not have GitHub repository configured")
+            return None
+        
+        owner = project.github_owner
+        repo = project.github_repo
+        
+        # Get GitHub configuration and create client
+        config = GitHubConfiguration.load()
+        client = GitHubClient(
+            token=config.github_token,
+            base_url=config.github_api_base_url,
+        )
         
         # Fetch PR details from GitHub API
         pr_data = client.get_pr(owner, repo, newest_pr_mapping.number)
@@ -2020,8 +2034,6 @@ def item_generate_solution_ai(request, item_id):
     Only available to users with Agent role.
     """
     from core.services.rag import build_extended_context
-    from core.services.github.service import GitHubService
-    from core.services.integrations.base import IntegrationError
     
     # Check user role
     if request.user.role != UserRole.AGENT:
