@@ -594,8 +594,8 @@ setupEditorWorkaround(descriptionEditor);
 setupEditorWorkaround(userInputEditor);
 setupEditorWorkaround(solutionEditor);
 
-// Sync editor content to hidden fields on form submit
-document.getElementById('itemForm').addEventListener('submit', function() {
+// Function to sync editor content to hidden fields
+function syncEditorContent() {
     document.getElementById('description').value = descriptionEditor.getMarkdown();
     document.getElementById('user_input').value = userInputEditor.getMarkdown();
     document.getElementById('solution_description').value = solutionEditor.getMarkdown();
@@ -609,13 +609,29 @@ document.getElementById('itemForm').addEventListener('submit', function() {
         variables[varName] = input.value;
     });
     if (Object.keys(variables).length > 0) {
+        // Remove any existing blueprint_variables input
+        const existingInput = document.querySelector('input[name="blueprint_variables"]');
+        if (existingInput) {
+            existingInput.remove();
+        }
+        // Add new blueprint variables input
         const hiddenInput = document.createElement('input');
         hiddenInput.type = 'hidden';
         hiddenInput.name = 'blueprint_variables';
         hiddenInput.value = JSON.stringify(variables);
-        this.appendChild(hiddenInput);
+        document.getElementById('itemForm').appendChild(hiddenInput);
     }
     {% endif %}
+}
+
+// Sync editor content to hidden fields on form submit (for non-HTMX submissions)
+document.getElementById('itemForm').addEventListener('submit', function() {
+    syncEditorContent();
+});
+
+// Sync editor content to hidden fields before HTMX request
+document.getElementById('itemForm').addEventListener('htmx:configRequest', function() {
+    syncEditorContent();
 });
 
 {% if not item %}
