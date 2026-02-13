@@ -47,9 +47,9 @@ ALLOWED_OBJECT_TYPES = [
 # 3. Future flexibility
 TYPE_PRIORITY = {
     "item": 6,
-    "github_issue": 5,
-    "github_pr": 5,
-    "file": 4,
+    "file": 5,    
+    "github_pr": 5,    
+    "github_issue": 4,
     "comment": 3,
     "change": 2,
     "attachment": 1,
