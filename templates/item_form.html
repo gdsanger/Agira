@@ -625,13 +625,34 @@ function syncEditorContent() {
 }
 
 // Sync editor content to hidden fields on form submit (for non-HTMX submissions)
-document.getElementById('itemForm').addEventListener('submit', function() {
+document.getElementById('itemForm').addEventListener('submit', function(event) {
+    console.log('[Item Form] Syncing on submit event');
     syncEditorContent();
 });
 
 // Sync editor content to hidden fields before HTMX request
-document.getElementById('itemForm').addEventListener('htmx:configRequest', function() {
+// HTMX collects form parameters before htmx:configRequest, so we need to update during configRequest
+document.getElementById('itemForm').addEventListener('htmx:configRequest', function(event) {
+    console.log('[Item Form] Syncing on htmx:configRequest');
     syncEditorContent();
+    
+    // Get the current values after sync
+    const descriptionValue = document.getElementById('description').value;
+    const userInputValue = document.getElementById('user_input').value;
+    const solutionDescriptionValue = document.getElementById('solution_description').value;
+    
+    console.log('[Item Form] Description length:', descriptionValue.length);
+    console.log('[Item Form] User Input length:', userInputValue.length);
+    console.log('[Item Form] Solution Description length:', solutionDescriptionValue.length);
+    
+    // Update the HTMX request parameters with the synced values
+    // This ensures HTMX sends the latest content from the editors
+    if (event.detail && event.detail.parameters) {
+        event.detail.parameters.description = descriptionValue;
+        event.detail.parameters.user_input = userInputValue;
+        event.detail.parameters.solution_description = solutionDescriptionValue;
+        console.log('[Item Form] Updated HTMX parameters');
+    }
 });
 
 {% if not item %}
