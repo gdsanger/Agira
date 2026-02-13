@@ -1945,7 +1945,6 @@ def _get_newest_pr_context(item):
     Returns:
         str: Formatted PR context block or None
     """
-    from core.services.github.service import GitHubService
     from core.services.github.client import GitHubClient
     from core.services.integrations.base import IntegrationError
     from core.models import GitHubConfiguration
@@ -1962,11 +1961,9 @@ def _get_newest_pr_context(item):
         # Get the newest PR (highest number)
         newest_pr_mapping = pr_mappings.first()
         
-        # Initialize GitHub service to check if enabled
-        github_service = GitHubService()
-        
         # Check if GitHub is enabled and configured
-        if not github_service.is_enabled() or not github_service.is_configured():
+        config = GitHubConfiguration.load()
+        if not config.enable_github or not config.github_token:
             logger.info(f"GitHub integration not enabled/configured, skipping PR context for item {item.id}")
             return None
         
@@ -1979,8 +1976,7 @@ def _get_newest_pr_context(item):
         owner = project.github_owner
         repo = project.github_repo
         
-        # Get GitHub configuration and create client
-        config = GitHubConfiguration.load()
+        # Create GitHub client
         client = GitHubClient(
             token=config.github_token,
             base_url=config.github_api_base_url,
@@ -1990,7 +1986,7 @@ def _get_newest_pr_context(item):
         pr_data = client.get_pr(owner, repo, newest_pr_mapping.number)
         
         # Extract title and body
-        pr_title = pr_data.get('title', 'No title')
+        pr_title = pr_data.get('title') or f'Pull Request #{newest_pr_mapping.number}'
         pr_body = pr_data.get('body', '')
         
         # Build context block
