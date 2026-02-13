@@ -1930,6 +1930,81 @@ Context from similar items and related information:
         }, status=500)
 
 
+def _get_newest_pr_context(item):
+    """
+    Get context from the newest linked GitHub PR for an item.
+    
+    Returns a formatted context block with PR title and body, or None if:
+    - No PRs are linked
+    - GitHub integration is not configured
+    - API call fails
+    
+    Args:
+        item: Item instance
+        
+    Returns:
+        str: Formatted PR context block or None
+    """
+    from core.services.github.service import GitHubService
+    from core.services.integrations.base import IntegrationError
+    
+    try:
+        # Get all PR mappings for this item, ordered by number (descending = newest first)
+        pr_mappings = item.external_mappings.filter(
+            kind=ExternalIssueKind.PR
+        ).order_by('-number')
+        
+        if not pr_mappings.exists():
+            return None
+        
+        # Get the newest PR (highest number)
+        newest_pr_mapping = pr_mappings.first()
+        
+        # Initialize GitHub service and get PR details
+        github_service = GitHubService()
+        
+        # Check if GitHub is enabled and configured
+        if not github_service.is_enabled() or not github_service.is_configured():
+            logger.info(f"GitHub integration not enabled/configured, skipping PR context for item {item.id}")
+            return None
+        
+        # Get repository info
+        owner, repo = github_service._get_repo_info(item)
+        client = github_service._get_client()
+        
+        # Fetch PR details from GitHub API
+        pr_data = client.get_pr(owner, repo, newest_pr_mapping.number)
+        
+        # Extract title and body
+        pr_title = pr_data.get('title', 'No title')
+        pr_body = pr_data.get('body', '')
+        
+        # Build context block
+        context_parts = [
+            "## GitHub PR (latest) - Description",
+            f"**Title:** {pr_title}",
+            f"**PR Number:** #{newest_pr_mapping.number}",
+            f"**URL:** {newest_pr_mapping.html_url}",
+        ]
+        
+        if pr_body and pr_body.strip():
+            context_parts.append("\n**Description:**")
+            context_parts.append(pr_body)
+        else:
+            context_parts.append("\n*No description provided in PR*")
+        
+        return "\n".join(context_parts)
+        
+    except IntegrationError as e:
+        # GitHub integration error - log and return None (graceful degradation)
+        logger.warning(f"GitHub integration error while fetching PR context for item {item.id}: {e}")
+        return None
+    except Exception as e:
+        # Unexpected error - log and return None (graceful degradation)
+        logger.warning(f"Failed to fetch PR context for item {item.id}: {e}")
+        return None
+
+
 @login_required
 @require_POST
 def item_generate_solution_ai(request, item_id):
@@ -1939,9 +2014,14 @@ def item_generate_solution_ai(request, item_id):
     Uses RAG to gather context and then calls the create-user-description agent
     to generate a solution description based on the item description.
     
+    When item status is TESTING and has linked GitHub PRs, includes the PR body
+    of the newest PR in the context.
+    
     Only available to users with Agent role.
     """
     from core.services.rag import build_extended_context
+    from core.services.github.service import GitHubService
+    from core.services.integrations.base import IntegrationError
     
     # Check user role
     if request.user.role != UserRole.AGENT:
@@ -1982,6 +2062,12 @@ def item_generate_solution_ai(request, item_id):
 Context from similar items and related information:
 {context_text}
 """
+        
+        # If item status is TESTING, add PR context from newest linked PR
+        if item.status == ItemStatus.TESTING:
+            pr_context = _get_newest_pr_context(item)
+            if pr_context:
+                agent_input += f"\n\n---\n{pr_context}"
         
         # Execute the create-user-description agent
         agent_service = AgentService()
