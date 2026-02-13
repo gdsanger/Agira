@@ -379,17 +379,11 @@ class ExtendedRAGPipelineService:
                     )
                     filter_details.append(f"object_types={object_types}")
                 
-                # Exclude files without text content (Issue #392)
-                # Files with only title but no text are worthless
-                # is_none(False) means: keep only items where text IS NOT NULL
-                text_filter = Filter.by_property(FIELD_MAPPING['content']).is_none(False)
-                
-                where_filter = (
-                    where_filter & text_filter
-                    if where_filter
-                    else text_filter
-                )
-                filter_details.append("content_not_null=true")
+                # Note: is_none filter removed (Issue #398)
+                # Filter for empty content is now done in Python after query
+                # to avoid Weaviate schema requirement for indexNullState.
+                # Trade-off: This may retrieve some items that will be filtered out,
+                # but in practice most items have content and this ensures the query works.
                 
                 rag_logger.debug(f"Applied filters: {', '.join(filter_details)}")
                 
@@ -403,10 +397,17 @@ class ExtendedRAGPipelineService:
                     fusion_type=HybridFusion.RELATIVE_SCORE,
                 )
                 
-                # Extract results
+                # Extract results and filter empty content (Issue #398)
                 results = []
                 for obj in response.objects:
                     props = obj.properties
+                    
+                    # Exclude files without text content (Issue #392, #398)
+                    # Filter in Python to avoid Weaviate schema requirement
+                    text = (props.get(FIELD_MAPPING['content']) or '').strip()
+                    if not text:
+                        continue
+                    
                     result = {
                         'object_id': props.get(FIELD_MAPPING['object_id']),
                         'object_type': props.get(FIELD_MAPPING['object_type']),
