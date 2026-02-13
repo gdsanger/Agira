@@ -641,6 +641,7 @@ function syncEditorContentToHtmxRequest(event) {
     }
 }
 
+
 function getEditorPayload() {
     return {
         description: descriptionEditor.getMarkdown(),
@@ -648,6 +649,7 @@ function getEditorPayload() {
         solution_description: solutionEditor.getMarkdown(),
     };
 }
+
 
 document.getElementById('itemForm').addEventListener('htmx:beforeRequest', syncEditorContentToHtmxRequest);
 document.getElementById('itemForm').addEventListener('htmx:configRequest', syncEditorContentToHtmxRequest);
