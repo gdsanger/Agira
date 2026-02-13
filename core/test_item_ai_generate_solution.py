@@ -10,6 +10,7 @@ from core.models import (
     Organisation, AIProvider, AIModel, Activity
 )
 from core.services.rag.models import RAGContext, RAGContextObject
+from core.services.rag.extended_service import ExtendedRAGContext
 
 
 class ItemGenerateSolutionAITestCase(TestCase):
@@ -352,10 +353,10 @@ Implement OAuth2 authentication using the following approach:
         self.assertNotIn('Old solution', self.item.solution_description)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
-    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    @patch('core.services.rag.build_extended_context')
     @patch('core.services.github.client.GitHubClient.get_pr')
     def test_generate_solution_includes_pr_context_when_testing(
-        self, mock_get_pr, mock_build_context, mock_execute_agent
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
     ):
         """Test that PR context is included when item status is TESTING"""
         from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
@@ -396,14 +397,17 @@ Implement OAuth2 authentication using the following approach:
         }
         
         # Mock RAG context
-        mock_context = RAGContext(
+        mock_context = ExtendedRAGContext(
             query='Test',
-            alpha=0.5,
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
             summary='Found context',
-            items=[],
             stats={}
         )
-        mock_build_context.return_value = mock_context
+        mock_build_extended_context.return_value = mock_context
         mock_execute_agent.return_value = 'AI-generated solution with PR context'
         
         # Login as agent
@@ -416,10 +420,20 @@ Implement OAuth2 authentication using the following approach:
         # Check response
         self.assertEqual(response.status_code, 200)
         
-        # Verify agent was called with PR context in input
-        mock_execute_agent.assert_called_once()
-        call_kwargs = mock_execute_agent.call_args[1]
-        agent_input = call_kwargs['input_text']
+        # Verify agent was called - it may be called multiple times (for question optimization)
+        # So we check that it was called at least once with the expected arguments
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
         
         # Verify PR context is included
         self.assertIn('GitHub PR (latest) - Description', agent_input)
@@ -429,9 +443,9 @@ Implement OAuth2 authentication using the following approach:
         self.assertIn('https://github.com/test-owner/test-repo/pull/42', agent_input)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
-    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    @patch('core.services.rag.build_extended_context')
     def test_generate_solution_excludes_pr_context_when_not_testing(
-        self, mock_build_context, mock_execute_agent
+        self, mock_build_extended_context, mock_execute_agent
     ):
         """Test that PR context is NOT included when item status is not TESTING"""
         from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
@@ -461,14 +475,17 @@ Implement OAuth2 authentication using the following approach:
         )
         
         # Mock RAG context
-        mock_context = RAGContext(
+        mock_context = ExtendedRAGContext(
             query='Test',
-            alpha=0.5,
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
             summary='Found context',
-            items=[],
             stats={}
         )
-        mock_build_context.return_value = mock_context
+        mock_build_extended_context.return_value = mock_context
         mock_execute_agent.return_value = 'AI-generated solution without PR context'
         
         # Login as agent
@@ -481,20 +498,29 @@ Implement OAuth2 authentication using the following approach:
         # Check response
         self.assertEqual(response.status_code, 200)
         
-        # Verify agent was called but WITHOUT PR context
-        mock_execute_agent.assert_called_once()
-        call_kwargs = mock_execute_agent.call_args[1]
-        agent_input = call_kwargs['input_text']
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
         
         # Verify PR context is NOT included
         self.assertNotIn('GitHub PR (latest) - Description', agent_input)
         self.assertNotIn('#42', agent_input)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
-    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    @patch('core.services.rag.build_extended_context')
     @patch('core.services.github.client.GitHubClient.get_pr')
     def test_generate_solution_selects_newest_pr(
-        self, mock_get_pr, mock_build_context, mock_execute_agent
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
     ):
         """Test that the newest PR (highest number) is selected when multiple PRs exist"""
         from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
@@ -545,14 +571,17 @@ Implement OAuth2 authentication using the following approach:
         }
         
         # Mock RAG context
-        mock_context = RAGContext(
+        mock_context = ExtendedRAGContext(
             query='Test',
-            alpha=0.5,
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
             summary='Found context',
-            items=[],
             stats={}
         )
-        mock_build_context.return_value = mock_context
+        mock_build_extended_context.return_value = mock_context
         mock_execute_agent.return_value = 'AI-generated solution'
         
         # Login as agent
@@ -568,17 +597,26 @@ Implement OAuth2 authentication using the following approach:
         # Verify GitHub API was called for PR #50 (newest)
         mock_get_pr.assert_called_once_with('test-owner', 'test-repo', 50)
         
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
         # Verify agent input contains the newest PR
-        call_kwargs = mock_execute_agent.call_args[1]
-        agent_input = call_kwargs['input_text']
         self.assertIn('Latest PR - Bug fixes', agent_input)
         self.assertIn('#50', agent_input)
         self.assertNotIn('#10', agent_input)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
-    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    @patch('core.services.rag.build_extended_context')
     def test_generate_solution_handles_no_pr_gracefully(
-        self, mock_build_context, mock_execute_agent
+        self, mock_build_extended_context, mock_execute_agent
     ):
         """Test that generation works when status is TESTING but no PRs are linked"""
         from core.models import GitHubConfiguration
@@ -596,14 +634,17 @@ Implement OAuth2 authentication using the following approach:
         # No PR mappings created - item has no linked PRs
         
         # Mock RAG context
-        mock_context = RAGContext(
+        mock_context = ExtendedRAGContext(
             query='Test',
-            alpha=0.5,
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
             summary='Found context',
-            items=[],
             stats={}
         )
-        mock_build_context.return_value = mock_context
+        mock_build_extended_context.return_value = mock_context
         mock_execute_agent.return_value = 'AI-generated solution without PR'
         
         # Login as agent
@@ -616,17 +657,26 @@ Implement OAuth2 authentication using the following approach:
         # Check response - should succeed
         self.assertEqual(response.status_code, 200)
         
-        # Verify agent was called without PR context
-        mock_execute_agent.assert_called_once()
-        call_kwargs = mock_execute_agent.call_args[1]
-        agent_input = call_kwargs['input_text']
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
         self.assertNotIn('GitHub PR (latest) - Description', agent_input)
     
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
-    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    @patch('core.services.rag.build_extended_context')
     @patch('core.services.github.client.GitHubClient.get_pr')
     def test_generate_solution_handles_github_api_error_gracefully(
-        self, mock_get_pr, mock_build_context, mock_execute_agent
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
     ):
         """Test that GitHub API errors don't break solution generation"""
         from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
@@ -660,14 +710,17 @@ Implement OAuth2 authentication using the following approach:
         mock_get_pr.side_effect = Exception('GitHub API error')
         
         # Mock RAG context
-        mock_context = RAGContext(
+        mock_context = ExtendedRAGContext(
             query='Test',
-            alpha=0.5,
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
             summary='Found context',
-            items=[],
             stats={}
         )
-        mock_build_context.return_value = mock_context
+        mock_build_extended_context.return_value = mock_context
         mock_execute_agent.return_value = 'AI-generated solution despite error'
         
         # Login as agent
@@ -680,8 +733,19 @@ Implement OAuth2 authentication using the following approach:
         # Check response - should still succeed (graceful degradation)
         self.assertEqual(response.status_code, 200)
         
-        # Verify agent was called without PR context (fallback behavior)
-        mock_execute_agent.assert_called_once()
-        call_kwargs = mock_execute_agent.call_args[1]
-        agent_input = call_kwargs['input_text']
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
+        # Verify PR context was not included due to error (fallback behavior)
         self.assertNotIn('GitHub PR (latest) - Description', agent_input)
