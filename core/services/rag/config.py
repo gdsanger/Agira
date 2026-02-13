@@ -40,6 +40,11 @@ ALLOWED_OBJECT_TYPES = [
 ]
 
 # Type priority for ranking (higher number = higher priority)
+# Note: Even though ALLOWED_OBJECT_TYPES excludes some types (like comment, change, etc.),
+# we keep all priorities here for:
+# 1. Custom searches that override object_types
+# 2. Backward compatibility with existing code
+# 3. Future flexibility
 TYPE_PRIORITY = {
     "item": 6,
     "github_issue": 5,
