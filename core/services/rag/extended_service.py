@@ -31,14 +31,22 @@ rag_logger = logging.getLogger('rag_pipeline')
 rag_logger.setLevel(logging.DEBUG)
 
 # Create logs directory if it doesn't exist
-# Path is: /path/to/Agira/logs/rag_pipeline.log
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-log_dir = os.path.join(base_dir, 'logs')
-os.makedirs(log_dir, exist_ok=True)
+# Get base directory (project root): core/services/rag/extended_service.py -> Agira/
+try:
+    from pathlib import Path
+    base_dir = Path(__file__).parents[3]
+    log_dir = base_dir / 'logs'
+    log_dir.mkdir(exist_ok=True)
+except Exception:
+    # Fallback for older Python or if pathlib fails
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    log_dir = os.path.join(base_dir, 'logs')
+    os.makedirs(log_dir, exist_ok=True)
 
 # Add file handler if not already present
 if not rag_logger.handlers:
-    file_handler = logging.FileHandler(os.path.join(log_dir, 'rag_pipeline.log'))
+    log_file = str(log_dir / 'rag_pipeline.log') if isinstance(log_dir, Path) else os.path.join(log_dir, 'rag_pipeline.log')
+    file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
@@ -291,7 +299,7 @@ class ExtendedRAGPipelineService:
             query_text: Query string
             alpha: Hybrid search alpha (0-1)
             project_id: Optional project filter
-            item_id: DEPRECATED - No longer used (Issue #395). Will be removed in future version.
+            item_id: DEPRECATED - No longer used (Issue #395). Will be removed in version 2.0.0.
                      This parameter is kept for backward compatibility but has no effect.
                      Use current_item_id instead.
             current_item_id: Optional current item ID to exclude from results (Issue #395)
@@ -305,7 +313,7 @@ class ExtendedRAGPipelineService:
         # Log deprecation warning if item_id is used
         if item_id is not None:
             rag_logger.warning(
-                f"Parameter 'item_id' is deprecated and will be removed in a future version. "
+                f"Parameter 'item_id' is deprecated and will be removed in version 2.0.0. "
                 f"It is being ignored. Use 'current_item_id' instead. (item_id={item_id})"
             )
         
