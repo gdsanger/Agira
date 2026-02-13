@@ -68,7 +68,12 @@ class ItemRequesterOrganisationChangeTest(TestCase):
             name='Requester C (No Primary Org)',
             role='User'
         )
-        # Add requester_c to org3 but NOT as primary
+        # Add requester_c to org1 and org3 but NEITHER as primary
+        UserOrganisation.objects.create(
+            user=self.requester_c,
+            organisation=self.org1,
+            is_primary=False
+        )
         UserOrganisation.objects.create(
             user=self.requester_c,
             organisation=self.org3,
