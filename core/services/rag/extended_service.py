@@ -83,14 +83,14 @@ class OptimizedQuery:
 @dataclass
 class ExtendedRAGContext:
     """
-    Extended RAG context with A/B/C-layer bundling.
+    Extended RAG context with A/B/C-layer bundling (Issue #407).
     
     Attributes:
         query: Original query
         optimized_query: Optimized query from agent
-        layer_a: Thread/Task-related snippets (2-3)
-        layer_b: Item context snippets (2-3)
-        layer_c: Global background snippets (1-2)
+        layer_a: Documentation-focused snippets (2-3) - attachment + github_pr
+        layer_b: Item context snippets (2-3) - item + github_issue
+        layer_c: Global background snippets (1-2) - rest
         all_items: All retrieved items (before layer separation)
         summary: Human-readable summary
         stats: Statistics about the retrieval
@@ -115,7 +115,7 @@ class ExtendedRAGContext:
         """
         lines = ["CONTEXT:"]
         
-        # Layer A: Thread/Task-related
+        # Layer A: Documentation-focused (attachment + github_pr)
         if self.layer_a:
             for idx, item in enumerate(self.layer_a, 1):
                 score_str = f"score={item.relevance_score:.2f}" if item.relevance_score else "score=N/A"
@@ -128,7 +128,7 @@ class ExtendedRAGContext:
                 lines.append(f"       {item.content}")
                 lines.append("")
         
-        # Layer B: Item context
+        # Layer B: Item context (item + github_issue)
         if self.layer_b:
             for idx, item in enumerate(self.layer_b, 1):
                 score_str = f"score={item.relevance_score:.2f}" if item.relevance_score else "score=N/A"
@@ -514,6 +514,21 @@ class ExtendedRAGPipelineService:
         rag_logger.info(f"Fusion completed: {len(fused_results)} unique results, returning top {limit}")
         rag_logger.debug(f"Top fused results: {[(r['object_id'], r['object_type'], '{:.3f}'.format(r['final_score'])) for r in fused_results[:3]]}")
         
+        # Log distribution by object_type for top results (Issue #407)
+        top_results = fused_results[:limit]
+        type_counts = {}
+        for r in top_results:
+            obj_type = r.get('object_type', 'unknown')
+            type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
+        
+        rag_logger.info(f"Top fused results by type:")
+        for obj_type, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+            rag_logger.info(f"  {obj_type}: {count}")
+        
+        # Log attachment count in top-N (Issue #407)
+        attachment_count = type_counts.get('attachment', 0)
+        rag_logger.info(f"Attachments in top-{limit}: {attachment_count} ({attachment_count/limit*100:.1f}%)")
+        
         # Return top N
         return fused_results[:limit]
     
@@ -523,15 +538,15 @@ class ExtendedRAGPipelineService:
         item_id: Optional[str] = None
     ) -> Tuple[List[RAGContextObject], List[RAGContextObject], List[RAGContextObject]]:
         """
-        Separate results into A/B/C layers.
+        Separate results into A/B/C layers (Issue #407).
         
-        Layer A: Thread/Task-related (2-3 snippets) - comments, related items
-        Layer B: Item context (2-3 snippets) - items and attachments
-        Layer C: Global background (1-2 snippets) - general context
+        Layer A: Documentation-focused (2-3 snippets) - attachment + github_pr (highest technical relevance)
+        Layer B: Item context (2-3 snippets) - item + github_issue
+        Layer C: Global background (1-2 snippets) - rest
         
         Args:
             results: Fused and ranked results
-            item_id: Optional item ID for context
+            item_id: Optional item ID for context (deprecated, kept for backward compatibility)
             
         Returns:
             Tuple of (layer_a, layer_b, layer_c)
@@ -562,12 +577,12 @@ class ExtendedRAGPipelineService:
                 updated_at=str(result.get('updated_at')) if result.get('updated_at') else None,
             )
             
-            # Classify into layers
-            # Layer A: Comments and closely related items (high relevance)
-            if obj_type == 'comment' and len(layer_a) < 3:
+            # Classify into layers (Issue #407: Documentation-centric)
+            # Layer A: Attachments + GitHub PRs (highest technical relevance)
+            if obj_type in {'attachment', 'github_pr'} and len(layer_a) < 3:
                 layer_a.append(item)
-            # Layer B: Item-level context (items + attachments)
-            elif (obj_type in {'item', 'attachment'} or (item_id and obj_id == item_id)) and len(layer_b) < 3:
+            # Layer B: Items + GitHub Issues
+            elif obj_type in {'item', 'github_issue'} and len(layer_b) < 3:
                 layer_b.append(item)
             # Layer C: Global background
             elif len(layer_c) < 2:
