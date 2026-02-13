@@ -1930,6 +1930,91 @@ Context from similar items and related information:
         }, status=500)
 
 
+def _get_newest_pr_context(item):
+    """
+    Get context from the newest linked GitHub PR for an item.
+    
+    Returns a formatted context block with PR title and body, or None if:
+    - No PRs are linked
+    - GitHub integration is not configured
+    - API call fails
+    
+    Args:
+        item: Item instance
+        
+    Returns:
+        str: Formatted PR context block or None
+    """
+    from core.services.github.client import GitHubClient
+    from core.services.integrations.base import IntegrationError
+    from core.models import GitHubConfiguration
+    
+    try:
+        # Get all PR mappings for this item, ordered by number (descending = newest first)
+        pr_mappings = item.external_mappings.filter(
+            kind=ExternalIssueKind.PR
+        ).order_by('-number')
+        
+        if not pr_mappings.exists():
+            return None
+        
+        # Get the newest PR (highest number)
+        newest_pr_mapping = pr_mappings.first()
+        
+        # Check if GitHub is enabled and configured
+        config = GitHubConfiguration.load()
+        if not config.enable_github or not config.github_token:
+            logger.info(f"GitHub integration not enabled/configured, skipping PR context for item {item.id}")
+            return None
+        
+        # Get repository info from project
+        project = item.project
+        if not project.github_owner or not project.github_repo:
+            logger.info(f"Project {project.name} does not have GitHub repository configured")
+            return None
+        
+        owner = project.github_owner
+        repo = project.github_repo
+        
+        # Create GitHub client
+        client = GitHubClient(
+            token=config.github_token,
+            base_url=config.github_api_base_url,
+        )
+        
+        # Fetch PR details from GitHub API
+        pr_data = client.get_pr(owner, repo, newest_pr_mapping.number)
+        
+        # Extract title and body
+        pr_title = pr_data.get('title') or f'Pull Request #{newest_pr_mapping.number}'
+        pr_body = pr_data.get('body', '')
+        
+        # Build context block
+        context_parts = [
+            "## GitHub PR (latest) - Description",
+            f"**Title:** {pr_title}",
+            f"**PR Number:** #{newest_pr_mapping.number}",
+            f"**URL:** {newest_pr_mapping.html_url}",
+        ]
+        
+        if pr_body and pr_body.strip():
+            context_parts.append("\n**Description:**")
+            context_parts.append(pr_body)
+        else:
+            context_parts.append("\n*No description provided in PR*")
+        
+        return "\n".join(context_parts)
+        
+    except IntegrationError as e:
+        # GitHub integration error - log and return None (graceful degradation)
+        logger.warning(f"GitHub integration error while fetching PR context for item {item.id}: {e}")
+        return None
+    except Exception as e:
+        # Unexpected error - log and return None (graceful degradation)
+        logger.warning(f"Failed to fetch PR context for item {item.id}: {e}")
+        return None
+
+
 @login_required
 @require_POST
 def item_generate_solution_ai(request, item_id):
@@ -1938,6 +2023,9 @@ def item_generate_solution_ai(request, item_id):
     
     Uses RAG to gather context and then calls the create-user-description agent
     to generate a solution description based on the item description.
+    
+    When item status is TESTING and has linked GitHub PRs, includes the PR body
+    of the newest PR in the context.
     
     Only available to users with Agent role.
     """
@@ -1982,6 +2070,12 @@ def item_generate_solution_ai(request, item_id):
 Context from similar items and related information:
 {context_text}
 """
+        
+        # If item status is TESTING, add PR context from newest linked PR
+        if item.status == ItemStatus.TESTING:
+            pr_context = _get_newest_pr_context(item)
+            if pr_context:
+                agent_input += f"\n\n---\n{pr_context}"
         
         # Execute the create-user-description agent
         agent_service = AgentService()

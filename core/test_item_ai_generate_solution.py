@@ -10,6 +10,7 @@ from core.models import (
     Organisation, AIProvider, AIModel, Activity
 )
 from core.services.rag.models import RAGContext, RAGContextObject
+from core.services.rag.extended_service import ExtendedRAGContext
 
 
 class ItemGenerateSolutionAITestCase(TestCase):
@@ -350,3 +351,401 @@ Implement OAuth2 authentication using the following approach:
         self.item.refresh_from_db()
         self.assertEqual(self.item.solution_description, 'New AI-generated solution')
         self.assertNotIn('Old solution', self.item.solution_description)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.build_extended_context')
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_generate_solution_includes_pr_context_when_testing(
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
+    ):
+        """Test that PR context is included when item status is TESTING"""
+        from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
+        
+        # Configure GitHub
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.github_token = 'test-token'
+        config.save()
+        
+        # Set project GitHub repo
+        self.project.github_owner = 'test-owner'
+        self.project.github_repo = 'test-repo'
+        self.project.save()
+        
+        # Change item status to TESTING
+        self.item.status = ItemStatus.TESTING
+        self.item.save()
+        
+        # Create a PR mapping for the item
+        pr_mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=123456,
+            number=42,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test-owner/test-repo/pull/42',
+        )
+        
+        # Mock GitHub API response
+        mock_get_pr.return_value = {
+            'id': 123456,
+            'number': 42,
+            'title': 'Add OAuth2 authentication',
+            'body': '## Implementation\n\nImplemented OAuth2 using passport.js\n\n## Testing\n\nAdded unit tests',
+            'state': 'open',
+            'html_url': 'https://github.com/test-owner/test-repo/pull/42',
+        }
+        
+        # Mock RAG context
+        mock_context = ExtendedRAGContext(
+            query='Test',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
+            summary='Found context',
+            stats={}
+        )
+        mock_build_extended_context.return_value = mock_context
+        mock_execute_agent.return_value = 'AI-generated solution with PR context'
+        
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+        
+        # Call generation endpoint
+        url = reverse('item-generate-solution-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify agent was called - it may be called multiple times (for question optimization)
+        # So we check that it was called at least once with the expected arguments
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
+        # Verify PR context is included
+        self.assertIn('GitHub PR (latest) - Description', agent_input)
+        self.assertIn('Add OAuth2 authentication', agent_input)
+        self.assertIn('Implemented OAuth2 using passport.js', agent_input)
+        self.assertIn('#42', agent_input)
+        self.assertIn('https://github.com/test-owner/test-repo/pull/42', agent_input)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.build_extended_context')
+    def test_generate_solution_excludes_pr_context_when_not_testing(
+        self, mock_build_extended_context, mock_execute_agent
+    ):
+        """Test that PR context is NOT included when item status is not TESTING"""
+        from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
+        
+        # Configure GitHub
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.github_token = 'test-token'
+        config.save()
+        
+        # Set project GitHub repo
+        self.project.github_owner = 'test-owner'
+        self.project.github_repo = 'test-repo'
+        self.project.save()
+        
+        # Item status is BACKLOG (not TESTING)
+        self.assertEqual(self.item.status, ItemStatus.BACKLOG)
+        
+        # Create a PR mapping for the item
+        pr_mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=123456,
+            number=42,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test-owner/test-repo/pull/42',
+        )
+        
+        # Mock RAG context
+        mock_context = ExtendedRAGContext(
+            query='Test',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
+            summary='Found context',
+            stats={}
+        )
+        mock_build_extended_context.return_value = mock_context
+        mock_execute_agent.return_value = 'AI-generated solution without PR context'
+        
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+        
+        # Call generation endpoint
+        url = reverse('item-generate-solution-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
+        # Verify PR context is NOT included
+        self.assertNotIn('GitHub PR (latest) - Description', agent_input)
+        self.assertNotIn('#42', agent_input)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.build_extended_context')
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_generate_solution_selects_newest_pr(
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
+    ):
+        """Test that the newest PR (highest number) is selected when multiple PRs exist"""
+        from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
+        
+        # Configure GitHub
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.github_token = 'test-token'
+        config.save()
+        
+        # Set project GitHub repo
+        self.project.github_owner = 'test-owner'
+        self.project.github_repo = 'test-repo'
+        self.project.save()
+        
+        # Change item status to TESTING
+        self.item.status = ItemStatus.TESTING
+        self.item.save()
+        
+        # Create multiple PR mappings (older PR with lower number)
+        pr_mapping_old = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=111111,
+            number=10,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url='https://github.com/test-owner/test-repo/pull/10',
+        )
+        
+        # Newer PR with higher number
+        pr_mapping_new = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=222222,
+            number=50,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test-owner/test-repo/pull/50',
+        )
+        
+        # Mock GitHub API response for the newer PR
+        mock_get_pr.return_value = {
+            'id': 222222,
+            'number': 50,
+            'title': 'Latest PR - Bug fixes',
+            'body': 'This is the newest PR',
+            'state': 'open',
+            'html_url': 'https://github.com/test-owner/test-repo/pull/50',
+        }
+        
+        # Mock RAG context
+        mock_context = ExtendedRAGContext(
+            query='Test',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
+            summary='Found context',
+            stats={}
+        )
+        mock_build_extended_context.return_value = mock_context
+        mock_execute_agent.return_value = 'AI-generated solution'
+        
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+        
+        # Call generation endpoint
+        url = reverse('item-generate-solution-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+        
+        # Check response
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify GitHub API was called for PR #50 (newest)
+        mock_get_pr.assert_called_once_with('test-owner', 'test-repo', 50)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
+        # Verify agent input contains the newest PR
+        self.assertIn('Latest PR - Bug fixes', agent_input)
+        self.assertIn('#50', agent_input)
+        self.assertNotIn('#10', agent_input)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.build_extended_context')
+    def test_generate_solution_handles_no_pr_gracefully(
+        self, mock_build_extended_context, mock_execute_agent
+    ):
+        """Test that generation works when status is TESTING but no PRs are linked"""
+        from core.models import GitHubConfiguration
+        
+        # Configure GitHub
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.github_token = 'test-token'
+        config.save()
+        
+        # Change item status to TESTING
+        self.item.status = ItemStatus.TESTING
+        self.item.save()
+        
+        # No PR mappings created - item has no linked PRs
+        
+        # Mock RAG context
+        mock_context = ExtendedRAGContext(
+            query='Test',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
+            summary='Found context',
+            stats={}
+        )
+        mock_build_extended_context.return_value = mock_context
+        mock_execute_agent.return_value = 'AI-generated solution without PR'
+        
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+        
+        # Call generation endpoint
+        url = reverse('item-generate-solution-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+        
+        # Check response - should succeed
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        self.assertNotIn('GitHub PR (latest) - Description', agent_input)
+    
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.build_extended_context')
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_generate_solution_handles_github_api_error_gracefully(
+        self, mock_get_pr, mock_build_extended_context, mock_execute_agent
+    ):
+        """Test that GitHub API errors don't break solution generation"""
+        from core.models import ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration
+        
+        # Configure GitHub
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.github_token = 'test-token'
+        config.save()
+        
+        # Set project GitHub repo
+        self.project.github_owner = 'test-owner'
+        self.project.github_repo = 'test-repo'
+        self.project.save()
+        
+        # Change item status to TESTING
+        self.item.status = ItemStatus.TESTING
+        self.item.save()
+        
+        # Create a PR mapping
+        pr_mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=123456,
+            number=42,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test-owner/test-repo/pull/42',
+        )
+        
+        # Mock GitHub API to raise an error
+        mock_get_pr.side_effect = Exception('GitHub API error')
+        
+        # Mock RAG context
+        mock_context = ExtendedRAGContext(
+            query='Test',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[],
+            layer_c=[],
+            all_items=[],
+            summary='Found context',
+            stats={}
+        )
+        mock_build_extended_context.return_value = mock_context
+        mock_execute_agent.return_value = 'AI-generated solution despite error'
+        
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+        
+        # Call generation endpoint
+        url = reverse('item-generate-solution-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+        
+        # Check response - should still succeed (graceful degradation)
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify agent was called
+        self.assertTrue(mock_execute_agent.called)
+        
+        # Find the call with create-user-description.yml
+        create_description_call = None
+        for call in mock_execute_agent.call_args_list:
+            call_kwargs = call[1]
+            if call_kwargs.get('filename') == 'create-user-description.yml':
+                create_description_call = call_kwargs
+                break
+        
+        self.assertIsNotNone(create_description_call, "create-user-description.yml was not called")
+        agent_input = create_description_call['input_text']
+        
+        # Verify PR context was not included due to error (fallback behavior)
+        self.assertNotIn('GitHub PR (latest) - Description', agent_input)
