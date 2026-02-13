@@ -2623,6 +2623,14 @@ def item_open_questions_list(request, item_id):
     # Format questions
     questions_data = []
     for q in questions:
+        standard_answer_data = None
+        if q.standard_answer:
+            standard_answer_data = {
+                'id': q.standard_answer.id,
+                'key': q.standard_answer.key,
+                'label': q.standard_answer.label,
+            }
+        
         questions_data.append({
             'id': q.id,
             'question': q.question,
@@ -2630,6 +2638,7 @@ def item_open_questions_list(request, item_id):
             'status_display': q.get_status_display(),
             'answer_type': q.answer_type if q.answer_type != 'None' else None,
             'answer_text': q.get_answer_display_text(),
+            'standard_answer': standard_answer_data,
             'source': q.source,
             'source_display': q.get_source_display(),
             'created_at': q.created_at.isoformat(),
@@ -2863,6 +2872,162 @@ def item_open_question_delete(request, question_id):
         
     except Exception as e:
         logger.error(f"Error deleting open question {question_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def item_open_question_answer_edit(request, question_id):
+    """
+    Edit an existing answer to an open question.
+    
+    Allows changing the answer type (free_text ↔ standard_answer) and content.
+    
+    Expects JSON body with:
+    - answer_type: 'free_text' or 'standard_answer'
+    - answer_text: Free text answer (if answer_type='free_text')
+    - standard_answer_id: ID of standard answer (if answer_type='standard_answer')
+    """
+    from core.models import OpenQuestionAnswerType
+    
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Check if question is answered
+    if question.status != OpenQuestionStatus.ANSWERED:
+        return JsonResponse({
+            'success': False,
+            'error': 'Question must be answered to edit the answer'
+        }, status=400)
+    
+    try:
+        data = json.loads(request.body)
+        answer_type = data.get('answer_type', '').lower()
+        
+        if answer_type == 'free_text':
+            answer_text = data.get('answer_text', '').strip()
+            if not answer_text:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Answer text is required for free text answers'
+                }, status=400)
+            
+            question.answer_type = OpenQuestionAnswerType.FREE_TEXT
+            question.answer_text = answer_text
+            question.standard_answer = None
+            question.standard_answer_key = None
+            
+        elif answer_type == 'standard_answer':
+            standard_answer_id = data.get('standard_answer_id')
+            if not standard_answer_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Standard answer ID is required'
+                }, status=400)
+            
+            standard_answer = get_object_or_404(IssueStandardAnswer, id=standard_answer_id, is_active=True)
+            
+            question.answer_type = OpenQuestionAnswerType.STANDARD_ANSWER
+            question.answer_text = None
+            question.standard_answer = standard_answer
+            question.standard_answer_key = standard_answer.key
+            
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid answer_type. Must be "free_text" or "standard_answer"'
+            }, status=400)
+        
+        # Update answered metadata
+        question.answered_at = timezone.now()
+        question.answered_by = request.user
+        question.save()
+        
+        # Update item description with answered questions
+        _sync_answered_questions_to_description(question.issue)
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.open_question.answer_edited',
+            target=question.issue,
+            actor=request.user,
+            summary=f'Answer edited for question: {question.question[:50]}...',
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'status': question.status,
+            'answer': question.get_answer_display_text()
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON in request body'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error editing answer for question {question_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def item_open_question_answer_delete(request, question_id):
+    """
+    Delete the answer to an open question, reverting it to Open status.
+    
+    This removes the answer but keeps the question itself.
+    """
+    from core.models import OpenQuestionAnswerType
+    
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Check if question is answered
+    if question.status != OpenQuestionStatus.ANSWERED and question.status != OpenQuestionStatus.DISMISSED:
+        return JsonResponse({
+            'success': False,
+            'error': 'Question must be answered or dismissed to delete the answer'
+        }, status=400)
+    
+    try:
+        # Clear answer fields
+        question.answer_type = OpenQuestionAnswerType.NONE
+        question.answer_text = None
+        question.standard_answer = None
+        question.standard_answer_key = None
+        question.answered_by = None
+        question.answered_at = None
+        
+        # Revert status to Open
+        question.status = OpenQuestionStatus.OPEN
+        question.save()
+        
+        # Update item description with answered questions
+        _sync_answered_questions_to_description(question.issue)
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.open_question.answer_deleted',
+            target=question.issue,
+            actor=request.user,
+            summary=f'Answer deleted for question: {question.question[:50]}...',
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'question_id': question.id,
+            'status': question.status
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting answer for question {question_id}: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': str(e)

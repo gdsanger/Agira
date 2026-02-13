@@ -101,6 +101,8 @@ urlpatterns = [
     path('open-questions/<int:question_id>/answer-ai/', views.item_answer_question_ai, name='item-answer-question-ai'),
     path('open-questions/<int:question_id>/edit/', views.item_open_question_edit, name='item-open-question-edit'),
     path('open-questions/<int:question_id>/delete/', views.item_open_question_delete, name='item-open-question-delete'),
+    path('open-questions/<int:question_id>/answer/edit/', views.item_open_question_answer_edit, name='item-open-question-answer-edit'),
+    path('open-questions/<int:question_id>/answer/delete/', views.item_open_question_answer_delete, name='item-open-question-answer-delete'),
     
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
