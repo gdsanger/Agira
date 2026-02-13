@@ -247,6 +247,19 @@ class User(AbstractBaseUser, PermissionsMixin):
             return primary_org.organisation.short if primary_org.organisation.short else ''
         except UserOrganisation.DoesNotExist:
             return ''
+    
+    def get_primary_organisation(self):
+        """
+        Get the user's primary organisation.
+        
+        Returns:
+            Organisation: The primary organisation if exists, None otherwise
+        """
+        try:
+            primary_org = self.user_organisations.get(is_primary=True)
+            return primary_org.organisation
+        except UserOrganisation.DoesNotExist:
+            return None
 
 
 class UserOrganisation(models.Model):
@@ -669,6 +682,27 @@ class Item(models.Model):
             self.description = '\n'.join(new_lines)
 
     def save(self, *args, **kwargs):
+        # Check if this is an update (not a new item)
+        if self.pk:
+            try:
+                # Get the old item from database
+                old_item = Item.objects.get(pk=self.pk)
+                old_requester_id = old_item.requester_id if old_item.requester else None
+                new_requester_id = self.requester_id if self.requester else None
+                
+                # Check if requester has changed
+                if old_requester_id != new_requester_id and self.requester:
+                    # Get the new requester's primary organisation
+                    primary_org = self.requester.get_primary_organisation()
+                    if primary_org:
+                        # Update the item's organisation to the requester's primary organisation
+                        self.organisation = primary_org
+                    # If requester has no primary organisation, leave organisation unchanged
+                    # (as per requirement: "Unverändert lassen, aber Warnung an User ausgeben")
+            except Item.DoesNotExist:
+                # This shouldn't happen, but handle gracefully
+                pass
+        
         self.full_clean()
         super().save(*args, **kwargs)
     
