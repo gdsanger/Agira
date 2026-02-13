@@ -527,7 +527,11 @@ class ExtendedRAGPipelineService:
         
         # Log attachment count in top-N (Issue #407)
         attachment_count = type_counts.get('attachment', 0)
-        rag_logger.info(f"Attachments in top-{limit}: {attachment_count} ({attachment_count/limit*100:.1f}%)")
+        if limit > 0:
+            percentage = attachment_count / limit * 100
+            rag_logger.info(f"Attachments in top-{limit}: {attachment_count} ({percentage:.1f}%)")
+        else:
+            rag_logger.info(f"Attachments in top-{limit}: {attachment_count}")
         
         # Return top N
         return fused_results[:limit]
@@ -546,7 +550,8 @@ class ExtendedRAGPipelineService:
         
         Args:
             results: Fused and ranked results
-            item_id: Optional item ID for context (deprecated, kept for backward compatibility)
+            item_id: DEPRECATED - Not used in layer separation logic. Kept for backward compatibility.
+                     This parameter has no effect and will be removed in a future version.
             
         Returns:
             Tuple of (layer_a, layer_b, layer_c)
