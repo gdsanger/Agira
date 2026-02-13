@@ -326,10 +326,19 @@ def _serialize_attachment(attachment) -> Dict[str, Any]:
             parent_object_id = str(first_link.target_object_id)
             
             # Try to get project/org from parent
-            if hasattr(first_link.target, 'project_id'):
-                project_id = str(first_link.target.project_id)
-            if hasattr(first_link.target, 'organisation_id') and first_link.target.organisation_id:
-                org_id = str(first_link.target.organisation_id)
+            # For Project attachments, the target IS the project
+            target = first_link.target
+            if target:
+                # If target is a Project, use its ID as project_id
+                if target.__class__.__name__ == 'Project':
+                    project_id = str(target.id)
+                # Otherwise, check if target has project_id attribute (Item, ItemComment, Change, etc.)
+                elif hasattr(target, 'project_id') and target.project_id:
+                    project_id = str(target.project_id)
+                
+                # Get org_id from target
+                if hasattr(target, 'organisation_id') and target.organisation_id:
+                    org_id = str(target.organisation_id)
     
     # Build text content
     # For markdown files, read the actual file content
