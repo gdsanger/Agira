@@ -13,6 +13,18 @@ from core.services.storage.service import AttachmentStorageService
 
 logger = logging.getLogger(__name__)
 
+# Import Project for isinstance checks in _serialize_attachment
+# Import is deferred to avoid circular imports
+_Project = None
+
+def _get_project_class():
+    """Lazily import Project class to avoid circular imports."""
+    global _Project
+    if _Project is None:
+        from core.models import Project
+        _Project = Project
+    return _Project
+
 
 def _get_model_type(instance: models.Model) -> Optional[str]:
     """
@@ -329,8 +341,11 @@ def _serialize_attachment(attachment) -> Dict[str, Any]:
             # For Project attachments, the target IS the project
             target = first_link.target
             if target:
+                # Get Project class (lazy import to avoid circular dependency)
+                Project = _get_project_class()
+                
                 # If target is a Project, use its ID as project_id
-                if target.__class__.__name__ == 'Project':
+                if isinstance(target, Project):
                     project_id = str(target.id)
                 # Otherwise, check if target has project_id attribute (Item, ItemComment, Change, etc.)
                 elif hasattr(target, 'project_id') and target.project_id:

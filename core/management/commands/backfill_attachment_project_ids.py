@@ -8,7 +8,7 @@ to the parent object (Project, Item, Comment, etc.).
 
 import logging
 from django.core.management.base import BaseCommand
-from core.models import Attachment
+from core.models import Attachment, Project
 from core.services.weaviate.service import upsert_instance
 
 logger = logging.getLogger(__name__)
@@ -130,7 +130,7 @@ class Command(BaseCommand):
             return None
         
         # If target is a Project, use its ID as project_id
-        if target.__class__.__name__ == 'Project':
+        if isinstance(target, Project):
             return str(target.id)
         
         # Otherwise, check if target has project_id attribute
