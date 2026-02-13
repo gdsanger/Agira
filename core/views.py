@@ -2706,11 +2706,13 @@ def item_open_question_edit(request, question_id):
         
         # Log activity
         activity_service = ActivityService()
+        old_summary = f'"{old_question[:30]}"' + ('...' if len(old_question) > 30 else '')
+        new_summary = f'"{new_question_text[:30]}"' + ('...' if len(new_question_text) > 30 else '')
         activity_service.log(
             verb='item.open_question.edited',
             target=question.issue,
             actor=request.user,
-            summary=f'Question edited: "{old_question[:30]}..." → "{new_question_text[:30]}..."',
+            summary=f'Question edited: {old_summary} → {new_summary}',
         )
         
         return JsonResponse({
@@ -2752,11 +2754,12 @@ def item_open_question_delete(request, question_id):
         
         # Log activity
         activity_service = ActivityService()
+        summary_text = f'"{question_text[:50]}"' + ('...' if len(question_text) > 50 else '')
         activity_service.log(
             verb='item.open_question.deleted',
             target=issue,
             actor=request.user,
-            summary=f'Question deleted: "{question_text[:50]}..."',
+            summary=f'Question deleted: {summary_text}',
         )
         
         return JsonResponse({
