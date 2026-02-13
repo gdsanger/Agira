@@ -326,16 +326,9 @@ class RAGPipelineService:
                         else type_filter
                     )
                 
-                # Exclude files without text content (Issue #392)
-                # Files with only title but no text are worthless
-                # is_none(False) means: keep only items where text IS NOT NULL
-                text_filter = Filter.by_property(FIELD_MAPPING['content']).is_none(False)
-                
-                where_filter = (
-                    where_filter & text_filter
-                    if where_filter
-                    else text_filter
-                )
+                # Note: is_none filter removed (Issue #398) 
+                # Filter for empty content is now done in Python after query
+                # to avoid Weaviate schema requirement for indexNullState
                 
                 # Perform hybrid search
                 response = collection.query.hybrid(
@@ -346,10 +339,16 @@ class RAGPipelineService:
                     fusion_type=HybridFusion.RELATIVE_SCORE,
                 )
                 
-                # Extract results
+                # Extract results and filter empty content (Issue #398)
                 raw_results = []
                 for obj in response.objects:
                     props = obj.properties
+                    
+                    # Exclude files without text content (Issue #392, #398)
+                    # Filter in Python to avoid Weaviate schema requirement
+                    text = (props.get(FIELD_MAPPING['content']) or '').strip()
+                    if not text:
+                        continue
                     
                     # Map fields using FIELD_MAPPING
                     result = {
