@@ -1665,6 +1665,96 @@ namespace TestNamespace
         # Should still read content based on .md extension
         self.assertIn('# Quick Test', result['text'])
         self.assertIn('Just a quick test.', result['text'])
+    
+    def test_serialize_project_attachment_has_project_id(self):
+        """Test that attachments linked to a project have project_id set."""
+        import io
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create attachment linked to project
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(b"Test content")
+        file_obj.name = 'project-file.txt'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=self.project,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify project_id is set correctly
+        self.assertEqual(result['project_id'], str(self.project.id))
+        self.assertEqual(result['parent_object_id'], str(self.project.id))
+    
+    def test_serialize_item_attachment_has_project_id(self):
+        """Test that attachments linked to an item have the item's project_id."""
+        import io
+        from core.models import Item
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create item in the project
+        item = Item.objects.create(
+            title="Test Item",
+            project=self.project,
+        )
+        
+        # Create attachment linked to item
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(b"Test content")
+        file_obj.name = 'item-file.txt'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=item,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify project_id is set from item's project
+        self.assertEqual(result['project_id'], str(self.project.id))
+        self.assertEqual(result['parent_object_id'], str(item.id))
+    
+    def test_serialize_comment_attachment_has_project_id(self):
+        """Test that attachments linked to a comment have the item's project_id."""
+        import io
+        from core.models import Item, ItemComment
+        from core.services.storage.service import AttachmentStorageService
+        from core.services.weaviate.serializers import _serialize_attachment
+        
+        # Create item and comment
+        item = Item.objects.create(
+            title="Test Item",
+            project=self.project,
+        )
+        comment = ItemComment.objects.create(
+            item=item,
+            body="Test comment",
+        )
+        
+        # Create attachment linked to comment
+        storage = AttachmentStorageService()
+        file_obj = io.BytesIO(b"Test content")
+        file_obj.name = 'comment-file.txt'
+        
+        attachment = storage.store_attachment(
+            file=file_obj,
+            target=comment,
+            created_by=None,
+        )
+        
+        # Serialize the attachment
+        result = _serialize_attachment(attachment)
+        
+        # Verify project_id is set from comment's item's project
+        self.assertEqual(result['project_id'], str(self.project.id))
+        self.assertEqual(result['parent_object_id'], str(comment.id))
 
 
 class GlobalSearchTestCase(TestCase):
