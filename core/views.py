@@ -2689,13 +2689,6 @@ def item_open_question_edit(request, question_id):
     """
     question = get_object_or_404(IssueOpenQuestion, id=question_id)
     
-    # Check permissions - user must be authenticated
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'error': 'Authentication required'
-        }, status=403)
-    
     try:
         data = json.loads(request.body)
         new_question_text = data.get('question', '').strip()
@@ -2748,13 +2741,6 @@ def item_open_question_delete(request, question_id):
     Allows deletion of questions regardless of answered status.
     """
     question = get_object_or_404(IssueOpenQuestion, id=question_id)
-    
-    # Check permissions - user must be authenticated
-    if not request.user.is_authenticated:
-        return JsonResponse({
-            'success': False,
-            'error': 'Authentication required'
-        }, status=403)
     
     try:
         # Store info for logging
