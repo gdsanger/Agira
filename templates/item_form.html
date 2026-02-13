@@ -624,10 +624,10 @@ solutionEditor.on('change', syncEditorContent);
 // Ensure hidden fields are initialized with the editors' initial state
 syncEditorContent();
 
-// Sync editor content to hidden fields on form submit (for non-HTMX submissions)
+// Sync editor content early on submit (capture phase), before HTMX serializes parameters
 document.getElementById('itemForm').addEventListener('submit', function(event) {
     syncEditorContent();
-});
+}, true);
 
 // Ensure HTMX requests always include the latest editor content.
 // Read directly from editor instances instead of relying only on hidden fields.
@@ -649,6 +649,7 @@ function getEditorPayload() {
         solution_description: solutionEditor.getMarkdown(),
     };
 }
+
 
 
 document.getElementById('itemForm').addEventListener('htmx:beforeRequest', syncEditorContentToHtmxRequest);
