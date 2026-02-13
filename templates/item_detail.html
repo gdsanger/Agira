@@ -1966,36 +1966,73 @@
                 `;
             }
             
+            // Action buttons section - always visible for all questions
+            html += `
+                <div class="mt-3">
+                    <div class="btn-group" role="group">
+            `;
+            
+            // Show answer/dismiss buttons only for open questions
             if (isOpen) {
                 html += `
-                    <div class="mt-3">
-                        <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="showAnswerForm(${q.id})">
-                                Beantworten
-                            </button>
-                            {% if user.role == 'Agent' %}
-                            <button type="button" 
-                                    class="btn btn-sm btn-outline-success" 
-                                    id="ai-answer-btn-${q.id}"
-                                    onclick="answerWithAI(${q.id})"
-                                    aria-label="Mit KI beantworten">
-                                <i class="bi bi-robot"></i> Mit KI beantworten
-                            </button>
-                            {% endif %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissQuestion(${q.id})">
-                                Als erledigt markieren
-                            </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="showAnswerForm(${q.id})">
+                            Beantworten
+                        </button>
+                        {% if user.role == 'Agent' %}
+                        <button type="button" 
+                                class="btn btn-sm btn-outline-success" 
+                                id="ai-answer-btn-${q.id}"
+                                onclick="answerWithAI(${q.id})"
+                                aria-label="Mit KI beantworten">
+                            <i class="bi bi-robot"></i> Mit KI beantworten
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissQuestion(${q.id})">
+                            Als erledigt markieren
+                        </button>
+                `;
+            }
+            
+            // Always show edit and delete buttons for all questions
+            html += `
+                        <button type="button" class="btn btn-sm btn-outline-warning" onclick="showEditForm(${q.id})" title="Frage bearbeiten">
+                            <i class="bi bi-pencil"></i> Bearbeiten
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${q.id})" title="Frage löschen">
+                            <i class="bi bi-trash"></i> Löschen
+                        </button>
+                    </div>
+            `;
+            
+            // Edit form (hidden by default)
+            html += `
+                    <div id="edit-form-${q.id}" class="mt-3" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Fragetext bearbeiten:</label>
+                            <textarea class="form-control" id="edit-question-text-${q.id}" rows="3">${escapeHtml(q.question)}</textarea>
                         </div>
-                        <div id="answer-form-${q.id}" class="mt-3" style="display:none;">
-                            <div class="mb-3">
-                                <label class="form-label">Antworttyp wählen:</label>
-                                <select class="form-select mb-2" id="answer-type-${q.id}" onchange="toggleAnswerInput(${q.id})">
-                                    <option value="standard">Standardantwort</option>
-                                    <option value="free">Freie Antwort</option>
-                                </select>
-                                
-                                <div id="standard-answer-${q.id}">
-                                    <select class="form-select" id="standard-select-${q.id}">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="submitEditQuestion(${q.id})">
+                            Änderung speichern
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="hideEditForm(${q.id})">
+                            Abbrechen
+                        </button>
+                    </div>
+            `;
+            
+            // Answer form for open questions (hidden by default)
+            if (isOpen) {
+                html += `
+                    <div id="answer-form-${q.id}" class="mt-3" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Antworttyp wählen:</label>
+                            <select class="form-select mb-2" id="answer-type-${q.id}" onchange="toggleAnswerInput(${q.id})">
+                                <option value="standard">Standardantwort</option>
+                                <option value="free">Freie Antwort</option>
+                            </select>
+                            
+                            <div id="standard-answer-${q.id}">
+                                <select class="form-select" id="standard-select-${q.id}">
             `;
                 
                 data.standard_answers.forEach(sa => {
@@ -2003,23 +2040,26 @@
                 });
                 
                 html += `
-                                    </select>
-                                </div>
-                                
-                                <div id="free-answer-${q.id}" style="display:none;">
-                                    <textarea class="form-control" id="free-text-${q.id}" rows="3" placeholder="Geben Sie Ihre Antwort ein..."></textarea>
-                                </div>
+                                </select>
                             </div>
-                            <button type="button" class="btn btn-sm btn-primary" onclick="submitAnswer(${q.id})">
-                                Antwort speichern
-                            </button>
-                            <button type="button" class="btn btn-sm btn-secondary" onclick="hideAnswerForm(${q.id})">
-                                Abbrechen
-                            </button>
+                            
+                            <div id="free-answer-${q.id}" style="display:none;">
+                                <textarea class="form-control" id="free-text-${q.id}" rows="3" placeholder="Geben Sie Ihre Antwort ein..."></textarea>
+                            </div>
                         </div>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="submitAnswer(${q.id})">
+                            Antwort speichern
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="hideAnswerForm(${q.id})">
+                            Abbrechen
+                        </button>
                     </div>
                 `;
             }
+            
+            html += `
+                </div>
+            `;
             
             html += `
                 </div>
@@ -2161,6 +2201,76 @@
             btn.innerHTML = originalContent;
             btn.setAttribute('aria-label', originalLabel);
             alert('Fehler beim Beantworten mit KI');
+        });
+    }
+    
+    function showEditForm(questionId) {
+        // Hide any open answer forms
+        const answerForm = document.getElementById('answer-form-' + questionId);
+        if (answerForm) {
+            answerForm.style.display = 'none';
+        }
+        // Show edit form
+        document.getElementById('edit-form-' + questionId).style.display = 'block';
+    }
+    
+    function hideEditForm(questionId) {
+        document.getElementById('edit-form-' + questionId).style.display = 'none';
+    }
+    
+    function submitEditQuestion(questionId) {
+        const newQuestionText = document.getElementById('edit-question-text-' + questionId).value.trim();
+        
+        if (!newQuestionText) {
+            alert('Bitte geben Sie einen Fragetext ein.');
+            return;
+        }
+        
+        fetch(`/open-questions/${questionId}/edit/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({question: newQuestionText})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to show updated question
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Speichern der Änderung');
+        });
+    }
+    
+    function deleteQuestion(questionId) {
+        if (!confirm('Möchten Sie diese Frage wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+            return;
+        }
+        
+        fetch(`/open-questions/${questionId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadOpenQuestions(); // Reload to remove deleted question
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Fehler beim Löschen der Frage');
         });
     }
     

@@ -2676,6 +2676,117 @@ Relevant context from knowledge base:
 
 
 @login_required
+@require_http_methods(["PUT", "PATCH", "POST"])
+def item_open_question_edit(request, question_id):
+    """
+    Edit/update an open question's text.
+    
+    Allows editing of question text regardless of answered status.
+    The answer (if any) remains unchanged.
+    
+    Expects JSON body with:
+    - question: The new question text
+    """
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Check permissions - user must be authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'error': 'Authentication required'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        new_question_text = data.get('question', '').strip()
+        
+        if not new_question_text:
+            return JsonResponse({
+                'success': False,
+                'error': 'Question text cannot be empty'
+            }, status=400)
+        
+        # Update question text
+        old_question = question.question
+        question.question = new_question_text
+        question.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.open_question.edited',
+            target=question.issue,
+            actor=request.user,
+            summary=f'Question edited: "{old_question[:30]}..." → "{new_question_text[:30]}..."',
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'question_id': question.id,
+            'question': question.question
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON in request body'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"Error editing open question {question_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["DELETE", "POST"])
+def item_open_question_delete(request, question_id):
+    """
+    Delete an open question.
+    
+    Allows deletion of questions regardless of answered status.
+    """
+    question = get_object_or_404(IssueOpenQuestion, id=question_id)
+    
+    # Check permissions - user must be authenticated
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'success': False,
+            'error': 'Authentication required'
+        }, status=403)
+    
+    try:
+        # Store info for logging
+        question_text = question.question
+        issue = question.issue
+        
+        # Delete the question
+        question.delete()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.open_question.deleted',
+            target=issue,
+            actor=request.user,
+            summary=f'Question deleted: "{question_text[:50]}..."',
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'question_id': question_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error deleting open question {question_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 @require_POST
 def item_change_status(request, item_id):
     """HTMX endpoint to change item status."""

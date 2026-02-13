@@ -99,6 +99,8 @@ urlpatterns = [
     path('items/<int:item_id>/open-questions/', views.item_open_questions_list, name='item-open-questions-list'),
     path('open-questions/<int:question_id>/answer/', views.item_open_question_answer, name='item-open-question-answer'),
     path('open-questions/<int:question_id>/answer-ai/', views.item_answer_question_ai, name='item-answer-question-ai'),
+    path('open-questions/<int:question_id>/edit/', views.item_open_question_edit, name='item-open-question-edit'),
+    path('open-questions/<int:question_id>/delete/', views.item_open_question_delete, name='item-open-question-delete'),
     
     # AI endpoints
     path('ai/generate-title/', views.ai_generate_title, name='ai-generate-title'),
