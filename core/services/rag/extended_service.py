@@ -334,6 +334,7 @@ class ExtendedRAGPipelineService:
                 
                 # Exclude files without text content (Issue #392)
                 # Files with only title but no text are worthless
+                # is_none(False) means: keep only items where text IS NOT NULL
                 text_filter = Filter.by_property(FIELD_MAPPING['content']).is_none(False)
                 
                 where_filter = (
