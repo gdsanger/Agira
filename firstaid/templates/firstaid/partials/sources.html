@@ -9,10 +9,7 @@
         <div class="source-item" data-source-id="{{ item.id }}" data-source-type="item">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
-                    <div class="small fw-bold">{{ item.title|truncatewords:8 }}</div>
-                    {% if item.description %}
-                    <div class="small text-muted">{{ item.description|truncatewords:15 }}</div>
-                    {% endif %}
+                    <div class="small fw-bold">{{ item.title|truncatewords:8 }}</div>                
                 </div>
                 <a href="{{ item.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
                     <i class="bi bi-box-arrow-up-right"></i>
@@ -33,10 +30,7 @@
         <div class="source-item" data-source-id="{{ issue.id }}" data-source-type="github_issue">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
-                    <div class="small fw-bold">{{ issue.title|truncatewords:8 }}</div>
-                    {% if issue.description %}
-                    <div class="small text-muted">{{ issue.description|truncatewords:15 }}</div>
-                    {% endif %}
+                    <div class="small fw-bold word-break">{{ issue.title|truncatewords:8 }}</div>                  
                 </div>
                 {% if issue.url %}
                 <a href="{{ issue.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
@@ -59,10 +53,7 @@
         <div class="source-item" data-source-id="{{ pr.id }}" data-source-type="github_pr">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
-                    <div class="small fw-bold">{{ pr.title|truncatewords:8 }}</div>
-                    {% if pr.description %}
-                    <div class="small text-muted">{{ pr.description|truncatewords:15 }}</div>
-                    {% endif %}
+                    <div class="small fw-bold word-break">{{ pr.title|truncatewords:8 }}</div>                  
                 </div>
                 {% if pr.url %}
                 <a href="{{ pr.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
@@ -85,8 +76,7 @@
         <div class="source-item" data-source-id="{{ attachment.id }}" data-source-type="attachment">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
-                    <div class="small fw-bold">{{ attachment.title|truncatewords:8 }}</div>
-                    <div class="small text-muted">{{ attachment.description }}</div>
+                    <div class="small fw-bold word-break">{{ attachment.title|truncatewords:8 }}</div>                  
                 </div>
                 <a href="{{ attachment.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
                     <i class="bi bi-eye"></i>
