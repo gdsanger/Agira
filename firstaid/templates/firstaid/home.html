@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}First AID - AI Documentation Assistant{% endblock %}
+
+{% block extra_head %}
+<style>
+    .firstaid-container {
+        display: flex;
+        height: calc(100vh - 60px);
+        gap: 0;
+    }
+    
+    .firstaid-panel {
+        border-right: 1px solid var(--bs-border-color);
+        overflow-y: auto;
+        padding: 1rem;
+    }
+    
+    .firstaid-panel-left {
+        width: 300px;
+        min-width: 300px;
+        position: sticky;
+        top: 0;
+        height: calc(100vh - 60px);
+    }
+    
+    .firstaid-panel-middle {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .firstaid-panel-right {
+        width: 280px;
+        min-width: 280px;
+        position: sticky;
+        top: 0;
+        height: calc(100vh - 60px);
+    }
+    
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .chat-input-area {
+        border-top: 1px solid var(--bs-border-color);
+        padding: 1rem;
+        background: var(--bs-body-bg);
+    }
+    
+    .message {
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        max-width: 80%;
+    }
+    
+    .message-user {
+        align-self: flex-end;
+        background: var(--bs-primary);
+        color: white;
+    }
+    
+    .message-assistant {
+        align-self: flex-start;
+        background: var(--bs-secondary-bg);
+    }
+    
+    .source-item {
+        padding: 0.5rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .source-item:hover {
+        background: var(--bs-secondary-bg);
+    }
+    
+    .source-item-selected {
+        background: var(--bs-primary);
+        color: white;
+    }
+    
+    .tool-button {
+        width: 100%;
+        text-align: left;
+        margin-bottom: 0.5rem;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 1rem;
+        height: 1rem;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spinner 0.75s linear infinite;
+    }
+    
+    @keyframes spinner {
+        to { transform: rotate(360deg); }
+    }
+    
+    /* Responsive layout */
+    @media (max-width: 768px) {
+        .firstaid-container {
+            flex-direction: column;
+        }
+        
+        .firstaid-panel-left,
+        .firstaid-panel-right {
+            width: 100%;
+            position: relative;
+            height: auto;
+            max-height: 300px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- Project Selector -->
+    <div class="bg-dark border-bottom p-2">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <strong><i class="bi bi-heart-pulse-fill text-danger"></i> First AID</strong>
+                </div>
+                <div class="col">
+                    <select id="project-selector" class="form-select form-select-sm" style="max-width: 400px;">
+                        <option value="">Select a project...</option>
+                        {% for project in projects %}
+                        <option value="{{ project.id }}" {% if selected_project and selected_project.id == project.id %}selected{% endif %}>
+                            {{ project.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 3-Column Layout -->
+    <div class="firstaid-container">
+        <!-- Left Panel: Sources -->
+        <div class="firstaid-panel firstaid-panel-left">
+            <h6 class="border-bottom pb-2 mb-3">
+                <i class="bi bi-folder2-open"></i> Sources
+            </h6>
+            
+            <div id="sources-container">
+                {% if selected_project %}
+                    {% include "firstaid/partials/sources.html" %}
+                {% else %}
+                    <p class="text-muted small">Select a project to view sources.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Middle Panel: Chat -->
+        <div class="firstaid-panel-middle">
+            <div class="chat-messages" id="chat-messages">
+                {% if selected_project %}
+                    <div class="message message-assistant">
+                        <strong>First AID</strong>
+                        <p class="mb-0 mt-1">
+                            Hello! I'm your AI documentation assistant. I have access to all items, issues, pull requests, and attachments in the <strong>{{ selected_project.name }}</strong> project.
+                        </p>
+                        <p class="mb-0 mt-2">
+                            Ask me anything about this project, and I can help you:
+                        </p>
+                        <ul class="mb-0 mt-1">
+                            <li>Answer questions based on project knowledge</li>
+                            <li>Generate documentation</li>
+                            <li>Create knowledge base articles</li>
+                            <li>Make flashcards for learning</li>
+                            <li>Create new issues</li>
+                        </ul>
+                    </div>
+                {% else %}
+                    <div class="message message-assistant">
+                        <strong>First AID</strong>
+                        <p class="mb-0 mt-1">
+                            Welcome to First AID - your AI documentation assistant!
+                        </p>
+                        <p class="mb-0 mt-2">
+                            Please select a project from the dropdown above to get started.
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="chat-input-area">
+                <form id="chat-form">
+                    <div class="input-group">
+                        <input type="text" 
+                               id="chat-input" 
+                               class="form-control" 
+                               placeholder="Ask a question about this project..."
+                               {% if not selected_project %}disabled{% endif %}>
+                        <button type="submit" 
+                                class="btn btn-primary" 
+                                id="chat-submit"
+                                {% if not selected_project %}disabled{% endif %}>
+                            <i class="bi bi-send"></i> Send
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Tools -->
+        <div class="firstaid-panel firstaid-panel-right">
+            <h6 class="border-bottom pb-2 mb-3">
+                <i class="bi bi-tools"></i> Tools
+            </h6>
+            
+            <div class="d-grid gap-2">
+                <button class="btn btn-outline-primary tool-button" 
+                        id="tool-kb-article"
+                        {% if not selected_project %}disabled{% endif %}>
+                    <i class="bi bi-journal-text"></i> Generate KB Article
+                </button>
+                
+                <button class="btn btn-outline-primary tool-button" 
+                        id="tool-documentation"
+                        {% if not selected_project %}disabled{% endif %}>
+                    <i class="bi bi-file-earmark-text"></i> Generate Documentation
+                </button>
+                
+                <button class="btn btn-outline-primary tool-button" 
+                        id="tool-flashcards"
+                        {% if not selected_project %}disabled{% endif %}>
+                    <i class="bi bi-card-heading"></i> Generate Flashcards
+                </button>
+                
+                <button class="btn btn-outline-primary tool-button" 
+                        id="tool-create-issue"
+                        {% if not selected_project %}disabled{% endif %}>
+                    <i class="bi bi-bug"></i> Create Issue
+                </button>
+            </div>
+            
+            <div class="mt-4" id="tool-result">
+                <!-- Tool results will appear here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const projectSelector = document.getElementById('project-selector');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatSubmit = document.getElementById('chat-submit');
+    const sourcesContainer = document.getElementById('sources-container');
+    const toolResult = document.getElementById('tool-result');
+    
+    let selectedProjectId = '{{ selected_project.id|default:"" }}';
+    let chatContext = [];
+    
+    // Project selector change
+    projectSelector.addEventListener('change', function() {
+        const projectId = this.value;
+        if (projectId) {
+            window.location.href = '{% url "firstaid:home" %}?project=' + projectId;
+        }
+    });
+    
+    // Chat form submission
+    chatForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const question = chatInput.value.trim();
+        if (!question || !selectedProjectId) return;
+        
+        // Add user message
+        addMessage('user', question);
+        chatInput.value = '';
+        
+        // Show loading
+        chatSubmit.disabled = true;
+        chatSubmit.innerHTML = '<span class="loading-spinner"></span> Thinking...';
+        
+        try {
+            const response = await fetch('{% url "firstaid:chat" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrf-token]').content,
+                },
+                body: JSON.stringify({
+                    question: question,
+                    project_id: selectedProjectId,
+                }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Add assistant message
+                addMessage('assistant', data.answer);
+                
+                // Store in context
+                chatContext.push({
+                    question: question,
+                    answer: data.answer,
+                    sources: data.sources,
+                });
+            } else {
+                addMessage('assistant', 'Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            addMessage('assistant', 'Error: Could not connect to the server');
+        } finally {
+            chatSubmit.disabled = false;
+            chatSubmit.innerHTML = '<i class="bi bi-send"></i> Send';
+        }
+    });
+    
+    // Helper function to add messages
+    function addMessage(role, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-' + role;
+        
+        if (role === 'assistant') {
+            messageDiv.innerHTML = '<strong>First AID</strong><div class="mt-1">' + formatMarkdown(content) + '</div>';
+        } else {
+            messageDiv.innerHTML = '<strong>You</strong><div class="mt-1">' + content + '</div>';
+        }
+        
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
+    // Simple markdown formatter
+    function formatMarkdown(text) {
+        // Basic markdown support
+        return text
+            .replace(/\n/g, '<br>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code>$1</code>');
+    }
+    
+    // Tool buttons
+    document.getElementById('tool-kb-article').addEventListener('click', async function() {
+        await executeTool('kb-article', 'Generate KB Article');
+    });
+    
+    document.getElementById('tool-documentation').addEventListener('click', async function() {
+        await executeTool('documentation', 'Generate Documentation');
+    });
+    
+    document.getElementById('tool-flashcards').addEventListener('click', async function() {
+        await executeTool('flashcards', 'Generate Flashcards');
+    });
+    
+    document.getElementById('tool-create-issue').addEventListener('click', async function() {
+        await executeTool('create-issue', 'Create Issue');
+    });
+    
+    // Execute tool action
+    async function executeTool(toolType, toolName) {
+        if (chatContext.length === 0) {
+            alert('Please have a conversation first before using tools.');
+            return;
+        }
+        
+        // Build context from chat history
+        const context = chatContext.map(item => 
+            `Q: ${item.question}\nA: ${item.answer}`
+        ).join('\n\n');
+        
+        toolResult.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Generating...';
+        
+        let url, payload;
+        
+        if (toolType === 'create-issue') {
+            // For create-issue, we need title and description
+            const lastItem = chatContext[chatContext.length - 1];
+            payload = {
+                title: lastItem.question,
+                description: lastItem.answer,
+                project_id: selectedProjectId,
+            };
+            url = '{% url "firstaid:create-issue" %}';
+        } else {
+            payload = {
+                context: context,
+                project_id: selectedProjectId,
+            };
+            // Build URL based on tool type
+            if (toolType === 'kb-article') {
+                url = '{% url "firstaid:generate-kb-article" %}';
+            } else if (toolType === 'documentation') {
+                url = '{% url "firstaid:generate-documentation" %}';
+            } else if (toolType === 'flashcards') {
+                url = '{% url "firstaid:generate-flashcards" %}';
+            }
+        }
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrf-token]').content,
+                },
+                body: JSON.stringify(payload),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                if (toolType === 'flashcards') {
+                    displayFlashcards(data.flashcards);
+                } else if (toolType === 'create-issue') {
+                    toolResult.innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>Issue created!</strong><br>
+                            <a href="${data.url}" target="_blank">View Issue #${data.item_id}</a>
+                        </div>
+                    `;
+                } else {
+                    displayMarkdownResult(data.content, data.title);
+                }
+            } else {
+                toolResult.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            }
+        } catch (error) {
+            console.error('Tool execution error:', error);
+            toolResult.innerHTML = '<div class="alert alert-danger">Error: Could not execute tool</div>';
+        }
+    }
+    
+    // Display flashcards
+    function displayFlashcards(flashcards) {
+        let html = '<h6>Flashcards</h6>';
+        flashcards.forEach((card, index) => {
+            html += `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <strong>Q${index + 1}:</strong> ${card.question}<br>
+                        <small class="text-muted">A: ${card.answer}</small>
+                    </div>
+                </div>
+            `;
+        });
+        toolResult.innerHTML = html;
+    }
+    
+    // Display markdown result
+    function displayMarkdownResult(content, title) {
+        // Escape content for safe insertion into template literal
+        const escapedContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        
+        toolResult.innerHTML = `
+            <h6>${title}</h6>
+            <div class="border p-2 rounded" style="max-height: 400px; overflow-y: auto;">
+                <pre class="mb-0" style="white-space: pre-wrap;">${escapedContent}</pre>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary mt-2" onclick="downloadAsFile('${title}.md', \`${escapedContent}\`)">
+                <i class="bi bi-download"></i> Download
+            </button>
+        `;
+    }
+});
+
+// Download as file helper
+function downloadAsFile(filename, content) {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

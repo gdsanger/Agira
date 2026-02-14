@@ -1,0 +1,116 @@
+{% if sources %}
+    <!-- Items -->
+    {% if sources.items %}
+    <div class="mb-3">
+        <h6 class="text-muted small text-uppercase mb-2">
+            <i class="bi bi-list-task"></i> Items ({{ sources.items|length }})
+        </h6>
+        {% for item in sources.items %}
+        <div class="source-item" data-source-id="{{ item.id }}" data-source-type="item">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="small fw-bold">{{ item.title|truncatewords:8 }}</div>
+                    {% if item.description %}
+                    <div class="small text-muted">{{ item.description|truncatewords:15 }}</div>
+                    {% endif %}
+                </div>
+                <a href="{{ item.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- GitHub Issues -->
+    {% if sources.github_issues %}
+    <div class="mb-3">
+        <h6 class="text-muted small text-uppercase mb-2">
+            <i class="bi bi-github"></i> GitHub Issues ({{ sources.github_issues|length }})
+        </h6>
+        {% for issue in sources.github_issues %}
+        <div class="source-item" data-source-id="{{ issue.id }}" data-source-type="github_issue">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="small fw-bold">{{ issue.title|truncatewords:8 }}</div>
+                    {% if issue.description %}
+                    <div class="small text-muted">{{ issue.description|truncatewords:15 }}</div>
+                    {% endif %}
+                </div>
+                {% if issue.url %}
+                <a href="{{ issue.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- GitHub PRs -->
+    {% if sources.github_prs %}
+    <div class="mb-3">
+        <h6 class="text-muted small text-uppercase mb-2">
+            <i class="bi bi-git"></i> GitHub PRs ({{ sources.github_prs|length }})
+        </h6>
+        {% for pr in sources.github_prs %}
+        <div class="source-item" data-source-id="{{ pr.id }}" data-source-type="github_pr">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="small fw-bold">{{ pr.title|truncatewords:8 }}</div>
+                    {% if pr.description %}
+                    <div class="small text-muted">{{ pr.description|truncatewords:15 }}</div>
+                    {% endif %}
+                </div>
+                {% if pr.url %}
+                <a href="{{ pr.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Attachments -->
+    {% if sources.attachments %}
+    <div class="mb-3">
+        <h6 class="text-muted small text-uppercase mb-2">
+            <i class="bi bi-paperclip"></i> Attachments ({{ sources.attachments|length }})
+        </h6>
+        {% for attachment in sources.attachments %}
+        <div class="source-item" data-source-id="{{ attachment.id }}" data-source-type="attachment">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="small fw-bold">{{ attachment.title|truncatewords:8 }}</div>
+                    <div class="small text-muted">{{ attachment.description }}</div>
+                </div>
+                <a href="{{ attachment.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
+                    <i class="bi bi-eye"></i>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+{% else %}
+    <p class="text-muted small">No sources available for this project.</p>
+{% endif %}
+
+<script>
+// Add click handlers for source items
+document.querySelectorAll('.source-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+        // Don't trigger if clicking the link
+        if (e.target.tagName === 'A' || e.target.closest('a')) {
+            return;
+        }
+        
+        // Toggle selection
+        this.classList.toggle('source-item-selected');
+    });
+});
+</script>
