@@ -238,7 +238,7 @@ class FirstAIDServiceTestCase(TestCase):
         from core.models import ExternalIssueMapping, ExternalIssueKind
         
         # Create a GitHub issue mapping
-        mapping = ExternalIssueMapping.objects.create(
+        ExternalIssueMapping.objects.create(
             item=self.item,
             github_id=12345,
             number=123,
@@ -276,7 +276,7 @@ class FirstAIDServiceTestCase(TestCase):
         self.project.save()
         
         # Create a GitHub issue mapping
-        mapping = ExternalIssueMapping.objects.create(
+        ExternalIssueMapping.objects.create(
             item=self.item,
             github_id=12345,
             number=123,
@@ -306,7 +306,7 @@ class FirstAIDServiceTestCase(TestCase):
         from core.models import ExternalIssueMapping, ExternalIssueKind
         
         # Create a GitHub PR mapping
-        mapping = ExternalIssueMapping.objects.create(
+        ExternalIssueMapping.objects.create(
             item=self.item,
             github_id=67890,
             number=456,
