@@ -6,6 +6,7 @@ from unittest.mock import patch, Mock
 from django.test import TestCase, Client
 from django.urls import reverse
 from core.models import User, Project, Organisation, Item, ItemType
+from core.services.exceptions import ServiceNotConfigured
 
 
 class FirstAIDViewTestCase(TestCase):
@@ -203,7 +204,6 @@ class FirstAIDViewTestCase(TestCase):
         mock_build_context.return_value = mock_context
         
         # Mock agent execution to raise an error
-        from core.services.exceptions import ServiceNotConfigured
         mock_execute_agent.side_effect = ServiceNotConfigured("AI provider not configured")
         
         url = reverse('firstaid:chat')
