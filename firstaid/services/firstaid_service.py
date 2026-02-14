@@ -50,6 +50,66 @@ class FirstAIDService:
         """Initialize the First AID service."""
         self.agent_service = AgentService()
     
+    def _build_external_issue_title(self, mapping, project) -> str:
+        """
+        Build a title for an external GitHub issue.
+        
+        Args:
+            mapping: ExternalIssueMapping instance
+            project: Project instance
+            
+        Returns:
+            Formatted title string
+        """
+        # Get number defensively
+        number = getattr(mapping, 'number', None)
+        title = mapping.item.title if mapping.item else ''
+        
+        # Build issue reference
+        if number:
+            # Try to build full repo reference if available
+            github_owner = getattr(project, 'github_owner', '')
+            github_repo = getattr(project, 'github_repo', '')
+            
+            if github_owner and github_repo:
+                issue_ref = f"{github_owner}/{github_repo}#{number}"
+            else:
+                issue_ref = f"#{number}"
+            
+            return f"GH Issue {issue_ref}: {title}"
+        else:
+            return f"GH Issue: {title}"
+    
+    def _build_external_pr_title(self, mapping, project) -> str:
+        """
+        Build a title for an external GitHub PR.
+        
+        Args:
+            mapping: ExternalIssueMapping instance
+            project: Project instance
+            
+        Returns:
+            Formatted title string
+        """
+        # Get number defensively
+        number = getattr(mapping, 'number', None)
+        title = mapping.item.title if mapping.item else ''
+        
+        # Build PR reference
+        if number:
+            # Try to build full repo reference if available
+            github_owner = getattr(project, 'github_owner', '')
+            github_repo = getattr(project, 'github_repo', '')
+            
+            if github_owner and github_repo:
+                pr_ref = f"{github_owner}/{github_repo}#{number}"
+            else:
+                pr_ref = f"#{number}"
+            
+            return f"GH PR {pr_ref}: {title}"
+        else:
+            return f"GH PR: {title}"
+    
     def get_project_sources(self, project_id: int, user: User) -> Dict[str, List[FirstAIDSource]]:
         """
         Retrieve all sources for a project.
@@ -95,10 +155,10 @@ class FirstAIDService:
             FirstAIDSource(
                 id=mapping.id,
                 type='github_issue',
-                title=f"GH Issue #{mapping.external_number}: {mapping.external_title or mapping.item.title}",
+                title=self._build_external_issue_title(mapping, project),
                 description=mapping.item.description[:200] if mapping.item.description else '',
                 project_name=project.name,
-                url=mapping.external_url,
+                url=getattr(mapping, 'html_url', ''),
             )
             for mapping in github_issues[:50]  # Limit to 50 for MVP
         ]
@@ -112,10 +172,10 @@ class FirstAIDService:
             FirstAIDSource(
                 id=mapping.id,
                 type='github_pr',
-                title=f"GH PR #{mapping.external_number}: {mapping.external_title or mapping.item.title}",
+                title=self._build_external_pr_title(mapping, project),
                 description=mapping.item.description[:200] if mapping.item.description else '',
                 project_name=project.name,
-                url=mapping.external_url,
+                url=getattr(mapping, 'html_url', ''),
             )
             for mapping in github_prs[:50]  # Limit to 50 for MVP
         ]

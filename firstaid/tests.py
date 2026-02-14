@@ -73,6 +73,42 @@ class FirstAIDViewTestCase(TestCase):
         self.assertEqual(response.context['selected_project'], self.project)
         self.assertIn('sources', response.context)
     
+    def test_firstaid_home_with_project_and_github_mappings(self):
+        """Test First AID home view with a project that has GitHub mappings"""
+        from core.models import ExternalIssueMapping, ExternalIssueKind
+        
+        # Create GitHub issue and PR mappings
+        ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=12345,
+            number=123,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/test/repo/issues/123'
+        )
+        
+        ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=67890,
+            number=456,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test/repo/pull/456'
+        )
+        
+        url = reverse('firstaid:home') + f'?project={self.project.id}'
+        response = self.client.get(url)
+        
+        # Should return 200, not 500
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'firstaid/home.html')
+        self.assertIn('sources', response.context)
+        
+        # Verify sources contain GitHub issues and PRs
+        sources = response.context['sources']
+        self.assertGreater(len(sources['github_issues']), 0)
+        self.assertGreater(len(sources['github_prs']), 0)
+    
     def test_firstaid_sources_view(self):
         """Test the sources view returns sources for a project"""
         url = reverse('firstaid:sources') + f'?project_id={self.project.id}'
@@ -195,4 +231,105 @@ class FirstAIDServiceTestCase(TestCase):
         # Should have at least one item
         self.assertTrue(len(sources['items']) > 0)
         self.assertEqual(sources['items'][0].id, self.item.id)
+    
+    def test_get_project_sources_with_github_issue(self):
+        """Test retrieving project sources with GitHub issue mapping"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        from core.models import ExternalIssueMapping, ExternalIssueKind
+        
+        # Create a GitHub issue mapping
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=12345,
+            number=123,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/test/repo/issues/123'
+        )
+        
+        service = FirstAIDService()
+        sources = service.get_project_sources(
+            project_id=self.project.id,
+            user=self.user
+        )
+        
+        # Should have the GitHub issue
+        self.assertTrue(len(sources['github_issues']) > 0)
+        issue_source = sources['github_issues'][0]
+        
+        # Title should contain the issue number
+        self.assertIn('#123', issue_source.title)
+        self.assertIn('GH Issue', issue_source.title)
+        self.assertIn(self.item.title, issue_source.title)
+        
+        # URL should be correct
+        self.assertEqual(issue_source.url, 'https://github.com/test/repo/issues/123')
+    
+    def test_get_project_sources_with_github_issue_and_repo_info(self):
+        """Test retrieving project sources with GitHub issue mapping and repo info"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        from core.models import ExternalIssueMapping, ExternalIssueKind
+        
+        # Set GitHub repo info on project
+        self.project.github_owner = 'gdsanger'
+        self.project.github_repo = 'Agira'
+        self.project.save()
+        
+        # Create a GitHub issue mapping
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=12345,
+            number=123,
+            kind=ExternalIssueKind.ISSUE,
+            state='open',
+            html_url='https://github.com/gdsanger/Agira/issues/123'
+        )
+        
+        service = FirstAIDService()
+        sources = service.get_project_sources(
+            project_id=self.project.id,
+            user=self.user
+        )
+        
+        # Should have the GitHub issue
+        self.assertTrue(len(sources['github_issues']) > 0)
+        issue_source = sources['github_issues'][0]
+        
+        # Title should contain the full repo reference
+        self.assertIn('gdsanger/Agira#123', issue_source.title)
+        self.assertIn('GH Issue', issue_source.title)
+        self.assertIn(self.item.title, issue_source.title)
+    
+    def test_get_project_sources_with_github_pr(self):
+        """Test retrieving project sources with GitHub PR mapping"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        from core.models import ExternalIssueMapping, ExternalIssueKind
+        
+        # Create a GitHub PR mapping
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=67890,
+            number=456,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/test/repo/pull/456'
+        )
+        
+        service = FirstAIDService()
+        sources = service.get_project_sources(
+            project_id=self.project.id,
+            user=self.user
+        )
+        
+        # Should have the GitHub PR
+        self.assertTrue(len(sources['github_prs']) > 0)
+        pr_source = sources['github_prs'][0]
+        
+        # Title should contain the PR number
+        self.assertIn('#456', pr_source.title)
+        self.assertIn('GH PR', pr_source.title)
+        self.assertIn(self.item.title, pr_source.title)
+        
+        # URL should be correct
+        self.assertEqual(pr_source.url, 'https://github.com/test/repo/pull/456')
 
