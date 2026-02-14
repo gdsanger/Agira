@@ -195,10 +195,18 @@ function showMarkdownModal(title, markdownContent) {
         if (typeof DOMPurify !== 'undefined') {
             bodyElement.innerHTML = DOMPurify.sanitize(rawHtml);
         } else {
-            bodyElement.innerHTML = rawHtml;
+            // Fallback: use plain text if DOMPurify is not available to prevent XSS
+            console.warn('DOMPurify not available, displaying as plain text');
+            const pre = document.createElement('pre');
+            pre.textContent = markdownContent;
+            bodyElement.innerHTML = '';
+            bodyElement.appendChild(pre);
         }
     } else {
-        bodyElement.innerHTML = '<pre>' + markdownContent + '</pre>';
+        const pre = document.createElement('pre');
+        pre.textContent = markdownContent;
+        bodyElement.innerHTML = '';
+        bodyElement.appendChild(pre);
     }
     
     // Show modal

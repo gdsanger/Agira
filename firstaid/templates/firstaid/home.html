@@ -33,7 +33,7 @@
         flex: 1;
         display: flex;
         flex-direction: column;
-        min-width: 0;
+        min-width: 0; /* Allows text truncation/wrapping in flex containers */
     }
     
     .firstaid-panel-right {
@@ -429,6 +429,7 @@
                     </div>
                 </div>
                 <form id="chat-form">
+                    <label for="chat-input" class="form-label visually-hidden">Ask a question about the project</label>
                     <div class="input-group">
                         <textarea id="chat-input" 
                                   class="form-control" 
@@ -547,6 +548,17 @@ document.addEventListener('DOMContentLoaded', function() {
     let chatContext = [];
     let currentGeneratedContent = '';
     let currentContentFilename = '';
+    
+    // Event delegation for copy buttons
+    chatMessages.addEventListener('click', function(e) {
+        const copyBtn = e.target.closest('.copy-message-btn');
+        if (copyBtn) {
+            const content = copyBtn.getAttribute('data-message-content');
+            if (content) {
+                copyToClipboard(content);
+            }
+        }
+    });
     
     // Project selector change
     projectSelector.addEventListener('change', function() {
@@ -677,9 +689,8 @@ document.addEventListener('DOMContentLoaded', function() {
         copyBtn.className = 'btn btn-sm btn-outline-secondary message-copy-btn';
         copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
         copyBtn.title = 'Copy to clipboard';
-        copyBtn.onclick = function() {
-            copyToClipboard(content);
-        };
+        copyBtn.setAttribute('data-message-content', content);
+        copyBtn.classList.add('copy-message-btn');
         
         // Create content div
         const contentDiv = document.createElement('div');
@@ -691,8 +702,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof DOMPurify !== 'undefined') {
                 contentDiv.innerHTML = DOMPurify.sanitize(rawHtml);
             } else {
-                // Fallback: use marked without sanitization if DOMPurify is not available
-                contentDiv.innerHTML = rawHtml;
+                // Fallback: use plain text if DOMPurify is not available to prevent XSS
+                console.warn('DOMPurify not available, falling back to plain text rendering');
+                contentDiv.textContent = content;
             }
         } else {
             // Plain text for user messages
@@ -865,10 +877,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof DOMPurify !== 'undefined') {
                 bodyElement.innerHTML = DOMPurify.sanitize(rawHtml);
             } else {
-                bodyElement.innerHTML = rawHtml;
+                // Fallback: use plain text if DOMPurify is not available to prevent XSS
+                console.warn('DOMPurify not available, displaying as plain text');
+                const pre = document.createElement('pre');
+                pre.textContent = content;
+                bodyElement.innerHTML = '';
+                bodyElement.appendChild(pre);
             }
         } else {
-            bodyElement.innerHTML = '<pre>' + content + '</pre>';
+            const pre = document.createElement('pre');
+            pre.textContent = content;
+            bodyElement.innerHTML = '';
+            bodyElement.appendChild(pre);
         }
         
         modal.show();
