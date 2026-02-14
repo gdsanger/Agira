@@ -78,6 +78,25 @@ class OptimizedQuery:
     ban: List[str]
     followup_questions: List[str]
     raw_response: Optional[str] = None
+    
+    def to_dict(self) -> dict:
+        """
+        Convert to JSON-serializable dictionary.
+        
+        Returns:
+            Dictionary with all fields as primitive types
+        """
+        return {
+            'language': self.language,
+            'core': self.core,
+            'synonyms': self.synonyms,
+            'phrases': self.phrases,
+            'entities': self.entities,
+            'tags': self.tags,
+            'ban': self.ban,
+            'followup_questions': self.followup_questions,
+            'raw_response': self.raw_response,
+        }
 
 
 @dataclass
@@ -105,6 +124,25 @@ class ExtendedRAGContext:
     summary: str
     stats: Dict[str, Any] = field(default_factory=dict)
     debug: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> dict:
+        """
+        Convert to JSON-serializable dictionary.
+        
+        Returns:
+            Dictionary with all fields as primitive types
+        """
+        return {
+            'query': self.query,
+            'optimized_query': self.optimized_query.to_dict() if self.optimized_query else None,
+            'layer_a': [item.to_dict() for item in self.layer_a],
+            'layer_b': [item.to_dict() for item in self.layer_b],
+            'layer_c': [item.to_dict() for item in self.layer_c],
+            'all_items': [item.to_dict() for item in self.all_items],
+            'summary': self.summary,
+            'stats': self.stats,
+            'debug': self.debug,
+        }
     
     def to_context_text(self) -> str:
         """
