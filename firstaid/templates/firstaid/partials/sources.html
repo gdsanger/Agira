@@ -1,91 +1,119 @@
 {% if sources %}
+<div class="accordion accordion-flush" id="sourcesAccordion">
     <!-- Items -->
     {% if sources.items %}
-    <div class="mb-3">
-        <h6 class="text-muted small text-uppercase mb-2">
-            <i class="bi bi-list-task"></i> Items ({{ sources.items|length }})
-        </h6>
-        {% for item in sources.items %}
-        <div class="source-item" data-source-id="{{ item.id }}" data-source-type="item">
-            <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-grow-1">
-                    <div class="small fw-bold">{{ item.title|truncatewords:8 }}</div>                
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingItems">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseItems" aria-expanded="false" aria-controls="collapseItems">
+                <i class="bi bi-list-task me-2"></i> Items ({{ sources.items|length }})
+            </button>
+        </h2>
+        <div id="collapseItems" class="accordion-collapse collapse" aria-labelledby="headingItems" data-bs-parent="#sourcesAccordion">
+            <div class="accordion-body p-2">
+                {% for item in sources.items %}
+                <div class="source-item" data-source-id="{{ item.id }}" data-source-type="item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1 source-item-title">
+                            <div class="small fw-bold">{{ item.title }}</div>                
+                        </div>
+                        <a href="{{ item.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1" title="Open in new tab">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                    </div>
                 </div>
-                <a href="{{ item.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
-                    <i class="bi bi-box-arrow-up-right"></i>
-                </a>
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
     
     <!-- GitHub Issues -->
     {% if sources.github_issues %}
-    <div class="mb-3">
-        <h6 class="text-muted small text-uppercase mb-2">
-            <i class="bi bi-github"></i> GitHub Issues ({{ sources.github_issues|length }})
-        </h6>
-        {% for issue in sources.github_issues %}
-        <div class="source-item" data-source-id="{{ issue.id }}" data-source-type="github_issue">
-            <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-grow-1">
-                    <div class="small fw-bold word-break">{{ issue.title|truncatewords:8 }}</div>                  
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingGithubIssues">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGithubIssues" aria-expanded="false" aria-controls="collapseGithubIssues">
+                <i class="bi bi-github me-2"></i> GitHub Issues ({{ sources.github_issues|length }})
+            </button>
+        </h2>
+        <div id="collapseGithubIssues" class="accordion-collapse collapse" aria-labelledby="headingGithubIssues" data-bs-parent="#sourcesAccordion">
+            <div class="accordion-body p-2">
+                {% for issue in sources.github_issues %}
+                <div class="source-item" data-source-id="{{ issue.id }}" data-source-type="github_issue">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1 source-item-title">
+                            <div class="small fw-bold">{{ issue.title }}</div>                  
+                        </div>
+                        {% if issue.url %}
+                        <a href="{{ issue.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link p-0 ms-1" title="Open in GitHub">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
-                {% if issue.url %}
-                <a href="{{ issue.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
-                    <i class="bi bi-box-arrow-up-right"></i>
-                </a>
-                {% endif %}
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
     
     <!-- GitHub PRs -->
     {% if sources.github_prs %}
-    <div class="mb-3">
-        <h6 class="text-muted small text-uppercase mb-2">
-            <i class="bi bi-git"></i> GitHub PRs ({{ sources.github_prs|length }})
-        </h6>
-        {% for pr in sources.github_prs %}
-        <div class="source-item" data-source-id="{{ pr.id }}" data-source-type="github_pr">
-            <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-grow-1">
-                    <div class="small fw-bold word-break">{{ pr.title|truncatewords:8 }}</div>                  
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingGithubPRs">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGithubPRs" aria-expanded="false" aria-controls="collapseGithubPRs">
+                <i class="bi bi-git me-2"></i> GitHub PRs ({{ sources.github_prs|length }})
+            </button>
+        </h2>
+        <div id="collapseGithubPRs" class="accordion-collapse collapse" aria-labelledby="headingGithubPRs" data-bs-parent="#sourcesAccordion">
+            <div class="accordion-body p-2">
+                {% for pr in sources.github_prs %}
+                <div class="source-item" data-source-id="{{ pr.id }}" data-source-type="github_pr">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1 source-item-title">
+                            <div class="small fw-bold">{{ pr.title }}</div>                  
+                        </div>
+                        {% if pr.url %}
+                        <a href="{{ pr.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link p-0 ms-1" title="Open in GitHub">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
-                {% if pr.url %}
-                <a href="{{ pr.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
-                    <i class="bi bi-box-arrow-up-right"></i>
-                </a>
-                {% endif %}
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
     
     <!-- Attachments -->
     {% if sources.attachments %}
-    <div class="mb-3">
-        <h6 class="text-muted small text-uppercase mb-2">
-            <i class="bi bi-paperclip"></i> Attachments ({{ sources.attachments|length }})
-        </h6>
-        {% for attachment in sources.attachments %}
-        <div class="source-item" data-source-id="{{ attachment.id }}" data-source-type="attachment">
-            <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-grow-1">
-                    <div class="small fw-bold word-break">{{ attachment.title|truncatewords:8 }}</div>                  
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingAttachments">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAttachments" aria-expanded="false" aria-controls="collapseAttachments">
+                <i class="bi bi-paperclip me-2"></i> Attachments ({{ sources.attachments|length }})
+            </button>
+        </h2>
+        <div id="collapseAttachments" class="accordion-collapse collapse" aria-labelledby="headingAttachments" data-bs-parent="#sourcesAccordion">
+            <div class="accordion-body p-2">
+                {% for attachment in sources.attachments %}
+                <div class="source-item" data-source-id="{{ attachment.id }}" data-source-type="attachment">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1 source-item-title">
+                            <div class="small fw-bold">{{ attachment.title }}</div>                  
+                        </div>
+                        <a href="{{ attachment.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1" 
+                           onclick="handleAttachmentClick(event, '{{ attachment.title }}', '{{ attachment.url }}')" 
+                           title="View attachment">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                    </div>
                 </div>
-                <a href="{{ attachment.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1">
-                    <i class="bi bi-eye"></i>
-                </a>
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
     </div>
     {% endif %}
+</div>
 {% else %}
     <p class="text-muted small">No sources available for this project.</p>
 {% endif %}
@@ -103,4 +131,64 @@ document.querySelectorAll('.source-item').forEach(item => {
         this.classList.toggle('source-item-selected');
     });
 });
+
+// Handle attachment clicks to display markdown in modal
+function handleAttachmentClick(event, filename, url) {
+    // Check if it's a markdown file
+    if (filename.toLowerCase().endsWith('.md')) {
+        event.preventDefault();
+        
+        // Fetch the markdown content
+        fetch(url)
+            .then(response => response.text())
+            .then(content => {
+                showMarkdownModal(filename, content);
+            })
+            .catch(error => {
+                console.error('Error loading markdown:', error);
+                // Fallback to opening in new tab
+                window.open(url, '_blank');
+            });
+    }
+    // For images and PDFs, let the default behavior happen (new tab)
+}
+
+// Show markdown content in a modal
+function showMarkdownModal(title, markdownContent) {
+    // Check if modal exists, if not create it
+    let modal = document.getElementById('markdownModal');
+    if (!modal) {
+        const modalHtml = `
+            <div class="modal fade" id="markdownModal" tabindex="-1" aria-labelledby="markdownModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="markdownModalLabel"></h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body markdown-viewer" id="markdownModalBody">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modal = document.getElementById('markdownModal');
+    }
+    
+    // Set title and content
+    document.getElementById('markdownModalLabel').textContent = title;
+    const bodyElement = document.getElementById('markdownModalBody');
+    
+    // Use marked.js if available, otherwise show plain text
+    if (typeof marked !== 'undefined') {
+        bodyElement.innerHTML = marked.parse(markdownContent);
+    } else {
+        bodyElement.innerHTML = '<pre>' + markdownContent + '</pre>';
+    }
+    
+    // Show modal
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+}
 </script>
