@@ -434,7 +434,7 @@
                         <textarea id="chat-input" 
                                   class="form-control" 
                                   rows="3"
-                                  placeholder="Ask a question about this project..."
+                                  placeholder="Ask a question about the project..."
                                   aria-label="Ask a question about the project"
                                   {% if not selected_project %}disabled{% endif %}></textarea>
                         <button type="submit" 
@@ -866,7 +866,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Display content in modal
     function displayContentModal(content, title) {
         currentGeneratedContent = content;
-        currentContentFilename = title.replace(/\s+/g, '_') + '.md';
+        // Sanitize filename by removing invalid characters
+        currentContentFilename = title.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_') + '.md';
         
         const modal = new bootstrap.Modal(document.getElementById('contentModal'));
         document.getElementById('contentModalLabel').textContent = title;
