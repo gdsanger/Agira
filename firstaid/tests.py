@@ -6,6 +6,7 @@ from unittest.mock import patch, Mock
 from django.test import TestCase, Client
 from django.urls import reverse
 from core.models import User, Project, Organisation, Item, ItemType
+from core.services.exceptions import ServiceNotConfigured
 
 
 class FirstAIDViewTestCase(TestCase):
@@ -118,6 +119,47 @@ class FirstAIDViewTestCase(TestCase):
         self.assertIn(b'Items', response.content)  # Should show Items section
     
     @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_firstaid_chat_uses_question_answering_agent(self, mock_execute_agent, mock_build_context):
+        """Test that chat uses question-answering-agent by default"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "This is a test answer from the agent."
+        
+        url = reverse('firstaid:chat')
+        data = {
+            'question': 'What is this project about?',
+            'project_id': self.project.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=data,
+            content_type='application/json'
+        )
+        
+        # Verify agent was called with correct parameters
+        self.assertEqual(mock_execute_agent.call_count, 1)
+        call_kwargs = mock_execute_agent.call_args[1]
+        self.assertEqual(call_kwargs['filename'], 'question-answering-agent.yml')
+        self.assertIn('What is this project about?', call_kwargs['input_text'])
+        
+        # Verify response contains agent answer
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertEqual(response_data['answer'], "This is a test answer from the agent.")
+        self.assertNotIn('Please configure', response_data['answer'])
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
     def test_firstaid_chat(self, mock_build_context):
         """Test the chat endpoint"""
         # Mock the RAG context
@@ -125,6 +167,9 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
         mock_build_context.return_value = mock_context
         
         url = reverse('firstaid:chat')
@@ -143,6 +188,44 @@ class FirstAIDViewTestCase(TestCase):
         response_data = response.json()
         self.assertIn('answer', response_data)
         self.assertIn('sources', response_data)
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_firstaid_chat_no_configure_message_on_agent_error(self, mock_execute_agent, mock_build_context):
+        """Test that 'Please configure' message does not appear even on agent errors"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution to raise an error
+        mock_execute_agent.side_effect = ServiceNotConfigured("AI provider not configured")
+        
+        url = reverse('firstaid:chat')
+        data = {
+            'question': 'What is this project about?',
+            'project_id': self.project.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=data,
+            content_type='application/json'
+        )
+        
+        # Should return error but not the "Please configure" message
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertIn('answer', response_data)
+        # Error message should be present
+        self.assertIn('error', response_data['answer'].lower())
+        # But NOT the "Please configure" message
+        self.assertNotIn('Please configure an AI agent', response_data['answer'])
     
     def test_create_issue_endpoint(self):
         """Test creating an issue from the First AID interface"""

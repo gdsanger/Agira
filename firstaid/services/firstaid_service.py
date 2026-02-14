@@ -211,30 +211,42 @@ class FirstAIDService:
                 project_id=project_id,
             )
             
-            # Generate answer using agent service
-            agent = self.agent_service.get_agent('rag-answer-agent.yml')
-            if not agent:
-                # Fallback: use a simple prompt
-                answer = self._generate_answer_fallback(question, context)
-            else:
-                # Use the agent to generate answer
-                answer = self.agent_service.execute_agent(
-                    agent_filename='rag-answer-agent.yml',
-                    variables={
-                        'question': question,
-                        'context': context.summary if context else '',
-                        'layer_a': '\n'.join([f"- {item.title}" for item in context.layer_a]) if context else '',
-                        'layer_b': '\n'.join([f"- {item.title}" for item in context.layer_b]) if context else '',
-                        'layer_c': '\n'.join([f"- {item.title}" for item in context.layer_c]) if context else '',
-                    },
-                    user=user,
-                )
+            # Use question-answering-agent as default
+            agent_filename = 'question-answering-agent.yml'
+            
+            # Build input text with question and context
+            input_parts = [f"Frage: {question}"]
+            
+            if context:
+                if hasattr(context, 'summary') and context.summary:
+                    input_parts.append(f"\nKontext-Zusammenfassung: {context.summary}")
+                
+                if hasattr(context, 'layer_a') and context.layer_a:
+                    input_parts.append("\nRelevante Items (Layer A):")
+                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_a]))
+                
+                if hasattr(context, 'layer_b') and context.layer_b:
+                    input_parts.append("\nVerwandte Items (Layer B):")
+                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_b]))
+                
+                if hasattr(context, 'layer_c') and context.layer_c:
+                    input_parts.append("\nZusätzlicher Kontext (Layer C):")
+                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_c]))
+            
+            input_text = '\n'.join(input_parts)
+            
+            # Execute the agent to generate answer
+            answer = self.agent_service.execute_agent(
+                filename=agent_filename,
+                input_text=input_text,
+                user=user,
+            )
             
             return {
-                'answer': answer if isinstance(answer, str) else answer.get('response', ''),
-                'sources': [item.to_dict() for item in context.all_items] if context else [],
-                'summary': context.summary if context else '',
-                'stats': context.stats if context else {},
+                'answer': answer if isinstance(answer, str) else str(answer),
+                'sources': [item.to_dict() for item in context.all_items] if context and hasattr(context, 'all_items') else [],
+                'summary': context.summary if context and hasattr(context, 'summary') else '',
+                'stats': context.stats if context and hasattr(context, 'stats') else {},
             }
         except Exception as e:
             logger.error(f"Error in FirstAID chat: {e}", exc_info=True)
@@ -247,7 +259,8 @@ class FirstAIDService:
     
     def _generate_answer_fallback(self, question: str, context: Any) -> str:
         """
-        Fallback answer generation when agent is not available.
+        Fallback answer generation when agent execution fails.
+        This should only be used in error cases, not normal operation.
         
         Args:
             question: User's question
@@ -256,10 +269,10 @@ class FirstAIDService:
         Returns:
             Generated answer
         """
-        # Simple fallback - return context summary
-        if context and hasattr(context, 'summary'):
-            return f"Based on the available context: {context.summary}\n\nPlease configure an AI agent for better answers."
-        return "No context available. Please configure an AI agent to answer questions."
+        # Return context summary if available
+        if context and hasattr(context, 'summary') and context.summary:
+            return f"Based on the available context: {context.summary}"
+        return "I don't have enough information to answer this question based on the current project context."
     
     def generate_kb_article(self, project_id: int, context: str, user: User) -> str:
         """
@@ -290,7 +303,7 @@ class FirstAIDService:
     
     def _generate_kb_article_fallback(self, context: str) -> str:
         """Fallback KB article generation."""
-        return f"# Knowledge Base Article\n\n## Context\n\n{context[:500]}...\n\n*Note: Please configure an AI agent for better KB article generation.*"
+        return f"# Knowledge Base Article\n\n## Context\n\n{context[:500]}..."
     
     def generate_documentation(self, project_id: int, context: str, user: User) -> str:
         """
@@ -321,7 +334,7 @@ class FirstAIDService:
     
     def _generate_documentation_fallback(self, context: str) -> str:
         """Fallback documentation generation."""
-        return f"# Documentation\n\n## Overview\n\n{context[:500]}...\n\n*Note: Please configure an AI agent for better documentation generation.*"
+        return f"# Documentation\n\n## Overview\n\n{context[:500]}..."
     
     def generate_flashcards(self, project_id: int, context: str, user: User) -> List[Dict[str, str]]:
         """
@@ -365,6 +378,5 @@ class FirstAIDService:
     def _generate_flashcards_fallback(self, context: str) -> List[Dict[str, str]]:
         """Fallback flashcard generation."""
         return [
-            {'question': 'Sample Question 1', 'answer': 'Please configure an AI agent for flashcard generation.'},
-            {'question': 'Sample Question 2', 'answer': f'Context preview: {context[:100]}...'},
+            {'question': 'Sample Question', 'answer': f'Context preview: {context[:100]}...'},
         ]
