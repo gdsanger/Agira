@@ -101,8 +101,11 @@
                         <div class="flex-grow-1 source-item-title">
                             <div class="small fw-bold">{{ attachment.title }}</div>                  
                         </div>
-                        <a href="{{ attachment.url }}" target="_blank" class="btn btn-sm btn-link p-0 ms-1" 
-                           onclick="handleAttachmentClick(event, '{{ attachment.title }}', '{{ attachment.url }}')" 
+                        <a href="{{ attachment.url }}" 
+                           target="_blank" 
+                           class="btn btn-sm btn-link p-0 ms-1 attachment-link" 
+                           data-filename="{{ attachment.title }}"
+                           data-url="{{ attachment.url }}"
                            title="View attachment">
                             <i class="bi bi-eye"></i>
                         </a>
@@ -132,11 +135,17 @@ document.querySelectorAll('.source-item').forEach(item => {
     });
 });
 
-// Handle attachment clicks to display markdown in modal
-function handleAttachmentClick(event, filename, url) {
+// Handle attachment clicks with event delegation
+document.addEventListener('click', function(e) {
+    const attachmentLink = e.target.closest('.attachment-link');
+    if (!attachmentLink) return;
+    
+    const filename = attachmentLink.dataset.filename;
+    const url = attachmentLink.dataset.url;
+    
     // Check if it's a markdown file
-    if (filename.toLowerCase().endsWith('.md')) {
-        event.preventDefault();
+    if (filename && filename.toLowerCase().endsWith('.md')) {
+        e.preventDefault();
         
         // Fetch the markdown content
         fetch(url)
@@ -151,7 +160,7 @@ function handleAttachmentClick(event, filename, url) {
             });
     }
     // For images and PDFs, let the default behavior happen (new tab)
-}
+});
 
 // Show markdown content in a modal
 function showMarkdownModal(title, markdownContent) {
@@ -180,9 +189,14 @@ function showMarkdownModal(title, markdownContent) {
     document.getElementById('markdownModalLabel').textContent = title;
     const bodyElement = document.getElementById('markdownModalBody');
     
-    // Use marked.js if available, otherwise show plain text
+    // Use marked.js with DOMPurify if available
     if (typeof marked !== 'undefined') {
-        bodyElement.innerHTML = marked.parse(markdownContent);
+        const rawHtml = marked.parse(markdownContent);
+        if (typeof DOMPurify !== 'undefined') {
+            bodyElement.innerHTML = DOMPurify.sanitize(rawHtml);
+        } else {
+            bodyElement.innerHTML = rawHtml;
+        }
     } else {
         bodyElement.innerHTML = '<pre>' + markdownContent + '</pre>';
     }
