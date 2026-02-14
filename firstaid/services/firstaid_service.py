@@ -296,9 +296,9 @@ class FirstAIDService:
             
             # Add chat context if available
             # Note: We provide the recent transcript and older summary to the answering agent.
-            # Recent messages (last 5 pairs) are sent in full for better context.
+            # Recent messages (up to the last 10 messages/5 pairs) are sent in full for better context.
             if recent_transcript:
-                input_parts.append(f"\nLetzte Konversation (5 Nachrichten-Paare):\n{recent_transcript}")
+                input_parts.append(f"\nLetzte Konversation:\n{recent_transcript}")
             if chat_summary:
                 input_parts.append(f"\nÄltere Chat-Zusammenfassung: {chat_summary}")
             if chat_keywords:
