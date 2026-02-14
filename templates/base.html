@@ -176,6 +176,10 @@
                         <span class="sidebar-section-title">AI/KI</span>
                     </a>
                     <div class="collapse show" id="aiCollapse">
+                        <a href="{% url 'firstaid:home' %}" class="sidebar-link sidebar-link-sub {% if 'firstaid' in request.path %}active{% endif %}">
+                            <i class="bi bi-heart-pulse-fill sidebar-icon text-danger"></i>
+                            <span class="sidebar-text">First AID</span>
+                        </a>
                         <a href="{% url 'ai-providers' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'ai-providers' %}active{% endif %}">
                             <i class="bi bi-robot sidebar-icon"></i>
                             <span class="sidebar-text">AI Providers</span>

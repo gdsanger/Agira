@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'django_filters',
     'django_tables2',
     'core',
+    'firstaid',
 ]
 
 MIDDLEWARE = [
