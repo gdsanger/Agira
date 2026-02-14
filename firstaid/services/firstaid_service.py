@@ -250,7 +250,9 @@ class FirstAIDService:
             if chat_summary or chat_keywords:
                 enhanced_query = f"{question}\n\nCHAT_SUMMARY:\n{chat_summary}\n\nKEYWORDS:\n{', '.join(chat_keywords)}"
             
-            # Build extended RAG context for the project
+            # Build extended RAG context for the project.
+            # MAX_CONTENT_LENGTH from RAG config remains in effect unless a custom
+            # max_content_length is explicitly provided by caller.
             context = build_extended_context(
                 query=enhanced_query,
                 project_id=project_id,
@@ -274,18 +276,12 @@ class FirstAIDService:
             if context:
                 if hasattr(context, 'summary') and context.summary:
                     input_parts.append(f"\nKontext-Zusammenfassung: {context.summary}")
-                
-                if hasattr(context, 'layer_a') and context.layer_a:
-                    input_parts.append("\nRelevante Items (Layer A):")
-                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_a]))
-                
-                if hasattr(context, 'layer_b') and context.layer_b:
-                    input_parts.append("\nVerwandte Items (Layer B):")
-                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_b]))
-                
-                if hasattr(context, 'layer_c') and context.layer_c:
-                    input_parts.append("\nZusätzlicher Kontext (Layer C):")
-                    input_parts.append('\n'.join([f"- {item.title}" for item in context.layer_c]))
+
+                # Include full LLM context text (all selected A/B/C snippets with content),
+                # not only titles.
+                if hasattr(context, 'to_context_text'):
+                    input_parts.append("\nVollständiger Kontext aus der Wissensdatenbank:")
+                    input_parts.append(context.to_context_text())
             
             input_text = '\n'.join(input_parts)
             
