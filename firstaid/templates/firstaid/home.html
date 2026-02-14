@@ -464,12 +464,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Display markdown result
     function displayMarkdownResult(content, title) {
+        // Escape content for safe insertion into template literal
+        const escapedContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        
         toolResult.innerHTML = `
             <h6>${title}</h6>
             <div class="border p-2 rounded" style="max-height: 400px; overflow-y: auto;">
-                <pre class="mb-0" style="white-space: pre-wrap;">${content}</pre>
+                <pre class="mb-0" style="white-space: pre-wrap;">${escapedContent}</pre>
             </div>
-            <button class="btn btn-sm btn-outline-secondary mt-2" onclick="downloadAsFile('${title}.md', \`${content.replace(/`/g, '\\`')}\`)">
+            <button class="btn btn-sm btn-outline-secondary mt-2" onclick="downloadAsFile('${title}.md', \`${escapedContent}\`)">
                 <i class="bi bi-download"></i> Download
             </button>
         `;
