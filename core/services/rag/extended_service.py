@@ -11,6 +11,7 @@ This service extends the basic RAG pipeline with:
 import json
 import logging
 import os
+import re
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 
@@ -21,7 +22,14 @@ from core.services.exceptions import ServiceDisabled
 from weaviate.classes.query import Filter, HybridFusion, MetadataQuery
 
 from .models import RAGContextObject
-from .config import FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES
+from .config import (
+    FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES,
+    ENABLE_PRIMARY_ATTACHMENT_BOOST,
+    PRIMARY_MAX_CONTENT_LENGTH_STANDARD,
+    PRIMARY_MAX_CONTENT_LENGTH_EXTENDED,
+    PRIMARY_MAX_CONTENT_LENGTH_PRO,
+    SMALL_DOC_THRESHOLD,
+)
 
 # Configure logger for RAG pipeline with dedicated log file
 logger = logging.getLogger(__name__)
@@ -193,6 +201,314 @@ class ExtendedRAGContext:
                 lines.append("")
         
         return "\n".join(lines)
+
+
+# Helper functions for Primary Attachment Boost (Issue #416)
+
+# Constants for smart trimming and filename extraction
+_MIN_FILE_EXTENSION_LEN = 2  # Minimum extension length (e.g., .py, .md)
+_MAX_FILE_EXTENSION_LEN = 4  # Maximum extension length (e.g., .json, .yaml)
+_MIN_QUERY_TERM_LEN = 3  # Minimum word length for query term extraction
+_MAX_QUERY_TERMS = 10  # Maximum number of query terms to extract
+_INTRO_TEXT_MAX_CHARS = 1500  # Maximum intro text length in smart trimming
+_SECTION_SAFETY_MARGIN = 100  # Safety margin for content budget calculations
+_SECTION_SEPARATOR_OVERHEAD = 50  # Overhead for section separators
+_MAX_SECTIONS_IN_TRIM = 4  # Maximum sections to include in smart trim
+_CONTENT_LENGTH_SCORE_DIVISOR = 1000  # Divisor for content length scoring bonus
+
+# Bonus keywords for RAG-related queries (section scoring)
+_RAG_BONUS_KEYWORDS = [
+    'fusion', 'scoring', 'bm25', 'hybrid', 'alpha', 'rerank', 'dedup',
+    'layer', 'weaviate', 'pipeline', 'question', 'optimization',
+    'search', 'retrieval', 'semantic', 'keyword', 'tag'
+]
+
+
+def _extract_filenames_from_text(text: str) -> List[str]:
+    """
+    Extract potential filenames from text (query or optimized query).
+    
+    Looks for patterns like:
+    - EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md
+    - some-file.txt
+    - document.pdf
+    
+    Args:
+        text: Text to search for filenames
+        
+    Returns:
+        List of potential filenames (lowercase for matching)
+    """
+    if not text:
+        return []
+    
+    # Pattern components (verbose regex for readability):
+    # - Uppercase start pattern: [A-Z_][A-Z0-9_]* (e.g., EXTENDED_RAG_PIPELINE)
+    # - Regular filename pattern: [a-zA-Z0-9_-]+ (e.g., config, test-file)
+    # - Extension: \.[a-zA-Z0-9]{min,max} (e.g., .py, .md, .json)
+    # Extension length limited to common file extensions (.py, .md, .txt, .json, .yaml)
+    uppercase_pattern = rf'[A-Z_][A-Z0-9_]*\.[a-z]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}'
+    regular_pattern = rf'[a-zA-Z0-9_-]+\.[a-zA-Z0-9]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}'
+    pattern = rf'\b({uppercase_pattern}|{regular_pattern})\b'
+    
+    try:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        # Return unique filenames in lowercase for case-insensitive matching
+        return list(set(m.lower() for m in matches))
+    except (re.error, AttributeError):
+        # Handle regex errors or None text gracefully
+        return []
+
+
+def _parse_markdown_sections(content: str) -> List[Dict[str, Any]]:
+    """
+    Parse markdown content into sections based on headings.
+    
+    Args:
+        content: Markdown content
+        
+    Returns:
+        List of sections with 'heading', 'level', 'content', 'start_pos'
+    """
+    sections = []
+    lines = content.split('\n')
+    current_section = None
+    current_content = []
+    
+    for i, line in enumerate(lines):
+        # Check if line is a heading (# to ###)
+        heading_match = re.match(r'^(#{1,3})\s+(.+)$', line)
+        
+        if heading_match:
+            # Save previous section if exists
+            if current_section is not None:
+                current_section['content'] = '\n'.join(current_content).strip()
+                sections.append(current_section)
+            
+            # Start new section
+            level = len(heading_match.group(1))
+            heading = heading_match.group(2).strip()
+            current_section = {
+                'heading': heading,
+                'level': level,
+                'start_line': i,
+                'raw_heading_line': line,
+            }
+            current_content = []
+        else:
+            # Add to current section content
+            if current_section is not None:
+                current_content.append(line)
+    
+    # Save last section
+    if current_section is not None:
+        current_section['content'] = '\n'.join(current_content).strip()
+        sections.append(current_section)
+    
+    return sections
+
+
+def _generate_toc(sections: List[Dict[str, Any]]) -> str:
+    """
+    Generate a table of contents from sections.
+    
+    Args:
+        sections: List of section dictionaries
+        
+    Returns:
+        Formatted TOC string
+    """
+    if not sections:
+        return ""
+    
+    toc_lines = ["## Table of Contents", ""]
+    for section in sections:
+        indent = "  " * (section['level'] - 1)
+        toc_lines.append(f"{indent}- {section['heading']}")
+    
+    return '\n'.join(toc_lines)
+
+
+def _score_section(section: Dict[str, Any], query_terms: List[str], bonus_keywords: List[str]) -> float:
+    """
+    Score a section based on keyword overlap with query.
+    
+    Args:
+        section: Section dictionary with 'heading' and 'content'
+        query_terms: Terms from the query to match
+        bonus_keywords: Additional bonus keywords (RAG-related terms)
+        
+    Returns:
+        Score (higher is better)
+    """
+    text = (section['heading'] + ' ' + section['content']).lower()
+    score = 0.0
+    
+    # Check query terms (case-insensitive)
+    for term in query_terms:
+        if term.lower() in text:
+            # Heading matches count more
+            if term.lower() in section['heading'].lower():
+                score += 2.0
+            else:
+                score += 1.0
+    
+    # Bonus keywords
+    for keyword in bonus_keywords:
+        if keyword.lower() in text:
+            score += 0.5
+    
+    # Prefer longer sections (more substantial content)
+    # Normalized by dividing by divisor to keep scores in reasonable range
+    content_length_bonus = min(len(section['content']) / _CONTENT_LENGTH_SCORE_DIVISOR, 2.0)
+    score += content_length_bonus
+    
+    return score
+
+
+def _extract_query_terms(query: str, optimized: Optional[OptimizedQuery] = None) -> List[str]:
+    """
+    Extract key terms from query and optimized query for section scoring.
+    
+    Args:
+        query: Original query
+        optimized: Optimized query object (if available)
+        
+    Returns:
+        List of terms to use for scoring
+    """
+    terms = []
+    
+    # Add words from original query (minimum length to avoid short/meaningless terms)
+    query_words = [w.strip() for w in re.split(r'\W+', query) if len(w.strip()) >= _MIN_QUERY_TERM_LEN]
+    terms.extend(query_words[:_MAX_QUERY_TERMS])  # Limit to top N words to avoid over-matching
+    
+    # Add from optimized query if available
+    if optimized:
+        if optimized.core:
+            core_words = [w.strip() for w in re.split(r'\W+', optimized.core) if len(w.strip()) >= _MIN_QUERY_TERM_LEN]
+            terms.extend(core_words)
+        terms.extend(optimized.tags[:5])  # Top 5 tags
+        terms.extend(optimized.phrases[:3])  # Top 3 phrases
+    
+    # Deduplicate and return
+    return list(set(terms))
+
+
+def _smart_trim_markdown(
+    content: str,
+    max_length: int,
+    query: str,
+    optimized: Optional[OptimizedQuery] = None
+) -> str:
+    """
+    Smart section-aware trimming for large markdown documents.
+    
+    Instead of simple truncation, this:
+    1. Parses markdown into sections
+    2. Generates a TOC
+    3. Scores sections by keyword overlap
+    4. Returns: intro + TOC + top relevant sections within budget
+    
+    Args:
+        content: Full markdown content
+        max_length: Maximum characters to return
+        query: Original query
+        optimized: Optimized query (if available)
+        
+    Returns:
+        Trimmed markdown with TOC and relevant sections
+    """
+    # If content is already within budget, return as-is
+    if len(content) <= max_length:
+        return content
+    
+    rag_logger.info(f"Smart trimming markdown: {len(content)} chars -> {max_length} max")
+    
+    # Parse sections
+    sections = _parse_markdown_sections(content)
+    
+    if not sections:
+        # No sections found, fallback to simple truncation
+        rag_logger.warning("No markdown sections found, using simple truncation")
+        return content[:max_length].rstrip() + "\n\n[...truncated for length...]"
+    
+    rag_logger.debug(f"Found {len(sections)} sections")
+    
+    # Generate TOC
+    toc = _generate_toc(sections)
+    
+    # Extract query terms for scoring
+    query_terms = _extract_query_terms(query, optimized)
+    
+    # Use module-level bonus keywords for RAG-related queries
+    bonus_keywords = _RAG_BONUS_KEYWORDS
+    
+    # Score sections
+    for section in sections:
+        section['score'] = _score_section(section, query_terms, bonus_keywords)
+    
+    # Sort by score
+    scored_sections = sorted(sections, key=lambda s: s['score'], reverse=True)
+    
+    # Build output
+    output_parts = []
+    
+    # Add intro (first ~N chars or content before first section heading)
+    intro_text = ""
+    if sections:
+        # Get content before first heading
+        first_heading_line = sections[0]['start_line']
+        intro_lines = content.split('\n')[:first_heading_line]
+        intro_text = '\n'.join(intro_lines).strip()
+        
+        if len(intro_text) > _INTRO_TEXT_MAX_CHARS:
+            intro_text = intro_text[:_INTRO_TEXT_MAX_CHARS].rstrip() + "..."
+    
+    if intro_text:
+        output_parts.append(intro_text)
+    
+    # Add TOC
+    output_parts.append(toc)
+    
+    # Calculate remaining budget with safety margin to avoid going over
+    used_chars = sum(len(p) for p in output_parts) + len(output_parts) * 2  # +2 for newlines
+    remaining = max_length - used_chars - _SECTION_SAFETY_MARGIN
+    
+    # Add top sections until budget exhausted
+    selected_sections = []
+    for section in scored_sections:
+        section_text = f"{section['raw_heading_line']}\n{section['content']}"
+        section_len = len(section_text)
+        
+        if used_chars + section_len + _SECTION_SEPARATOR_OVERHEAD <= max_length:
+            selected_sections.append(section)
+            used_chars += section_len + _SECTION_SEPARATOR_OVERHEAD
+        
+        # Stop if we have enough sections (2-4 is usually good for readability)
+        if len(selected_sections) >= _MAX_SECTIONS_IN_TRIM:
+            break
+    
+    # Add selected sections (in document order, not score order)
+    if selected_sections:
+        output_parts.append("\n## Selected Relevant Sections\n")
+        
+        # Sort by start_line to maintain document order
+        selected_sections.sort(key=lambda s: s['start_line'])
+        
+        for section in selected_sections:
+            section_text = f"{section['raw_heading_line']}\n{section['content']}"
+            output_parts.append(section_text)
+    
+    result = '\n\n'.join(output_parts)
+    
+    # Final safety check
+    if len(result) > max_length:
+        result = result[:max_length].rstrip() + "\n\n[...trimmed for length...]"
+    
+    rag_logger.info(f"Smart trim complete: {len(result)} chars, {len(selected_sections)} sections included")
+    
+    return result
 
 
 class ExtendedRAGPipelineService:
@@ -575,17 +891,114 @@ class ExtendedRAGPipelineService:
         return fused_results[:limit]
     
     @staticmethod
+    def _determine_primary_attachment(
+        results: List[Dict[str, Any]],
+        query: str,
+        optimized: Optional[OptimizedQuery] = None
+    ) -> Optional[str]:
+        """
+        Determine which attachment (if any) should be treated as primary.
+        
+        Priority:
+        1. Filename match: If query/optimized query contains a filename and it's in results
+        2. Best scoring attachment: Attachment with highest final_score
+        3. Fallback: First attachment in results
+        
+        Args:
+            results: Fused and ranked results
+            query: Original query
+            optimized: Optimized query (if available)
+            
+        Returns:
+            object_id of primary attachment, or None if no attachments
+        """
+        if not ENABLE_PRIMARY_ATTACHMENT_BOOST:
+            return None
+        
+        # Get all attachments from results
+        attachments = [r for r in results if r.get('object_type') == 'attachment']
+        
+        if not attachments:
+            rag_logger.debug("No attachments in results, no primary attachment")
+            return None
+        
+        # Priority 1: Filename match
+        # Extract filenames from query
+        query_filenames = _extract_filenames_from_text(query)
+        if optimized and optimized.core:
+            query_filenames.extend(_extract_filenames_from_text(optimized.core))
+        if optimized and optimized.phrases:
+            for phrase in optimized.phrases:
+                query_filenames.extend(_extract_filenames_from_text(phrase))
+        
+        query_filenames = list(set(query_filenames))  # Deduplicate
+        
+        if query_filenames:
+            rag_logger.debug(f"Found filenames in query: {query_filenames}")
+            
+            # Check each attachment's title/link for filename match
+            for attachment in attachments:
+                title = (attachment.get('title') or '').lower()
+                link = (attachment.get('link') or '').lower()
+                
+                for filename in query_filenames:
+                    # Exact match or contains
+                    if filename in title or filename in link:
+                        obj_id = attachment.get('object_id')
+                        rag_logger.info(f"Primary attachment determined by filename match: {obj_id} (matched '{filename}')")
+                        return obj_id
+        
+        # Priority 2: Best scoring attachment
+        best_attachment = max(attachments, key=lambda a: a.get('final_score', 0) or 0)
+        obj_id = best_attachment.get('object_id')
+        score = best_attachment.get('final_score', 0)
+        rag_logger.info(f"Primary attachment determined by best score: {obj_id} (score={score:.3f})")
+        
+        return obj_id
+    
+    @staticmethod
+    def _get_primary_content_length(max_content_length: Optional[int] = None) -> int:
+        """
+        Get the appropriate content length for primary attachments.
+        
+        Uses the provided max_content_length to determine the thinking level,
+        then returns the corresponding primary attachment budget.
+        
+        Args:
+            max_content_length: Current max content length (determines level)
+            
+        Returns:
+            Primary attachment content length
+        """
+        if not max_content_length:
+            max_content_length = MAX_CONTENT_LENGTH
+        
+        # Determine thinking level based on max_content_length
+        # Standard: 6000, Extended: ~10000, Pro: ~15000+
+        if max_content_length <= 6000:
+            return PRIMARY_MAX_CONTENT_LENGTH_STANDARD
+        elif max_content_length <= 12000:
+            return PRIMARY_MAX_CONTENT_LENGTH_EXTENDED
+        else:
+            return PRIMARY_MAX_CONTENT_LENGTH_PRO
+    
+    @staticmethod
     def _separate_into_layers(
         results: List[Dict[str, Any]],
         item_id: Optional[str] = None,
         max_content_length: Optional[int] = None,
+        query: Optional[str] = None,
+        optimized: Optional[OptimizedQuery] = None,
     ) -> Tuple[List[RAGContextObject], List[RAGContextObject], List[RAGContextObject]]:
         """
-        Separate results into A/B/C layers (Issue #407).
+        Separate results into A/B/C layers (Issue #407, #416).
         
         Layer A: Documentation-focused (2-3 snippets) - attachment + github_pr (highest technical relevance)
         Layer B: Item context (2-3 snippets) - item + github_issue
         Layer C: Global background (1-2 snippets) - rest
+        
+        Primary Attachment Boost (Issue #416):
+        If enabled, one attachment can be designated as "primary" and receive boosted content budget.
         
         Args:
             results: Fused and ranked results
@@ -593,12 +1006,31 @@ class ExtendedRAGPipelineService:
                 Not used in layer separation logic. Kept for backward compatibility only.
                 This parameter has no effect and will be removed in a future version.
             max_content_length: Maximum content length for truncation. If None, uses MAX_CONTENT_LENGTH from config
+            query: Original query (used for primary attachment selection and smart trimming)
+            optimized: Optimized query (used for primary attachment selection and smart trimming)
             
         Returns:
             Tuple of (layer_a, layer_b, layer_c)
         """
         # Use provided max_content_length or default from config
         content_length = max_content_length if max_content_length is not None else MAX_CONTENT_LENGTH
+        
+        # Determine primary attachment (Issue #416)
+        primary_attachment_id = None
+        primary_content_length = content_length
+        
+        if ENABLE_PRIMARY_ATTACHMENT_BOOST and query:
+            primary_attachment_id = ExtendedRAGPipelineService._determine_primary_attachment(
+                results, query, optimized
+            )
+            if primary_attachment_id:
+                primary_content_length = ExtendedRAGPipelineService._get_primary_content_length(
+                    max_content_length
+                )
+                rag_logger.info(
+                    f"Primary attachment boost enabled: {primary_attachment_id}, "
+                    f"budget={primary_content_length} (vs normal {content_length})"
+                )
         
         rag_logger.info(f"Separating {len(results)} results into A/B/C layers")
         layer_a = []
@@ -609,10 +1041,35 @@ class ExtendedRAGPipelineService:
             obj_type = result.get('object_type', '')
             obj_id = str(result.get('object_id', ''))
             
-            # Truncate content
+            # Determine content length for this result (Issue #416)
+            is_primary = (
+                ENABLE_PRIMARY_ATTACHMENT_BOOST and
+                obj_type == 'attachment' and
+                obj_id == primary_attachment_id
+            )
+            
+            result_content_length = primary_content_length if is_primary else content_length
+            
+            # Truncate content with smart trimming for primary attachments (Issue #416)
             content = result.get('content', '')
-            if len(content) > content_length:
-                content = content[:content_length].rstrip() + "..."
+            original_length = len(content)
+            
+            if is_primary and original_length > SMALL_DOC_THRESHOLD:
+                # Use section-aware smart trimming for large primary attachments
+                rag_logger.info(
+                    f"Applying smart section-aware trimming to primary attachment {obj_id}: "
+                    f"{original_length} chars -> {result_content_length} max"
+                )
+                content = _smart_trim_markdown(content, result_content_length, query or '', optimized)
+                rag_logger.info(f"Smart trimming result: {len(content)} chars")
+            elif original_length > result_content_length:
+                # Standard truncation
+                content = content[:result_content_length].rstrip() + "..."
+                if is_primary:
+                    rag_logger.debug(f"Primary attachment {obj_id} truncated (small doc): {original_length} -> {len(content)} chars")
+            elif is_primary:
+                # Small doc, included in full
+                rag_logger.debug(f"Primary attachment {obj_id} included in full: {original_length} chars (< {SMALL_DOC_THRESHOLD})")
             
             # Create RAGContextObject
             item = RAGContextObject(
@@ -800,7 +1257,9 @@ class ExtendedRAGPipelineService:
         layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
             fused_results,
             item_id=item_id,  # Deprecated but kept for backward compatibility
-            max_content_length=content_length
+            max_content_length=content_length,
+            query=query,  # For primary attachment selection (Issue #416)
+            optimized=optimized,  # For primary attachment selection (Issue #416)
         )
         
         stats['layer_a_count'] = len(layer_a)

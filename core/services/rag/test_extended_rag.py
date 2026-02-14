@@ -869,3 +869,438 @@ class JSONSerializationTestCase(TestCase):
         # Should be JSON serializable
         json_str = json.dumps(result)
         self.assertIsInstance(json_str, str)
+
+
+
+class PrimaryAttachmentBoostTestCase(TestCase):
+    """Test Primary Attachment Boost feature (Issue #416)."""
+    
+    def test_extract_filenames_from_text(self):
+        """Should extract filenames from text."""
+        from core.services.rag.extended_service import _extract_filenames_from_text
+        
+        # Test with markdown filename
+        text = "Check the EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md file"
+        filenames = _extract_filenames_from_text(text)
+        self.assertIn("extended_rag_pipeline_implementation.md", filenames)
+        
+        # Test with multiple filenames
+        text = "See config.py and test_rag.py for details"
+        filenames = _extract_filenames_from_text(text)
+        self.assertIn("config.py", filenames)
+        self.assertIn("test_rag.py", filenames)
+        
+        # Test with no filenames
+        text = "This is just a regular query"
+        filenames = _extract_filenames_from_text(text)
+        self.assertEqual(len(filenames), 0)
+    
+    def test_primary_attachment_by_filename_match(self):
+        """Should select primary attachment by filename match."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md",
+                "content": "RAG pipeline docs",
+                "final_score": 0.7,
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "other_doc.md",
+                "content": "Other docs",
+                "final_score": 0.9,  # Higher score but not filename match
+            },
+        ]
+        
+        query = "How does EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select att-1 even though att-2 has higher score
+        self.assertEqual(primary_id, "att-1")
+    
+    def test_primary_attachment_by_best_score(self):
+        """Should select primary attachment by best score when no filename match."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "doc1.md",
+                "content": "Docs",
+                "final_score": 0.7,
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "doc2.md",
+                "content": "More docs",
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select att-2 with highest score
+        self.assertEqual(primary_id, "att-2")
+    
+    def test_primary_attachment_fallback_first_attachment(self):
+        """Should use first attachment when scores are missing."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "doc1.md",
+                "content": "Docs",
+                "final_score": None,  # No score
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "doc2.md",
+                "content": "More docs",
+                "final_score": None,  # No score
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select first attachment when scores are all 0/None
+        self.assertEqual(primary_id, "att-1")
+    
+    def test_no_primary_when_no_attachments(self):
+        """Should return None when no attachments in results."""
+        results = [
+            {
+                "object_id": "item-1",
+                "object_type": "item",
+                "title": "Some item",
+                "content": "Content",
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "test query"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        self.assertIsNone(primary_id)
+    
+    def test_get_primary_content_length(self):
+        """Should return appropriate primary content length based on thinking level."""
+        from core.services.rag.config import (
+            PRIMARY_MAX_CONTENT_LENGTH_STANDARD,
+            PRIMARY_MAX_CONTENT_LENGTH_EXTENDED,
+            PRIMARY_MAX_CONTENT_LENGTH_PRO,
+        )
+        
+        # Standard level (6000)
+        length = ExtendedRAGPipelineService._get_primary_content_length(6000)
+        self.assertEqual(length, PRIMARY_MAX_CONTENT_LENGTH_STANDARD)
+        
+        # Extended level (10000)
+        length = ExtendedRAGPipelineService._get_primary_content_length(10000)
+        self.assertEqual(length, PRIMARY_MAX_CONTENT_LENGTH_EXTENDED)
+        
+        # Pro level (15000+)
+        length = ExtendedRAGPipelineService._get_primary_content_length(15000)
+        self.assertEqual(length, PRIMARY_MAX_CONTENT_LENGTH_PRO)
+    
+    def test_parse_markdown_sections(self):
+        """Should parse markdown into sections."""
+        from core.services.rag.extended_service import _parse_markdown_sections
+        
+        markdown = """# Introduction
+This is the intro.
+
+## Section 1
+Content for section 1.
+
+## Section 2
+Content for section 2.
+
+### Subsection 2.1
+Subsection content.
+"""
+        
+        sections = _parse_markdown_sections(markdown)
+        
+        # Should find 4 sections
+        self.assertEqual(len(sections), 4)
+        self.assertEqual(sections[0]["heading"], "Introduction")
+        self.assertEqual(sections[0]["level"], 1)
+        self.assertEqual(sections[1]["heading"], "Section 1")
+        self.assertEqual(sections[1]["level"], 2)
+        self.assertEqual(sections[2]["heading"], "Section 2")
+        self.assertEqual(sections[3]["heading"], "Subsection 2.1")
+        self.assertEqual(sections[3]["level"], 3)
+    
+    def test_generate_toc(self):
+        """Should generate table of contents from sections."""
+        from core.services.rag.extended_service import _generate_toc
+        
+        sections = [
+            {"heading": "Introduction", "level": 1},
+            {"heading": "Section 1", "level": 2},
+            {"heading": "Section 2", "level": 2},
+        ]
+        
+        toc = _generate_toc(sections)
+        
+        self.assertIn("Table of Contents", toc)
+        self.assertIn("Introduction", toc)
+        self.assertIn("Section 1", toc)
+        self.assertIn("Section 2", toc)
+    
+    def test_score_section(self):
+        """Should score sections based on keyword overlap."""
+        from core.services.rag.extended_service import _score_section
+        
+        section = {
+            "heading": "RAG Pipeline Fusion",
+            "content": "This section describes the fusion process in detail.",
+        }
+        
+        query_terms = ["rag", "fusion", "pipeline"]
+        bonus_keywords = ["fusion", "scoring"]
+        
+        score = _score_section(section, query_terms, bonus_keywords)
+        
+        # Should have positive score due to keyword matches
+        self.assertGreater(score, 0)
+    
+    @patch("core.services.rag.extended_service.ENABLE_PRIMARY_ATTACHMENT_BOOST", True)
+    def test_small_doc_included_full(self):
+        """Small primary attachments should be included in full."""
+        from core.services.rag.config import SMALL_DOC_THRESHOLD
+        
+        # Create a small document (below threshold)
+        small_content = "a" * (SMALL_DOC_THRESHOLD - 100)
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "small_doc.md",
+                "content": small_content,
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "test query"
+        optimized = OptimizedQuery(
+            language="en",
+            core="test",
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[],
+        )
+        
+        layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
+            results,
+            max_content_length=6000,
+            query=query,
+            optimized=optimized,
+        )
+        
+        # Should have one item in layer_a (attachment)
+        self.assertEqual(len(layer_a), 1)
+        
+        # Content should be complete (not truncated)
+        self.assertEqual(len(layer_a[0].content), len(small_content))
+    
+    @patch("core.services.rag.extended_service.ENABLE_PRIMARY_ATTACHMENT_BOOST", True)
+    def test_large_doc_section_aware_trim_respects_budget(self):
+        """Large primary attachments should use section-aware trimming."""
+        from core.services.rag.config import SMALL_DOC_THRESHOLD, PRIMARY_MAX_CONTENT_LENGTH_STANDARD
+        
+        # Create a large markdown document
+        large_content = """# Introduction
+This is the introduction section with some content.
+
+## RAG Pipeline
+This section describes the RAG pipeline in detail. """ + ("x" * 10000) + """
+
+## Fusion Process
+This section describes the fusion process. """ + ("y" * 10000) + """
+
+## Conclusion
+Final thoughts.
+"""
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "large_doc.md",
+                "content": large_content,
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        optimized = OptimizedQuery(
+            language="en",
+            core="RAG pipeline",
+            synonyms=[],
+            phrases=["RAG pipeline"],
+            entities={},
+            tags=["rag", "pipeline"],
+            ban=[],
+            followup_questions=[],
+        )
+        
+        layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
+            results,
+            max_content_length=6000,
+            query=query,
+            optimized=optimized,
+        )
+        
+        # Should have one item in layer_a
+        self.assertEqual(len(layer_a), 1)
+        
+        # Content should be trimmed to primary budget
+        self.assertLessEqual(len(layer_a[0].content), PRIMARY_MAX_CONTENT_LENGTH_STANDARD)
+        
+        # Should contain TOC or relevant sections (section-aware)
+        content = layer_a[0].content
+        self.assertTrue(
+            "Table of Contents" in content or "RAG Pipeline" in content,
+            "Smart-trimmed content should include TOC or relevant sections"
+        )
+    
+    @patch("core.services.rag.extended_service.ENABLE_PRIMARY_ATTACHMENT_BOOST", True)
+    def test_non_primary_docs_still_truncated_to_max_content_length(self):
+        """Non-primary documents should use normal truncation."""
+        from core.services.rag.config import MAX_CONTENT_LENGTH
+        
+        # Create two attachments
+        large_content = "a" * 20000
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "primary_doc.md",
+                "content": large_content,
+                "final_score": 0.9,  # Highest score - will be primary
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "other_doc.md",
+                "content": large_content,
+                "final_score": 0.7,  # Lower score - not primary
+            },
+        ]
+        
+        query = "test query"
+        optimized = OptimizedQuery(
+            language="en",
+            core="test",
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[],
+        )
+        
+        layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
+            results,
+            max_content_length=6000,
+            query=query,
+            optimized=optimized,
+        )
+        
+        # Should have two items in layer_a
+        self.assertEqual(len(layer_a), 2)
+        
+        # First item (primary) should have more content
+        primary_item = layer_a[0]  # att-1 with score 0.9
+        non_primary_item = layer_a[1]  # att-2 with score 0.7
+        
+        # Non-primary should be truncated to MAX_CONTENT_LENGTH
+        # (with "..." added, so slightly longer)
+        self.assertLessEqual(len(non_primary_item.content), MAX_CONTENT_LENGTH + 10)
+        
+        # Primary should have more content (using primary budget)
+        self.assertGreater(len(primary_item.content), len(non_primary_item.content))
+
+    
+    def test_extract_filenames_edge_cases(self):
+        """Should handle edge cases in filename extraction."""
+        from core.services.rag.extended_service import _extract_filenames_from_text
+        
+        # Test with None-like text
+        filenames = _extract_filenames_from_text("")
+        self.assertEqual(len(filenames), 0)
+        
+        # Test with special characters
+        text = "Check the file!@#$%^&*()config.py?><"
+        filenames = _extract_filenames_from_text(text)
+        self.assertIn("config.py", filenames)
+        
+        # Test with unicode
+        text = "Überprüfen Sie die datei.txt Datei"
+        filenames = _extract_filenames_from_text(text)
+        # Should still find the filename
+        self.assertIn("datei.txt", filenames)
+    
+    @patch("core.services.rag.extended_service.ENABLE_PRIMARY_ATTACHMENT_BOOST", True)
+    def test_small_doc_content_unchanged(self):
+        """Small primary attachments content should remain unchanged."""
+        from core.services.rag.config import SMALL_DOC_THRESHOLD
+        
+        # Create a small document with specific content
+        original_content = "This is my original content " * 100
+        small_content = original_content[:SMALL_DOC_THRESHOLD - 100]
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "small_doc.md",
+                "content": small_content,
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "test query"
+        optimized = OptimizedQuery(
+            language="en",
+            core="test",
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[],
+        )
+        
+        layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
+            results,
+            max_content_length=6000,
+            query=query,
+            optimized=optimized,
+        )
+        
+        # Content should be exactly the same (unchanged)
+        self.assertEqual(layer_a[0].content, small_content)

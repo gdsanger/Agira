@@ -27,6 +27,18 @@ DEFAULT_ALPHA_BALANCED = 0.5  # Balanced
 # Content truncation
 MAX_CONTENT_LENGTH = 6000  # Maximum characters per content snippet
 
+# Primary Attachment Boost (Issue #416)
+# Enable boosted content length for primary attachments
+ENABLE_PRIMARY_ATTACHMENT_BOOST = True
+
+# Primary attachment content budgets by thinking level
+PRIMARY_MAX_CONTENT_LENGTH_STANDARD = 18000  # Standard level
+PRIMARY_MAX_CONTENT_LENGTH_EXTENDED = 24000  # Extended level
+PRIMARY_MAX_CONTENT_LENGTH_PRO = 30000      # Pro level
+
+# Threshold for small documents (can be included in full)
+SMALL_DOC_THRESHOLD = 20000  # Characters
+
 # Deduplication
 DEDUP_FETCH_MULTIPLIER = 2  # Fetch this many times limit for deduplication
 
