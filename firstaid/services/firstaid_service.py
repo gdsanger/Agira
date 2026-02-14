@@ -223,16 +223,16 @@ class FirstAIDService:
                     variables={
                         'question': question,
                         'context': context.summary if context else '',
-                        'layer_a': '\n'.join([f"- {item['title']}" for item in context.layer_a]) if context else '',
-                        'layer_b': '\n'.join([f"- {item['title']}" for item in context.layer_b]) if context else '',
-                        'layer_c': '\n'.join([f"- {item['title']}" for item in context.layer_c]) if context else '',
+                        'layer_a': '\n'.join([f"- {item.title}" for item in context.layer_a]) if context else '',
+                        'layer_b': '\n'.join([f"- {item.title}" for item in context.layer_b]) if context else '',
+                        'layer_c': '\n'.join([f"- {item.title}" for item in context.layer_c]) if context else '',
                     },
                     user=user,
                 )
             
             return {
                 'answer': answer if isinstance(answer, str) else answer.get('response', ''),
-                'sources': context.all_items if context else [],
+                'sources': [item.to_dict() for item in context.all_items] if context else [],
                 'summary': context.summary if context else '',
                 'stats': context.stats if context else {},
             }
