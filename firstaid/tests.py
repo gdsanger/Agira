@@ -566,9 +566,157 @@ class ChatHistoryTestCase(TestCase):
         
         self.assertEqual(response.status_code, 200)
         
-        # Verify chat-summary-agent was called
+        # Verify chat-summary-agent was NOT called (only 2 messages, less than 10)
         calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
-        self.assertTrue(len(calls) > 0, "chat-summary-agent should have been called for follow-up question")
+        self.assertEqual(len(calls), 0, "chat-summary-agent should NOT be called when history <= 10 messages")
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_recent_transcript_only(self, mock_execute_agent, mock_build_context):
+        """Test that recent history (< 10 messages) is sent as transcript only, no summary"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        # Create service and test with 4 messages (< 10)
+        service = FirstAIDService()
+        chat_history = [
+            {'role': 'user', 'content': 'Question 1'},
+            {'role': 'assistant', 'content': 'Answer 1'},
+            {'role': 'user', 'content': 'Question 2'},
+            {'role': 'assistant', 'content': 'Answer 2'},
+        ]
+        
+        result = service.chat(
+            project_id=self.project.id,
+            question='Question 3',
+            user=self.user,
+            chat_history=chat_history
+        )
+        
+        # Verify that chat-summary-agent was NOT called
+        summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
+        self.assertEqual(len(summary_calls), 0, "chat-summary-agent should NOT be called when history <= 10 messages")
+        
+        # Verify that the question-answering-agent was called
+        qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
+        self.assertEqual(len(qa_calls), 1, "question-answering-agent should be called once")
+        
+        # Verify that recent transcript is included in the input
+        qa_input = qa_calls[0][1]['input_text']
+        self.assertIn('Letzte Konversation', qa_input)
+        self.assertIn('Question 1', qa_input)
+        self.assertIn('Answer 2', qa_input)
+        
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_split_recent_and_older(self, mock_execute_agent, mock_build_context):
+        """Test that history > 10 messages is split into recent transcript and older summary"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution - return different responses for different agents
+        def agent_side_effect(filename, input_text, user, **kwargs):
+            if 'chat-summary-agent' in filename:
+                return '{"summary": "Previous discussion", "keywords": ["test"]}'
+            else:
+                return "Test answer"
+        
+        mock_execute_agent.side_effect = agent_side_effect
+        
+        # Create service and test with 14 messages (> 10)
+        service = FirstAIDService()
+        chat_history = []
+        for i in range(7):  # 7 pairs = 14 messages
+            chat_history.append({'role': 'user', 'content': f'Question {i}'})
+            chat_history.append({'role': 'assistant', 'content': f'Answer {i}'})
+        
+        result = service.chat(
+            project_id=self.project.id,
+            question='Question 8',
+            user=self.user,
+            chat_history=chat_history
+        )
+        
+        # Verify that chat-summary-agent WAS called for older messages
+        summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
+        self.assertEqual(len(summary_calls), 1, "chat-summary-agent should be called once for older messages")
+        
+        # Verify that only the first 4 messages (older) were sent to summary agent
+        summary_input = summary_calls[0][1]['input_text']
+        self.assertIn('Question 0', summary_input)
+        self.assertIn('Answer 1', summary_input)
+        self.assertNotIn('Question 5', summary_input)  # Recent messages should not be summarized
+        self.assertNotIn('Answer 6', summary_input)
+        
+        # Verify that the question-answering-agent was called
+        qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
+        self.assertEqual(len(qa_calls), 1, "question-answering-agent should be called once")
+        
+        # Verify that both recent transcript and older summary are included
+        qa_input = qa_calls[0][1]['input_text']
+        self.assertIn('Letzte Konversation', qa_input)
+        self.assertIn('Ältere Chat-Zusammenfassung', qa_input)
+        # Recent messages (last 10) should be in the transcript
+        self.assertIn('Question 5', qa_input)
+        self.assertIn('Answer 6', qa_input)
+        
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_exactly_10_messages(self, mock_execute_agent, mock_build_context):
+        """Test that exactly 10 messages (5 pairs) are sent as recent transcript only"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        # Create service and test with exactly 10 messages (5 pairs)
+        service = FirstAIDService()
+        chat_history = []
+        for i in range(5):  # 5 pairs = 10 messages
+            chat_history.append({'role': 'user', 'content': f'Question {i}'})
+            chat_history.append({'role': 'assistant', 'content': f'Answer {i}'})
+        
+        result = service.chat(
+            project_id=self.project.id,
+            question='Question 6',
+            user=self.user,
+            chat_history=chat_history
+        )
+        
+        # Verify that chat-summary-agent was NOT called
+        summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
+        self.assertEqual(len(summary_calls), 0, "chat-summary-agent should NOT be called for exactly 10 messages")
+        
+        # Verify that all messages are in the recent transcript
+        qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
+        self.assertEqual(len(qa_calls), 1)
+        qa_input = qa_calls[0][1]['input_text']
+        self.assertIn('Letzte Konversation', qa_input)
+        self.assertIn('Question 0', qa_input)
+        self.assertIn('Answer 4', qa_input)
+    
     
     def test_clear_chat_history(self):
         """Test clearing chat history"""

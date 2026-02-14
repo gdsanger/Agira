@@ -209,46 +209,75 @@ class FirstAIDService:
         """
         try:
             # Process chat history if provided
+            # Strategy: Last 5 pairs (10 messages) are sent fully, older messages are summarized
             chat_summary = ""
             chat_keywords = []
+            recent_transcript = ""
             
             if chat_history and len(chat_history) > 0:
-                # Take last 10 messages
-                recent_history = chat_history[-10:]
+                # Separate recent (last 5 pairs = 10 messages) from older history
+                if len(chat_history) <= 10:
+                    # All history is recent - send fully, no summary needed
+                    recent_messages = chat_history
+                    older_messages = []
+                else:
+                    # Split: older messages for summary, recent for full transcript
+                    recent_messages = chat_history[-10:]  # Last 5 pairs (10 messages)
+                    older_messages = chat_history[:-10]   # Everything before that
                 
-                # Build chat history text for summarization
-                history_text = []
-                for msg in recent_history:
-                    role = msg.get('role', 'user')
-                    content = msg.get('content', '')
-                    history_text.append(f"{role.upper()}: {content}")
+                # Build recent transcript (last 5 pairs, always sent fully)
+                if recent_messages:
+                    recent_text = []
+                    for msg in recent_messages:
+                        role = msg.get('role', 'user')
+                        content = msg.get('content', '')
+                        recent_text.append(f"{role.upper()}: {content}")
+                    recent_transcript = '\n'.join(recent_text)
+                    logger.info(f"Recent transcript: {len(recent_messages)} messages")
                 
-                history_str = '\n'.join(history_text)
-                
-                # Use chat-summary-agent to generate summary and keywords
-                try:
-                    agent_response = self.agent_service.execute_agent(
-                        filename='chat-summary-agent.yml',
-                        input_text=history_str,
-                        user=user,
-                    )
+                # Summarize only older messages (if any)
+                if older_messages:
+                    # Build older history text for summarization
+                    older_text = []
+                    for msg in older_messages:
+                        role = msg.get('role', 'user')
+                        content = msg.get('content', '')
+                        older_text.append(f"{role.upper()}: {content}")
                     
-                    # Parse JSON response
-                    summary_data = json.loads(agent_response)
-                    chat_summary = summary_data.get('summary', '')
-                    chat_keywords = summary_data.get('keywords', [])
+                    older_str = '\n'.join(older_text)
                     
-                    logger.info(f"Chat summary generated: {len(chat_summary)} chars, {len(chat_keywords)} keywords")
-                except Exception as e:
-                    logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
+                    # Use chat-summary-agent to generate summary and keywords
+                    try:
+                        agent_response = self.agent_service.execute_agent(
+                            filename='chat-summary-agent.yml',
+                            input_text=older_str,
+                            user=user,
+                        )
+                        
+                        # Parse JSON response
+                        summary_data = json.loads(agent_response)
+                        chat_summary = summary_data.get('summary', '')
+                        chat_keywords = summary_data.get('keywords', [])
+                        
+                        logger.info(f"Older chat summary generated: {len(chat_summary)} chars, {len(chat_keywords)} keywords")
+                    except Exception as e:
+                        logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
             
             # Build enhanced query with chat context for RAG retrieval
-            # Note: The CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
+            # Note: The RECENT_CHAT_TRANSCRIPT, CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
             # to understand the conversation context. The question-optimization-agent
             # processes these markers to improve semantic search.
             enhanced_query = question
-            if chat_summary or chat_keywords:
-                enhanced_query = f"{question}\n\nCHAT_SUMMARY:\n{chat_summary}\n\nKEYWORDS:\n{', '.join(chat_keywords)}"
+            context_parts = []
+            if recent_transcript:
+                context_parts.append(f"RECENT_CHAT_TRANSCRIPT:\n{recent_transcript}")
+            if chat_summary:
+                context_parts.append(f"OLDER_CHAT_SUMMARY:\n{chat_summary}")
+            if chat_keywords:
+                context_parts.append(f"KEYWORDS:\n{', '.join(chat_keywords)}")
+            
+            if context_parts:
+                enhanced_query = f"{question}\n\n" + "\n\n".join(context_parts)
             
             # Build extended RAG context for the project.
             # MAX_CONTENT_LENGTH from RAG config remains in effect unless a custom
@@ -266,10 +295,12 @@ class FirstAIDService:
             input_parts = [f"Frage: {question}"]
             
             # Add chat context if available
-            # Note: We provide the full summary here (not truncated) since it goes to the
-            # answering agent, not the RAG pipeline. The answering agent can handle longer context.
+            # Note: We provide the recent transcript and older summary to the answering agent.
+            # Recent messages (last 5 pairs) are sent in full for better context.
+            if recent_transcript:
+                input_parts.append(f"\nLetzte Konversation (5 Nachrichten-Paare):\n{recent_transcript}")
             if chat_summary:
-                input_parts.append(f"\nChat-Zusammenfassung: {chat_summary}")
+                input_parts.append(f"\nÄltere Chat-Zusammenfassung: {chat_summary}")
             if chat_keywords:
                 input_parts.append(f"\nRelevante Keywords: {', '.join(chat_keywords)}")
             
