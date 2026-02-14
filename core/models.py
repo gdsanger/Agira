@@ -429,7 +429,7 @@ class Release(models.Model):
 
 class Change(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='changes')
-    title = models.CharField(max_length=500)
+    title = models.TextField()
     description = models.TextField(blank=True)
     planned_start = models.DateTimeField(null=True, blank=True)
     planned_end = models.DateTimeField(null=True, blank=True)
@@ -563,7 +563,7 @@ class Item(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='items')
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
-    title = models.CharField(max_length=500)
+    title = models.TextField()
     description = models.TextField(blank=True)
     user_input = models.TextField(blank=True, help_text=_('Original email text, not modified by AI'))
     solution_description = models.TextField(blank=True)
