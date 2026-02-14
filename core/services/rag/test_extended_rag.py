@@ -626,3 +626,29 @@ class BuildExtendedContextTestCase(TestCase):
         self.assertIsNotNone(context.debug)
         self.assertIn('queries', context.debug)
         self.assertIn('optimized_query', context.debug)
+    
+    @patch('core.services.rag.extended_service.ExtendedRAGPipelineService._perform_search')
+    @patch('core.services.rag.extended_service.ExtendedRAGPipelineService._optimize_question')
+    def test_build_extended_context_ignores_unsupported_params(self, mock_optimize, mock_search):
+        """build_extended_context should ignore unsupported parameters like max_results and enable_optimization."""
+        mock_optimize.return_value = OptimizedQuery(
+            language="en",
+            core="test",
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[]
+        )
+        mock_search.return_value = []
+        
+        # This should not raise TypeError even with unsupported parameters
+        context = build_extended_context(
+            query="test",
+            max_results=10,  # Unsupported parameter
+            enable_optimization=True,  # Unsupported parameter
+        )
+        
+        self.assertIsInstance(context, ExtendedRAGContext)
+        self.assertEqual(context.query, "test")
