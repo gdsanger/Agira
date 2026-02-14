@@ -242,7 +242,10 @@ class FirstAIDService:
                 except Exception as e:
                     logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
             
-            # Build enhanced query with chat context
+            # Build enhanced query with chat context for RAG retrieval
+            # Note: The CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
+            # to understand the conversation context. The question-optimization-agent
+            # processes these markers to improve semantic search.
             enhanced_query = question
             if chat_summary or chat_keywords:
                 enhanced_query = f"{question}\n\nCHAT_SUMMARY:\n{chat_summary}\n\nKEYWORDS:\n{', '.join(chat_keywords)}"
@@ -257,12 +260,14 @@ class FirstAIDService:
             # Use question-answering-agent as default
             agent_filename = 'question-answering-agent.yml'
             
-            # Build input text with question and context
+            # Build input text with question and context for the answering agent
             input_parts = [f"Frage: {question}"]
             
             # Add chat context if available
+            # Note: We provide the full summary here (not truncated) since it goes to the
+            # answering agent, not the RAG pipeline. The answering agent can handle longer context.
             if chat_summary:
-                input_parts.append(f"\nChat-Zusammenfassung: {chat_summary[:500]}")
+                input_parts.append(f"\nChat-Zusammenfassung: {chat_summary}")
             if chat_keywords:
                 input_parts.append(f"\nRelevante Keywords: {', '.join(chat_keywords)}")
             
