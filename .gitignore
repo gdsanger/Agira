@@ -59,6 +59,7 @@ cover/
 *.log
 logs/
 local_settings.py
+test_settings.py
 db.sqlite3
 db.sqlite3-journal
 staticfiles/
