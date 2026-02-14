@@ -656,8 +656,11 @@ class ChatHistoryTestCase(TestCase):
         summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
         self.assertEqual(len(summary_calls), 1, "chat-summary-agent should be called once for older messages")
         
-        # Verify that only the first 4 messages (older) were sent to summary agent
+        # Verify that only the first 4 messages (2 pairs, older) were sent to summary agent
+        # (14 total - 10 recent = 4 older)
         summary_input = summary_calls[0][1]['input_text']
+        num_lines_in_summary = len([line for line in summary_input.split('\n') if line.strip()])
+        self.assertEqual(num_lines_in_summary, 4, "Exactly 4 older messages should be summarized")
         self.assertIn('Question 0', summary_input)
         self.assertIn('Answer 1', summary_input)
         self.assertNotIn('Question 5', summary_input)  # Recent messages should not be summarized

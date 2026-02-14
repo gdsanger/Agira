@@ -264,9 +264,11 @@ class FirstAIDService:
                         logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
             
             # Build enhanced query with chat context for RAG retrieval
-            # Note: The RECENT_CHAT_TRANSCRIPT, CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
+            # Note: The RECENT_CHAT_TRANSCRIPT, OLDER_CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
             # to understand the conversation context. The question-optimization-agent
             # processes these markers to improve semantic search.
+            # Recent transcript contains the last 5 pairs (10 messages) in full detail,
+            # while older chat summary contains a condensed summary of earlier messages.
             enhanced_query = question
             context_parts = []
             if recent_transcript:
