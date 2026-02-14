@@ -560,6 +560,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Ctrl+Enter / Cmd+Enter to send message
+    chatInput.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            if (!chatSubmit.disabled && chatInput.value.trim()) {
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        }
+    });
+    
     // Project selector change
     projectSelector.addEventListener('change', function() {
         const projectId = this.value;
@@ -716,7 +726,14 @@ document.addEventListener('DOMContentLoaded', function() {
         messageDiv.appendChild(copyBtn);
         
         chatMessages.appendChild(messageDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Scroll to bottom after DOM updates complete
+        // Use requestAnimationFrame to ensure scroll happens after rendering
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        });
     }
     
     // Copy to clipboard function
