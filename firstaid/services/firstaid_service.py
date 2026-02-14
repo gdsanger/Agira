@@ -7,6 +7,7 @@ This service provides:
 - Agent-based transformations for documentation, KB articles, flashcards, etc.
 """
 
+import json
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -226,7 +227,6 @@ class FirstAIDService:
                 
                 # Use chat-summary-agent to generate summary and keywords
                 try:
-                    import json
                     agent_response = self.agent_service.execute_agent(
                         filename='chat-summary-agent.yml',
                         input_text=history_str,

@@ -3,6 +3,8 @@ Views for First AID (First AI Documentation) app.
 """
 import json
 import logging
+from datetime import datetime
+
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
@@ -101,7 +103,6 @@ def firstaid_chat(request):
         chat_history = request.session.get(session_key, [])
         
         # Add user message to history
-        from datetime import datetime
         user_message = {
             'role': 'user',
             'content': question,

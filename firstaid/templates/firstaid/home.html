@@ -206,18 +206,20 @@
                             <label for="thinking-level" class="form-label mb-0 small">Thinking Level:</label>
                         </div>
                         <div class="col-auto">
-                            <select id="thinking-level" class="form-select form-select-sm" style="width: auto;">
-                                <option value="standard" selected>Standard (3000)</option>
-                                <option value="erweitert">Erweitert (6000)</option>
-                                <option value="professionell">Professionell (10000)</option>
+                            <select id="thinking-level" class="form-select form-select-sm" style="width: auto;" 
+                                    aria-label="Select thinking level for content detail">
+                                <option value="standard" selected>Standard (3000) - Faster responses</option>
+                                <option value="erweitert">Erweitert (6000) - More detailed</option>
+                                <option value="professionell">Professionell (10000) - Maximum detail</option>
                             </select>
                         </div>
                         <div class="col-auto ms-auto">
                             <button type="button" 
                                     class="btn btn-sm btn-outline-secondary" 
                                     id="clear-chat-btn"
+                                    aria-label="Clear chat history"
                                     {% if not selected_project %}disabled{% endif %}>
-                                <i class="bi bi-trash"></i> Clear History
+                                <i class="bi bi-trash" aria-hidden="true"></i> Clear History
                             </button>
                         </div>
                     </div>
