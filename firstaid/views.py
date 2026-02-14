@@ -3,6 +3,8 @@ Views for First AID (First AI Documentation) app.
 """
 import json
 import logging
+from datetime import datetime
+
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
@@ -64,7 +66,8 @@ def firstaid_chat(request):
     Expects JSON payload:
     {
         "question": "User's question",
-        "project_id": 123
+        "project_id": 123,
+        "thinking_level": "standard" | "erweitert" | "professionell" (optional)
     }
     
     Returns JSON:
@@ -79,6 +82,7 @@ def firstaid_chat(request):
         data = json.loads(request.body)
         question = data.get('question', '').strip()
         project_id = data.get('project_id')
+        thinking_level = data.get('thinking_level', 'standard')
         
         if not question:
             return JsonResponse({'error': 'Question is required'}, status=400)
@@ -86,13 +90,51 @@ def firstaid_chat(request):
         if not project_id:
             return JsonResponse({'error': 'Project ID is required'}, status=400)
         
-        # Process the question
+        # Map thinking level to max_content_length
+        thinking_levels = {
+            'standard': 3000,
+            'erweitert': 6000,
+            'professionell': 10000,
+        }
+        max_content_length = thinking_levels.get(thinking_level, 3000)
+        
+        # Get chat history from session
+        session_key = f'firstaid_chat_history_{project_id}'
+        chat_history = request.session.get(session_key, [])
+        
+        # Add user message to history
+        user_message = {
+            'role': 'user',
+            'content': question,
+            'timestamp': datetime.now().isoformat(),
+        }
+        chat_history.append(user_message)
+        
+        # Process the question with chat history
         service = FirstAIDService()
         result = service.chat(
             project_id=int(project_id),
             question=question,
             user=request.user,
+            chat_history=chat_history[:-1],  # Exclude current question from history
+            max_content_length=max_content_length,
         )
+        
+        # Add assistant message to history
+        assistant_message = {
+            'role': 'assistant',
+            'content': result.get('answer', ''),
+            'timestamp': datetime.now().isoformat(),
+        }
+        chat_history.append(assistant_message)
+        
+        # Keep only last 20 messages (10 exchanges)
+        if len(chat_history) > 20:
+            chat_history = chat_history[-20:]
+        
+        # Save updated history to session
+        request.session[session_key] = chat_history
+        request.session.modified = True
         
         return JsonResponse(result)
     
@@ -340,4 +382,42 @@ def create_issue(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.error(f"Error creating issue: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def clear_chat_history(request):
+    """
+    Clear chat history for a project.
+    
+    Expects JSON payload:
+    {
+        "project_id": 123
+    }
+    
+    Returns JSON:
+    {
+        "success": true
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        project_id = data.get('project_id')
+        
+        if not project_id:
+            return JsonResponse({'error': 'Project ID is required'}, status=400)
+        
+        # Clear chat history from session
+        session_key = f'firstaid_chat_history_{project_id}'
+        if session_key in request.session:
+            del request.session[session_key]
+            request.session.modified = True
+        
+        return JsonResponse({'success': True})
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error clearing chat history: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

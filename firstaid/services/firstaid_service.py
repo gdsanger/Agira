@@ -7,6 +7,7 @@ This service provides:
 - Agent-based transformations for documentation, KB articles, flashcards, etc.
 """
 
+import json
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -192,7 +193,7 @@ class FirstAIDService:
             'attachments': attachment_sources,
         }
     
-    def chat(self, project_id: int, question: str, user: User) -> Dict[str, Any]:
+    def chat(self, project_id: int, question: str, user: User, chat_history: Optional[List[Dict]] = None, max_content_length: Optional[int] = None) -> Dict[str, Any]:
         """
         Process a chat question using the RAG pipeline.
         
@@ -200,22 +201,75 @@ class FirstAIDService:
             project_id: Project ID for context scoping
             question: User's question
             user: Current user
+            chat_history: Optional chat history (list of message dicts with 'role' and 'content')
+            max_content_length: Optional max content length for RAG pipeline (thinking level)
             
         Returns:
             Dictionary with answer, sources, and metadata
         """
         try:
+            # Process chat history if provided
+            chat_summary = ""
+            chat_keywords = []
+            
+            if chat_history and len(chat_history) > 0:
+                # Take last 10 messages
+                recent_history = chat_history[-10:]
+                
+                # Build chat history text for summarization
+                history_text = []
+                for msg in recent_history:
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '')
+                    history_text.append(f"{role.upper()}: {content}")
+                
+                history_str = '\n'.join(history_text)
+                
+                # Use chat-summary-agent to generate summary and keywords
+                try:
+                    agent_response = self.agent_service.execute_agent(
+                        filename='chat-summary-agent.yml',
+                        input_text=history_str,
+                        user=user,
+                    )
+                    
+                    # Parse JSON response
+                    summary_data = json.loads(agent_response)
+                    chat_summary = summary_data.get('summary', '')
+                    chat_keywords = summary_data.get('keywords', [])
+                    
+                    logger.info(f"Chat summary generated: {len(chat_summary)} chars, {len(chat_keywords)} keywords")
+                except Exception as e:
+                    logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
+            
+            # Build enhanced query with chat context for RAG retrieval
+            # Note: The CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
+            # to understand the conversation context. The question-optimization-agent
+            # processes these markers to improve semantic search.
+            enhanced_query = question
+            if chat_summary or chat_keywords:
+                enhanced_query = f"{question}\n\nCHAT_SUMMARY:\n{chat_summary}\n\nKEYWORDS:\n{', '.join(chat_keywords)}"
+            
             # Build extended RAG context for the project
             context = build_extended_context(
-                query=question,
+                query=enhanced_query,
                 project_id=project_id,
+                max_content_length=max_content_length,
             )
             
             # Use question-answering-agent as default
             agent_filename = 'question-answering-agent.yml'
             
-            # Build input text with question and context
+            # Build input text with question and context for the answering agent
             input_parts = [f"Frage: {question}"]
+            
+            # Add chat context if available
+            # Note: We provide the full summary here (not truncated) since it goes to the
+            # answering agent, not the RAG pipeline. The answering agent can handle longer context.
+            if chat_summary:
+                input_parts.append(f"\nChat-Zusammenfassung: {chat_summary}")
+            if chat_keywords:
+                input_parts.append(f"\nRelevante Keywords: {', '.join(chat_keywords)}")
             
             if context:
                 if hasattr(context, 'summary') and context.summary:

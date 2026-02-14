@@ -416,3 +416,226 @@ class FirstAIDServiceTestCase(TestCase):
         # URL should be correct
         self.assertEqual(pr_source.url, 'https://github.com/test/repo/pull/456')
 
+
+class ChatHistoryTestCase(TestCase):
+    """Test cases for chat history and thinking level features"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.client = Client()
+        
+        # Create and login test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass'
+        )
+        self.client.force_login(self.user)
+        
+        # Create test project
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test project description',
+            status='Working'
+        )
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_with_thinking_level(self, mock_execute_agent, mock_build_context):
+        """Test that thinking level is passed to the RAG pipeline"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        url = reverse('firstaid:chat')
+        
+        # Test with different thinking levels
+        for level, expected_length in [('standard', 3000), ('erweitert', 6000), ('professionell', 10000)]:
+            data = {
+                'question': 'Test question?',
+                'project_id': self.project.id,
+                'thinking_level': level
+            }
+            
+            response = self.client.post(
+                url,
+                data=data,
+                content_type='application/json'
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            
+            # Verify build_extended_context was called with correct max_content_length
+            call_kwargs = mock_build_context.call_args[1]
+            self.assertEqual(call_kwargs['max_content_length'], expected_length)
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_stored_in_session(self, mock_execute_agent, mock_build_context):
+        """Test that chat history is stored in session"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        url = reverse('firstaid:chat')
+        data = {
+            'question': 'Test question?',
+            'project_id': self.project.id
+        }
+        
+        response = self.client.post(
+            url,
+            data=data,
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify chat history is in session
+        session = self.client.session
+        session_key = f'firstaid_chat_history_{self.project.id}'
+        self.assertIn(session_key, session)
+        
+        # Verify history has user and assistant messages
+        history = session[session_key]
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]['role'], 'user')
+        self.assertEqual(history[0]['content'], 'Test question?')
+        self.assertEqual(history[1]['role'], 'assistant')
+        self.assertEqual(history[1]['content'], 'Test answer')
+        
+        # Verify timestamps are present
+        self.assertIn('timestamp', history[0])
+        self.assertIn('timestamp', history[1])
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_summarization(self, mock_execute_agent, mock_build_context):
+        """Test that chat history is summarized when follow-up questions are asked"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution - return different responses for different agents
+        def agent_side_effect(filename, input_text, user, **kwargs):
+            if 'chat-summary-agent' in filename:
+                return '{"summary": "Previous discussion about authentication", "keywords": ["auth", "security", "login"]}'
+            else:
+                return "Test answer"
+        
+        mock_execute_agent.side_effect = agent_side_effect
+        
+        # First question
+        url = reverse('firstaid:chat')
+        data1 = {
+            'question': 'How does authentication work?',
+            'project_id': self.project.id
+        }
+        self.client.post(url, data=data1, content_type='application/json')
+        
+        # Second question (follow-up)
+        data2 = {
+            'question': 'Can you explain more?',
+            'project_id': self.project.id
+        }
+        response = self.client.post(url, data=data2, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify chat-summary-agent was called
+        calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
+        self.assertTrue(len(calls) > 0, "chat-summary-agent should have been called for follow-up question")
+    
+    def test_clear_chat_history(self):
+        """Test clearing chat history"""
+        # Add some history to session
+        session = self.client.session
+        session_key = f'firstaid_chat_history_{self.project.id}'
+        session[session_key] = [
+            {'role': 'user', 'content': 'Test', 'timestamp': '2024-01-01T10:00:00'},
+            {'role': 'assistant', 'content': 'Response', 'timestamp': '2024-01-01T10:00:05'}
+        ]
+        session.save()
+        
+        # Clear history
+        url = reverse('firstaid:clear-chat-history')
+        data = {'project_id': self.project.id}
+        response = self.client.post(url, data=data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = response.json()
+        self.assertTrue(response_data['success'])
+        
+        # Verify history is cleared
+        session = self.client.session
+        self.assertNotIn(session_key, session)
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_history_truncation(self, mock_execute_agent, mock_build_context):
+        """Test that chat history is truncated to last 20 messages"""
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.layer_a = []
+        mock_context.layer_b = []
+        mock_context.layer_c = []
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        # Add 10 exchanges (20 messages) to session
+        session = self.client.session
+        session_key = f'firstaid_chat_history_{self.project.id}'
+        history = []
+        for i in range(10):
+            history.append({'role': 'user', 'content': f'Question {i}', 'timestamp': f'2024-01-01T10:{i:02d}:00'})
+            history.append({'role': 'assistant', 'content': f'Answer {i}', 'timestamp': f'2024-01-01T10:{i:02d}:05'})
+        session[session_key] = history
+        session.save()
+        
+        # Add one more question (should trigger truncation)
+        url = reverse('firstaid:chat')
+        data = {
+            'question': 'Question 11',
+            'project_id': self.project.id
+        }
+        response = self.client.post(url, data=data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify history is truncated to 20 messages
+        session = self.client.session
+        updated_history = session[session_key]
+        self.assertEqual(len(updated_history), 20)
+        
+        # Verify oldest messages are removed
+        self.assertNotEqual(updated_history[0]['content'], 'Question 0')
+
