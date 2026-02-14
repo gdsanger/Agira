@@ -205,6 +205,17 @@ class ExtendedRAGContext:
 
 # Helper functions for Primary Attachment Boost (Issue #416)
 
+# Constants for smart trimming and filename extraction
+_MIN_FILE_EXTENSION_LEN = 2  # Minimum extension length (e.g., .py, .md)
+_MAX_FILE_EXTENSION_LEN = 4  # Maximum extension length (e.g., .json, .yaml)
+_MIN_QUERY_TERM_LEN = 3  # Minimum word length for query term extraction
+_MAX_QUERY_TERMS = 10  # Maximum number of query terms to extract
+_INTRO_TEXT_MAX_CHARS = 1500  # Maximum intro text length in smart trimming
+_SECTION_SAFETY_MARGIN = 100  # Safety margin for content budget calculations
+_SECTION_SEPARATOR_OVERHEAD = 50  # Overhead for section separators
+_MAX_SECTIONS_IN_TRIM = 4  # Maximum sections to include in smart trim
+
+
 def _extract_filenames_from_text(text: str) -> List[str]:
     """
     Extract potential filenames from text (query or optimized query).
@@ -220,8 +231,9 @@ def _extract_filenames_from_text(text: str) -> List[str]:
     Returns:
         List of potential filenames (lowercase for matching)
     """
-    # Pattern: word characters, dashes, underscores, followed by an extension
-    pattern = r'\b([A-Z_][A-Z0-9_]*\.[a-z]{2,4}|[a-zA-Z0-9_-]+\.[a-zA-Z0-9]{2,4})\b'
+    # Pattern: word characters, dashes, underscores, followed by an extension (2-4 chars)
+    # Extension length limited to common file extensions (.py, .md, .txt, .json, .yaml)
+    pattern = rf'\b([A-Z_][A-Z0-9_]*\.[a-z]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}|[a-zA-Z0-9_-]+\.[a-zA-Z0-9]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}})\b'
     matches = re.findall(pattern, text, re.IGNORECASE)
     # Return unique filenames in lowercase for case-insensitive matching
     return list(set(m.lower() for m in matches))
@@ -345,14 +357,14 @@ def _extract_query_terms(query: str, optimized: Optional[OptimizedQuery] = None)
     """
     terms = []
     
-    # Add words from original query (3+ chars)
-    query_words = [w.strip() for w in re.split(r'\W+', query) if len(w.strip()) >= 3]
-    terms.extend(query_words[:10])  # Top 10 words
+    # Add words from original query (minimum length to avoid short/meaningless terms)
+    query_words = [w.strip() for w in re.split(r'\W+', query) if len(w.strip()) >= _MIN_QUERY_TERM_LEN]
+    terms.extend(query_words[:_MAX_QUERY_TERMS])  # Limit to top N words to avoid over-matching
     
     # Add from optimized query if available
     if optimized:
         if optimized.core:
-            core_words = [w.strip() for w in re.split(r'\W+', optimized.core) if len(w.strip()) >= 3]
+            core_words = [w.strip() for w in re.split(r'\W+', optimized.core) if len(w.strip()) >= _MIN_QUERY_TERM_LEN]
             terms.extend(core_words)
         terms.extend(optimized.tags[:5])  # Top 5 tags
         terms.extend(optimized.phrases[:3])  # Top 3 phrases
@@ -424,7 +436,7 @@ def _smart_trim_markdown(
     # Build output
     output_parts = []
     
-    # Add intro (first ~1500 chars or first section)
+    # Add intro (first ~N chars or content before first section heading)
     intro_text = ""
     if sections:
         # Get content before first heading
@@ -432,8 +444,8 @@ def _smart_trim_markdown(
         intro_lines = content.split('\n')[:first_heading_line]
         intro_text = '\n'.join(intro_lines).strip()
         
-        if len(intro_text) > 1500:
-            intro_text = intro_text[:1500].rstrip() + "..."
+        if len(intro_text) > _INTRO_TEXT_MAX_CHARS:
+            intro_text = intro_text[:_INTRO_TEXT_MAX_CHARS].rstrip() + "..."
     
     if intro_text:
         output_parts.append(intro_text)
@@ -441,9 +453,9 @@ def _smart_trim_markdown(
     # Add TOC
     output_parts.append(toc)
     
-    # Calculate remaining budget
+    # Calculate remaining budget with safety margin to avoid going over
     used_chars = sum(len(p) for p in output_parts) + len(output_parts) * 2  # +2 for newlines
-    remaining = max_length - used_chars - 100  # -100 for safety margin
+    remaining = max_length - used_chars - _SECTION_SAFETY_MARGIN
     
     # Add top sections until budget exhausted
     selected_sections = []
@@ -451,12 +463,12 @@ def _smart_trim_markdown(
         section_text = f"{section['raw_heading_line']}\n{section['content']}"
         section_len = len(section_text)
         
-        if used_chars + section_len + 50 <= max_length:  # +50 for separators
+        if used_chars + section_len + _SECTION_SEPARATOR_OVERHEAD <= max_length:
             selected_sections.append(section)
-            used_chars += section_len + 50
+            used_chars += section_len + _SECTION_SEPARATOR_OVERHEAD
         
-        # Stop if we have enough sections (2-4 is usually good)
-        if len(selected_sections) >= 4:
+        # Stop if we have enough sections (2-4 is usually good for readability)
+        if len(selected_sections) >= _MAX_SECTIONS_IN_TRIM:
             break
     
     # Add selected sections (in document order, not score order)
