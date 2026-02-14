@@ -652,3 +652,220 @@ class BuildExtendedContextTestCase(TestCase):
         
         self.assertIsInstance(context, ExtendedRAGContext)
         self.assertEqual(context.query, "test")
+
+
+class JSONSerializationTestCase(TestCase):
+    """Test JSON serialization for RAG data structures."""
+    
+    def test_rag_context_object_to_dict(self):
+        """RAGContextObject.to_dict() should produce JSON-serializable dict."""
+        obj = RAGContextObject(
+            object_type='item',
+            object_id='123',
+            title='Test Item',
+            content='Test content',
+            source='agira',
+            relevance_score=0.85,
+            link='http://example.com/item/123',
+            updated_at='2024-01-01 12:00:00'
+        )
+        
+        result = obj.to_dict()
+        
+        # Should be a dict
+        self.assertIsInstance(result, dict)
+        
+        # Should have all fields
+        self.assertEqual(result['object_type'], 'item')
+        self.assertEqual(result['object_id'], '123')
+        self.assertEqual(result['title'], 'Test Item')
+        self.assertEqual(result['content'], 'Test content')
+        self.assertEqual(result['source'], 'agira')
+        self.assertEqual(result['relevance_score'], 0.85)
+        self.assertEqual(result['link'], 'http://example.com/item/123')
+        self.assertEqual(result['updated_at'], '2024-01-01 12:00:00')
+        
+        # Should be JSON serializable
+        json_str = json.dumps(result)
+        self.assertIsInstance(json_str, str)
+    
+    def test_optimized_query_to_dict(self):
+        """OptimizedQuery.to_dict() should produce JSON-serializable dict."""
+        query = OptimizedQuery(
+            language='en',
+            core='test query',
+            synonyms=['alternative query'],
+            phrases=['test', 'query'],
+            entities={'type': ['value']},
+            tags=['tag1', 'tag2'],
+            ban=['stopword'],
+            followup_questions=['What else?'],
+            raw_response='{"test": "data"}'
+        )
+        
+        result = query.to_dict()
+        
+        # Should be a dict
+        self.assertIsInstance(result, dict)
+        
+        # Should have all fields
+        self.assertEqual(result['language'], 'en')
+        self.assertEqual(result['core'], 'test query')
+        self.assertEqual(result['synonyms'], ['alternative query'])
+        self.assertEqual(result['phrases'], ['test', 'query'])
+        self.assertEqual(result['entities'], {'type': ['value']})
+        self.assertEqual(result['tags'], ['tag1', 'tag2'])
+        self.assertEqual(result['ban'], ['stopword'])
+        self.assertEqual(result['followup_questions'], ['What else?'])
+        self.assertEqual(result['raw_response'], '{"test": "data"}')
+        
+        # Should be JSON serializable
+        json_str = json.dumps(result)
+        self.assertIsInstance(json_str, str)
+    
+    def test_extended_rag_context_to_dict(self):
+        """ExtendedRAGContext.to_dict() should produce JSON-serializable dict."""
+        # Create sample objects
+        item1 = RAGContextObject(
+            object_type='item',
+            object_id='1',
+            title='Item 1',
+            content='Content 1',
+            source='agira',
+            relevance_score=0.9,
+            link='http://example.com/1',
+            updated_at='2024-01-01'
+        )
+        item2 = RAGContextObject(
+            object_type='attachment',
+            object_id='2',
+            title='Attachment 2',
+            content='Content 2',
+            source='agira',
+            relevance_score=0.8,
+            link='http://example.com/2',
+            updated_at='2024-01-02'
+        )
+        
+        optimized = OptimizedQuery(
+            language='en',
+            core='test',
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[]
+        )
+        
+        context = ExtendedRAGContext(
+            query='test query',
+            optimized_query=optimized,
+            layer_a=[item2],
+            layer_b=[item1],
+            layer_c=[],
+            all_items=[item2, item1],
+            summary='Found 2 items',
+            stats={'total': 2},
+            debug={'debug_info': 'test'}
+        )
+        
+        result = context.to_dict()
+        
+        # Should be a dict
+        self.assertIsInstance(result, dict)
+        
+        # Should have all fields
+        self.assertEqual(result['query'], 'test query')
+        self.assertIsNotNone(result['optimized_query'])
+        self.assertEqual(len(result['layer_a']), 1)
+        self.assertEqual(len(result['layer_b']), 1)
+        self.assertEqual(len(result['layer_c']), 0)
+        self.assertEqual(len(result['all_items']), 2)
+        self.assertEqual(result['summary'], 'Found 2 items')
+        self.assertEqual(result['stats'], {'total': 2})
+        self.assertEqual(result['debug'], {'debug_info': 'test'})
+        
+        # Should be JSON serializable
+        json_str = json.dumps(result)
+        self.assertIsInstance(json_str, str)
+        
+        # Verify deserialized data
+        deserialized = json.loads(json_str)
+        self.assertEqual(deserialized['query'], 'test query')
+        self.assertEqual(len(deserialized['all_items']), 2)
+    
+    def test_extended_rag_context_to_dict_without_optimized_query(self):
+        """ExtendedRAGContext.to_dict() should handle None optimized_query."""
+        item = RAGContextObject(
+            object_type='item',
+            object_id='1',
+            title='Item 1',
+            content='Content 1',
+            source='agira',
+            relevance_score=0.9,
+            link=None,
+            updated_at=None
+        )
+        
+        context = ExtendedRAGContext(
+            query='test',
+            optimized_query=None,  # No optimization
+            layer_a=[],
+            layer_b=[item],
+            layer_c=[],
+            all_items=[item],
+            summary='Found 1 item',
+            stats={},
+            debug=None
+        )
+        
+        result = context.to_dict()
+        
+        # Should handle None optimized_query
+        self.assertIsNone(result['optimized_query'])
+        
+        # Should be JSON serializable
+        json_str = json.dumps(result)
+        self.assertIsInstance(json_str, str)
+    
+    def test_rag_context_to_dict(self):
+        """RAGContext.to_dict() should produce JSON-serializable dict."""
+        from core.services.rag.models import RAGContext
+        
+        item = RAGContextObject(
+            object_type='item',
+            object_id='1',
+            title='Item 1',
+            content='Content 1',
+            source='agira',
+            relevance_score=0.9,
+            link='http://example.com/1',
+            updated_at='2024-01-01'
+        )
+        
+        context = RAGContext(
+            query='test query',
+            alpha=0.5,
+            summary='Found 1 item',
+            items=[item],
+            stats={'total': 1},
+            debug={'debug_info': 'test'}
+        )
+        
+        result = context.to_dict()
+        
+        # Should be a dict
+        self.assertIsInstance(result, dict)
+        
+        # Should have all fields
+        self.assertEqual(result['query'], 'test query')
+        self.assertEqual(result['alpha'], 0.5)
+        self.assertEqual(result['summary'], 'Found 1 item')
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['stats'], {'total': 1})
+        self.assertEqual(result['debug'], {'debug_info': 'test'})
+        
+        # Should be JSON serializable
+        json_str = json.dumps(result)
+        self.assertIsInstance(json_str, str)
