@@ -73,7 +73,7 @@ class FirstAIDViewTestCase(TestCase):
         self.assertEqual(response.context['selected_project'], self.project)
         self.assertIn('sources', response.context)
     
-    def test_firstaid_home_with_project_and_github_mappings(self):
+    def test_firstaid_home_with_github_mappings(self):
         """Test First AID home view with a project that has GitHub mappings"""
         from core.models import ExternalIssueMapping, ExternalIssueKind
         
