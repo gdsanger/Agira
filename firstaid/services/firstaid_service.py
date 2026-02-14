@@ -50,6 +50,37 @@ class FirstAIDService:
         """Initialize the First AID service."""
         self.agent_service = AgentService()
     
+    def _build_external_title(self, mapping, project, prefix: str) -> str:
+        """
+        Build a title for an external GitHub issue or PR.
+        
+        Args:
+            mapping: ExternalIssueMapping instance
+            project: Project instance
+            prefix: Prefix to use (e.g., 'GH Issue' or 'GH PR')
+            
+        Returns:
+            Formatted title string
+        """
+        # Get number defensively
+        number = getattr(mapping, 'number', None)
+        title = mapping.item.title if mapping.item else ''
+        
+        # Build reference
+        if number:
+            # Try to build full repo reference if available
+            github_owner = getattr(project, 'github_owner', '')
+            github_repo = getattr(project, 'github_repo', '')
+            
+            if github_owner and github_repo:
+                ref = f"{github_owner}/{github_repo}#{number}"
+            else:
+                ref = f"#{number}"
+            
+            return f"{prefix} {ref}: {title}"
+        else:
+            return f"{prefix}: {title}"
+    
     def get_project_sources(self, project_id: int, user: User) -> Dict[str, List[FirstAIDSource]]:
         """
         Retrieve all sources for a project.
@@ -95,10 +126,10 @@ class FirstAIDService:
             FirstAIDSource(
                 id=mapping.id,
                 type='github_issue',
-                title=f"GH Issue #{mapping.external_number}: {mapping.external_title or mapping.item.title}",
+                title=self._build_external_title(mapping, project, 'GH Issue'),
                 description=mapping.item.description[:200] if mapping.item.description else '',
                 project_name=project.name,
-                url=mapping.external_url,
+                url=getattr(mapping, 'html_url', ''),
             )
             for mapping in github_issues[:50]  # Limit to 50 for MVP
         ]
@@ -112,10 +143,10 @@ class FirstAIDService:
             FirstAIDSource(
                 id=mapping.id,
                 type='github_pr',
-                title=f"GH PR #{mapping.external_number}: {mapping.external_title or mapping.item.title}",
+                title=self._build_external_title(mapping, project, 'GH PR'),
                 description=mapping.item.description[:200] if mapping.item.description else '',
                 project_name=project.name,
-                url=mapping.external_url,
+                url=getattr(mapping, 'html_url', ''),
             )
             for mapping in github_prs[:50]  # Limit to 50 for MVP
         ]
