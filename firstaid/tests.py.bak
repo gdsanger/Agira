@@ -49,7 +49,7 @@ class FirstAIDViewTestCase(TestCase):
             type=self.item_type,
             title='Test Item',
             description='Test description',
-            
+            created_by=self.user,
             status='Inbox'
         )
     
@@ -173,7 +173,7 @@ class FirstAIDServiceTestCase(TestCase):
             type=self.item_type,
             title='Test Item',
             description='Test description',
-            
+            created_by=self.user,
             status='Inbox'
         )
     

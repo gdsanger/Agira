@@ -402,7 +402,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 context: context,
                 project_id: selectedProjectId,
             };
-            url = '{% url "firstaid:generate-' + toolType + '" %}';
+            // Build URL based on tool type
+            if (toolType === 'kb-article') {
+                url = '{% url "firstaid:generate-kb-article" %}';
+            } else if (toolType === 'documentation') {
+                url = '{% url "firstaid:generate-documentation" %}';
+            } else if (toolType === 'flashcards') {
+                url = '{% url "firstaid:generate-flashcards" %}';
+            }
         }
         
         try {

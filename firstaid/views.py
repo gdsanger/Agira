@@ -318,9 +318,8 @@ def create_issue(request):
         
         # Get or create a default item type
         item_type, _ = ItemType.objects.get_or_create(
-            organisation=project.organisation,
-            name='Feature',
-            defaults={'description': 'Feature request'}
+            key='feature',
+            defaults={'name': 'Feature', 'description': 'Feature request'}
         )
         
         # Create the item
@@ -329,7 +328,6 @@ def create_issue(request):
             type=item_type,
             title=title,
             description=description,
-            created_by=request.user,
             status='Inbox',
         )
         

@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from django.contrib.auth import get_user_model
+from django.db import models
 from core.services.rag.extended_service import build_extended_context
 from core.services.agents.agent_service import AgentService
 from core.models import Item, Attachment, ExternalIssueMapping, Project
@@ -77,7 +78,7 @@ class FirstAIDService:
             FirstAIDSource(
                 id=item.id,
                 type='item',
-                title=f"{item.project.short}-{item.item_id}: {item.title}",
+                title=f"#{item.id}: {item.title}",
                 description=item.description[:200] if item.description else '',
                 project_name=item.project.name,
                 url=f'/items/{item.id}/',
@@ -120,27 +121,38 @@ class FirstAIDService:
         ]
         
         # Get Attachments
-        # Get attachments from both project and items
+        # Get attachments linked to project or items
+        from core.models import AttachmentLink
         from django.contrib.contenttypes.models import ContentType
+        
         project_ct = ContentType.objects.get_for_model(Project)
         item_ct = ContentType.objects.get_for_model(Item)
         
-        attachments = Attachment.objects.filter(
-            content_type__in=[project_ct, item_ct],
-            object_id__in=[project.id] + list(items.values_list('id', flat=True))
-        ).filter(is_deleted=False)
+        # Get all attachment links for project and items
+        item_ids = list(items.values_list('id', flat=True))
+        attachment_links = AttachmentLink.objects.filter(
+            models.Q(target_content_type=project_ct, target_object_id=project.id) |
+            models.Q(target_content_type=item_ct, target_object_id__in=item_ids)
+        ).select_related('attachment')
         
-        attachment_sources = [
-            FirstAIDSource(
-                id=att.id,
-                type='attachment',
-                title=att.original_name,
-                description=f"{att.file_type} - {att.size_bytes // 1024}KB",
-                project_name=project.name,
-                url=f'/items/attachments/{att.id}/view/',
-            )
-            for att in attachments[:50]  # Limit to 50 for MVP
-        ]
+        # Extract unique attachments
+        seen_attachments = set()
+        attachment_sources = []
+        for link in attachment_links:
+            if link.attachment.id not in seen_attachments and not link.attachment.is_deleted:
+                seen_attachments.add(link.attachment.id)
+                attachment_sources.append(
+                    FirstAIDSource(
+                        id=link.attachment.id,
+                        type='attachment',
+                        title=link.attachment.original_name,
+                        description=f"{link.attachment.file_type} - {link.attachment.size_bytes // 1024}KB",
+                        project_name=project.name,
+                        url=f'/items/attachments/{link.attachment.id}/view/',
+                    )
+                )
+                if len(attachment_sources) >= 50:  # Limit to 50 for MVP
+                    break
         
         return {
             'items': item_sources,
@@ -215,31 +227,10 @@ class FirstAIDService:
         Returns:
             Generated answer
         """
-        from core.services.ai.router import AIRouter
-        
-        router = AIRouter()
-        
-        # Build prompt
-        prompt = f"""Based on the following context, answer the question.
-
-Question: {question}
-
-Context:
-{context.summary if context else 'No context available.'}
-
-Answer the question concisely and accurately based on the context provided."""
-        
-        try:
-            response = router.generate_text(
-                provider='openai',
-                model='gpt-4',
-                prompt=prompt,
-                temperature=0.7,
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Error in fallback answer generation: {e}", exc_info=True)
-            return "I'm sorry, I couldn't generate an answer at this time."
+        # Simple fallback - return context summary
+        if context and hasattr(context, 'summary'):
+            return f"Based on the available context: {context.summary}\n\nPlease configure an AI agent for better answers."
+        return "No context available. Please configure an AI agent to answer questions."
     
     def generate_kb_article(self, project_id: int, context: str, user: User) -> str:
         """
@@ -270,33 +261,7 @@ Answer the question concisely and accurately based on the context provided."""
     
     def _generate_kb_article_fallback(self, context: str) -> str:
         """Fallback KB article generation."""
-        from core.services.ai.router import AIRouter
-        
-        router = AIRouter()
-        prompt = f"""Generate a comprehensive Knowledge Base article based on the following context.
-
-Context:
-{context}
-
-Please create a well-structured KB article in Markdown format with:
-- Clear title
-- Summary/Overview section
-- Detailed sections with subsections as needed
-- Code examples if applicable
-- References
-
-Output only the Markdown content."""
-        
-        try:
-            return router.generate_text(
-                provider='openai',
-                model='gpt-4',
-                prompt=prompt,
-                temperature=0.7,
-            )
-        except Exception as e:
-            logger.error(f"Error in fallback KB article generation: {e}", exc_info=True)
-            return f"# Error\n\nCould not generate KB article: {str(e)}"
+        return f"# Knowledge Base Article\n\n## Context\n\n{context[:500]}...\n\n*Note: Please configure an AI agent for better KB article generation.*"
     
     def generate_documentation(self, project_id: int, context: str, user: User) -> str:
         """
@@ -327,35 +292,7 @@ Output only the Markdown content."""
     
     def _generate_documentation_fallback(self, context: str) -> str:
         """Fallback documentation generation."""
-        from core.services.ai.router import AIRouter
-        
-        router = AIRouter()
-        prompt = f"""Generate technical documentation based on the following context.
-
-Context:
-{context}
-
-Please create well-structured technical documentation in Markdown format with:
-- Clear title and description
-- Table of Contents
-- Getting Started section
-- Detailed usage instructions
-- API reference if applicable
-- Examples
-- Troubleshooting section
-
-Output only the Markdown content."""
-        
-        try:
-            return router.generate_text(
-                provider='openai',
-                model='gpt-4',
-                prompt=prompt,
-                temperature=0.5,
-            )
-        except Exception as e:
-            logger.error(f"Error in fallback documentation generation: {e}", exc_info=True)
-            return f"# Error\n\nCould not generate documentation: {str(e)}"
+        return f"# Documentation\n\n## Overview\n\n{context[:500]}...\n\n*Note: Please configure an AI agent for better documentation generation.*"
     
     def generate_flashcards(self, project_id: int, context: str, user: User) -> List[Dict[str, str]]:
         """
@@ -398,34 +335,7 @@ Output only the Markdown content."""
     
     def _generate_flashcards_fallback(self, context: str) -> List[Dict[str, str]]:
         """Fallback flashcard generation."""
-        from core.services.ai.router import AIRouter
-        import json
-        
-        router = AIRouter()
-        prompt = f"""Generate flashcards based on the following context.
-
-Context:
-{context}
-
-Please create 5-10 flashcards that cover the key concepts.
-Output as a JSON array of objects, each with 'question' and 'answer' fields.
-Example:
-[
-  {{"question": "What is X?", "answer": "X is..."}},
-  {{"question": "How does Y work?", "answer": "Y works by..."}}
-]
-
-Output only the JSON array."""
-        
-        try:
-            response = router.generate_text(
-                provider='openai',
-                model='gpt-4',
-                prompt=prompt,
-                temperature=0.7,
-            )
-            flashcards = json.loads(response)
-            return flashcards if isinstance(flashcards, list) else []
-        except Exception as e:
-            logger.error(f"Error in fallback flashcard generation: {e}", exc_info=True)
-            return [{'question': 'Error', 'answer': f'Could not generate flashcards: {str(e)}'}]
+        return [
+            {'question': 'Sample Question 1', 'answer': 'Please configure an AI agent for flashcard generation.'},
+            {'question': 'Sample Question 2', 'answer': f'Context preview: {context[:100]}...'},
+        ]
