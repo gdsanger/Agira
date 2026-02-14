@@ -19,13 +19,13 @@ FIELD_MAPPING = {
 }
 
 # Default values
-DEFAULT_LIMIT = 20
+DEFAULT_LIMIT = 25
 DEFAULT_ALPHA_KEYWORD = 0.2  # Low alpha = more BM25/keyword weight
 DEFAULT_ALPHA_SEMANTIC = 0.7  # High alpha = more vector/semantic weight
 DEFAULT_ALPHA_BALANCED = 0.5  # Balanced
 
 # Content truncation
-MAX_CONTENT_LENGTH = 4000  # Maximum characters per content snippet
+MAX_CONTENT_LENGTH = 6000  # Maximum characters per content snippet
 
 # Deduplication
 DEDUP_FETCH_MULTIPLIER = 2  # Fetch this many times limit for deduplication
@@ -47,8 +47,8 @@ ALLOWED_OBJECT_TYPES = [
 # 2. Backward compatibility with existing code
 # 3. Future flexibility
 TYPE_PRIORITY = {
-    "item": 6,
-    "attachment": 5,    
+    "item": 3,
+    "attachment": 6,    
     "github_pr": 5,    
     "github_issue": 4,
     "comment": 3,    
