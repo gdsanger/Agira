@@ -783,6 +783,11 @@ class ExtendedRAGPipelineService:
         )
 
 
+# Parameters that are not supported by ExtendedRAGPipelineService.build_extended_context()
+# but may be passed by legacy callers. These are filtered out by the wrapper function.
+_UNSUPPORTED_WRAPPER_PARAMS = frozenset({'max_results', 'enable_optimization'})
+
+
 # Convenience function
 def build_extended_context(**kwargs) -> ExtendedRAGContext:
     """
@@ -801,7 +806,6 @@ def build_extended_context(**kwargs) -> ExtendedRAGContext:
     """
     # Filter out parameters that are not accepted by the underlying service
     # These are legacy/misunderstood parameters that should not be passed through
-    unsupported_params = {'max_results', 'enable_optimization'}
-    filtered_kwargs = {k: v for k, v in kwargs.items() if k not in unsupported_params}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k not in _UNSUPPORTED_WRAPPER_PARAMS}
     
     return ExtendedRAGPipelineService.build_extended_context(**filtered_kwargs)
