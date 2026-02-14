@@ -577,7 +577,8 @@ class ExtendedRAGPipelineService:
     @staticmethod
     def _separate_into_layers(
         results: List[Dict[str, Any]],
-        item_id: Optional[str] = None
+        item_id: Optional[str] = None,
+        max_content_length: Optional[int] = None,
     ) -> Tuple[List[RAGContextObject], List[RAGContextObject], List[RAGContextObject]]:
         """
         Separate results into A/B/C layers (Issue #407).
@@ -591,10 +592,14 @@ class ExtendedRAGPipelineService:
             item_id: .. deprecated::
                 Not used in layer separation logic. Kept for backward compatibility only.
                 This parameter has no effect and will be removed in a future version.
+            max_content_length: Maximum content length for truncation. If None, uses MAX_CONTENT_LENGTH from config
             
         Returns:
             Tuple of (layer_a, layer_b, layer_c)
         """
+        # Use provided max_content_length or default from config
+        content_length = max_content_length if max_content_length is not None else MAX_CONTENT_LENGTH
+        
         rag_logger.info(f"Separating {len(results)} results into A/B/C layers")
         layer_a = []
         layer_b = []
@@ -606,8 +611,8 @@ class ExtendedRAGPipelineService:
             
             # Truncate content
             content = result.get('content', '')
-            if len(content) > MAX_CONTENT_LENGTH:
-                content = content[:MAX_CONTENT_LENGTH].rstrip() + "..."
+            if len(content) > content_length:
+                content = content[:content_length].rstrip() + "..."
             
             # Create RAGContextObject
             item = RAGContextObject(
@@ -654,6 +659,7 @@ class ExtendedRAGPipelineService:
         client_ip: Optional[str] = None,
         skip_optimization: bool = False,
         include_debug: bool = False,
+        max_content_length: Optional[int] = None,
     ) -> ExtendedRAGContext:
         """
         Build extended RAG context with question optimization and A/B/C-layer bundling.
@@ -675,6 +681,7 @@ class ExtendedRAGPipelineService:
             client_ip: Optional client IP
             skip_optimization: Skip question optimization (use raw query)
             include_debug: Include debug information
+            max_content_length: Optional max content length for truncation. If None, uses MAX_CONTENT_LENGTH from config
             
         Returns:
             ExtendedRAGContext with layered results
@@ -683,7 +690,11 @@ class ExtendedRAGPipelineService:
         rag_logger.info(f"BUILD EXTENDED RAG CONTEXT - START")
         rag_logger.info(f"Query: {query[:100]}...")
         rag_logger.info(f"Filters: project_id={project_id}, current_item_id={current_item_id}")
-        rag_logger.info(f"Options: skip_optimization={skip_optimization}, include_debug={include_debug}")
+        rag_logger.info(f"Options: skip_optimization={skip_optimization}, include_debug={include_debug}, max_content_length={max_content_length}")
+        
+        # Use provided max_content_length or default from config
+        content_length = max_content_length if max_content_length is not None else MAX_CONTENT_LENGTH
+        rag_logger.info(f"Using content_length={content_length}")
         
         stats = {
             'optimization_success': False,
@@ -788,7 +799,8 @@ class ExtendedRAGPipelineService:
         rag_logger.info("STEP 5: Layer Separation")
         layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
             fused_results,
-            item_id=item_id  # Deprecated but kept for backward compatibility
+            item_id=item_id,  # Deprecated but kept for backward compatibility
+            max_content_length=content_length
         )
         
         stats['layer_a_count'] = len(layer_a)

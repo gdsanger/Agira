@@ -12,6 +12,7 @@ urlpatterns = [
     
     # Chat endpoints
     path('chat/', views.firstaid_chat, name='chat'),
+    path('chat/clear-history/', views.clear_chat_history, name='clear-chat-history'),
     
     # Source endpoints
     path('sources/', views.firstaid_sources, name='sources'),
