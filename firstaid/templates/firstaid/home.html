@@ -4,6 +4,10 @@
 {% block title %}First AID - AI Documentation Assistant{% endblock %}
 
 {% block extra_head %}
+<!-- Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- DOMPurify for HTML sanitization -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
 <style>
     .firstaid-container {
         display: flex;
@@ -29,10 +33,11 @@
         flex: 1;
         display: flex;
         flex-direction: column;
+        min-width: 0; /* Allows text truncation/wrapping in flex containers */
     }
     
     .firstaid-panel-right {
-        width: 280px;
+        width: 320px;
         min-width: 280px;
         position: sticky;
         top: 0;
@@ -46,6 +51,7 @@
         display: flex;
         flex-direction: column;
         gap: 1rem;
+        max-height: calc(100vh - 260px);
     }
     
     .chat-input-area {
@@ -58,6 +64,7 @@
         padding: 0.75rem 1rem;
         border-radius: 0.5rem;
         max-width: 80%;
+        position: relative;
     }
     
     .message-user {
@@ -69,6 +76,45 @@
     .message-assistant {
         align-self: flex-start;
         background: var(--bs-secondary-bg);
+    }
+    
+    .message-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .message-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+    }
+    
+    .message-icon-ai {
+        background: var(--bs-info);
+        color: white;
+    }
+    
+    .message-icon-user {
+        background: var(--bs-success);
+        color: white;
+    }
+    
+    .message-copy-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .message:hover .message-copy-btn {
+        opacity: 1;
     }
     
     .source-item {
@@ -89,10 +135,70 @@
         color: white;
     }
     
-    .tool-button {
-        width: 100%;
-        text-align: left;
+    .source-item-title {
+        word-break: break-word;
+        overflow-wrap: break-word;
+    }
+    
+    /* Accordion customization */
+    .accordion-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    
+    .accordion-button:not(.collapsed) {
+        background-color: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
+    }
+    
+    .accordion-body {
+        padding: 0.5rem;
+    }
+    
+    /* Tool tiles */
+    .tools-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+    
+    .tool-tile {
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: var(--bs-body-bg);
+    }
+    
+    .tool-tile:hover {
+        background: var(--bs-secondary-bg);
+        border-color: var(--bs-primary);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .tool-tile:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .tool-tile:disabled:hover {
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .tool-icon {
+        font-size: 2rem;
         margin-bottom: 0.5rem;
+        color: var(--bs-primary);
+    }
+    
+    .tool-title {
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin: 0;
     }
     
     .loading-spinner {
@@ -109,6 +215,90 @@
         to { transform: rotate(360deg); }
     }
     
+    /* Markdown viewer for modals */
+    .markdown-viewer {
+        line-height: 1.6;
+    }
+    
+    .markdown-viewer h1,
+    .markdown-viewer h2,
+    .markdown-viewer h3,
+    .markdown-viewer h4,
+    .markdown-viewer h5,
+    .markdown-viewer h6 {
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .markdown-viewer h1 {
+        font-size: 1.75rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-bottom: 0.3rem;
+    }
+    
+    .markdown-viewer h2 {
+        font-size: 1.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-bottom: 0.3rem;
+    }
+    
+    .markdown-viewer code {
+        background-color: var(--bs-secondary-bg);
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .markdown-viewer pre {
+        background-color: var(--bs-secondary-bg);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        overflow-x: auto;
+    }
+    
+    .markdown-viewer pre code {
+        background-color: transparent;
+        padding: 0;
+    }
+    
+    .markdown-viewer blockquote {
+        border-left: 4px solid var(--bs-border-color);
+        padding-left: 1rem;
+        margin-left: 0;
+        color: var(--bs-secondary-color);
+    }
+    
+    .markdown-viewer ul,
+    .markdown-viewer ol {
+        padding-left: 2rem;
+    }
+    
+    .markdown-viewer a {
+        color: var(--bs-link-color);
+        text-decoration: none;
+    }
+    
+    .markdown-viewer a:hover {
+        text-decoration: underline;
+    }
+    
+    .markdown-viewer table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+    }
+    
+    .markdown-viewer table th,
+    .markdown-viewer table td {
+        border: 1px solid var(--bs-border-color);
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .markdown-viewer table th {
+        background-color: var(--bs-secondary-bg);
+        font-weight: bold;
+    }
+    
     /* Responsive layout */
     @media (max-width: 768px) {
         .firstaid-container {
@@ -121,6 +311,10 @@
             position: relative;
             height: auto;
             max-height: 300px;
+        }
+        
+        .tools-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>
@@ -171,8 +365,13 @@
             <div class="chat-messages" id="chat-messages">
                 {% if selected_project %}
                     <div class="message message-assistant">
-                        <strong>First AID</strong>
-                        <p class="mb-0 mt-1">
+                        <div class="message-header">
+                            <div class="message-icon message-icon-ai">
+                                <i class="bi bi-robot"></i>
+                            </div>
+                            <strong>First AID</strong>
+                        </div>
+                        <p class="mb-0">
                             Hello! I'm your AI documentation assistant. I have access to all items, issues, pull requests, and attachments in the <strong>{{ selected_project.name }}</strong> project.
                         </p>
                         <p class="mb-0 mt-2">
@@ -188,8 +387,13 @@
                     </div>
                 {% else %}
                     <div class="message message-assistant">
-                        <strong>First AID</strong>
-                        <p class="mb-0 mt-1">
+                        <div class="message-header">
+                            <div class="message-icon message-icon-ai">
+                                <i class="bi bi-robot"></i>
+                            </div>
+                            <strong>First AID</strong>
+                        </div>
+                        <p class="mb-0">
                             Welcome to First AID - your AI documentation assistant!
                         </p>
                         <p class="mb-0 mt-2">
@@ -225,15 +429,18 @@
                     </div>
                 </div>
                 <form id="chat-form">
+                    <label for="chat-input" class="form-label visually-hidden">Ask a question about the project</label>
                     <div class="input-group">
-                        <input type="text" 
-                               id="chat-input" 
-                               class="form-control" 
-                               placeholder="Ask a question about this project..."
-                               {% if not selected_project %}disabled{% endif %}>
+                        <textarea id="chat-input" 
+                                  class="form-control" 
+                                  rows="3"
+                                  placeholder="Ask a question about the project..."
+                                  aria-label="Ask a question about the project"
+                                  {% if not selected_project %}disabled{% endif %}></textarea>
                         <button type="submit" 
                                 class="btn btn-primary" 
                                 id="chat-submit"
+                                style="align-self: flex-end;"
                                 {% if not selected_project %}disabled{% endif %}>
                             <i class="bi bi-send"></i> Send
                         </button>
@@ -248,34 +455,79 @@
                 <i class="bi bi-tools"></i> Tools
             </h6>
             
-            <div class="d-grid gap-2">
-                <button class="btn btn-outline-primary tool-button" 
+            <div class="tools-grid">
+                <button class="tool-tile" 
                         id="tool-kb-article"
                         {% if not selected_project %}disabled{% endif %}>
-                    <i class="bi bi-journal-text"></i> Generate KB Article
+                    <div class="tool-icon">
+                        <i class="bi bi-journal-text"></i>
+                    </div>
+                    <p class="tool-title">KB Article</p>
                 </button>
                 
-                <button class="btn btn-outline-primary tool-button" 
+                <button class="tool-tile" 
                         id="tool-documentation"
                         {% if not selected_project %}disabled{% endif %}>
-                    <i class="bi bi-file-earmark-text"></i> Generate Documentation
+                    <div class="tool-icon">
+                        <i class="bi bi-file-earmark-text"></i>
+                    </div>
+                    <p class="tool-title">Documentation</p>
                 </button>
                 
-                <button class="btn btn-outline-primary tool-button" 
+                <button class="tool-tile" 
                         id="tool-flashcards"
                         {% if not selected_project %}disabled{% endif %}>
-                    <i class="bi bi-card-heading"></i> Generate Flashcards
+                    <div class="tool-icon">
+                        <i class="bi bi-card-heading"></i>
+                    </div>
+                    <p class="tool-title">Flashcards</p>
                 </button>
                 
-                <button class="btn btn-outline-primary tool-button" 
+                <button class="tool-tile" 
                         id="tool-create-issue"
                         {% if not selected_project %}disabled{% endif %}>
-                    <i class="bi bi-bug"></i> Create Issue
+                    <div class="tool-icon">
+                        <i class="bi bi-bug"></i>
+                    </div>
+                    <p class="tool-title">Create Issue</p>
                 </button>
             </div>
-            
-            <div class="mt-4" id="tool-result">
-                <!-- Tool results will appear here -->
+        </div>
+    </div>
+</div>
+
+<!-- Modal for displaying generated content -->
+<div class="modal fade" id="contentModal" tabindex="-1" aria-labelledby="contentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="contentModalLabel">Generated Content</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body markdown-viewer" id="contentModalBody">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="downloadContentBtn">
+                    <i class="bi bi-download"></i> Download
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for displaying flashcards -->
+<div class="modal fade" id="flashcardsModal" tabindex="-1" aria-labelledby="flashcardsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="flashcardsModalLabel">Generated Flashcards</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="flashcardsModalBody">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -289,12 +541,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatMessages = document.getElementById('chat-messages');
     const chatSubmit = document.getElementById('chat-submit');
     const sourcesContainer = document.getElementById('sources-container');
-    const toolResult = document.getElementById('tool-result');
     const thinkingLevel = document.getElementById('thinking-level');
     const clearChatBtn = document.getElementById('clear-chat-btn');
     
     let selectedProjectId = '{{ selected_project.id|default:"" }}';
     let chatContext = [];
+    let currentGeneratedContent = '';
+    let currentContentFilename = '';
+    
+    // Event delegation for copy buttons
+    chatMessages.addEventListener('click', function(e) {
+        const copyBtn = e.target.closest('.copy-message-btn');
+        if (copyBtn) {
+            const content = copyBtn.getAttribute('data-message-content');
+            if (content) {
+                copyToClipboard(content);
+            }
+        }
+    });
     
     // Project selector change
     projectSelector.addEventListener('change', function() {
@@ -406,37 +670,119 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message-' + role;
         
-        if (role === 'assistant') {
-            messageDiv.innerHTML = '<strong>First AID</strong><div class="mt-1">' + formatMarkdown(content) + '</div>';
+        // Create message header with icon
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'message-header';
+        
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'message-icon message-icon-' + (role === 'assistant' ? 'ai' : 'user');
+        iconDiv.innerHTML = role === 'assistant' ? '<i class="bi bi-robot"></i>' : '<i class="bi bi-person-fill"></i>';
+        
+        const nameStrong = document.createElement('strong');
+        nameStrong.textContent = role === 'assistant' ? 'First AID' : 'You';
+        
+        headerDiv.appendChild(iconDiv);
+        headerDiv.appendChild(nameStrong);
+        
+        // Create copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-sm btn-outline-secondary message-copy-btn';
+        copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+        copyBtn.title = 'Copy to clipboard';
+        copyBtn.setAttribute('data-message-content', content);
+        copyBtn.classList.add('copy-message-btn');
+        
+        // Create content div
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'mt-1';
+        
+        if (role === 'assistant' && typeof marked !== 'undefined') {
+            // Render markdown for assistant messages and sanitize with DOMPurify
+            const rawHtml = marked.parse(content);
+            if (typeof DOMPurify !== 'undefined') {
+                contentDiv.innerHTML = DOMPurify.sanitize(rawHtml);
+            } else {
+                // Fallback: use plain text if DOMPurify is not available to prevent XSS
+                console.warn('DOMPurify not available, falling back to plain text rendering');
+                contentDiv.textContent = content;
+            }
         } else {
-            messageDiv.innerHTML = '<strong>You</strong><div class="mt-1">' + content + '</div>';
+            // Plain text for user messages
+            contentDiv.textContent = content;
         }
+        
+        messageDiv.appendChild(headerDiv);
+        messageDiv.appendChild(contentDiv);
+        messageDiv.appendChild(copyBtn);
         
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
     
-    // Simple markdown formatter
-    function formatMarkdown(text) {
-        // Basic markdown support
-        return text
-            .replace(/\n/g, '<br>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`(.*?)`/g, '<code>$1</code>');
+    // Copy to clipboard function
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                showToast('Copied to clipboard!');
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+            });
+        } else {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied to clipboard!');
+            } catch (err) {
+                console.error('Fallback: Could not copy text: ', err);
+            }
+            document.body.removeChild(textArea);
+        }
+    }
+    
+    // Simple toast notification
+    function showToast(message) {
+        // Check if there's already a toast container
+        let toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toast-container';
+            toastContainer.style.position = 'fixed';
+            toastContainer.style.top = '20px';
+            toastContainer.style.right = '20px';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+        
+        const toast = document.createElement('div');
+        toast.className = 'alert alert-success alert-dismissible fade show';
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+        
+        toastContainer.appendChild(toast);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(function() {
+            toast.remove();
+        }, 3000);
     }
     
     // Tool buttons
     document.getElementById('tool-kb-article').addEventListener('click', async function() {
-        await executeTool('kb-article', 'Generate KB Article');
+        await executeTool('kb-article', 'KB Article');
     });
     
     document.getElementById('tool-documentation').addEventListener('click', async function() {
-        await executeTool('documentation', 'Generate Documentation');
+        await executeTool('documentation', 'Documentation');
     });
     
     document.getElementById('tool-flashcards').addEventListener('click', async function() {
-        await executeTool('flashcards', 'Generate Flashcards');
+        await executeTool('flashcards', 'Flashcards');
     });
     
     document.getElementById('tool-create-issue').addEventListener('click', async function() {
@@ -455,7 +801,8 @@ document.addEventListener('DOMContentLoaded', function() {
             `Q: ${item.question}\nA: ${item.answer}`
         ).join('\n\n');
         
-        toolResult.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Generating...';
+        // Show loading modal or toast
+        showToast('Generating ' + toolName + '...');
         
         let url, payload;
         
@@ -497,57 +844,85 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (response.ok) {
                 if (toolType === 'flashcards') {
-                    displayFlashcards(data.flashcards);
+                    displayFlashcardsModal(data.flashcards);
                 } else if (toolType === 'create-issue') {
-                    toolResult.innerHTML = `
-                        <div class="alert alert-success">
-                            <strong>Issue created!</strong><br>
-                            <a href="${data.url}" target="_blank">View Issue #${data.item_id}</a>
-                        </div>
-                    `;
+                    showToast('Issue created successfully!');
+                    // Optionally open the issue in a new tab
+                    if (data.url) {
+                        window.open(data.url, '_blank');
+                    }
                 } else {
-                    displayMarkdownResult(data.content, data.title);
+                    displayContentModal(data.content, data.title);
                 }
             } else {
-                toolResult.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
         } catch (error) {
             console.error('Tool execution error:', error);
-            toolResult.innerHTML = '<div class="alert alert-danger">Error: Could not execute tool</div>';
+            alert('Error: Could not execute tool');
         }
     }
     
-    // Display flashcards
-    function displayFlashcards(flashcards) {
-        let html = '<h6>Flashcards</h6>';
+    // Display content in modal
+    function displayContentModal(content, title) {
+        currentGeneratedContent = content;
+        // Sanitize filename by removing invalid characters
+        currentContentFilename = title.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_') + '.md';
+        
+        const modal = new bootstrap.Modal(document.getElementById('contentModal'));
+        document.getElementById('contentModalLabel').textContent = title;
+        
+        const bodyElement = document.getElementById('contentModalBody');
+        if (typeof marked !== 'undefined') {
+            const rawHtml = marked.parse(content);
+            if (typeof DOMPurify !== 'undefined') {
+                bodyElement.innerHTML = DOMPurify.sanitize(rawHtml);
+            } else {
+                // Fallback: use plain text if DOMPurify is not available to prevent XSS
+                console.warn('DOMPurify not available, displaying as plain text');
+                const pre = document.createElement('pre');
+                pre.textContent = content;
+                bodyElement.innerHTML = '';
+                bodyElement.appendChild(pre);
+            }
+        } else {
+            const pre = document.createElement('pre');
+            pre.textContent = content;
+            bodyElement.innerHTML = '';
+            bodyElement.appendChild(pre);
+        }
+        
+        modal.show();
+    }
+    
+    // Display flashcards in modal
+    function displayFlashcardsModal(flashcards) {
+        const modal = new bootstrap.Modal(document.getElementById('flashcardsModal'));
+        const bodyElement = document.getElementById('flashcardsModalBody');
+        
+        let html = '';
         flashcards.forEach((card, index) => {
             html += `
-                <div class="card mb-2">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <strong>Card ${index + 1}</strong>
+                    </div>
                     <div class="card-body">
-                        <strong>Q${index + 1}:</strong> ${card.question}<br>
-                        <small class="text-muted">A: ${card.answer}</small>
+                        <p class="card-text"><strong>Q:</strong> ${card.question}</p>
+                        <p class="card-text text-muted"><strong>A:</strong> ${card.answer}</p>
                     </div>
                 </div>
             `;
         });
-        toolResult.innerHTML = html;
+        
+        bodyElement.innerHTML = html;
+        modal.show();
     }
     
-    // Display markdown result
-    function displayMarkdownResult(content, title) {
-        // Escape content for safe insertion into template literal
-        const escapedContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-        
-        toolResult.innerHTML = `
-            <h6>${title}</h6>
-            <div class="border p-2 rounded" style="max-height: 400px; overflow-y: auto;">
-                <pre class="mb-0" style="white-space: pre-wrap;">${escapedContent}</pre>
-            </div>
-            <button class="btn btn-sm btn-outline-secondary mt-2" onclick="downloadAsFile('${title}.md', \`${escapedContent}\`)">
-                <i class="bi bi-download"></i> Download
-            </button>
-        `;
-    }
+    // Download content button
+    document.getElementById('downloadContentBtn').addEventListener('click', function() {
+        downloadAsFile(currentContentFilename, currentGeneratedContent);
+    });
 });
 
 // Download as file helper
