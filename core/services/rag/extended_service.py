@@ -214,6 +214,14 @@ _INTRO_TEXT_MAX_CHARS = 1500  # Maximum intro text length in smart trimming
 _SECTION_SAFETY_MARGIN = 100  # Safety margin for content budget calculations
 _SECTION_SEPARATOR_OVERHEAD = 50  # Overhead for section separators
 _MAX_SECTIONS_IN_TRIM = 4  # Maximum sections to include in smart trim
+_CONTENT_LENGTH_SCORE_DIVISOR = 1000  # Divisor for content length scoring bonus
+
+# Bonus keywords for RAG-related queries (section scoring)
+_RAG_BONUS_KEYWORDS = [
+    'fusion', 'scoring', 'bm25', 'hybrid', 'alpha', 'rerank', 'dedup',
+    'layer', 'weaviate', 'pipeline', 'question', 'optimization',
+    'search', 'retrieval', 'semantic', 'keyword', 'tag'
+]
 
 
 def _extract_filenames_from_text(text: str) -> List[str]:
@@ -231,12 +239,25 @@ def _extract_filenames_from_text(text: str) -> List[str]:
     Returns:
         List of potential filenames (lowercase for matching)
     """
-    # Pattern: word characters, dashes, underscores, followed by an extension (2-4 chars)
+    if not text:
+        return []
+    
+    # Pattern components (verbose regex for readability):
+    # - Uppercase start pattern: [A-Z_][A-Z0-9_]* (e.g., EXTENDED_RAG_PIPELINE)
+    # - Regular filename pattern: [a-zA-Z0-9_-]+ (e.g., config, test-file)
+    # - Extension: \.[a-zA-Z0-9]{min,max} (e.g., .py, .md, .json)
     # Extension length limited to common file extensions (.py, .md, .txt, .json, .yaml)
-    pattern = rf'\b([A-Z_][A-Z0-9_]*\.[a-z]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}|[a-zA-Z0-9_-]+\.[a-zA-Z0-9]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}})\b'
-    matches = re.findall(pattern, text, re.IGNORECASE)
-    # Return unique filenames in lowercase for case-insensitive matching
-    return list(set(m.lower() for m in matches))
+    uppercase_pattern = rf'[A-Z_][A-Z0-9_]*\.[a-z]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}'
+    regular_pattern = rf'[a-zA-Z0-9_-]+\.[a-zA-Z0-9]{{{_MIN_FILE_EXTENSION_LEN},{_MAX_FILE_EXTENSION_LEN}}}'
+    pattern = rf'\b({uppercase_pattern}|{regular_pattern})\b'
+    
+    try:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        # Return unique filenames in lowercase for case-insensitive matching
+        return list(set(m.lower() for m in matches))
+    except (re.error, AttributeError):
+        # Handle regex errors or None text gracefully
+        return []
 
 
 def _parse_markdown_sections(content: str) -> List[Dict[str, Any]]:
@@ -338,7 +359,8 @@ def _score_section(section: Dict[str, Any], query_terms: List[str], bonus_keywor
             score += 0.5
     
     # Prefer longer sections (more substantial content)
-    content_length_bonus = min(len(section['content']) / 1000, 2.0)
+    # Normalized by dividing by divisor to keep scores in reasonable range
+    content_length_bonus = min(len(section['content']) / _CONTENT_LENGTH_SCORE_DIVISOR, 2.0)
     score += content_length_bonus
     
     return score
@@ -419,12 +441,8 @@ def _smart_trim_markdown(
     # Extract query terms for scoring
     query_terms = _extract_query_terms(query, optimized)
     
-    # Bonus keywords for RAG-related queries
-    bonus_keywords = [
-        'fusion', 'scoring', 'bm25', 'hybrid', 'alpha', 'rerank', 'dedup',
-        'layer', 'weaviate', 'pipeline', 'question', 'optimization',
-        'search', 'retrieval', 'semantic', 'keyword', 'tag'
-    ]
+    # Use module-level bonus keywords for RAG-related queries
+    bonus_keywords = _RAG_BONUS_KEYWORDS
     
     # Score sections
     for section in sections:

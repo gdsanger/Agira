@@ -1244,3 +1244,63 @@ Final thoughts.
         # Primary should have more content (using primary budget)
         self.assertGreater(len(primary_item.content), len(non_primary_item.content))
 
+    
+    def test_extract_filenames_edge_cases(self):
+        """Should handle edge cases in filename extraction."""
+        from core.services.rag.extended_service import _extract_filenames_from_text
+        
+        # Test with None-like text
+        filenames = _extract_filenames_from_text("")
+        self.assertEqual(len(filenames), 0)
+        
+        # Test with special characters
+        text = "Check the file!@#$%^&*()config.py?><"
+        filenames = _extract_filenames_from_text(text)
+        self.assertIn("config.py", filenames)
+        
+        # Test with unicode
+        text = "Überprüfen Sie die datei.txt Datei"
+        filenames = _extract_filenames_from_text(text)
+        # Should still find the filename
+        self.assertIn("datei.txt", filenames)
+    
+    @patch("core.services.rag.extended_service.ENABLE_PRIMARY_ATTACHMENT_BOOST", True)
+    def test_small_doc_content_unchanged(self):
+        """Small primary attachments content should remain unchanged."""
+        from core.services.rag.config import SMALL_DOC_THRESHOLD
+        
+        # Create a small document with specific content
+        original_content = "This is my original content " * 100
+        small_content = original_content[:SMALL_DOC_THRESHOLD - 100]
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "small_doc.md",
+                "content": small_content,
+                "final_score": 0.9,
+            },
+        ]
+        
+        query = "test query"
+        optimized = OptimizedQuery(
+            language="en",
+            core="test",
+            synonyms=[],
+            phrases=[],
+            entities={},
+            tags=[],
+            ban=[],
+            followup_questions=[],
+        )
+        
+        layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(
+            results,
+            max_content_length=6000,
+            query=query,
+            optimized=optimized,
+        )
+        
+        # Content should be exactly the same (unchanged)
+        self.assertEqual(layer_a[0].content, small_content)
