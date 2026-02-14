@@ -29,6 +29,24 @@ class RAGContextObject:
     relevance_score: Optional[float]
     link: Optional[str]
     updated_at: Optional[str]
+    
+    def to_dict(self) -> dict:
+        """
+        Convert to JSON-serializable dictionary.
+        
+        Returns:
+            Dictionary with all fields as primitive types
+        """
+        return {
+            'object_type': self.object_type,
+            'object_id': self.object_id,
+            'title': self.title,
+            'content': self.content,
+            'source': self.source,
+            'relevance_score': self.relevance_score,
+            'link': self.link,
+            'updated_at': self.updated_at,
+        }
 
 
 @dataclass
@@ -50,6 +68,22 @@ class RAGContext:
     items: List[RAGContextObject]
     stats: dict = field(default_factory=dict)
     debug: Optional[dict] = None
+    
+    def to_dict(self) -> dict:
+        """
+        Convert to JSON-serializable dictionary.
+        
+        Returns:
+            Dictionary with all fields as primitive types
+        """
+        return {
+            'query': self.query,
+            'alpha': self.alpha,
+            'summary': self.summary,
+            'items': [item.to_dict() for item in self.items],
+            'stats': self.stats,
+            'debug': self.debug,
+        }
     
     def to_context_text(self) -> str:
         """
