@@ -209,8 +209,6 @@ class FirstAIDService:
             context = build_extended_context(
                 query=question,
                 project_id=project_id,
-                max_results=10,
-                enable_optimization=True,
             )
             
             # Generate answer using agent service

@@ -790,5 +790,14 @@ def build_extended_context(**kwargs) -> ExtendedRAGContext:
     
     Convenience wrapper around ExtendedRAGPipelineService.build_extended_context().
     See ExtendedRAGPipelineService.build_extended_context() for full documentation.
+    
+    Note: This wrapper filters out unsupported parameters (e.g., max_results, enable_optimization)
+    to maintain backward compatibility while preventing TypeErrors.
     """
-    return ExtendedRAGPipelineService.build_extended_context(**kwargs)
+    # Filter out unsupported parameters
+    # max_results is not supported - the pipeline uses fixed limits internally
+    # enable_optimization is not supported - optimization is controlled by skip_optimization parameter
+    unsupported_params = {'max_results', 'enable_optimization'}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k not in unsupported_params}
+    
+    return ExtendedRAGPipelineService.build_extended_context(**filtered_kwargs)
