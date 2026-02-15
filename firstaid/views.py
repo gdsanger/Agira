@@ -67,7 +67,8 @@ def firstaid_chat(request):
     {
         "question": "User's question",
         "project_id": 123,
-        "thinking_level": "standard" | "erweitert" | "professionell" (optional)
+        "thinking_level": "standard" | "erweitert" | "professionell" (optional),
+        "mode": "support" | "coding" (optional, default: "support")
     }
     
     Returns JSON:
@@ -83,6 +84,7 @@ def firstaid_chat(request):
         question = data.get('question', '').strip()
         project_id = data.get('project_id')
         thinking_level = data.get('thinking_level', 'standard')
+        mode = data.get('mode', 'support')
         
         if not question:
             return JsonResponse({'error': 'Question is required'}, status=400)
@@ -118,6 +120,7 @@ def firstaid_chat(request):
             user=request.user,
             chat_history=chat_history[:-1],  # Exclude current question from history
             max_content_length=max_content_length,
+            mode=mode,
         )
         
         # Add assistant message to history

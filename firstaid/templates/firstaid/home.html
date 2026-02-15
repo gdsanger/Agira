@@ -428,6 +428,16 @@
                                 <option value="professionell">Professionell (10000) - Maximum detail</option>
                             </select>
                         </div>
+                        <div class="col-auto">
+                            <label for="agent-mode" class="form-label mb-0 small">Mode:</label>
+                        </div>
+                        <div class="col-auto">
+                            <select id="agent-mode" class="form-select form-select-sm" style="width: auto;" 
+                                    aria-label="Select agent mode for response style">
+                                <option value="support" selected>Support</option>
+                                <option value="coding">Coding</option>
+                            </select>
+                        </div>
                         <div class="col-auto ms-auto">
                             <button type="button" 
                                     class="btn btn-sm btn-outline-secondary" 
@@ -553,6 +563,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatSubmit = document.getElementById('chat-submit');
     const sourcesContainer = document.getElementById('sources-container');
     const thinkingLevel = document.getElementById('thinking-level');
+    const agentMode = document.getElementById('agent-mode');
     const clearChatBtn = document.getElementById('clear-chat-btn');
     
     let selectedProjectId = '{{ selected_project.id|default:"" }}';
@@ -659,6 +670,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     question: question,
                     project_id: selectedProjectId,
                     thinking_level: thinkingLevel.value,
+                    mode: agentMode.value,
                 }),
             });
             
