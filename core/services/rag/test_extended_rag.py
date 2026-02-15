@@ -952,21 +952,21 @@ class PrimaryAttachmentBoostTestCase(TestCase):
         self.assertEqual(primary_id, "att-2")
     
     def test_primary_attachment_fallback_first_attachment(self):
-        """Should use first attachment when scores are missing."""
+        """Should return None when all attachment scores are missing/below threshold (Issue #422)."""
         results = [
             {
                 "object_id": "att-1",
                 "object_type": "attachment",
                 "title": "doc1.md",
                 "content": "Docs",
-                "final_score": None,  # No score
+                "final_score": None,  # No score (treated as 0)
             },
             {
                 "object_id": "att-2",
                 "object_type": "attachment",
                 "title": "doc2.md",
                 "content": "More docs",
-                "final_score": None,  # No score
+                "final_score": None,  # No score (treated as 0)
             },
         ]
         
@@ -976,8 +976,8 @@ class PrimaryAttachmentBoostTestCase(TestCase):
             results, query, None
         )
         
-        # Should select first attachment when scores are all 0/None
-        self.assertEqual(primary_id, "att-1")
+        # Should return None when scores are all 0/None (below threshold)
+        self.assertIsNone(primary_id)
     
     def test_no_primary_when_no_attachments(self):
         """Should return None when no attachments in results."""
@@ -998,6 +998,136 @@ class PrimaryAttachmentBoostTestCase(TestCase):
         )
         
         self.assertIsNone(primary_id)
+    
+    def test_primary_attachment_score_below_threshold(self):
+        """Should NOT select primary attachment when score is below threshold (Issue #422)."""
+        from core.services.rag.config import PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "doc1.md",
+                "content": "Docs",
+                "final_score": 0.5,  # Below threshold
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "doc2.md",
+                "content": "More docs",
+                "final_score": 0.6,  # Still below threshold
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should return None because best score (0.6) < threshold (0.7)
+        self.assertIsNone(primary_id)
+    
+    def test_primary_attachment_score_at_threshold(self):
+        """Should select primary attachment when score equals threshold (Issue #422)."""
+        from core.services.rag.config import PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD
+        
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "doc1.md",
+                "content": "Docs",
+                "final_score": 0.7,  # Exactly at threshold
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select att-1 because score (0.7) >= threshold (0.7)
+        self.assertEqual(primary_id, "att-1")
+    
+    def test_primary_attachment_score_above_threshold(self):
+        """Should select primary attachment when score is above threshold (Issue #422)."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "doc1.md",
+                "content": "Docs",
+                "final_score": 0.85,  # Above threshold
+            },
+        ]
+        
+        query = "How does the RAG pipeline work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select att-1 because score (0.85) > threshold (0.7)
+        self.assertEqual(primary_id, "att-1")
+    
+    def test_primary_attachment_filename_match_below_threshold(self):
+        """Should NOT select primary by filename if score is below threshold (Issue #422)."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md",
+                "content": "RAG pipeline docs",
+                "final_score": 0.5,  # Below threshold, even with filename match
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "other_doc.md",
+                "content": "Other docs",
+                "final_score": 0.6,  # Also below threshold
+            },
+        ]
+        
+        query = "How does EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should return None - filename match found but score too low
+        self.assertIsNone(primary_id)
+    
+    def test_primary_attachment_filename_match_above_threshold(self):
+        """Should select primary by filename match when score is above threshold (Issue #422)."""
+        results = [
+            {
+                "object_id": "att-1",
+                "object_type": "attachment",
+                "title": "EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md",
+                "content": "RAG pipeline docs",
+                "final_score": 0.75,  # Above threshold with filename match
+            },
+            {
+                "object_id": "att-2",
+                "object_type": "attachment",
+                "title": "other_doc.md",
+                "content": "Other docs",
+                "final_score": 0.9,  # Higher score but no filename match
+            },
+        ]
+        
+        query = "How does EXTENDED_RAG_PIPELINE_IMPLEMENTATION.md work?"
+        
+        primary_id = ExtendedRAGPipelineService._determine_primary_attachment(
+            results, query, None
+        )
+        
+        # Should select att-1 due to filename match AND meeting threshold
+        self.assertEqual(primary_id, "att-1")
     
     def test_get_primary_content_length(self):
         """Should return appropriate primary content length based on thinking level."""
