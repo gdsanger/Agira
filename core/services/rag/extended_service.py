@@ -25,6 +25,7 @@ from .models import RAGContextObject
 from .config import (
     FIELD_MAPPING, MAX_CONTENT_LENGTH, TYPE_PRIORITY, ALLOWED_OBJECT_TYPES,
     ENABLE_PRIMARY_ATTACHMENT_BOOST,
+    PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD,
     PRIMARY_MAX_CONTENT_LENGTH_STANDARD,
     PRIMARY_MAX_CONTENT_LENGTH_EXTENDED,
     PRIMARY_MAX_CONTENT_LENGTH_PRO,
@@ -902,7 +903,9 @@ class ExtendedRAGPipelineService:
         Priority:
         1. Filename match: If query/optimized query contains a filename and it's in results
         2. Best scoring attachment: Attachment with highest final_score
-        3. Fallback: First attachment in results
+        
+        In both cases, the attachment must have a score >= PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD
+        to be eligible for the primary boost (Issue #422).
         
         Args:
             results: Fused and ranked results
@@ -910,7 +913,7 @@ class ExtendedRAGPipelineService:
             optimized: Optimized query (if available)
             
         Returns:
-            object_id of primary attachment, or None if no attachments
+            object_id of primary attachment, or None if no attachments meet criteria
         """
         if not ENABLE_PRIMARY_ATTACHMENT_BOOST:
             return None
@@ -945,16 +948,37 @@ class ExtendedRAGPipelineService:
                     # Exact match or contains
                     if filename in title or filename in link:
                         obj_id = attachment.get('object_id')
-                        rag_logger.info(f"Primary attachment determined by filename match: {obj_id} (matched '{filename}')")
-                        return obj_id
+                        score = attachment.get('final_score', 0) or 0
+                        
+                        # Check score threshold (Issue #422)
+                        if score >= PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:
+                            rag_logger.info(
+                                f"Primary attachment determined by filename match: {obj_id} "
+                                f"(matched '{filename}', score={score:.3f})"
+                            )
+                            return obj_id
+                        else:
+                            rag_logger.info(
+                                f"Filename match found for {obj_id} ('{filename}'), "
+                                f"but score {score:.3f} < threshold {PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.1f}, "
+                                f"continuing search"
+                            )
         
         # Priority 2: Best scoring attachment
         best_attachment = max(attachments, key=lambda a: a.get('final_score', 0) or 0)
         obj_id = best_attachment.get('object_id')
-        score = best_attachment.get('final_score', 0)
-        rag_logger.info(f"Primary attachment determined by best score: {obj_id} (score={score:.3f})")
+        score = best_attachment.get('final_score', 0) or 0
         
-        return obj_id
+        # Check score threshold (Issue #422)
+        if score >= PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:
+            rag_logger.info(f"Primary attachment determined by best score: {obj_id} (score={score:.3f})")
+            return obj_id
+        else:
+            rag_logger.info(
+                f"Best attachment {obj_id} has score {score:.3f} < threshold "
+                f"{PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.1f}, no primary attachment boost"
+            )
+            return None
     
     @staticmethod
     def _get_primary_content_length(max_content_length: Optional[int] = None) -> int:

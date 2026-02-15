@@ -31,6 +31,10 @@ MAX_CONTENT_LENGTH = 6000  # Maximum characters per content snippet
 # Enable boosted content length for primary attachments
 ENABLE_PRIMARY_ATTACHMENT_BOOST = True
 
+# Minimum score threshold for primary attachment boost (Issue #422)
+# Only attachments with score >= this threshold will be boosted
+PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD = 0.7
+
 # Primary attachment content budgets by thinking level
 PRIMARY_MAX_CONTENT_LENGTH_STANDARD = 18000  # Standard level
 PRIMARY_MAX_CONTENT_LENGTH_EXTENDED = 24000  # Extended level
