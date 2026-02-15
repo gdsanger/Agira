@@ -193,7 +193,7 @@ class FirstAIDService:
             'attachments': attachment_sources,
         }
     
-    def chat(self, project_id: int, question: str, user: User, chat_history: Optional[List[Dict]] = None, max_content_length: Optional[int] = None) -> Dict[str, Any]:
+    def chat(self, project_id: int, question: str, user: User, chat_history: Optional[List[Dict]] = None, max_content_length: Optional[int] = None, mode: str = 'support') -> Dict[str, Any]:
         """
         Process a chat question using the RAG pipeline.
         
@@ -203,6 +203,7 @@ class FirstAIDService:
             user: Current user
             chat_history: Optional chat history (list of message dicts with 'role' and 'content')
             max_content_length: Optional max content length for RAG pipeline (thinking level)
+            mode: Agent mode - 'support' for question-answering-agent or 'coding' for coding-answer-agent
             
         Returns:
             Dictionary with answer, sources, and metadata
@@ -284,8 +285,12 @@ class FirstAIDService:
                 max_content_length=max_content_length,
             )
             
-            # Use question-answering-agent as default
-            agent_filename = 'question-answering-agent.yml'
+            # Select agent based on mode
+            if mode == 'coding':
+                agent_filename = 'coding-answer-agent.yml'
+            else:
+                # Default to support mode (question-answering-agent)
+                agent_filename = 'question-answering-agent.yml'
             
             # Build input text with question and context for the answering agent
             input_parts = [f"Frage: {question}"]
