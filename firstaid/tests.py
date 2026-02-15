@@ -130,6 +130,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -146,6 +147,11 @@ class FirstAIDViewTestCase(TestCase):
             data=data,
             content_type='application/json'
         )
+        
+        # Verify build_extended_context was called with raw question only (Issue #421)
+        mock_build_context.assert_called_once()
+        rag_query = mock_build_context.call_args[1]['query']
+        self.assertEqual(rag_query, 'What is this project about?', "RAG should receive only raw user question")
         
         # Verify agent was called with correct parameters
         self.assertEqual(mock_execute_agent.call_count, 1)
@@ -170,6 +176,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         url = reverse('firstaid:chat')
@@ -201,6 +208,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution to raise an error
@@ -451,6 +459,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -490,6 +499,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -538,6 +548,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution - return different responses for different agents
@@ -581,6 +592,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -606,11 +618,19 @@ class ChatHistoryTestCase(TestCase):
         summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
         self.assertEqual(len(summary_calls), 0, "chat-summary-agent should NOT be called when history <= 10 messages")
         
+        # Verify that build_extended_context was called with ONLY the raw question (Issue #421)
+        # Chat history should NOT be in the RAG retrieval query
+        mock_build_context.assert_called_once()
+        rag_query = mock_build_context.call_args[1]['query']
+        self.assertEqual(rag_query, 'Question 3', "RAG should receive only raw user question")
+        self.assertNotIn('RECENT_CHAT_TRANSCRIPT', rag_query, "Chat transcript should NOT be in RAG query")
+        self.assertNotIn('Question 1', rag_query, "Previous questions should NOT be in RAG query")
+        
         # Verify that the question-answering-agent was called
         qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
         self.assertEqual(len(qa_calls), 1, "question-answering-agent should be called once")
         
-        # Verify that recent transcript is included in the input
+        # Verify that recent transcript is included in QA agent input
         qa_input = qa_calls[0][1]['input_text']
         self.assertIn('Letzte Konversation', qa_input)
         self.assertIn('Question 1', qa_input)
@@ -627,6 +647,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution - return different responses for different agents
@@ -666,11 +687,20 @@ class ChatHistoryTestCase(TestCase):
         self.assertNotIn('Question 5', summary_input)  # Recent messages should not be summarized
         self.assertNotIn('Answer 6', summary_input)
         
+        # Verify that build_extended_context was called with ONLY the raw question (Issue #421)
+        # Chat history should NOT be in the RAG retrieval query
+        mock_build_context.assert_called_once()
+        rag_query = mock_build_context.call_args[1]['query']
+        self.assertEqual(rag_query, 'Question 8', "RAG should receive only raw user question")
+        self.assertNotIn('RECENT_CHAT_TRANSCRIPT', rag_query, "Chat transcript should NOT be in RAG query")
+        self.assertNotIn('OLDER_CHAT_SUMMARY', rag_query, "Chat summary should NOT be in RAG query")
+        self.assertNotIn('KEYWORDS', rag_query, "Keywords should NOT be in RAG query")
+        
         # Verify that the question-answering-agent was called
         qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
         self.assertEqual(len(qa_calls), 1, "question-answering-agent should be called once")
         
-        # Verify that both recent transcript and older summary are included
+        # Verify that both recent transcript and older summary are included in QA agent input
         qa_input = qa_calls[0][1]['input_text']
         self.assertIn('Letzte Konversation', qa_input)
         self.assertIn('Ältere Chat-Zusammenfassung', qa_input)
@@ -689,6 +719,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -712,7 +743,14 @@ class ChatHistoryTestCase(TestCase):
         summary_calls = [call for call in mock_execute_agent.call_args_list if 'chat-summary-agent' in str(call)]
         self.assertEqual(len(summary_calls), 0, "chat-summary-agent should NOT be called for exactly 10 messages")
         
-        # Verify that all messages are in the recent transcript
+        # Verify that build_extended_context was called with ONLY the raw question (Issue #421)
+        mock_build_context.assert_called_once()
+        rag_query = mock_build_context.call_args[1]['query']
+        self.assertEqual(rag_query, 'Question 6', "RAG should receive only raw user question")
+        self.assertNotIn('RECENT_CHAT_TRANSCRIPT', rag_query, "Chat transcript should NOT be in RAG query")
+        self.assertNotIn('Question 0', rag_query, "Previous questions should NOT be in RAG query")
+        
+        # Verify that all messages are in the recent transcript for QA agent
         qa_calls = [call for call in mock_execute_agent.call_args_list if 'question-answering-agent' in str(call)]
         self.assertEqual(len(qa_calls), 1)
         qa_input = qa_calls[0][1]['input_text']
@@ -757,6 +795,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
