@@ -11,7 +11,7 @@
 <style>
     .firstaid-container {
         display: flex;
-        height: calc(100vh - 60px);
+        height: calc(100vh - 225px);
         gap: 0;
     }
     
@@ -26,7 +26,7 @@
         min-width: 300px;
         position: sticky;
         top: 0;
-        height: calc(100vh - 60px);
+        height: calc(100vh - 200px);
     }
     
     .firstaid-panel-middle {
@@ -34,7 +34,7 @@
         display: flex;
         flex-direction: column;
         min-width: 0; /* Allows text truncation/wrapping in flex containers */
-        height: calc(100vh - 60px); /* Match container height to prevent overflow */
+        height: calc(100vh - 200px); /* Match container height to prevent overflow */
     }
     
     .firstaid-panel-right {
@@ -42,7 +42,8 @@
         min-width: 280px;
         position: sticky;
         top: 0;
-        height: calc(100vh - 60px);
+        border-left: 1px solid var(--bs-border-color);
+        height: calc(100vh - 200px);
     }
     
     .chat-messages {
@@ -423,9 +424,9 @@
                         <div class="col-auto">
                             <select id="thinking-level" class="form-select form-select-sm" style="width: auto;" 
                                     aria-label="Select thinking level for content detail">
-                                <option value="standard" selected>Standard (3000) - Faster responses</option>
-                                <option value="erweitert">Erweitert (6000) - More detailed</option>
-                                <option value="professionell">Professionell (10000) - Maximum detail</option>
+                                <option value="standard" selected>Standard - Faster responses</option>
+                                <option value="erweitert">Erweitert - More detailed</option>
+                                <option value="professionell">Professionell - Maximum detail</option>
                             </select>
                         </div>
                         <div class="col-auto">
@@ -461,7 +462,7 @@
                         <button type="submit" 
                                 class="btn btn-primary" 
                                 id="chat-submit"
-                                style="align-self: flex-end;"
+                                aria-label="Send message"
                                 {% if not selected_project %}disabled{% endif %}>
                             <i class="bi bi-send"></i> Send
                         </button>
