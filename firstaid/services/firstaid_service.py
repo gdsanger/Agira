@@ -208,6 +208,14 @@ class FirstAIDService:
             Dictionary with answer, sources, and metadata
         """
         try:
+            # Retrieve project for project context
+            try:
+                project = Project.objects.get(id=project_id)
+                project_description = project.description if project.description else ""
+            except Project.DoesNotExist:
+                logger.warning(f"Project {project_id} not found for chat")
+                project_description = ""
+            
             # Process chat history if provided
             # Strategy: Last 5 pairs (10 messages) are sent fully, older messages are summarized
             chat_summary = ""
@@ -281,6 +289,10 @@ class FirstAIDService:
             
             # Build input text with question and context for the answering agent
             input_parts = [f"Frage: {question}"]
+            
+            # Add project context (project description)
+            if project_description:
+                input_parts.append(f"\nproject_Context:\n{project_description}")
             
             # Add chat context if available
             # Note: We provide the recent transcript and older summary to the answering agent.

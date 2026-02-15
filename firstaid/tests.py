@@ -828,4 +828,86 @@ class ChatHistoryTestCase(TestCase):
         
         # Verify oldest messages are removed
         self.assertNotEqual(updated_history[0]['content'], 'Question 0')
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_includes_project_description(self, mock_execute_agent, mock_build_context):
+        """Test that chat includes project description in agent input"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        # Update project with a description
+        self.project.description = "This is a test project description for testing project context."
+        self.project.save()
+        
+        # Create service and test chat
+        service = FirstAIDService()
+        result = service.chat(
+            project_id=self.project.id,
+            question='What is this about?',
+            user=self.user,
+        )
+        
+        # Verify agent was called
+        self.assertEqual(mock_execute_agent.call_count, 1)
+        call_kwargs = mock_execute_agent.call_args[1]
+        
+        # Verify project description is in the input text
+        input_text = call_kwargs['input_text']
+        self.assertIn('project_Context:', input_text)
+        self.assertIn('This is a test project description for testing project context.', input_text)
+        
+        # Verify the answer was returned
+        self.assertEqual(result['answer'], "Test answer")
+    
+    @patch('firstaid.services.firstaid_service.build_extended_context')
+    @patch('firstaid.services.firstaid_service.AgentService.execute_agent')
+    def test_chat_without_project_description(self, mock_execute_agent, mock_build_context):
+        """Test that chat works when project has no description"""
+        from firstaid.services.firstaid_service import FirstAIDService
+        
+        # Mock the RAG context
+        mock_context = Mock()
+        mock_context.summary = 'Test summary'
+        mock_context.all_items = []
+        mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
+        mock_build_context.return_value = mock_context
+        
+        # Mock agent execution
+        mock_execute_agent.return_value = "Test answer"
+        
+        # Ensure project has no description
+        self.project.description = ""
+        self.project.save()
+        
+        # Create service and test chat
+        service = FirstAIDService()
+        result = service.chat(
+            project_id=self.project.id,
+            question='What is this about?',
+            user=self.user,
+        )
+        
+        # Verify agent was called
+        self.assertEqual(mock_execute_agent.call_count, 1)
+        call_kwargs = mock_execute_agent.call_args[1]
+        
+        # Verify project_Context is NOT in the input text when description is empty
+        input_text = call_kwargs['input_text']
+        self.assertNotIn('project_Context:', input_text)
+        
+        # Verify the answer was returned
+        self.assertEqual(result['answer'], "Test answer")
+
 
