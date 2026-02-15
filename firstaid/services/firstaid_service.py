@@ -263,29 +263,15 @@ class FirstAIDService:
                     except Exception as e:
                         logger.warning(f"Failed to generate chat summary: {e}", exc_info=True)
             
-            # Build enhanced query with chat context for RAG retrieval
-            # Note: The RECENT_CHAT_TRANSCRIPT, OLDER_CHAT_SUMMARY and KEYWORDS markers are used by the RAG pipeline
-            # to understand the conversation context. The question-optimization-agent
-            # processes these markers to improve semantic search.
-            # Recent transcript contains the last 5 pairs (10 messages) in full detail,
-            # while older chat summary contains a condensed summary of earlier messages.
-            enhanced_query = question
-            context_parts = []
-            if recent_transcript:
-                context_parts.append(f"RECENT_CHAT_TRANSCRIPT:\n{recent_transcript}")
-            if chat_summary:
-                context_parts.append(f"OLDER_CHAT_SUMMARY:\n{chat_summary}")
-            if chat_keywords:
-                context_parts.append(f"KEYWORDS:\n{', '.join(chat_keywords)}")
-            
-            if context_parts:
-                enhanced_query = f"{question}\n\n" + "\n\n".join(context_parts)
-            
-            # Build extended RAG context for the project.
+            # Build extended RAG context for the project using ONLY the raw user question.
+            # Per Issue #421: RAG retrieval and question-optimization-agent should receive
+            # ONLY the raw user message, without chat history, summary, or keywords.
+            # This prevents topic changes from polluting the retrieval results.
+            # Chat history will be added later for the question-answering-agent.
             # MAX_CONTENT_LENGTH from RAG config remains in effect unless a custom
             # max_content_length is explicitly provided by caller.
             context = build_extended_context(
-                query=enhanced_query,
+                query=question,
                 project_id=project_id,
                 max_content_length=max_content_length,
             )
