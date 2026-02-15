@@ -952,21 +952,21 @@ class PrimaryAttachmentBoostTestCase(TestCase):
         self.assertEqual(primary_id, "att-2")
     
     def test_primary_attachment_fallback_first_attachment(self):
-        """Should use first attachment when scores are missing."""
+        """Should return None when all attachment scores are missing/below threshold (Issue #422)."""
         results = [
             {
                 "object_id": "att-1",
                 "object_type": "attachment",
                 "title": "doc1.md",
                 "content": "Docs",
-                "final_score": None,  # No score
+                "final_score": None,  # No score (treated as 0)
             },
             {
                 "object_id": "att-2",
                 "object_type": "attachment",
                 "title": "doc2.md",
                 "content": "More docs",
-                "final_score": None,  # No score
+                "final_score": None,  # No score (treated as 0)
             },
         ]
         
@@ -976,8 +976,8 @@ class PrimaryAttachmentBoostTestCase(TestCase):
             results, query, None
         )
         
-        # Should select first attachment when scores are all 0/None
-        self.assertEqual(primary_id, "att-1")
+        # Should return None when scores are all 0/None (below threshold)
+        self.assertIsNone(primary_id)
     
     def test_no_primary_when_no_attachments(self):
         """Should return None when no attachments in results."""
