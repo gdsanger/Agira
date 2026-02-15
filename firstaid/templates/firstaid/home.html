@@ -34,6 +34,7 @@
         display: flex;
         flex-direction: column;
         min-width: 0; /* Allows text truncation/wrapping in flex containers */
+        height: calc(100vh - 60px); /* Match container height to prevent overflow */
     }
     
     .firstaid-panel-right {
@@ -51,7 +52,7 @@
         display: flex;
         flex-direction: column;
         gap: 1rem;
-        max-height: calc(100vh - 260px);
+        min-height: 0; /* Allow flex item to shrink below content size */
     }
     
     .chat-input-area {
@@ -303,6 +304,7 @@
     @media (max-width: 768px) {
         .firstaid-container {
             flex-direction: column;
+            height: auto; /* Allow natural flow on mobile */
         }
         
         .firstaid-panel-left,
@@ -311,6 +313,15 @@
             position: relative;
             height: auto;
             max-height: 300px;
+        }
+        
+        .firstaid-panel-middle {
+            height: auto; /* Allow natural height on mobile */
+            min-height: 400px; /* Ensure minimum usable height */
+        }
+        
+        .chat-messages {
+            max-height: 500px; /* Reasonable scroll height on mobile */
         }
         
         .tools-grid {
