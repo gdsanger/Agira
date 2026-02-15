@@ -130,6 +130,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -175,6 +176,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         url = reverse('firstaid:chat')
@@ -206,6 +208,7 @@ class FirstAIDViewTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution to raise an error
@@ -456,6 +459,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -495,6 +499,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -543,6 +548,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution - return different responses for different agents
@@ -586,6 +592,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -640,6 +647,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution - return different responses for different agents
@@ -711,6 +719,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.summary = 'Test summary'
         mock_context.all_items = []
         mock_context.stats = {}
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
@@ -786,6 +795,7 @@ class ChatHistoryTestCase(TestCase):
         mock_context.layer_a = []
         mock_context.layer_b = []
         mock_context.layer_c = []
+        mock_context.to_context_text.return_value = 'Test context text'
         mock_build_context.return_value = mock_context
         
         # Mock agent execution
