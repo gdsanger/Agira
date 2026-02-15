@@ -960,7 +960,7 @@ class ExtendedRAGPipelineService:
                         else:
                             rag_logger.info(
                                 f"Filename match found for {obj_id} ('{filename}'), "
-                                f"but score {score:.3f} < threshold {PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.1f}, "
+                                f"but score {score:.3f} < threshold {PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.2f}, "
                                 f"continuing search"
                             )
         
@@ -976,7 +976,7 @@ class ExtendedRAGPipelineService:
         else:
             rag_logger.info(
                 f"Best attachment {obj_id} has score {score:.3f} < threshold "
-                f"{PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.1f}, no primary attachment boost"
+                f"{PRIMARY_ATTACHMENT_MIN_SCORE_THRESHOLD:.2f}, no primary attachment boost"
             )
             return None
     
