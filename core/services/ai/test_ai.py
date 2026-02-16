@@ -6,6 +6,7 @@ from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+import openai
 
 from core.models import AIProvider, AIModel, AIJobsHistory
 from core.services.ai import AIRouter, AIResponse
@@ -168,18 +169,19 @@ class AIRouterTestCase(TestCase):
         
         self.assertIn("No active AI model configured", str(cm.exception))
     
-    @patch('core.services.ai.router.OpenAIProvider')
-    def test_chat_creates_job_and_logs_success(self, mock_provider_class):
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_chat_creates_job_and_logs_success(self, mock_openai_client):
         """Test that chat creates job and logs successful completion."""
-        # Mock provider response
-        mock_provider = Mock()
-        mock_provider.chat.return_value = ProviderResponse(
-            text='Test response',
-            raw={'mock': 'data'},
-            input_tokens=100,
-            output_tokens=50
-        )
-        mock_provider_class.return_value = mock_provider
+        # Mock OpenAI client response
+        mock_client_instance = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = 'Test response'
+        mock_response.usage = Mock()
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 50
+        mock_client_instance.chat.completions.create.return_value = mock_response
+        mock_openai_client.return_value = mock_client_instance
         
         router = AIRouter()
         
@@ -211,16 +213,16 @@ class AIRouterTestCase(TestCase):
         self.assertIsNotNone(job.duration_ms)
         
         # Check cost calculation
-        expected_cost = Decimal('0.004500')  # (100/1M * 10) + (50/1M * 30)
+        expected_cost = Decimal('0.002500')  # (100/1M * 10) + (50/1M * 30)
         self.assertEqual(job.costs, expected_cost)
     
-    @patch('core.services.ai.router.OpenAIProvider')
-    def test_chat_logs_error_on_failure(self, mock_provider_class):
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_chat_logs_error_on_failure(self, mock_openai_client):
         """Test that chat logs errors when API call fails."""
-        # Mock provider to raise exception
-        mock_provider = Mock()
-        mock_provider.chat.side_effect = Exception('API Error')
-        mock_provider_class.return_value = mock_provider
+        # Mock OpenAI client to raise exception
+        mock_client_instance = Mock()
+        mock_client_instance.chat.completions.create.side_effect = Exception('API Error')
+        mock_openai_client.return_value = mock_client_instance
         
         router = AIRouter()
         
@@ -244,18 +246,53 @@ class AIRouterTestCase(TestCase):
         self.assertIsNone(job.output_tokens)
         self.assertIsNone(job.costs)
     
-    @patch('core.services.ai.router.GeminiProvider')
-    def test_chat_with_gemini_provider(self, mock_provider_class):
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_chat_logs_timeout_error(self, mock_openai_client):
+        """Test that chat logs timeout errors correctly and sets job to Error status."""
+        # Mock OpenAI client to raise APITimeoutError
+        mock_client_instance = Mock()
+        # Create a proper APITimeoutError with a Mock request
+        mock_request = Mock()
+        mock_request.url = "https://api.openai.com/v1/chat/completions"
+        timeout_error = openai.APITimeoutError(request=mock_request)
+        mock_client_instance.chat.completions.create.side_effect = timeout_error
+        mock_openai_client.return_value = mock_client_instance
+        
+        router = AIRouter()
+        
+        # Execute chat and expect timeout exception
+        with self.assertRaises(openai.APITimeoutError) as cm:
+            router.chat(
+                messages=[{'role': 'user', 'content': 'Test'}],
+                user=self.user,
+                agent='timeout_test'
+            )
+        
+        self.assertIn('timed out', str(cm.exception).lower())
+        
+        # Check job was created with error status (NOT Pending)
+        jobs = AIJobsHistory.objects.all()
+        self.assertEqual(jobs.count(), 1)
+        
+        job = jobs.first()
+        self.assertEqual(job.agent, 'timeout_test')
+        self.assertEqual(job.status, 'Error')
+        self.assertIn('timed out', job.error_message.lower())
+        self.assertIsNone(job.input_tokens)
+        self.assertIsNone(job.output_tokens)
+        self.assertIsNone(job.costs)
+        self.assertIsNotNone(job.duration_ms)
+    
+    @patch('core.services.ai.gemini_provider.genai.Client')
+    def test_chat_with_gemini_provider(self, mock_gemini_client):
         """Test chat with Gemini provider."""
-        # Mock provider response (no token counts)
-        mock_provider = Mock()
-        mock_provider.chat.return_value = ProviderResponse(
-            text='Gemini response',
-            raw={'mock': 'gemini_data'},
-            input_tokens=None,
-            output_tokens=None
-        )
-        mock_provider_class.return_value = mock_provider
+        # Mock Gemini client response (no token counts)
+        mock_client_instance = Mock()
+        mock_response = Mock()
+        mock_response.text = 'Gemini response'
+        mock_response.usage_metadata = None
+        mock_client_instance.models.generate_content.return_value = mock_response
+        mock_gemini_client.return_value = mock_client_instance
         
         router = AIRouter()
         
@@ -275,18 +312,19 @@ class AIRouterTestCase(TestCase):
         self.assertIsNone(job.output_tokens)
         self.assertIsNone(job.costs)  # No cost without tokens
     
-    @patch('core.services.ai.router.OpenAIProvider')
-    def test_generate_shortcut(self, mock_provider_class):
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_generate_shortcut(self, mock_openai_client):
         """Test generate method as shortcut for chat."""
-        # Mock provider
-        mock_provider = Mock()
-        mock_provider.chat.return_value = ProviderResponse(
-            text='Generated text',
-            raw={},
-            input_tokens=50,
-            output_tokens=25
-        )
-        mock_provider_class.return_value = mock_provider
+        # Mock OpenAI client
+        mock_client_instance = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = 'Generated text'
+        mock_response.usage = Mock()
+        mock_response.usage.prompt_tokens = 50
+        mock_response.usage.completion_tokens = 25
+        mock_client_instance.chat.completions.create.return_value = mock_response
+        mock_openai_client.return_value = mock_client_instance
         
         router = AIRouter()
         
@@ -299,14 +337,14 @@ class AIRouterTestCase(TestCase):
         
         self.assertEqual(response.text, 'Generated text')
         
-        # Verify chat was called with proper message format
-        mock_provider.chat.assert_called_once()
-        call_args = mock_provider.chat.call_args
-        self.assertEqual(call_args[1]['messages'], [
+        # Verify chat.completions.create was called with proper parameters
+        mock_client_instance.chat.completions.create.assert_called_once()
+        call_kwargs = mock_client_instance.chat.completions.create.call_args[1]
+        self.assertEqual(call_kwargs['messages'], [
             {'role': 'user', 'content': 'Simple prompt'}
         ])
-        self.assertEqual(call_args[1]['temperature'], 0.7)
-        self.assertEqual(call_args[1]['max_tokens'], 100)
+        self.assertEqual(call_kwargs['temperature'], 0.7)
+        self.assertEqual(call_kwargs['max_tokens'], 100)
     
     def test_provider_instance_creation(self):
         """Test creating provider instances from DB config."""
@@ -338,3 +376,49 @@ class AIRouterTestCase(TestCase):
             router._get_provider_instance(unsupported)
         
         self.assertIn('not supported', str(cm.exception))
+
+
+class OpenAIProviderTestCase(TestCase):
+    """Test OpenAI provider implementation."""
+    
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_openai_client_timeout_default(self, mock_openai_class):
+        """Test that OpenAI client is initialized with default timeout of 1200s."""
+        from core.services.ai.openai_provider import OpenAIProvider
+        
+        # Create provider without timeout parameter
+        provider = OpenAIProvider(api_key='test-key')
+        
+        # Verify OpenAI was called with timeout=1200
+        mock_openai_class.assert_called_once()
+        call_kwargs = mock_openai_class.call_args[1]
+        self.assertEqual(call_kwargs['timeout'], 1200)
+        self.assertEqual(call_kwargs['api_key'], 'test-key')
+    
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_openai_client_timeout_custom(self, mock_openai_class):
+        """Test that OpenAI client can use custom timeout."""
+        from core.services.ai.openai_provider import OpenAIProvider
+        
+        # Create provider with custom timeout
+        provider = OpenAIProvider(api_key='test-key', timeout=600)
+        
+        # Verify OpenAI was called with custom timeout
+        mock_openai_class.assert_called_once()
+        call_kwargs = mock_openai_class.call_args[1]
+        self.assertEqual(call_kwargs['timeout'], 600)
+    
+    @patch('core.services.ai.openai_provider.openai.OpenAI')
+    def test_openai_client_with_organization(self, mock_openai_class):
+        """Test that OpenAI client is initialized with organization and timeout."""
+        from core.services.ai.openai_provider import OpenAIProvider
+        
+        # Create provider with organization
+        provider = OpenAIProvider(api_key='test-key', organization_id='org-123')
+        
+        # Verify OpenAI was called with organization and timeout
+        mock_openai_class.assert_called_once()
+        call_kwargs = mock_openai_class.call_args[1]
+        self.assertEqual(call_kwargs['timeout'], 1200)
+        self.assertEqual(call_kwargs['api_key'], 'test-key')
+        self.assertEqual(call_kwargs['organization'], 'org-123')

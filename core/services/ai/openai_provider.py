@@ -17,7 +17,7 @@ class OpenAIProvider(BaseProvider):
         
         Args:
             api_key: OpenAI API key
-            **kwargs: Additional config (organization_id, etc.)
+            **kwargs: Additional config (organization_id, timeout, etc.)
         """
         super().__init__(api_key, **kwargs)
         
@@ -27,6 +27,11 @@ class OpenAIProvider(BaseProvider):
         # Add organization if provided
         if 'organization_id' in self.config and self.config['organization_id']:
             client_kwargs['organization'] = self.config['organization_id']
+        
+        # Set timeout (default: 1200 seconds)
+        # This ensures a deterministic upper bound for all requests
+        timeout = self.config.get('timeout', 1200)
+        client_kwargs['timeout'] = timeout
         
         self.client = openai.OpenAI(**client_kwargs)
     
