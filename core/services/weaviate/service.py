@@ -8,7 +8,7 @@ context documents in Weaviate for semantic search and AI agent retrieval.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 
 import weaviate
@@ -126,7 +126,7 @@ def is_meeting_transcript_attachment(attachment) -> bool:
     return False
 
 
-def is_excluded_from_sync(obj_type: str, obj_id: str) -> tuple[bool, Optional[str]]:
+def is_excluded_from_sync(obj_type: str, obj_id: str) -> Tuple[bool, Optional[str]]:
     """
     Check if an object should be excluded from Weaviate sync.
     
