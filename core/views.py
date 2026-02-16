@@ -3527,9 +3527,25 @@ def item_upload_transcript(request, item_id):
     
     except AttachmentTooLarge as e:
         logger.warning(f"Transcript upload failed for item {item_id}: File too large - {str(e)}")
+        # Extract file size info from exception or provide default message
+        error_msg = str(e)
+        # Provide user-friendly German error message
+        if 'MB' in error_msg and 'exceeds' in error_msg:
+            # Parse the sizes from the exception message
+            import re
+            sizes = re.findall(r'(\d+\.?\d*)MB', error_msg)
+            if len(sizes) >= 2:
+                actual_size = sizes[0]
+                max_size = sizes[1]
+                error_msg = f'Datei zu groß ({actual_size} MB). Maximum: {max_size} MB'
+            else:
+                error_msg = 'Datei zu groß. Maximum: 50 MB'
+        else:
+            error_msg = 'Datei zu groß. Maximum: 50 MB'
+        
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': error_msg
         }, status=413)  # 413 Payload Too Large
         
     except Exception as e:

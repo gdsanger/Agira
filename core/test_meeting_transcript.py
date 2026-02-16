@@ -3,6 +3,7 @@ Tests for Meeting Transcript Upload functionality.
 """
 import json
 import io
+import re
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.urls import reverse
@@ -13,6 +14,7 @@ from core.models import (
     Organisation, UserOrganisation, Project, ItemType, Item, 
     ItemStatus
 )
+from core.services.storage.errors import AttachmentTooLarge
 
 User = get_user_model()
 
@@ -335,9 +337,6 @@ class MeetingTranscriptUploadTest(TestCase):
         
         # Mock the file size to be larger than 50 MB
         # We need to test the actual AttachmentStorageService validation
-        from core.services.storage.errors import AttachmentTooLarge
-        from unittest.mock import patch, MagicMock
-        
         with patch('core.services.storage.service.AttachmentStorageService._get_file_size') as mock_get_size:
             # Mock file size to be 51 MB (exceeds 50 MB limit)
             mock_get_size.return_value = 51 * 1024 * 1024
@@ -356,8 +355,6 @@ class MeetingTranscriptUploadTest(TestCase):
         """Test that files within the 50 MB limit are accepted."""
         # This test would pass through to the agent service mocking
         # We're primarily testing that the 50 MB limit is configured correctly
-        from unittest.mock import patch, MagicMock
-        
         with patch('core.views.AgentService') as mock_agent_service, \
              patch('core.views.AttachmentStorageService') as mock_storage_service, \
              patch('docx.Document') as mock_document:
