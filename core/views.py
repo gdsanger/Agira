@@ -33,6 +33,7 @@ from .models import (
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
+from .services.storage.errors import AttachmentTooLarge
 from .services.agents import AgentService
 from .services.mail import check_mail_trigger, prepare_mail_preview
 from .services.change_policy_service import ChangePolicyService
@@ -3398,8 +3399,8 @@ def item_upload_transcript(request, item_id):
         }, status=400)
     
     try:
-        # Store attachment
-        storage_service = AttachmentStorageService()
+        # Store attachment with 50 MB limit for transcripts
+        storage_service = AttachmentStorageService(max_size_mb=50)
         attachment = storage_service.store_attachment(
             file=uploaded_file,
             target=item,
@@ -3523,6 +3524,13 @@ def item_upload_transcript(request, item_id):
             'summary': result['Summary'],
             'tasks_created': tasks_created
         })
+    
+    except AttachmentTooLarge as e:
+        logger.warning(f"Transcript upload failed for item {item_id}: File too large - {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=413)  # 413 Payload Too Large
         
     except Exception as e:
         logger.error(f"Transcript processing failed for item {item_id}: {str(e)}")
