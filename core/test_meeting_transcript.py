@@ -326,20 +326,21 @@ class MeetingTranscriptUploadTest(TestCase):
     
     def test_upload_transcript_file_too_large(self):
         """Test that upload is rejected when file exceeds 50 MB limit."""
-        # Create a file larger than 50 MB (simulated with size metadata)
-        # We'll create a small file but the storage service will validate the actual size
-        large_file_content = b'PK\x03\x04' + b'x' * 100  # Small actual content
+        # Create a docx file
         uploaded_file = SimpleUploadedFile(
             'large_transcript.docx',
-            large_file_content,
+            b'PK\x03\x04' + b'x' * 100,
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
         
-        # Mock the file size to be larger than 50 MB
-        # We need to test the actual AttachmentStorageService validation
-        with patch('core.services.storage.service.AttachmentStorageService._get_file_size') as mock_get_size:
-            # Mock file size to be 51 MB (exceeds 50 MB limit)
-            mock_get_size.return_value = 51 * 1024 * 1024
+        # Mock the storage service to raise AttachmentTooLarge exception
+        with patch('core.views.AttachmentStorageService') as mock_storage_service:
+            mock_storage_instance = MagicMock()
+            # Simulate the exception that would be raised for a file > 50 MB
+            mock_storage_instance.store_attachment.side_effect = AttachmentTooLarge(
+                "File size (51.00MB) exceeds maximum allowed size (50.00MB)"
+            )
+            mock_storage_service.return_value = mock_storage_instance
             
             url = reverse('item-upload-transcript', args=[self.meeting_item.id])
             response = self.client.post(url, {'file': uploaded_file})
@@ -350,6 +351,8 @@ class MeetingTranscriptUploadTest(TestCase):
             self.assertFalse(data['success'])
             self.assertIn('50', data['error'])  # Error should mention the 50 MB limit
             self.assertIn('MB', data['error'])
+            # Verify storage service was called with 50 MB limit
+            mock_storage_service.assert_called_once_with(max_size_mb=50)
     
     def test_upload_transcript_within_size_limit(self):
         """Test that files within the 50 MB limit are accepted."""

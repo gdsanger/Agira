@@ -3532,7 +3532,6 @@ def item_upload_transcript(request, item_id):
         # Provide user-friendly German error message
         if 'MB' in error_msg and 'exceeds' in error_msg:
             # Parse the sizes from the exception message
-            import re
             sizes = re.findall(r'(\d+\.?\d*)MB', error_msg)
             if len(sizes) >= 2:
                 actual_size = sizes[0]
