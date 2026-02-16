@@ -209,6 +209,11 @@ LOGOUT_REDIRECT_URL = 'login'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Django File Upload Settings
+# Set to 50MB to support transcript uploads (default is 2.5MB which is too small)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50 MB in bytes
+FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50 MB in bytes
+
 # Field encryption key for encrypted fields
 # In production, this should be a long random string stored securely
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', 'D_GzCwyVvkyI1o5qUh9rle_JPKAghlTxDGTfC3RRmB4=')

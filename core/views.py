@@ -3373,10 +3373,13 @@ def attachment_ai_summary(request, attachment_id):
 @require_POST
 def item_upload_transcript(request, item_id):
     """Upload a .docx meeting transcript and extract summary and tasks."""
+    logger.info(f"Transcript upload started for item {item_id} by user {request.user}")
+    
     item = get_object_or_404(Item, id=item_id)
     
     # Verify this is a meeting item
     if item.type.key.lower() != 'meeting':
+        logger.warning(f"Transcript upload rejected for item {item_id}: Not a meeting item (type={item.type.key})")
         return JsonResponse({
             'success': False,
             'error': 'This feature is only available for Meeting items.'
@@ -3384,15 +3387,19 @@ def item_upload_transcript(request, item_id):
     
     # Check for uploaded file
     if 'file' not in request.FILES:
+        logger.warning(f"Transcript upload rejected for item {item_id}: No file provided in request")
         return JsonResponse({
             'success': False,
             'error': 'No file provided.'
         }, status=400)
     
     uploaded_file = request.FILES['file']
+    file_size_mb = uploaded_file.size / (1024 * 1024)
+    logger.info(f"Transcript upload for item {item_id}: File '{uploaded_file.name}' ({file_size_mb:.2f} MB)")
     
     # Validate file extension
     if not uploaded_file.name.lower().endswith('.docx'):
+        logger.warning(f"Transcript upload rejected for item {item_id}: Invalid file type '{uploaded_file.name}'")
         return JsonResponse({
             'success': False,
             'error': 'Only .docx files are supported. Please upload a Word document.'
@@ -3400,6 +3407,7 @@ def item_upload_transcript(request, item_id):
     
     try:
         # Store attachment with 50 MB limit for transcripts
+        logger.debug(f"Storing transcript attachment for item {item_id}...")
         storage_service = AttachmentStorageService(max_size_mb=50)
         attachment = storage_service.store_attachment(
             file=uploaded_file,
@@ -3407,6 +3415,7 @@ def item_upload_transcript(request, item_id):
             role=AttachmentRole.ITEM_FILE,
             created_by=request.user if request.user.is_authenticated else None,
         )
+        logger.info(f"Transcript attachment stored successfully for item {item_id}: {attachment.id}")
         
         # Log attachment upload
         activity_service = ActivityService()
@@ -3418,6 +3427,7 @@ def item_upload_transcript(request, item_id):
         )
         
         # Extract text from DOCX
+        logger.debug(f"Extracting text from DOCX for item {item_id}...")
         from docx import Document
         import io
         
@@ -3427,14 +3437,18 @@ def item_upload_transcript(request, item_id):
         
         # Extract all paragraphs
         transcript_text = '\n'.join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
+        transcript_length = len(transcript_text)
+        logger.info(f"Extracted {transcript_length} characters from transcript for item {item_id}")
         
         if not transcript_text.strip():
+            logger.warning(f"Transcript processing failed for item {item_id}: Document is empty")
             return JsonResponse({
                 'success': False,
                 'error': 'The uploaded document appears to be empty.'
             }, status=400)
         
         # Execute AI agent
+        logger.info(f"Executing AI agent for transcript processing (item {item_id})...")
         agent_service = AgentService()
         agent_response = agent_service.execute_agent(
             filename='get-meeting-details.yml',
@@ -3442,10 +3456,12 @@ def item_upload_transcript(request, item_id):
             user=request.user if request.user.is_authenticated else None,
             client_ip=request.META.get('REMOTE_ADDR')
         )
+        logger.debug(f"AI agent response received for item {item_id} (length: {len(agent_response)} chars)")
         
         # Parse JSON response
         try:
             import json
+            logger.debug(f"Parsing AI agent JSON response for item {item_id}...")
             # Remove markdown code blocks if present
             clean_response = agent_response.strip()
             if clean_response.startswith('```'):
@@ -3454,22 +3470,25 @@ def item_upload_transcript(request, item_id):
                 clean_response = '\n'.join([line for line in lines if not line.startswith('```')])
             
             result = json.loads(clean_response)
+            logger.info(f"Successfully parsed AI response for item {item_id}: Summary field present, {len(result.get('Tasks', []))} tasks found")
             
             # Validate required fields
             if 'Summary' not in result:
                 raise ValueError("Agent response missing 'Summary' field")
             if 'Tasks' not in result or not isinstance(result['Tasks'], list):
                 # Allow missing or empty Tasks array
+                logger.warning(f"AI response for item {item_id} missing Tasks field, defaulting to empty array")
                 result['Tasks'] = []
                 
         except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse agent response: {e}\nResponse: {agent_response}")
+            logger.error(f"Failed to parse agent response for item {item_id}: {e}\nResponse preview: {agent_response[:200]}...")
             return JsonResponse({
                 'success': False,
                 'error': 'Failed to process the transcript. The AI response was invalid.'
             }, status=500)
         
         # Update meeting description with summary
+        logger.debug(f"Updating item {item_id} with meeting summary and tasks...")
         with transaction.atomic():
             item.description = result['Summary']
             item.save()
@@ -3518,6 +3537,7 @@ def item_upload_transcript(request, item_id):
                 
                 tasks_created += 1
         
+        logger.info(f"Transcript processing completed for item {item_id}: Created {tasks_created} task(s)")
         return JsonResponse({
             'success': True,
             'message': f'Transcript processed successfully. Created {tasks_created} task(s).',
@@ -3526,7 +3546,7 @@ def item_upload_transcript(request, item_id):
         })
     
     except AttachmentTooLarge as e:
-        logger.warning(f"Transcript upload failed for item {item_id}: File too large - {str(e)}")
+        logger.warning(f"Transcript upload failed for item {item_id}: File too large - {str(e)} (file size: {file_size_mb:.2f} MB)")
         # Extract file size info from exception or provide default message
         error_msg = str(e)
         # Provide user-friendly German error message
@@ -3548,7 +3568,7 @@ def item_upload_transcript(request, item_id):
         }, status=413)  # 413 Payload Too Large
         
     except Exception as e:
-        logger.error(f"Transcript processing failed for item {item_id}: {str(e)}")
+        logger.error(f"Transcript processing failed for item {item_id}: {type(e).__name__}: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': f'Failed to process transcript: {str(e)}'
