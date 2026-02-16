@@ -303,6 +303,11 @@ class AIRouter:
             duration_ms = int((time.time() - start_time) * 1000)
             
             # Update job with error
+            # This handles all exceptions including:
+            # - openai.APITimeoutError (when timeout is exceeded)
+            # - openai.APIError (for other API errors)
+            # - Any other provider exceptions
+            # Job status will be set to 'Error' to prevent stuck 'Pending' jobs
             self._complete_job(
                 job,
                 input_tokens=None,
