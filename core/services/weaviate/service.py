@@ -92,6 +92,40 @@ def _get_deterministic_uuid(source_type: str, source_id: str) -> uuid.UUID:
     return uuid.uuid5(UUID_NAMESPACE, stable_key)
 
 
+def is_meeting_transcript_attachment(attachment) -> bool:
+    """
+    Check if an attachment is a meeting transcript.
+    
+    Meeting transcripts should be excluded from Weaviate sync because they are
+    too large and cause timeouts/errors. They are identified by:
+    - Having a role of 'transkript' (TRANSKRIPT in AttachmentRole)
+    - Being linked to an Item with type.key = 'meeting'
+    
+    Args:
+        attachment: Attachment model instance
+        
+    Returns:
+        True if this is a meeting transcript that should be excluded from sync
+    """
+    from core.models import AttachmentRole, Item
+    
+    # Check if any of the attachment's links have role='transkript'
+    if hasattr(attachment, 'links'):
+        for link in attachment.links.all():
+            # Check if this link has the transkript role
+            if link.role == AttachmentRole.TRANSKRIPT:
+                # Verify the target is a Meeting item
+                target = link.target
+                if isinstance(target, Item) and target.type.key.lower() == 'meeting':
+                    logger.debug(
+                        f"Attachment {attachment.id} is a meeting transcript "
+                        f"(role={link.role}, item={target.id}, type={target.type.key})"
+                    )
+                    return True
+    
+    return False
+
+
 def _ensure_schema_once(client: weaviate.WeaviateClient) -> None:
     """
     Ensure schema exists, but only check once per process.

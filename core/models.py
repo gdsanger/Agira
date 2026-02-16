@@ -121,6 +121,7 @@ class AttachmentRole(models.TextChoices):
     ITEM_FILE = 'ItemFile', _('Item File')
     COMMENT_ATTACHMENT = 'CommentAttachment', _('Comment Attachment')
     APPROVER_ATTACHMENT = 'ApproverAttachment', _('Approver Attachment')
+    TRANSKRIPT = 'transkript', _('Meeting Transcript')
 
 
 class OpenQuestionStatus(models.TextChoices):

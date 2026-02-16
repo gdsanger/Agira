@@ -11,7 +11,11 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 from core.services.weaviate.client import is_available
-from core.services.weaviate.service import upsert_instance, delete_object
+from core.services.weaviate.service import (
+    upsert_instance, 
+    delete_object, 
+    is_meeting_transcript_attachment
+)
 from core.services.weaviate.serializers import _get_model_type
 
 logger = logging.getLogger(__name__)
@@ -25,6 +29,15 @@ def _safe_upsert(instance):
     Uses transaction.on_commit() to ensure DB transaction completes first.
     """
     if not is_available():
+        return
+    
+    # Skip meeting transcript attachments - they are too large and cause timeouts
+    from core.models import Attachment
+    if isinstance(instance, Attachment) and is_meeting_transcript_attachment(instance):
+        logger.info(
+            f"Skipping Weaviate sync for meeting transcript attachment {instance.id} "
+            f"(file: {instance.original_name})"
+        )
         return
     
     def sync_to_weaviate():

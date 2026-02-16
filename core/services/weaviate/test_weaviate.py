@@ -1960,3 +1960,238 @@ class GlobalSearchTestCase(TestCase):
         self.assertEqual(call_kwargs['query'], 'test')
 
 
+class MeetingTranscriptExclusionTestCase(TestCase):
+    """Test meeting transcript exclusion from Weaviate sync."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.models import (
+            User, Organisation, UserOrganisation, Project, ItemType, Item,
+            ItemStatus, Attachment, AttachmentLink, AttachmentRole
+        )
+        
+        # Create user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User',
+            role='Agent'
+        )
+        
+        # Create organisation
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+        
+        # Create project
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test description'
+        )
+        self.project.clients.add(self.org)
+        
+        # Create meeting item type
+        self.meeting_type = ItemType.objects.create(
+            key='meeting',
+            name='Meeting',
+            description='Meeting item type'
+        )
+        
+        # Create non-meeting item type
+        self.bug_type = ItemType.objects.create(
+            key='bug',
+            name='Bug',
+            description='Bug item type'
+        )
+        
+        # Create meeting item
+        self.meeting_item = Item.objects.create(
+            project=self.project,
+            type=self.meeting_type,
+            title='Test Meeting',
+            description='Meeting description',
+            status=ItemStatus.INBOX,
+            assigned_to=self.user
+        )
+        
+        # Create non-meeting item
+        self.bug_item = Item.objects.create(
+            project=self.project,
+            type=self.bug_type,
+            title='Test Bug',
+            description='Bug description',
+            status=ItemStatus.INBOX
+        )
+        
+        # Store role and models for use in tests
+        self.AttachmentRole = AttachmentRole
+        self.Attachment = Attachment
+        self.AttachmentLink = AttachmentLink
+    
+    def test_is_meeting_transcript_attachment_returns_true_for_transcript(self):
+        """Test that is_meeting_transcript_attachment correctly identifies meeting transcripts."""
+        from core.services.weaviate.service import is_meeting_transcript_attachment
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Should identify as meeting transcript
+        self.assertTrue(is_meeting_transcript_attachment(attachment))
+    
+    def test_is_meeting_transcript_attachment_returns_false_for_regular_file(self):
+        """Test that is_meeting_transcript_attachment returns False for regular files."""
+        from core.services.weaviate.service import is_meeting_transcript_attachment
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='document.pdf',
+            content_type='application/pdf',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with ITEM_FILE role (not transkript)
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.ITEM_FILE
+        )
+        
+        # Should NOT identify as meeting transcript (wrong role)
+        self.assertFalse(is_meeting_transcript_attachment(attachment))
+    
+    def test_is_meeting_transcript_attachment_returns_false_for_non_meeting_item(self):
+        """Test that is_meeting_transcript_attachment returns False for non-meeting items."""
+        from core.services.weaviate.service import is_meeting_transcript_attachment
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='file.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to bug item (not meeting) with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.bug_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Should NOT identify as meeting transcript (wrong item type)
+        self.assertFalse(is_meeting_transcript_attachment(attachment))
+    
+    def test_is_meeting_transcript_attachment_returns_false_for_unlinked(self):
+        """Test that is_meeting_transcript_attachment returns False for unlinked attachments."""
+        from core.services.weaviate.service import is_meeting_transcript_attachment
+        
+        # Create attachment without any links
+        attachment = self.Attachment.objects.create(
+            original_name='file.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Should NOT identify as meeting transcript (no links)
+        self.assertFalse(is_meeting_transcript_attachment(attachment))
+    
+    @patch('core.services.weaviate.signals.is_available')
+    @patch('core.services.weaviate.signals.upsert_instance')
+    def test_signal_skips_meeting_transcript(self, mock_upsert, mock_is_available):
+        """Test that post_save signal skips Weaviate sync for meeting transcripts."""
+        from core.services.weaviate.signals import sync_attachment_to_weaviate
+        
+        # Mock Weaviate as available
+        mock_is_available.return_value = True
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Manually trigger the signal handler
+        sync_attachment_to_weaviate(
+            sender=self.Attachment,
+            instance=attachment,
+            created=True
+        )
+        
+        # Verify upsert_instance was NOT called (excluded from sync)
+        mock_upsert.assert_not_called()
+    
+    @patch('core.services.weaviate.signals.is_available')
+    @patch('core.services.weaviate.signals.transaction')
+    def test_signal_syncs_regular_attachment(self, mock_transaction, mock_is_available):
+        """Test that post_save signal still syncs regular attachments."""
+        from core.services.weaviate.signals import sync_attachment_to_weaviate
+        
+        # Mock Weaviate as available
+        mock_is_available.return_value = True
+        
+        # Mock transaction.on_commit to execute callback immediately
+        def execute_immediately(callback):
+            callback()
+        mock_transaction.on_commit.side_effect = execute_immediately
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='document.pdf',
+            content_type='application/pdf',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to bug item with ITEM_FILE role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.bug_item,
+            role=self.AttachmentRole.ITEM_FILE
+        )
+        
+        # Patch upsert_instance
+        with patch('core.services.weaviate.signals.upsert_instance') as mock_upsert:
+            # Manually trigger the signal handler
+            sync_attachment_to_weaviate(
+                sender=self.Attachment,
+                instance=attachment,
+                created=True
+            )
+            
+            # Verify upsert_instance WAS called (not excluded)
+            mock_upsert.assert_called_once_with(attachment)
+
+
