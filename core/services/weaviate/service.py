@@ -126,6 +126,40 @@ def is_meeting_transcript_attachment(attachment) -> bool:
     return False
 
 
+def is_excluded_from_sync(obj_type: str, obj_id: str) -> tuple[bool, Optional[str]]:
+    """
+    Check if an object should be excluded from Weaviate sync.
+    
+    This centralizes exclusion logic for both automatic signals and manual push operations.
+    Currently excludes meeting transcript attachments.
+    
+    Args:
+        obj_type: Type of object (e.g., "attachment", "item")
+        obj_id: Object ID as string
+        
+    Returns:
+        Tuple of (is_excluded: bool, reason: Optional[str])
+        - is_excluded: True if object should not be synced
+        - reason: Human-readable reason for exclusion (for UI display)
+    """
+    from core.models import Attachment
+    
+    # Check for meeting transcript attachments
+    if obj_type == 'attachment':
+        try:
+            instance = _load_django_object(obj_type, obj_id)
+            if instance and isinstance(instance, Attachment):
+                if is_meeting_transcript_attachment(instance):
+                    return (
+                        True, 
+                        "Meeting transcripts are excluded from Weaviate indexing due to their size."
+                    )
+        except Exception as e:
+            logger.warning(f"Error checking exclusion for {obj_type}:{obj_id}: {e}")
+    
+    return (False, None)
+
+
 def _ensure_schema_once(client: weaviate.WeaviateClient) -> None:
     """
     Ensure schema exists, but only check once per process.
@@ -631,11 +665,20 @@ def upsert_object(type: str, object_id: str) -> Optional[str]:
     """
     logger.info(f"Upserting object: {type}:{object_id}")
     from core.services.weaviate.serializers import to_agira_object
+    from core.models import Attachment
     
     # Load the Django object
     instance = _load_django_object(type, object_id)
     if instance is None:
         logger.warning(f"Object not found: {type}:{object_id}")
+        return None
+    
+    # Skip meeting transcript attachments - they are too large and cause timeouts
+    if isinstance(instance, Attachment) and is_meeting_transcript_attachment(instance):
+        logger.info(
+            f"Skipping Weaviate sync for meeting transcript attachment {instance.id} "
+            f"(file: {instance.original_name}) - excluded from indexing"
+        )
         return None
     
     # For GitHub issues/PRs, fetch fresh data from GitHub API
@@ -728,6 +771,15 @@ def upsert_instance(instance, fetch_from_github: bool = False) -> Optional[str]:
     """
     logger.debug(f"Upserting instance: {instance.__class__.__name__} (pk={instance.pk})")
     from core.services.weaviate.serializers import to_agira_object
+    from core.models import Attachment
+    
+    # Skip meeting transcript attachments - they are too large and cause timeouts
+    if isinstance(instance, Attachment) and is_meeting_transcript_attachment(instance):
+        logger.info(
+            f"Skipping Weaviate sync for meeting transcript attachment {instance.id} "
+            f"(file: {instance.original_name}) - excluded from indexing"
+        )
+        return None
     
     # Serialize to AgiraObject dict
     obj_dict = to_agira_object(instance, fetch_from_github=fetch_from_github)

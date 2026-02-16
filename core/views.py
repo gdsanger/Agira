@@ -6622,7 +6622,7 @@ def weaviate_status(request, object_type, object_id):
     This is an HTMX endpoint that can be called to refresh the button state.
     """
     from core.services.weaviate.client import is_available
-    from core.services.weaviate.service import exists_object
+    from core.services.weaviate.service import exists_object, is_excluded_from_sync
     
     # Check if Weaviate is available
     if not is_available():
@@ -6631,6 +6631,17 @@ def weaviate_status(request, object_type, object_id):
             'object_id': object_id,
             'exists': False,
             'available': False,
+        })
+    
+    # Check if object is excluded from sync
+    is_excluded, exclusion_reason = is_excluded_from_sync(object_type, object_id)
+    if is_excluded:
+        return render(request, 'partials/weaviate_button.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'exists': False,
+            'available': True,
+            'excluded': True,
         })
     
     # Check if object exists in Weaviate
@@ -6712,7 +6723,7 @@ def weaviate_push(request, object_type, object_id):
     Returns updated modal content showing the synced object.
     """
     from core.services.weaviate.client import is_available
-    from core.services.weaviate.service import upsert_object
+    from core.services.weaviate.service import upsert_object, is_excluded_from_sync
     import json
     
     # Check if Weaviate is available
@@ -6722,6 +6733,17 @@ def weaviate_push(request, object_type, object_id):
             'object_id': object_id,
             'available': False,
             'error': 'Weaviate service is not configured or disabled.',
+        })
+    
+    # Check if object is excluded from sync
+    is_excluded, exclusion_reason = is_excluded_from_sync(object_type, object_id)
+    if is_excluded:
+        return render(request, 'partials/weaviate_modal_content.html', {
+            'object_type': object_type,
+            'object_id': object_id,
+            'available': True,
+            'excluded': True,
+            'info_message': exclusion_reason or 'This object is excluded from Weaviate indexing.',
         })
     
     # Push object to Weaviate
