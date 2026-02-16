@@ -7,6 +7,7 @@ from django.views.generic import ListView
 from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponse
 from django_tables2 import SingleTableMixin
+from django_tables2.config import RequestConfig
 from django_filters.views import FilterView
 from django.conf import settings
 
@@ -266,7 +267,6 @@ def item_list_delete(request, item_id):
     table = table_class(filterset.qs if filterset.is_valid() else queryset)
     
     # Configure pagination
-    from django_tables2.config import RequestConfig
     RequestConfig(request, paginate={'per_page': view_instance.paginate_by}).configure(table)
     
     # Build context

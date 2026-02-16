@@ -156,7 +156,7 @@ class ItemTable(tables.Table):
             '<button type="button" '
             'class="btn btn-sm btn-outline-danger" '
             'hx-post="{}" '
-            'hx-confirm="Are you sure you want to delete this item? This action cannot be undone." '
+            'hx-confirm="Are you sure you want to delete this item?" '
             'hx-target="#items-list-container" '
             'hx-swap="outerHTML" '
             'title="Delete item">'
