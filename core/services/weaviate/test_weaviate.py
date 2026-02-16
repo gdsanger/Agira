@@ -2193,5 +2193,287 @@ class MeetingTranscriptExclusionTestCase(TestCase):
             
             # Verify upsert_instance WAS called (not excluded)
             mock_upsert.assert_called_once_with(attachment)
+    
+    def test_upsert_object_skips_meeting_transcript(self):
+        """Test that upsert_object returns None for meeting transcripts."""
+        from core.services.weaviate.service import upsert_object
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Try to upsert - should return None (excluded)
+        result = upsert_object('attachment', str(attachment.id))
+        self.assertIsNone(result)
+    
+    def test_upsert_instance_skips_meeting_transcript(self):
+        """Test that upsert_instance returns None for meeting transcripts."""
+        from core.services.weaviate.service import upsert_instance
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Try to upsert - should return None (excluded)
+        result = upsert_instance(attachment)
+        self.assertIsNone(result)
+    
+    def test_is_excluded_from_sync_returns_true_for_meeting_transcript(self):
+        """Test that is_excluded_from_sync correctly identifies meeting transcripts."""
+        from core.services.weaviate.service import is_excluded_from_sync
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to meeting item with transkript role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Check exclusion
+        is_excluded, reason = is_excluded_from_sync('attachment', str(attachment.id))
+        self.assertTrue(is_excluded)
+        self.assertIsNotNone(reason)
+        self.assertIn('Meeting transcript', reason)
+    
+    def test_is_excluded_from_sync_returns_false_for_regular_attachment(self):
+        """Test that is_excluded_from_sync returns False for regular attachments."""
+        from core.services.weaviate.service import is_excluded_from_sync
+        
+        # Create attachment
+        attachment = self.Attachment.objects.create(
+            original_name='document.pdf',
+            content_type='application/pdf',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Link it to bug item with ITEM_FILE role
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.bug_item,
+            role=self.AttachmentRole.ITEM_FILE
+        )
+        
+        # Check exclusion
+        is_excluded, reason = is_excluded_from_sync('attachment', str(attachment.id))
+        self.assertFalse(is_excluded)
+        self.assertIsNone(reason)
+
+
+class WeaviateViewTestCase(TestCase):
+    """Test Weaviate view endpoints for meeting transcript exclusion."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from django.test import Client
+        from core.models import (
+            User, Organisation, UserOrganisation, Project, ItemType, Item,
+            ItemStatus, Attachment, AttachmentLink, AttachmentRole
+        )
+        
+        # Create client
+        self.client = Client()
+        
+        # Create user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User',
+            role='Agent'
+        )
+        
+        # Log in the user
+        self.client.login(username='testuser', password='testpass')
+        
+        # Create organisation
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+        
+        # Create project
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test description'
+        )
+        self.project.clients.add(self.org)
+        
+        # Create meeting item type
+        self.meeting_type = ItemType.objects.create(
+            key='meeting',
+            name='Meeting',
+            description='Meeting item type'
+        )
+        
+        # Create meeting item
+        self.meeting_item = Item.objects.create(
+            project=self.project,
+            type=self.meeting_type,
+            title='Test Meeting',
+            description='Meeting description',
+            status=ItemStatus.INBOX,
+            assigned_to=self.user
+        )
+        
+        # Store models for use in tests
+        self.Attachment = Attachment
+        self.AttachmentLink = AttachmentLink
+        self.AttachmentRole = AttachmentRole
+    
+    @patch('core.views.is_available')
+    @patch('core.views.is_excluded_from_sync')
+    def test_weaviate_status_shows_excluded_for_meeting_transcript(self, mock_is_excluded, mock_is_available):
+        """Test that weaviate_status view shows excluded state for meeting transcripts."""
+        from django.urls import reverse
+        
+        # Mock Weaviate as available
+        mock_is_available.return_value = True
+        
+        # Mock exclusion check to return True
+        mock_is_excluded.return_value = (True, "Meeting transcripts are excluded from Weaviate indexing due to their size.")
+        
+        # Create meeting transcript attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Call the view
+        url = reverse('weaviate-status', kwargs={'object_type': 'attachment', 'object_id': attachment.id})
+        response = self.client.get(url)
+        
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'excluded', response.content)
+        
+        # Verify is_excluded_from_sync was called
+        mock_is_excluded.assert_called_once_with('attachment', str(attachment.id))
+    
+    @patch('core.views.is_available')
+    @patch('core.views.is_excluded_from_sync')
+    @patch('core.views.upsert_object')
+    def test_weaviate_push_prevents_manual_sync_of_meeting_transcript(
+        self, mock_upsert, mock_is_excluded, mock_is_available
+    ):
+        """Test that weaviate_push view prevents manual sync of meeting transcripts."""
+        from django.urls import reverse
+        
+        # Mock Weaviate as available
+        mock_is_available.return_value = True
+        
+        # Mock exclusion check to return True
+        mock_is_excluded.return_value = (True, "Meeting transcripts are excluded from Weaviate indexing due to their size.")
+        
+        # Create meeting transcript attachment
+        attachment = self.Attachment.objects.create(
+            original_name='transcript.docx',
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        self.AttachmentLink.objects.create(
+            attachment=attachment,
+            target=self.meeting_item,
+            role=self.AttachmentRole.TRANSKRIPT
+        )
+        
+        # Call the view
+        url = reverse('weaviate-push', kwargs={'object_type': 'attachment', 'object_id': attachment.id})
+        response = self.client.post(url)
+        
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'excluded', response.content)
+        self.assertIn(b'Meeting transcript', response.content)
+        
+        # Verify upsert_object was NOT called
+        mock_upsert.assert_not_called()
+        
+        # Verify is_excluded_from_sync was called
+        mock_is_excluded.assert_called_once_with('attachment', str(attachment.id))
+    
+    @patch('core.views.is_available')
+    @patch('core.views.is_excluded_from_sync')
+    @patch('core.views.exists_object')
+    def test_weaviate_status_allows_regular_attachment(self, mock_exists, mock_is_excluded, mock_is_available):
+        """Test that weaviate_status view works normally for regular attachments."""
+        from django.urls import reverse
+        
+        # Mock Weaviate as available
+        mock_is_available.return_value = True
+        
+        # Mock exclusion check to return False
+        mock_is_excluded.return_value = (False, None)
+        
+        # Mock exists check
+        mock_exists.return_value = False
+        
+        # Create regular attachment
+        attachment = self.Attachment.objects.create(
+            original_name='document.pdf',
+            content_type='application/pdf',
+            size_bytes=1024,
+            storage_path='/test/path',
+            created_by=self.user
+        )
+        
+        # Call the view
+        url = reverse('weaviate-status', kwargs={'object_type': 'attachment', 'object_id': attachment.id})
+        response = self.client.get(url)
+        
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'excluded', response.content)
+        
+        # Verify exists_object was called
+        mock_exists.assert_called_once_with('attachment', str(attachment.id))
 
 
