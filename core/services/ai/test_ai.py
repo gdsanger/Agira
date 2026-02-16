@@ -283,7 +283,6 @@ class AIRouterTestCase(TestCase):
         self.assertIsNone(job.costs)
         self.assertIsNotNone(job.duration_ms)
     
-    
     @patch('core.services.ai.gemini_provider.genai.Client')
     def test_chat_with_gemini_provider(self, mock_gemini_client):
         """Test chat with Gemini provider."""
@@ -346,7 +345,6 @@ class AIRouterTestCase(TestCase):
         ])
         self.assertEqual(call_kwargs['temperature'], 0.7)
         self.assertEqual(call_kwargs['max_tokens'], 100)
-    
     
     def test_provider_instance_creation(self):
         """Test creating provider instances from DB config."""
