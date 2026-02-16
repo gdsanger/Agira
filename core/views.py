@@ -3412,7 +3412,7 @@ def item_upload_transcript(request, item_id):
         attachment = storage_service.store_attachment(
             file=uploaded_file,
             target=item,
-            role=AttachmentRole.ITEM_FILE,
+            role=AttachmentRole.TRANSKRIPT,
             created_by=request.user if request.user.is_authenticated else None,
         )
         logger.info(f"Transcript attachment stored successfully for item {item_id}: {attachment.id}")
