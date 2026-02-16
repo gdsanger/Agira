@@ -1188,6 +1188,15 @@
             return;
         }
         
+        // Validate file size (50 MB limit)
+        const maxSizeBytes = 50 * 1024 * 1024; // 50 MB in bytes
+        if (file.size > maxSizeBytes) {
+            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            showToast('error', `Datei zu groß (${fileSizeMB} MB). Maximum: 50 MB`);
+            fileInput.value = '';
+            return;
+        }
+        
         // Show spinner
         const spinner = document.getElementById('transcript-upload-spinner');
         const uploadBtn = document.getElementById('upload-transcript-btn');
