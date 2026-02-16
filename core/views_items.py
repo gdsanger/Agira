@@ -2,7 +2,10 @@
 Class-based views for Item list views using django-tables2 and django-filter.
 """
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.decorators import login_required
 from django.views.generic import ListView
+from django.shortcuts import get_object_or_404, render
+from django.http import HttpResponse
 from django_tables2 import SingleTableMixin
 from django_filters.views import FilterView
 from django.conf import settings
@@ -209,3 +212,69 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
         context['page_description'] = 'All non-closed items organized by status'
         
         return context
+
+
+@login_required
+def item_list_delete(request, item_id):
+    """
+    Delete an item from a list view and return the refreshed list HTML.
+    
+    This endpoint is called via HTMX from the list view delete button.
+    After deletion, it re-renders the complete list container with updated data.
+    """
+    if request.method != 'POST':
+        return HttpResponse('Method not allowed', status=405)
+    
+    # Get the item and its status before deletion
+    item = get_object_or_404(Item, id=item_id)
+    item_status = item.status
+    
+    # Delete the item
+    item.delete()
+    
+    # Determine which view class to use based on the status
+    view_class_map = {
+        ItemStatus.INBOX: ItemsInboxView,
+        ItemStatus.BACKLOG: ItemsBacklogView,
+        ItemStatus.WORKING: ItemsWorkingView,
+        ItemStatus.TESTING: ItemsTestingView,
+        ItemStatus.READY_FOR_RELEASE: ItemsReadyView,
+    }
+    
+    view_class = view_class_map.get(item_status)
+    if not view_class:
+        # Fallback: render empty container
+        return HttpResponse(
+            '<div id="items-list-container"><div class="alert alert-success">Item deleted successfully</div></div>',
+            content_type='text/html'
+        )
+    
+    # Instantiate the view properly with setup
+    view_instance = view_class()
+    view_instance.request = request
+    view_instance.args = ()
+    view_instance.kwargs = {}
+    view_instance.setup(request)
+    
+    # Get queryset and apply filters
+    queryset = view_instance.get_queryset()
+    filterset_class = view_instance.filterset_class
+    filterset = filterset_class(request.GET, queryset=queryset)
+    
+    # Create table instance
+    table_class = view_instance.table_class
+    table = table_class(filterset.qs if filterset.is_valid() else queryset)
+    
+    # Configure pagination
+    from django_tables2.config import RequestConfig
+    RequestConfig(request, paginate={'per_page': view_instance.paginate_by}).configure(table)
+    
+    # Build context
+    context = {
+        'table': table,
+        'filter': filterset,
+        'request': request,
+    }
+    
+    # Render the partial template
+    return render(request, 'partials/items_list_container.html', context)

@@ -1,0 +1,24 @@
+{% load django_tables2 %}
+
+<!-- List Container for HTMX refresh -->
+<div id="items-list-container">
+    <!-- Table -->
+    <div class="table-responsive">
+        {% render_table table %}
+    </div>
+    
+    <!-- Empty state message (if no results) -->
+    {% if not table.page.object_list %}
+    <div class="text-center text-muted py-5">
+        <div class="mb-3">
+            <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+        </div>
+        <h5>No items found</h5>
+        {% if request.GET %}
+        <p>Try adjusting your search filters</p>
+        {% else %}
+        <p>No items in this status yet</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

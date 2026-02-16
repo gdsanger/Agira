@@ -70,10 +70,18 @@ class ItemTable(tables.Table):
         empty_values=()
     )
     
+    # Actions column (delete button with HTMX)
+    actions = tables.Column(
+        verbose_name='Actions',
+        orderable=False,
+        empty_values=(),
+        attrs={'td': {'class': 'text-end', 'style': 'width: 80px;'}}
+    )
+    
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('updated_at', 'title', 'type', 'project', 'organisation', 'requester', 'assigned_to')
+        fields = ('updated_at', 'title', 'type', 'project', 'organisation', 'requester', 'assigned_to', 'actions')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -137,6 +145,25 @@ class ItemTable(tables.Table):
         if record.assigned_to:
             return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
+    
+    def render_actions(self, record):
+        """
+        Render actions column with delete button using HTMX.
+        """
+        delete_url = reverse('item-list-delete', kwargs={'item_id': record.id})
+        
+        return format_html(
+            '<button type="button" '
+            'class="btn btn-sm btn-outline-danger" '
+            'hx-post="{}" '
+            'hx-confirm="Are you sure you want to delete this item? This action cannot be undone." '
+            'hx-target="#items-list-container" '
+            'hx-swap="outerHTML" '
+            'title="Delete item">'
+            '<i class="bi bi-trash"></i>'
+            '</button>',
+            delete_url
+        )
 
 
 class RelatedItemsTable(tables.Table):
