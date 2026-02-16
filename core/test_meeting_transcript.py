@@ -3,7 +3,6 @@ Tests for Meeting Transcript Upload functionality.
 """
 import json
 import io
-import re
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.urls import reverse
