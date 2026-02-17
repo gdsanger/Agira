@@ -61,6 +61,7 @@ urlpatterns = [
     path('items/<int:item_id>/update-parent/', views.item_update_parent, name='item-update-parent'),
     path('items/<int:item_id>/update-intern/', views.item_update_intern, name='item-update-intern'),
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
+    path('items/<int:item_id>/list-delete/', views_items.item_list_delete, name='item-list-delete'),
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
     path('items/<int:item_id>/move-project/', views.item_move_project, name='item-move-project'),
     path('items/<int:item_id>/classify/', views.item_classify, name='item-classify'),
