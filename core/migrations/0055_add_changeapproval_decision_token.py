@@ -11,17 +11,19 @@ def populate_decision_tokens(apps, schema_editor):
     # Get all ChangeApproval records that don't have a decision_token
     approvals_without_token = ChangeApproval.objects.filter(decision_token='')
     
+    # Get existing tokens to avoid collisions
+    existing_tokens = set(ChangeApproval.objects.exclude(decision_token='').values_list('decision_token', flat=True))
+    
     # Generate unique tokens for each approval
-    generated_tokens = set()
     approvals_to_update = []
     
-    for approval in approvals_without_token:
+    for approval in approvals_without_token.iterator():
         # Generate a unique token (retry if collision detected)
         token = secrets.token_urlsafe(32)
-        while token in generated_tokens:
+        while token in existing_tokens:
             token = secrets.token_urlsafe(32)
         
-        generated_tokens.add(token)
+        existing_tokens.add(token)
         approval.decision_token = token
         approvals_to_update.append(approval)
     
