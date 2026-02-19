@@ -213,9 +213,10 @@ def send_change_approval_request_emails(change: Change, request_base_url: str) -
     for approval in approvals:
         try:
             # Ensure token exists
+            had_token = bool(approval.decision_token)
             approval.ensure_token()
-            if not approval.decision_token:
-                # Token was generated, save it
+            if not had_token:
+                # Token was just generated, save it
                 approval.save(update_fields=['decision_token'])
             
             # Build approve/reject URLs

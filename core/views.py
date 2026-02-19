@@ -7810,15 +7810,15 @@ def change_approval_decision(request):
         approval.status = ApprovalStatus.ACCEPT
         approval.decision_at = now
         approval.approved_at = now
+        approval.save(update_fields=['status', 'decision_at', 'approved_at'])
         decision_text = "approved"
         decision_emoji = "✅"
     else:  # reject
         approval.status = ApprovalStatus.REJECT
         approval.decision_at = now
+        approval.save(update_fields=['status', 'decision_at'])
         decision_text = "rejected"
         decision_emoji = "❌"
-    
-    approval.save(update_fields=['status', 'decision_at', 'approved_at'])
     
     # Log activity
     activity_service = ActivityService()
