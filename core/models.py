@@ -574,6 +574,7 @@ class Item(models.Model):
     organisation = models.ForeignKey(Organisation, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
     requester = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='requested_items')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_items')
+    responsible = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='responsible_items')
     status = models.CharField(max_length=20, choices=ItemStatus.choices, default=ItemStatus.INBOX)
     solution_release = models.ForeignKey(Release, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
     changes = models.ManyToManyField(Change, blank=True, related_name='items')
@@ -598,6 +599,10 @@ class Item(models.Model):
         if self.requester and self.organisation:
             if not UserOrganisation.objects.filter(user=self.requester, organisation=self.organisation).exists():
                 errors['requester'] = _('Requester must be a member of the selected organisation.')
+
+        # Responsible must have role 'Agent'
+        if self.responsible and self.responsible.role != UserRole.AGENT:
+            errors['responsible'] = _('Responsible user must have role "Agent".')
 
         if errors:
             raise ValidationError(errors)
