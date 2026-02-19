@@ -2,6 +2,9 @@
 Tests for Microsoft Graph API mail service.
 """
 
+import os
+import tempfile
+import shutil
 from unittest.mock import Mock, patch, MagicMock
 from io import BytesIO
 from django.test import TestCase
@@ -19,6 +22,7 @@ from core.services.graph.mail_service import (
     _normalize_email, _is_blocked_system_recipient
 )
 from core.services.exceptions import ServiceDisabled, ServiceNotConfigured, ServiceError
+from core.services.storage import AttachmentStorageService
 
 
 class SendEmailTestCase(TestCase):
@@ -443,6 +447,9 @@ class ProcessAttachmentTestCase(TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.storage = AttachmentStorageService(data_dir=self.temp_dir)
+
         self.project = Project.objects.create(
             name='Test Project',
             github_owner='test',
@@ -455,27 +462,33 @@ class ProcessAttachmentTestCase(TestCase):
             password='testpass',
             name='Test User'
         )
+
+    def tearDown(self):
+        """Clean up temporary storage."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
     
     def test_process_attachment_basic(self):
         """Test basic attachment processing."""
-        # Create a small test file
+        # Create a small test file via storage service
         file_content = b'Test file content'
         test_file = SimpleUploadedFile(
             'test.txt',
             file_content,
             content_type='text/plain'
         )
-        
-        attachment = Attachment.objects.create(
-            project=self.project,
-            uploaded_by=self.user,
+
+        attachment = self.storage.store_attachment(
             file=test_file,
+            target=self.project,
+            created_by=self.user,
             original_name='test.txt',
             content_type='text/plain',
-            size=len(file_content)
         )
-        
-        result = _process_attachment(attachment)
+
+        with patch('core.services.storage.AttachmentStorageService') as mock_cls:
+            mock_cls.return_value = self.storage
+            result = _process_attachment(attachment)
         
         self.assertEqual(result['@odata.type'], '#microsoft.graph.fileAttachment')
         self.assertEqual(result['name'], 'test.txt')
@@ -484,23 +497,14 @@ class ProcessAttachmentTestCase(TestCase):
     
     def test_process_attachment_raises_on_large_file(self):
         """Test that _process_attachment raises error for large files."""
-        # Create an attachment with size > MAX_ATTACHMENT_SIZE_V1
+        # Create an attachment with size_bytes > MAX_ATTACHMENT_SIZE_V1
         large_size = MAX_ATTACHMENT_SIZE_V1 + 1
-        
-        # Don't actually create the large file, just set the size
-        test_file = SimpleUploadedFile(
-            'large.pdf',
-            b'content',
-            content_type='application/pdf'
-        )
-        
+
         attachment = Attachment.objects.create(
-            project=self.project,
-            uploaded_by=self.user,
-            file=test_file,
             original_name='large.pdf',
             content_type='application/pdf',
-            size=large_size  # Manually set large size
+            size_bytes=large_size,
+            storage_path='fake/path/large.pdf',
         )
         
         with self.assertRaises(ServiceError) as context:
