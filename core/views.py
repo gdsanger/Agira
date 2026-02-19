@@ -765,7 +765,7 @@ def item_detail(request, item_id):
     item = get_object_or_404(
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
-            'assigned_to', 'solution_release', 'parent'
+            'assigned_to', 'responsible', 'solution_release', 'parent'
         ).prefetch_related('nodes'),
         id=item_id
     )
@@ -775,6 +775,9 @@ def item_detail(request, item_id):
     
     # Get all users for the follower selection dropdown
     users = User.objects.all().order_by('name')
+    
+    # Get agents for responsible field
+    agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
     
     # Get all projects for the move modal
     projects = Project.objects.all().order_by('name')
@@ -816,6 +819,7 @@ def item_detail(request, item_id):
         'item': item,
         'followers': followers,
         'users': users,
+        'agents': agents,
         'projects': projects,
         'releases': releases,
         'parent_items': parent_items,
@@ -943,6 +947,134 @@ def item_update_intern(request, item_id):
         return HttpResponse(status=200)
     except Exception as e:
         return HttpResponse(status=400)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_take_over_responsible(request, item_id):
+    """
+    Take over action - sets responsible to current agent user.
+    Only available for users with Agent role.
+    Sends email notification only if responsible actually changes.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Check if current user is an agent
+    if request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'success': False,
+            'error': 'Only users with Agent role can take over responsibility.'
+        }, status=403)
+    
+    # Check if responsible is already set to current user
+    if item.responsible == request.user:
+        return JsonResponse({
+            'success': True,
+            'message': 'You are already the responsible person for this item.',
+            'no_change': True
+        })
+    
+    try:
+        # Store old responsible for logging
+        old_responsible = item.responsible
+        
+        # Set responsible to current user
+        item.responsible = request.user
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.responsible_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Took over responsibility (was: {old_responsible.name if old_responsible else "None"})'
+        )
+        
+        # Send email notification (only if responsible changed)
+        _send_responsible_notification(item, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Responsibility taken over by {request.user.name}',
+            'responsible_name': request.user.name
+        })
+    except Exception as e:
+        logger.error(f"Error in take over responsible: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_assign_responsible(request, item_id):
+    """
+    Assign action - sets responsible to selected agent user.
+    Only agents can be selected.
+    Sends email notification only if responsible actually changes.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get the selected agent user ID
+    agent_id = request.POST.get('agent_id')
+    
+    if not agent_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'No agent selected.'
+        }, status=400)
+    
+    try:
+        # Get the agent user
+        agent = get_object_or_404(User, id=agent_id)
+        
+        # Validate that user is an agent
+        if agent.role != UserRole.AGENT:
+            return JsonResponse({
+                'success': False,
+                'error': 'Selected user must have Agent role.'
+            }, status=400)
+        
+        # Check if responsible is already set to this agent
+        if item.responsible == agent:
+            return JsonResponse({
+                'success': True,
+                'message': f'{agent.name} is already the responsible person for this item.',
+                'no_change': True
+            })
+        
+        # Store old responsible for logging
+        old_responsible = item.responsible
+        
+        # Set responsible to selected agent
+        item.responsible = agent
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.responsible_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Assigned responsibility to {agent.name} (was: {old_responsible.name if old_responsible else "None"})'
+        )
+        
+        # Send email notification (only if responsible changed)
+        _send_responsible_notification(item, agent)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Responsibility assigned to {agent.name}',
+            'responsible_name': agent.name
+        })
+    except Exception as e:
+        logger.error(f"Error in assign responsible: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 
 @login_required
@@ -3883,6 +4015,66 @@ def _auto_generate_title_from_description(description, user=None):
         return ''
 
 
+def _send_responsible_notification(item, new_responsible):
+    """
+    Send email notification to new responsible user.
+    Uses mail template with key 'resp'.
+    
+    Args:
+        item: Item instance
+        new_responsible: User instance who is now responsible
+    """
+    try:
+        from .services.graph.mail_service import send_email
+        
+        # Get the mail template
+        template = MailTemplate.objects.filter(key='resp', is_active=True).first()
+        if not template:
+            logger.warning("Mail template 'resp' not found or inactive")
+            return
+        
+        # Get base URL from GlobalSettings
+        settings = GlobalSettings.get_instance()
+        base_url = settings.base_url if settings and settings.base_url else 'http://localhost:8000'
+        
+        # Build absolute link to item detail
+        item_link = f"{base_url.rstrip('/')}/items/{item.id}/"
+        
+        # Prepare template context
+        context = {
+            'issue': {
+                'title': item.title,
+                'type': item.type.name if item.type else '—',
+                'project': item.project.name if item.project else '—',
+                'responsible': new_responsible.name if new_responsible else '—',
+                'assigned_to': item.assigned_to.name if item.assigned_to else '',
+                'requester': item.requester.name if item.requester else '—',
+                'status': item.get_status_display(),
+                'link': item_link,
+            }
+        }
+        
+        # Render template
+        from django.template import Context, Template
+        subject_template = Template(template.subject)
+        message_template = Template(template.message)
+        
+        subject = subject_template.render(Context(context))
+        message = message_template.render(Context(context))
+        
+        # Send email
+        send_email(
+            subject=subject,
+            body=message,
+            to=[new_responsible.email],
+            body_is_html=True
+        )
+        
+        logger.info(f"Sent responsible notification to {new_responsible.email} for item {item.id}")
+    except Exception as e:
+        logger.error(f"Failed to send responsible notification: {e}")
+
+
 def _update_item_followers(item, follower_ids):
     """
     Update followers for an item.
@@ -3937,6 +4129,8 @@ def item_create(request):
         users = User.objects.prefetch_related(
             'user_organisations__organisation'
         ).all().order_by('name')
+        # Filter agents for responsible field
+        agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
         statuses = ItemStatus.choices
         
         # Get active blueprints for the create form
@@ -3970,6 +4164,7 @@ def item_create(request):
             'item_types': item_types,
             'organisations': organisations,
             'users': users,
+            'agents': agents,
             'statuses': statuses,
             'default_requester': default_requester,
             'default_organisation': default_organisation,
@@ -4055,6 +4250,14 @@ def item_create(request):
         if assigned_to_id:
             item.assigned_to = get_object_or_404(User, id=assigned_to_id)
         
+        responsible_id = request.POST.get('responsible')
+        if responsible_id:
+            responsible_user = get_object_or_404(User, id=responsible_id)
+            # Validate that user has Agent role
+            if responsible_user.role != UserRole.AGENT:
+                raise ValidationError({'responsible': 'Responsible user must have role "Agent".'})
+            item.responsible = responsible_user
+        
         parent_id = request.POST.get('parent')
         if parent_id:
             item.parent = get_object_or_404(Item, id=parent_id)
@@ -4139,6 +4342,8 @@ def item_edit(request, item_id):
         users = User.objects.prefetch_related(
             'user_organisations__organisation'
         ).all().order_by('name')
+        # Filter agents for responsible field
+        agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
         statuses = ItemStatus.choices
         
         # Get releases for the current project
@@ -4157,6 +4362,7 @@ def item_edit(request, item_id):
             'item_types': item_types,
             'organisations': organisations,
             'users': users,
+            'agents': agents,
             'statuses': statuses,
             'releases': releases,
             'parent_items': parent_items,
@@ -4239,6 +4445,16 @@ def item_update(request, item_id):
             item.assigned_to = get_object_or_404(User, id=assigned_to_id)
         elif assigned_to_id == '':
             item.assigned_to = None
+        
+        responsible_id = request.POST.get('responsible')
+        if responsible_id:
+            responsible_user = get_object_or_404(User, id=responsible_id)
+            # Validate that user has Agent role
+            if responsible_user.role != UserRole.AGENT:
+                raise ValidationError({'responsible': 'Responsible user must have role "Agent".'})
+            item.responsible = responsible_user
+        elif responsible_id == '':
+            item.responsible = None
         
         parent_id = request.POST.get('parent')
         if parent_id:
