@@ -220,6 +220,7 @@ agents/*
 !agents/github-issue-creation-agent.yml
 !agents/summarize-text-agent.yml
 !agents/item-answer-question.yml
+!agents/item-short-description-agent.yml
 !agents/question-optimization-agent.yml
 !agents/question-answering-agent.yml
 !agents/chat-summary-agent.yml
