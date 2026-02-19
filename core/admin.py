@@ -178,7 +178,7 @@ class ReleaseAdmin(admin.ModelAdmin):
 
 @admin.register(Change)
 class ChangeAdmin(admin.ModelAdmin):
-    list_display = ['title', 'project', 'status', 'risk', 'is_safety_relevant', 'executed_at', 'created_by']
+    list_display = ['title', 'project', 'status', 'risk', 'is_safety_relevant', 'executed_at', 'created_by','created_at', 'updated_at']
     list_filter = ['project', 'status', 'risk', 'is_safety_relevant', 'organisations']
     search_fields = ['title', 'description']
     autocomplete_fields = ['project', 'release', 'created_by']
@@ -187,9 +187,9 @@ class ChangeAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {'fields': ('project', 'title', 'description', 'status', 'release', 'organisations', 'is_safety_relevant')}),
-        ('Timeline', {'fields': ('planned_start', 'planned_end', 'executed_at', 'created_by')}),
+        ('Timeline', {'fields': ('planned_start', 'planned_end', 'executed_at', 'created_by','created_at', 'updated_at')}),
         ('Risk Management', {'fields': ('risk', 'risk_description', 'mitigation', 'rollback_plan', 'communication_plan')}),
-        ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+      
     )
 
     def save_model(self, request, obj, form, change):
@@ -202,7 +202,7 @@ class ChangeAdmin(admin.ModelAdmin):
 
 @admin.register(ChangeApproval)
 class ChangeApprovalAdmin(admin.ModelAdmin):
-    list_display = ['change', 'approver', 'is_required', 'status', 'approved_at', 'decision_at', 'created_at', 'updated_at']
+    list_display = ['change', 'approver', 'is_required', 'status', 'approved_at', 'decision_at']
     list_filter = ['status', 'is_required']
     search_fields = ['change__title', 'approver__username']
     autocomplete_fields = ['change', 'approver']
@@ -210,14 +210,14 @@ class ChangeApprovalAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {'fields': ('change', 'approver', 'is_required')}),
-        ('Status', {'fields': ('status', 'decision_at', 'approved_at', 'created_at', 'updated_at')}),
+        ('Status', {'fields': ('status', 'decision_at', 'approved_at')}),
         ('Comments & Notes', {'fields': ('comment', 'notes')}),
     )
 
 
 @admin.register(ChangePolicy)
 class ChangePolicyAdmin(admin.ModelAdmin):
-    list_display = ['__str__', 'risk_level', 'security_relevant', 'release_type', 'roles_display', 'created_at', 'updated_at']
+    list_display = ['__str__', 'risk_level', 'security_relevant', 'release_type', 'roles_display']
     list_filter = ['risk_level', 'security_relevant', 'release_type']
     search_fields = ['risk_level', 'release_type']
     inlines = [ChangePolicyRoleInline]
