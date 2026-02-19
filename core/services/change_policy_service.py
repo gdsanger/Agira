@@ -159,7 +159,7 @@ class ChangePolicyService:
         This function:
         1. Finds the matching policy for the change
         2. Determines required roles (including mandatory INFO and DEV)
-        3. Ensures at least one approver exists for each required role
+        3. Ensures ALL users with required roles from ALL change organizations are assigned as approvers
         4. Removes obsolete approvers (only those without a decision)
         5. Uses UserOrganisation.role (organization-specific roles) for all role checks
         
