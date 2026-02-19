@@ -490,6 +490,10 @@ class Change(models.Model):
         if item_ids:
             return Item.objects.filter(id__in=item_ids).select_related('project', 'type').order_by('id')
         return Item.objects.none()
+    
+    def get_approvals(self):
+        """Return all approvals for this change."""
+        return self.approvals.all()
 
 
 class ChangeApproval(models.Model):
@@ -502,6 +506,7 @@ class ChangeApproval(models.Model):
     # Enhanced approver management fields
     approved_at = models.DateTimeField(null=True, blank=True, help_text="When the approval was granted")
     notes = models.TextField(blank=True, help_text="Internal notes about the approval process")
+    decision_token = models.CharField(max_length=64, unique=True, blank=True, help_text="Token for email-based approve/reject decision")
 
     class Meta:
         constraints = [
@@ -511,6 +516,12 @@ class ChangeApproval(models.Model):
 
     def __str__(self):
         return f"{self.change.title} - {self.approver.username} ({self.status})"
+    
+    def ensure_token(self):
+        """Generate and save a decision token if not already set."""
+        import secrets
+        if not self.decision_token:
+            self.decision_token = secrets.token_urlsafe(32)
 
 
 class ChangePolicy(models.Model):

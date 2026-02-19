@@ -49,6 +49,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-zd-q-2@-+#(8wu#t=hsy2q236!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,agira.angermeier.net,agira.isarlabs.de' ).split(',')
+
+# Base URL for generating absolute URLs in emails (e.g., approval links)
+APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:8000')
 CSRF_TRUSTED_ORIGINS = [
     "https://agira.angermeier.net",
     "https://agira.isarlabs.de",
