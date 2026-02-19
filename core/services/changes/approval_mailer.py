@@ -148,20 +148,19 @@ def create_attachment_from_bytes(pdf_bytes: bytes, filename: str, change: Change
     Returns:
         Attachment instance (saved to database and storage)
     """
-    from django.core.files.base import ContentFile
-    
-    # Create attachment
-    attachment = Attachment(
+    from io import BytesIO
+    from core.services.storage.service import AttachmentStorageService
+    from core.models import AttachmentRole
+
+    file_obj = BytesIO(pdf_bytes)
+    service = AttachmentStorageService()
+    return service.store_attachment(
+        file=file_obj,
+        target=change.project,
+        role=AttachmentRole.APPROVER_ATTACHMENT,
         original_name=filename,
         content_type='application/pdf',
-        size=len(pdf_bytes),
-        project=change.project,
     )
-    
-    # Save file to storage
-    attachment.file.save(filename, ContentFile(pdf_bytes), save=True)
-    
-    return attachment
 
 
 def send_change_approval_request_emails(change: Change, request_base_url: str) -> dict:
