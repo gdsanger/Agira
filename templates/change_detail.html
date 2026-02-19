@@ -305,6 +305,14 @@
                         <span id="approval-request-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         <i class="bi bi-send"></i> Get Approvals
                     </button>
+                    <button class="btn btn-sm btn-warning"
+                            hx-post="{% url 'change-send-approval-reminders' change.id %}"
+                            hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'Failed to send reminders', 'danger'); }"
+                            hx-indicator="#approval-reminder-spinner"
+                            title="Send reminder emails to pending approvers">
+                        <span id="approval-reminder-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-bell"></i> Send Reminder
+                    </button>
                     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addApproverModal">
                         <i class="bi bi-plus-lg"></i>
                     </button>

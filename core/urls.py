@@ -121,6 +121,7 @@ urlpatterns = [
     path('changes/<int:id>/delete/', views.change_delete, name='change-delete'),
     path('changes/<int:id>/print/', views.change_print, name='change-print'),
     path('changes/<int:id>/send-approval-requests/', views.change_send_approval_requests, name='change-send-approval-requests'),
+    path('changes/<int:id>/send-approval-reminders/', views.change_send_approval_reminders, name='change-send-approval-reminders'),
     path('changes/approval/decision/', views.change_approval_decision, name='change_approval_decision'),
     path('changes/<int:id>/approvers/add/', views.change_add_approver, name='change-add-approver'),
     path('changes/<int:id>/approvers/<int:approval_id>/update/', views.change_update_approver, name='change-update-approver'),
