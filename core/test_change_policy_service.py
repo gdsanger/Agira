@@ -477,14 +477,15 @@ class ChangePolicyMultiOrgTestCase(TestCase):
         
         # Create users - at least one APPROVER per organization
         approvers = []
-        for i, org in enumerate(orgs):
+        for org in orgs:
+            org_num = org.name.split()[-1]  # Extract number from "Org 3", "Org 4", etc.
             # Create 2 approvers per org to make it more realistic
             for j in range(2):
                 user = User.objects.create_user(
-                    username=f"approver_org{i+1}_{j+1}",
-                    email=f"approver{i+1}_{j+1}@example.com",
+                    username=f"approver_org{org_num}_{j+1}",
+                    email=f"approver_org{org_num}_{j+1}@example.com",
                     password="testpass",
-                    name=f"Approver {i+1}-{j+1}",
+                    name=f"Approver Org{org_num}-{j+1}",
                     role=UserRole.USER  # Global role is USER
                 )
                 UserOrganisation.objects.create(
@@ -498,12 +499,13 @@ class ChangePolicyMultiOrgTestCase(TestCase):
         # Also create INFO and DEV users for each org to satisfy mandatory roles
         info_users = []
         dev_users = []
-        for i, org in enumerate(orgs):
+        for org in orgs:
+            org_num = org.name.split()[-1]  # Extract number from "Org 3", "Org 4", etc.
             info_user = User.objects.create_user(
-                username=f"info_org{i+1}",
-                email=f"info{i+1}@example.com",
+                username=f"info_org{org_num}",
+                email=f"info_org{org_num}@example.com",
                 password="testpass",
-                name=f"Info {i+1}",
+                name=f"Info Org{org_num}",
                 role=UserRole.USER
             )
             UserOrganisation.objects.create(
@@ -515,10 +517,10 @@ class ChangePolicyMultiOrgTestCase(TestCase):
             info_users.append(info_user)
             
             dev_user = User.objects.create_user(
-                username=f"dev_org{i+1}",
-                email=f"dev{i+1}@example.com",
+                username=f"dev_org{org_num}",
+                email=f"dev_org{org_num}@example.com",
                 password="testpass",
-                name=f"Dev {i+1}",
+                name=f"Dev Org{org_num}",
                 role=UserRole.USER
             )
             UserOrganisation.objects.create(
