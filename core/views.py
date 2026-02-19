@@ -7927,10 +7927,14 @@ def change_send_approval_requests(request, id):
                 'error': 'Email service is not properly configured. Please configure Microsoft Graph API credentials in system settings.'
             }, status=400)
     except Exception as e:
-        logger.error(f"Error checking Graph API configuration: {str(e)}")
+        # Configuration check failures are critical and should be investigated
+        logger.error(
+            f"Critical error checking Graph API configuration for Change {change.id}: {str(e)}",
+            exc_info=True
+        )
         return JsonResponse({
             'success': False,
-            'error': 'Unable to verify email service configuration.'
+            'error': 'Unable to verify email service configuration. Please contact system administrator.'
         }, status=500)
     
     try:

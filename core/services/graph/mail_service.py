@@ -248,21 +248,66 @@ def send_email(
             success=True,
         )
         
-    except Exception as e:
-        error_msg = str(e)
-        # Provide more user-friendly error messages for common issues
-        if isinstance(e, ServiceDisabled):
-            error_msg = "Email service is not enabled"
-        elif isinstance(e, ServiceNotConfigured):
-            error_msg = "Email service is not properly configured"
-        elif isinstance(e, ServiceError):
-            # ServiceError already has a descriptive message, use it
-            error_msg = str(e)
-        elif "Connection" in error_msg or "SSL" in error_msg or "TLS" in error_msg:
-            error_msg = f"Network connection error: {error_msg}"
-        elif "timeout" in error_msg.lower():
-            error_msg = f"Connection timeout: {error_msg}"
+    except ServiceDisabled as e:
+        # Service explicitly disabled
+        error_msg = "Email service is not enabled"
+        logger.error(f"Failed to send email: {error_msg}", exc_info=True)
         
+        # Update comment to Failed
+        if comment:
+            comment.delivery_status = EmailDeliveryStatus.FAILED
+            comment.save()
+        
+        # Return failure result (don't re-raise to allow caller to handle gracefully)
+        return GraphSendResult(
+            sender=sender,
+            to=to,
+            subject=subject,
+            success=False,
+            error=error_msg,
+        )
+    
+    except ServiceNotConfigured as e:
+        # Service enabled but not properly configured
+        error_msg = "Email service is not properly configured"
+        logger.error(f"Failed to send email: {error_msg}", exc_info=True)
+        
+        # Update comment to Failed
+        if comment:
+            comment.delivery_status = EmailDeliveryStatus.FAILED
+            comment.save()
+        
+        # Return failure result (don't re-raise to allow caller to handle gracefully)
+        return GraphSendResult(
+            sender=sender,
+            to=to,
+            subject=subject,
+            success=False,
+            error=error_msg,
+        )
+    
+    except ServiceError as e:
+        # ServiceError from client already has descriptive messages (SSL, timeout, connection, etc.)
+        error_msg = str(e)
+        logger.error(f"Failed to send email: {error_msg}", exc_info=True)
+        
+        # Update comment to Failed
+        if comment:
+            comment.delivery_status = EmailDeliveryStatus.FAILED
+            comment.save()
+        
+        # Return failure result (don't re-raise to allow caller to handle gracefully)
+        return GraphSendResult(
+            sender=sender,
+            to=to,
+            subject=subject,
+            success=False,
+            error=error_msg,
+        )
+    
+    except Exception as e:
+        # Unexpected error - log with full details
+        error_msg = f"Unexpected error: {str(e)}"
         logger.error(f"Failed to send email: {error_msg}", exc_info=True)
         
         # Update comment to Failed
