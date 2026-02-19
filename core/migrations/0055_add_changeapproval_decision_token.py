@@ -12,9 +12,22 @@ def populate_decision_tokens(apps, schema_editor):
     approvals_without_token = ChangeApproval.objects.filter(decision_token='')
     
     # Generate unique tokens for each approval
+    generated_tokens = set()
+    approvals_to_update = []
+    
     for approval in approvals_without_token:
-        approval.decision_token = secrets.token_urlsafe(32)
-        approval.save(update_fields=['decision_token'])
+        # Generate a unique token (retry if collision detected)
+        token = secrets.token_urlsafe(32)
+        while token in generated_tokens:
+            token = secrets.token_urlsafe(32)
+        
+        generated_tokens.add(token)
+        approval.decision_token = token
+        approvals_to_update.append(approval)
+    
+    # Bulk update all records in a single query
+    if approvals_to_update:
+        ChangeApproval.objects.bulk_update(approvals_to_update, ['decision_token'])
 
 
 class Migration(migrations.Migration):
