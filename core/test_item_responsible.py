@@ -226,3 +226,220 @@ class ItemResponsibleFieldTest(TestCase):
         data = response.json()
         self.assertTrue(data['success'])
         self.assertTrue(data.get('no_change', False))
+
+
+class ItemResponsibleMailNotificationTest(TestCase):
+    """Test mail notifications for item responsible assignment."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from unittest.mock import patch
+        from core.models import MailTemplate
+        
+        # Create agent users
+        self.agent1 = User.objects.create_user(
+            username='agent1',
+            email='agent1@example.com',
+            password='testpass',
+            name='Agent One',
+            role=UserRole.AGENT
+        )
+        
+        self.agent2 = User.objects.create_user(
+            username='agent2',
+            email='agent2@example.com',
+            password='testpass',
+            name='Agent Two',
+            role=UserRole.AGENT
+        )
+        
+        # Create organisation
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.agent1,
+            organisation=self.org,
+            is_primary=True
+        )
+        
+        # Create project
+        self.project = Project.objects.create(
+            name='Test Project',
+            description='Test description'
+        )
+        self.project.clients.add(self.org)
+        
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key='bug',
+            name='Bug',
+            organisation=self.org
+        )
+        
+        # Create mail template
+        MailTemplate.objects.create(
+            key='resp',
+            subject='Item zugewiesen: {{ issue.title }}',
+            message='<p>Hallo {{ issue.responsible }},</p><p>Item: {{ issue.title }}</p>',
+            from_name='Agira',
+            from_address='',
+            cc_address='',
+            is_active=True
+        )
+        
+        # Create client
+        self.client = Client()
+    
+    def test_take_over_sends_mail_on_change(self):
+        """Test that take over action sends mail when responsible changes."""
+        from unittest.mock import patch
+        
+        self.client.login(username='agent1', password='testpass')
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type
+        )
+        
+        with patch('core.views._send_responsible_notification') as mock_send:
+            response = self.client.post(
+                reverse('item-take-over-responsible', args=[item.id])
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['success'])
+            
+            # Verify mail function was called
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args
+            self.assertEqual(call_args[0][0].id, item.id)  # First arg is item
+            self.assertEqual(call_args[0][1].id, self.agent1.id)  # Second arg is new responsible
+    
+    def test_take_over_no_mail_when_already_responsible(self):
+        """Test that take over action doesn't send mail when already responsible."""
+        from unittest.mock import patch
+        
+        self.client.login(username='agent1', password='testpass')
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            responsible=self.agent1
+        )
+        
+        with patch('core.views._send_responsible_notification') as mock_send:
+            response = self.client.post(
+                reverse('item-take-over-responsible', args=[item.id])
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['success'])
+            self.assertTrue(data.get('no_change', False))
+            
+            # Verify mail function was NOT called
+            mock_send.assert_not_called()
+    
+    def test_assign_sends_mail_on_change(self):
+        """Test that assign action sends mail when responsible changes."""
+        from unittest.mock import patch
+        
+        self.client.login(username='agent1', password='testpass')
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type
+        )
+        
+        with patch('core.views._send_responsible_notification') as mock_send:
+            response = self.client.post(
+                reverse('item-assign-responsible', args=[item.id]),
+                {'agent_id': self.agent2.id}
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['success'])
+            
+            # Verify mail function was called
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args
+            self.assertEqual(call_args[0][0].id, item.id)  # First arg is item
+            self.assertEqual(call_args[0][1].id, self.agent2.id)  # Second arg is new responsible
+    
+    def test_assign_no_mail_when_already_responsible(self):
+        """Test that assign action doesn't send mail when already responsible."""
+        from unittest.mock import patch
+        
+        self.client.login(username='agent1', password='testpass')
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            responsible=self.agent2
+        )
+        
+        with patch('core.views._send_responsible_notification') as mock_send:
+            response = self.client.post(
+                reverse('item-assign-responsible', args=[item.id]),
+                {'agent_id': self.agent2.id}
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['success'])
+            self.assertTrue(data.get('no_change', False))
+            
+            # Verify mail function was NOT called
+            mock_send.assert_not_called()
+    
+    def test_mail_notification_function_with_template(self):
+        """Test that mail notification function works with template."""
+        from unittest.mock import patch, MagicMock
+        from core.views import _send_responsible_notification
+        from core.models import GlobalSettings
+        
+        # Create global settings for base_url
+        GlobalSettings.objects.create(
+            id=1,
+            base_url='https://agira.example.com'
+        )
+        
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item for Mail',
+            type=self.item_type
+        )
+        
+        with patch('core.views.send_email') as mock_send_email:
+            _send_responsible_notification(item, self.agent1)
+            
+            # Verify send_email was called
+            mock_send_email.assert_called_once()
+            
+            # Check the arguments
+            call_kwargs = mock_send_email.call_args[1]
+            self.assertIn('subject', call_kwargs)
+            self.assertIn('body', call_kwargs)
+            self.assertIn('to', call_kwargs)
+            self.assertEqual(call_kwargs['to'], [self.agent1.email])
+            self.assertTrue(call_kwargs['body_is_html'])
+            
+            # Verify subject contains item title
+            self.assertIn('Test Item for Mail', call_kwargs['subject'])
+    
+    def test_mail_template_exists_in_database(self):
+        """Test that the mail template 'resp' exists and is active."""
+        from core.models import MailTemplate
+        
+        template = MailTemplate.objects.filter(key='resp', is_active=True).first()
+        self.assertIsNotNone(template)
+        self.assertEqual(template.key, 'resp')
+        self.assertTrue(template.is_active)
+        self.assertIn('{{ issue.title }}', template.subject)
+        self.assertIn('{{ issue.responsible }}', template.message)
+        self.assertIn('{{ issue.link }}', template.message)
