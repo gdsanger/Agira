@@ -8000,6 +8000,98 @@ def change_send_approval_requests(request, id):
 
 @login_required
 @require_http_methods(["POST"])
+def change_send_approval_reminders(request, id):
+    """
+    Trigger sending reminder emails to all PENDING approvers for a Change.
+
+    This endpoint is called when the "Send Reminder" button is clicked.
+    """
+    from core.services.changes.approval_mailer import send_change_approval_reminder_emails
+    from core.services.exceptions import ServiceError
+    from core.services.config import get_graph_config
+
+    change = get_object_or_404(Change, id=id)
+
+    # Validate Graph API service is configured before attempting to send emails
+    try:
+        config = get_graph_config()
+        if config is None:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not configured. Please configure Microsoft Graph API in system settings.'
+            }, status=400)
+
+        if not config.enabled:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not enabled. Please enable Microsoft Graph API in system settings.'
+            }, status=400)
+
+        if not config.tenant_id or not config.client_id or not config.client_secret:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not properly configured. Please configure Microsoft Graph API credentials in system settings.'
+            }, status=400)
+    except Exception as e:
+        logger.error(
+            f"Critical error checking Graph API configuration for Change {change.id}: {str(e)}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'success': False,
+            'error': 'Unable to verify email service configuration. Please contact system administrator.'
+        }, status=500)
+
+    try:
+        request_base_url = request.build_absolute_uri('/')
+
+        result = send_change_approval_reminder_emails(change, request_base_url)
+
+        if result['success']:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='change.approval_reminders_sent',
+                target=change,
+                actor=request.user,
+                summary=f'Approval reminder emails sent to {result["sent_count"]} approvers'
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Approval reminder emails sent to {result["sent_count"]} approvers',
+                'sent_count': result['sent_count']
+            })
+        else:
+            error_msg = f'Sent {result["sent_count"]} emails, but {result["failed_count"]} failed'
+            if result['errors']:
+                error_msg += f': {"; ".join(result["errors"][:3])}'
+
+            logger.warning(f"Partial failure sending approval reminders for Change {change.id}: {error_msg}")
+
+            return JsonResponse({
+                'success': False,
+                'error': error_msg,
+                'sent_count': result['sent_count'],
+                'failed_count': result['failed_count']
+            }, status=500)
+
+    except ServiceError as e:
+        logger.error(f"Service error sending approval reminders for Change {change.id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error sending approval reminders for Change {change.id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
 def change_update_approver(request, id, approval_id):
     """Update approver details including new fields and attachment."""
     from core.services.storage.service import AttachmentStorageService
