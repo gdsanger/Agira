@@ -499,6 +499,7 @@ class Change(models.Model):
 class ChangeApproval(models.Model):
     change = models.ForeignKey(Change, on_delete=models.CASCADE, related_name='approvals')
     approver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='approvals')
+    role = models.CharField(max_length=20, choices=UserRole.choices, null=True, blank=True, help_text="The role for which this approver is assigned")
     is_required = models.BooleanField(default=True)
     status = models.CharField(max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING)
     decision_at = models.DateTimeField(null=True, blank=True)
@@ -510,7 +511,7 @@ class ChangeApproval(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['change', 'approver'], name='unique_change_approver')
+            models.UniqueConstraint(fields=['change', 'approver', 'role'], name='unique_change_approver_role')
         ]
         ordering = ['change', 'approver']
 

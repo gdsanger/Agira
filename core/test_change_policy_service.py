@@ -594,3 +594,118 @@ class ChangePolicyMultiOrgTestCase(TestCase):
             24,
             f"Expected 24 approvals (12 APPROVER + 6 INFO + 6 DEV), but got {len(approvals)}"
         )
+
+
+class ChangePolicyInfoDevAttributesTestCase(TestCase):
+    """Tests for correct attributes on INFO/DEV ChangeApproval records."""
+
+    def setUp(self):
+        self.org = Organisation.objects.create(name="Org A")
+        self.project = Project.objects.create(name="Project A")
+        self.creator = User.objects.create_user(
+            username="creator", email="creator@example.com", password="testpass",
+            name="Creator", role=UserRole.USER
+        )
+        self.info_user = User.objects.create_user(
+            username="info_user", email="info@example.com", password="testpass",
+            name="Info User", role=UserRole.USER
+        )
+        self.dev_user = User.objects.create_user(
+            username="dev_user", email="dev@example.com", password="testpass",
+            name="Dev User", role=UserRole.USER
+        )
+        UserOrganisation.objects.create(
+            user=self.info_user, organisation=self.org, role=UserRole.INFO, is_primary=True
+        )
+        UserOrganisation.objects.create(
+            user=self.dev_user, organisation=self.org, role=UserRole.DEV, is_primary=True
+        )
+        self.change = Change.objects.create(
+            project=self.project,
+            title="Info/Dev Test Change",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            created_by=self.creator,
+        )
+        self.change.organisations.add(self.org)
+
+    def test_info_approval_attributes(self):
+        """INFO ChangeApproval must have is_required=False, notes, status=INFO, approved_at set."""
+        ChangePolicyService.sync_change_approvers(self.change)
+        approval = ChangeApproval.objects.get(change=self.change, approver=self.info_user, role=UserRole.INFO)
+        self.assertFalse(approval.is_required)
+        self.assertEqual(approval.notes, "Nur zur Info")
+        self.assertEqual(approval.status, ApprovalStatus.INFO)
+        self.assertIsNotNone(approval.approved_at)
+
+    def test_dev_approval_attributes(self):
+        """DEV ChangeApproval must have is_required=False, notes, status=INFO, approved_at set."""
+        ChangePolicyService.sync_change_approvers(self.change)
+        approval = ChangeApproval.objects.get(change=self.change, approver=self.dev_user, role=UserRole.DEV)
+        self.assertFalse(approval.is_required)
+        self.assertEqual(approval.notes, "Nur zur Info")
+        self.assertEqual(approval.status, ApprovalStatus.INFO)
+        self.assertIsNotNone(approval.approved_at)
+
+    def test_info_dev_always_assigned_without_policy(self):
+        """INFO and DEV must be assigned even when no ChangePolicy matches."""
+        # No policy created → find_matching_policy returns None
+        result = ChangePolicyService.sync_change_approvers(self.change)
+        self.assertFalse(result['policy_found'])
+        approvers = list(ChangeApproval.objects.filter(change=self.change).values_list('approver_id', flat=True))
+        self.assertIn(self.info_user.id, approvers)
+        self.assertIn(self.dev_user.id, approvers)
+
+    def test_idempotency(self):
+        """Calling sync twice must not create duplicate ChangeApproval rows."""
+        ChangePolicyService.sync_change_approvers(self.change)
+        count_first = ChangeApproval.objects.filter(change=self.change).count()
+        ChangePolicyService.sync_change_approvers(self.change)
+        count_second = ChangeApproval.objects.filter(change=self.change).count()
+        self.assertEqual(count_first, count_second)
+
+    def test_removal_skipped_when_approved_at_set(self):
+        """ChangeApproval with approved_at set must NOT be removed even if no longer in target."""
+        from django.utils import timezone
+        # Manually create an approval for an org-less user (will be out of target)
+        other_user = User.objects.create_user(
+            username="other", email="other@example.com", password="testpass",
+            name="Other", role=UserRole.USER
+        )
+        # Give other_user an INFO role in a different org not on the change
+        other_org = Organisation.objects.create(name="Org B")
+        UserOrganisation.objects.create(
+            user=other_user, organisation=other_org, role=UserRole.INFO, is_primary=True
+        )
+        approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=other_user,
+            role=UserRole.INFO,
+            is_required=False,
+            status=ApprovalStatus.INFO,
+            notes="Nur zur Info",
+            approved_at=timezone.now(),
+        )
+        # Sync – other_user is not in target, but approved_at is set → must be kept
+        result = ChangePolicyService.sync_change_approvers(self.change)
+        self.assertEqual(result['approvers_removed'], 0)
+        self.assertTrue(ChangeApproval.objects.filter(id=approval.id).exists())
+
+    def test_approver_role_only_when_in_required_roles(self):
+        """APPROVER users are only synced when APPROVER is in required_roles (policy-dependent)."""
+        approver_user = User.objects.create_user(
+            username="approver2", email="approver2@example.com", password="testpass",
+            name="Approver2", role=UserRole.USER
+        )
+        UserOrganisation.objects.create(
+            user=approver_user, organisation=self.org, role=UserRole.APPROVER, is_primary=True
+        )
+        # No policy → APPROVER NOT in required_roles
+        result = ChangePolicyService.sync_change_approvers(self.change)
+        self.assertNotIn(UserRole.APPROVER, result['required_roles'])
+        approver_ids = list(
+            ChangeApproval.objects.filter(change=self.change, role=UserRole.APPROVER)
+            .values_list('approver_id', flat=True)
+        )
+        self.assertNotIn(approver_user.id, approver_ids)
