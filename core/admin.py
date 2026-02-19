@@ -202,7 +202,7 @@ class ChangeAdmin(admin.ModelAdmin):
 
 @admin.register(ChangeApproval)
 class ChangeApprovalAdmin(admin.ModelAdmin):
-    list_display = ['change', 'approver', 'is_required', 'status', 'approved_at', 'decision_at']
+    list_display = ['change', 'approver', 'is_required', 'status', 'approved_at', 'decision_at', 'created_at', 'updated_at']
     list_filter = ['status', 'is_required']
     search_fields = ['change__title', 'approver__username']
     autocomplete_fields = ['change', 'approver']
@@ -210,7 +210,7 @@ class ChangeApprovalAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {'fields': ('change', 'approver', 'is_required')}),
-        ('Status', {'fields': ('status', 'decision_at', 'approved_at')}),
+        ('Status', {'fields': ('status', 'decision_at', 'approved_at', 'created_at', 'updated_at')}),
         ('Comments & Notes', {'fields': ('comment', 'notes')}),
     )
 
