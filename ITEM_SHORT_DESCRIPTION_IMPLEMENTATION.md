@@ -66,11 +66,12 @@ Successfully implemented the Item Short Description feature as specified in issu
 
 ### 3. Change Report Integration
 - **File**: `core/templates/printing/change_report.html`
-- **Changes**: Modified "Items aus Release" section to display:
-  1. Item title in **bold** (first line)
-  2. Short description in normal text (second line)
-  3. Empty line if short_description is null/empty (uses `&nbsp;`)
-- **Format**: Changed from table layout to div-based layout for better control
+- **Changes**: Modified "Items aus Release" section to display items in a table with three columns:
+  1. **Item ID**: Shows `#{{ item.id }}`
+  2. **Type**: Shows `{{ item.type.name }}`
+  3. **Title**: Contains item title in **bold** (first line) and short description in normal text (second line)
+- **Empty Short Description**: If short_description is null/empty, displays empty line (uses `&nbsp;`)
+- **Format**: Table format with proper headers (Item ID, Type, Title) for professional ISO Change Report presentation
 
 ### 4. Testing
 - **File**: `core/test_item_short_description.py`
