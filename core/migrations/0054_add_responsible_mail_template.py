@@ -23,75 +23,87 @@ def add_responsible_mail_template(apps, schema_editor):
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #007bff; color: white; padding: 15px; text-align: center; }
-        .content { background-color: #f8f9fa; padding: 20px; margin-top: 10px; }
-        .details { background-color: white; padding: 15px; border-left: 4px solid #007bff; margin: 15px 0; }
-        .details table { width: 100%; border-collapse: collapse; }
-        .details td { padding: 8px 0; vertical-align: top; }
-        .details td:first-child { font-weight: bold; width: 40%; }
-        .button { background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; display: inline-block; margin: 15px 0; border-radius: 4px; }
-        .footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h2>Item wurde Ihnen zugewiesen</h2>
-        </div>
-        
-        <div class="content">
-            <p>Hallo {{ issue.responsible }},</p>
-            
-            <p>das folgende Item wurde Ihnen als verantwortliche Person zugewiesen:</p>
-            
-            <div class="details">
-                <table>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
+                    <!-- Header -->
                     <tr>
-                        <td>Titel:</td>
-                        <td><strong>{{ issue.title }}</strong></td>
+                        <td style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;">
+                            <h2 style="margin: 0; font-size: 24px;">Item wurde Ihnen zugewiesen</h2>
+                        </td>
                     </tr>
+                    
+                    <!-- Content -->
                     <tr>
-                        <td>Typ:</td>
-                        <td>{{ issue.type }}</td>
+                        <td style="background-color: #f8f9fa; padding: 30px;">
+                            <p style="margin: 0 0 15px 0; font-size: 14px;">Hallo {{ issue.responsible }},</p>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 14px;">das folgende Item wurde Ihnen als verantwortliche Person zugewiesen:</p>
+                            
+                            <!-- Details Box -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-left: 4px solid #007bff; margin: 20px 0;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Titel:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;"><strong>{{ issue.title }}</strong></td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Typ:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{{ issue.type }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Projekt:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{{ issue.project }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Verantwortlich:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{{ issue.responsible }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Zugewiesen an:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{% if issue.assigned_to %}{{ issue.assigned_to }}{% else %}<em>—</em>{% endif %}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Requester:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{{ issue.requester }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px 0; vertical-align: top; font-weight: bold; width: 40%; font-size: 14px;">Status:</td>
+                                                <td style="padding: 8px 0; vertical-align: top; font-size: 14px;">{{ issue.status }}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Button -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+                                <tr>
+                                    <td style="background-color: #007bff; text-align: center;">
+                                        <a href="{{ issue.link }}" style="background-color: #007bff; color: #ffffff; padding: 12px 24px; text-decoration: none; display: block; font-size: 14px; font-weight: bold;">Item anzeigen</a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="margin: 20px 0 0 0; font-size: 14px;">Mit freundlichen Grüßen<br>Agira Team</p>
+                        </td>
                     </tr>
+                    
+                    <!-- Footer -->
                     <tr>
-                        <td>Projekt:</td>
-                        <td>{{ issue.project }}</td>
-                    </tr>
-                    <tr>
-                        <td>Verantwortlich:</td>
-                        <td>{{ issue.responsible }}</td>
-                    </tr>
-                    <tr>
-                        <td>Zugewiesen an:</td>
-                        <td>{% if issue.assigned_to %}{{ issue.assigned_to }}{% else %}<em>—</em>{% endif %}</td>
-                    </tr>
-                    <tr>
-                        <td>Requester:</td>
-                        <td>{{ issue.requester }}</td>
-                    </tr>
-                    <tr>
-                        <td>Status:</td>
-                        <td>{{ issue.status }}</td>
+                        <td style="background-color: #ffffff; padding: 20px; text-align: center; border-top: 1px solid #dddddd;">
+                            <p style="margin: 0; font-size: 12px; color: #666666;">Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht direkt auf diese Nachricht.</p>
+                        </td>
                     </tr>
                 </table>
-            </div>
-            
-            <p>
-                <a href="{{ issue.link }}" class="button">Item anzeigen</a>
-            </p>
-            
-            <p>Mit freundlichen Grüßen<br>
-            Agira Team</p>
-        </div>
-        
-        <div class="footer">
-            <p>Diese E-Mail wurde automatisch generiert. Bitte antworten Sie nicht direkt auf diese Nachricht.</p>
-        </div>
-    </div>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>''',
         from_name='Agira',
