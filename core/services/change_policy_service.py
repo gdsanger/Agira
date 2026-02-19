@@ -213,6 +213,7 @@ class ChangePolicyService:
         existing_map = {(a.approver_id, a.role): a for a in existing_approvals}
 
         # Add missing (user_id, role) pairs
+        approvals_to_create = []
         now = timezone.now()
         for (user_id, role) in target:
             if (user_id, role) not in existing_map:
@@ -226,10 +227,11 @@ class ChangePolicyService:
                     notes="Nur zur Info" if is_info_or_dev else "",
                     approved_at=now if is_info_or_dev else None,
                 )
-                # Use create() (not bulk_create) so model save hooks/defaults are applied
-                # (e.g. unique decision_token generation).
-                ChangeApproval.objects.create(**create_kwargs)
+                approvals_to_create.append(ChangeApproval(**create_kwargs))
                 approvers_added += 1
+
+        if approvals_to_create:
+            ChangeApproval.objects.bulk_create(approvals_to_create)
 
         # Remove obsolete (user_id, role) pairs that are no longer in target,
         # but only if no decision has been made (approved_at IS NULL)
