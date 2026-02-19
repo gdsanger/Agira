@@ -183,7 +183,6 @@ class ChangeAdmin(admin.ModelAdmin):
     search_fields = ['title', 'description']
     autocomplete_fields = ['project', 'release', 'created_by']
     filter_horizontal = ['organisations']
-    readonly_fields = ['created_at', 'updated_at']
     inlines = [ChangeApprovalInline]
     
     fieldsets = (
