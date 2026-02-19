@@ -11,7 +11,9 @@ from core.models import (
     Change, ChangeApproval, ChangeStatus, Project,
     User, ApprovalStatus, RiskLevel, MailTemplate
 )
+from core.printing.dto import PdfResult
 from core.services.exceptions import ServiceError, ServiceDisabled, ServiceNotConfigured
+from core.services.changes.approval_mailer import generate_change_pdf_bytes
 
 
 class ChangeApprovalRequestsTestCase(TestCase):
@@ -248,3 +250,56 @@ class ChangeApprovalRequestsTestCase(TestCase):
         response = self.client.post(url)
         
         self.assertEqual(response.status_code, 404)
+
+
+class GenerateChangePdfBytesTestCase(TestCase):
+    """Test generate_change_pdf_bytes uses correct PdfResult attributes"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pdfuser",
+            email="pdfuser@example.com",
+            password="testpass",
+            name="PDF User"
+        )
+        self.project = Project.objects.create(
+            name="PDF Test Project",
+            status="ACTIVE"
+        )
+        self.change = Change.objects.create(
+            title="PDF Test Change",
+            description="PDF test description",
+            project=self.project,
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            created_by=self.user
+        )
+
+    @patch('core.services.changes.approval_mailer.PdfRenderService')
+    def test_returns_pdf_bytes(self, mock_service_class):
+        """generate_change_pdf_bytes should return PdfResult.pdf_bytes"""
+        expected_bytes = b"%PDF-1.4 fake pdf content"
+        mock_result = PdfResult(
+            pdf_bytes=expected_bytes,
+            filename="change-1.pdf",
+        )
+        mock_service_class.return_value.render.return_value = mock_result
+
+        result = generate_change_pdf_bytes(self.change, "http://testserver")
+
+        self.assertEqual(result, expected_bytes)
+
+    @patch('core.services.changes.approval_mailer.PdfRenderService')
+    def test_raises_service_error_when_pdf_too_large(self, mock_service_class):
+        """generate_change_pdf_bytes should raise ServiceError when PDF exceeds 3 MB"""
+        oversized_bytes = b"x" * (3 * 1024 * 1024 + 1)
+        mock_result = PdfResult(
+            pdf_bytes=oversized_bytes,
+            filename="change-1.pdf",
+        )
+        mock_service_class.return_value.render.return_value = mock_result
+
+        with self.assertRaises(ServiceError) as ctx:
+            generate_change_pdf_bytes(self.change, "http://testserver")
+
+        self.assertIn("too large", str(ctx.exception).lower())

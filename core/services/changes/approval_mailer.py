@@ -92,13 +92,13 @@ def generate_change_pdf_bytes(change: Change, request_base_url: str) -> bytes:
     
     # Check size limit (3 MB as per GraphAPI limit)
     max_size = 3 * 1024 * 1024  # 3 MB
-    if result.size > max_size:
+    if len(result) > max_size:
         raise ServiceError(
-            f"Change PDF is too large ({result.size / (1024*1024):.1f} MB). "
+            f"Change PDF is too large ({len(result) / (1024*1024):.1f} MB). "
             f"Maximum size for email attachment is {max_size / (1024*1024):.0f} MB"
         )
     
-    return result.content
+    return result.pdf_bytes
 
 
 def render_template(template: MailTemplate, change: Change, approve_url: str, reject_url: str) -> dict:
