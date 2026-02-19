@@ -156,6 +156,16 @@
                 <i class="bi bi-clipboard-plus"></i>
                 Create Blueprint
             </a>
+            {% if user.role == 'Agent' %}
+            <button type="button" class="btn btn-outline-success" onclick="takeOverResponsible()">
+                <i class="bi bi-person-check"></i>
+                Take over
+            </button>
+            {% endif %}
+            <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignResponsibleModal">
+                <i class="bi bi-person-plus"></i>
+                Assign
+            </button>
               <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
                     <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
@@ -1235,6 +1245,78 @@
         }
     }
     
+    // Take over responsible action
+    function takeOverResponsible() {
+        if (confirm('Are you sure you want to take over responsibility for this item?')) {
+            fetch('{% url 'item-take-over-responsible' item.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message || 'Responsibility taken over successfully!');
+                    if (!data.no_change) {
+                        // Reload the page to show the updated responsible field
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                } else {
+                    showToast('error', data.error || 'Failed to take over responsibility');
+                }
+            })
+            .catch(error => {
+                showToast('error', 'An error occurred while taking over responsibility');
+            });
+        }
+    }
+    
+    // Assign responsible action
+    document.getElementById('assignResponsibleForm')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const agentId = document.getElementById('agentSelect').value;
+        if (!agentId) {
+            showToast('error', 'Please select an agent');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('agent_id', agentId);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('{% url 'item-assign-responsible' item.id %}', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message || 'Responsibility assigned successfully!');
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('assignResponsibleModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                if (!data.no_change) {
+                    // Reload the page to show the updated responsible field
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+            } else {
+                showToast('error', data.error || 'Failed to assign responsibility');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'An error occurred while assigning responsibility');
+        });
+    });
+    
     // Upload transcript for meeting items
     function uploadTranscript() {
         const fileInput = document.getElementById('transcript-file-input');
@@ -1943,6 +2025,36 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Responsible Modal -->
+<div class="modal fade" id="assignResponsibleModal" tabindex="-1" aria-labelledby="assignResponsibleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="assignResponsibleModalLabel">Assign Responsible</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="assignResponsibleForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="agentSelect" class="form-label">Select Agent</label>
+                        <select class="form-select" id="agentSelect" name="agent_id" required>
+                            <option value="">-- Select Agent --</option>
+                            {% for agent in agents %}
+                            <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.email }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Assign</button>
                 </div>
             </form>
         </div>

@@ -951,6 +951,134 @@ def item_update_intern(request, item_id):
 
 @login_required
 @require_http_methods(["POST"])
+def item_take_over_responsible(request, item_id):
+    """
+    Take over action - sets responsible to current agent user.
+    Only available for users with Agent role.
+    Sends email notification only if responsible actually changes.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Check if current user is an agent
+    if request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'success': False,
+            'error': 'Only users with Agent role can take over responsibility.'
+        }, status=403)
+    
+    # Check if responsible is already set to current user
+    if item.responsible == request.user:
+        return JsonResponse({
+            'success': True,
+            'message': 'You are already the responsible person for this item.',
+            'no_change': True
+        })
+    
+    try:
+        # Store old responsible for logging
+        old_responsible = item.responsible
+        
+        # Set responsible to current user
+        item.responsible = request.user
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.responsible_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Took over responsibility (was: {old_responsible.name if old_responsible else "None"})'
+        )
+        
+        # Send email notification (only if responsible changed)
+        _send_responsible_notification(item, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Responsibility taken over by {request.user.name}',
+            'responsible_name': request.user.name
+        })
+    except Exception as e:
+        logger.error(f"Error in take over responsible: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_assign_responsible(request, item_id):
+    """
+    Assign action - sets responsible to selected agent user.
+    Only agents can be selected.
+    Sends email notification only if responsible actually changes.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    
+    # Get the selected agent user ID
+    agent_id = request.POST.get('agent_id')
+    
+    if not agent_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'No agent selected.'
+        }, status=400)
+    
+    try:
+        # Get the agent user
+        agent = get_object_or_404(User, id=agent_id)
+        
+        # Validate that user is an agent
+        if agent.role != UserRole.AGENT:
+            return JsonResponse({
+                'success': False,
+                'error': 'Selected user must have Agent role.'
+            }, status=400)
+        
+        # Check if responsible is already set to this agent
+        if item.responsible == agent:
+            return JsonResponse({
+                'success': True,
+                'message': f'{agent.name} is already the responsible person for this item.',
+                'no_change': True
+            })
+        
+        # Store old responsible for logging
+        old_responsible = item.responsible
+        
+        # Set responsible to selected agent
+        item.responsible = agent
+        item.save()
+        
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.responsible_changed',
+            target=item,
+            actor=request.user,
+            summary=f'Assigned responsibility to {agent.name} (was: {old_responsible.name if old_responsible else "None"})'
+        )
+        
+        # Send email notification (only if responsible changed)
+        _send_responsible_notification(item, agent)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Responsibility assigned to {agent.name}',
+            'responsible_name': agent.name
+        })
+    except Exception as e:
+        logger.error(f"Error in assign responsible: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
 def item_quick_create_user(request, item_id):
     """Quick create a user and set as requester for an item."""
     item = get_object_or_404(Item, id=item_id)
@@ -3885,6 +4013,66 @@ def _auto_generate_title_from_description(description, user=None):
     except Exception as e:
         logger.error(f"Failed to auto-generate title: {str(e)}")
         return ''
+
+
+def _send_responsible_notification(item, new_responsible):
+    """
+    Send email notification to new responsible user.
+    Uses mail template with key 'resp'.
+    
+    Args:
+        item: Item instance
+        new_responsible: User instance who is now responsible
+    """
+    try:
+        from .services.mail import mail_service
+        
+        # Get the mail template
+        template = MailTemplate.objects.filter(key='resp', is_active=True).first()
+        if not template:
+            logger.warning("Mail template 'resp' not found or inactive")
+            return
+        
+        # Get base URL from GlobalSettings
+        settings = GlobalSettings.get_instance()
+        base_url = settings.base_url if settings and settings.base_url else 'http://localhost:8000'
+        
+        # Build absolute link to item detail
+        item_link = f"{base_url.rstrip('/')}/items/{item.id}/"
+        
+        # Prepare template context
+        context = {
+            'issue': {
+                'title': item.title,
+                'type': item.type.name if item.type else '—',
+                'project': item.project.name if item.project else '—',
+                'responsible': new_responsible.name if new_responsible else '—',
+                'assigned_to': item.assigned_to.name if item.assigned_to else '',
+                'requester': item.requester.name if item.requester else '—',
+                'status': item.get_status_display(),
+                'link': item_link,
+            }
+        }
+        
+        # Render template
+        from django.template import Context, Template
+        subject_template = Template(template.subject)
+        message_template = Template(template.message)
+        
+        subject = subject_template.render(Context(context))
+        message = message_template.render(Context(context))
+        
+        # Send email
+        mail_service.send_email(
+            to=[new_responsible.email],
+            subject=subject,
+            body=message,
+            html=True
+        )
+        
+        logger.info(f"Sent responsible notification to {new_responsible.email} for item {item.id}")
+    except Exception as e:
+        logger.error(f"Failed to send responsible notification: {e}")
 
 
 def _update_item_followers(item, follower_ids):
