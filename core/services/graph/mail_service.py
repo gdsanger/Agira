@@ -251,10 +251,13 @@ def send_email(
     except Exception as e:
         error_msg = str(e)
         # Provide more user-friendly error messages for common issues
-        if "ServiceDisabled" in str(type(e).__name__):
+        if isinstance(e, ServiceDisabled):
             error_msg = "Email service is not enabled"
-        elif "ServiceNotConfigured" in str(type(e).__name__):
+        elif isinstance(e, ServiceNotConfigured):
             error_msg = "Email service is not properly configured"
+        elif isinstance(e, ServiceError):
+            # ServiceError already has a descriptive message, use it
+            error_msg = str(e)
         elif "Connection" in error_msg or "SSL" in error_msg or "TLS" in error_msg:
             error_msg = f"Network connection error: {error_msg}"
         elif "timeout" in error_msg.lower():

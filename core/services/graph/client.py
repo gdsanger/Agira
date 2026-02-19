@@ -106,9 +106,6 @@ class GraphClient:
                 logger.error(f"Failed to acquire token: {error_msg}")
                 raise ServiceError(f"Failed to acquire Graph API token: {error_msg}")
                 
-        except ServiceError:
-            # Re-raise ServiceError as-is
-            raise
         except (ConnectionError, TimeoutError) as e:
             # Handle connection issues specifically
             logger.error(f"Network error acquiring Graph API token: {str(e)}", exc_info=True)
@@ -194,9 +191,6 @@ class GraphClient:
             # Return JSON response
             return response.json()
             
-        except ServiceError:
-            # Re-raise ServiceError as-is
-            raise
         except requests.Timeout as e:
             logger.error(f"Timeout making Graph API request: {str(e)}", exc_info=True)
             raise ServiceError(f"Request timeout connecting to Microsoft Graph API: {str(e)}")
