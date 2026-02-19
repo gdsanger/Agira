@@ -187,65 +187,72 @@ class ChangePolicyService:
         # Get existing approvals
         existing_approvals = ChangeApproval.objects.filter(change=change).select_related('approver')
         
-        # Build a map of existing roles and their approvers
-        # Note: We now get roles from UserOrganisation in the change context
-        existing_roles = {}
-        for approval in existing_approvals:
-            # Get the approver's role in the context of this change's organizations
-            role = ChangePolicyService.get_approver_role_in_change_context(change, approval.approver)
-            if role:
-                if role not in existing_roles:
-                    existing_roles[role] = []
-                existing_roles[role].append(approval)
+        # Build a set of existing approver user IDs
+        existing_approver_ids = set(existing_approvals.values_list('approver_id', flat=True))
         
-        # Ensure at least one approver exists for each required role
+        # Track which users should be approvers based on required roles
+        users_that_should_be_approvers = set()
+        
+        # For each required role, find ALL users with that role in change organizations
         for required_role in required_roles:
-            if required_role not in existing_roles or not existing_roles[required_role]:
-                # No approver for this role - find users with this role in change organizations
-                users_with_role = ChangePolicyService.get_users_with_role_in_change_orgs(
-                    change, required_role
-                )
+            users_with_role = ChangePolicyService.get_users_with_role_in_change_orgs(
+                change, required_role
+            )
+            for user in users_with_role:
+                users_that_should_be_approvers.add(user.id)
+        
+        # Add missing approvers
+        for user_id in users_that_should_be_approvers:
+            if user_id not in existing_approver_ids:
+                user = User.objects.get(id=user_id)
+                role = ChangePolicyService.get_approver_role_in_change_context(change, user)
                 
-                if users_with_role:
-                    # Take the first user with this role
-                    user_with_role = users_with_role[0]
-                    # Create approval entry
-                    ChangeApproval.objects.create(
-                        change=change,
-                        approver=user_with_role,
-                        is_required=True,
-                        status=ApprovalStatus.PENDING
-                    )
-                    approvers_added += 1
-                    logger.info(
-                        f"Added approver {user_with_role.username} with org-role {required_role} "
-                        f"for change {change.id}"
-                    )
-                else:
-                    logger.warning(
-                        f"No user found with org-role {required_role} in change organizations "
-                        f"for change {change.id}"
-                    )
+                # Create approval entry (token will be auto-generated on save)
+                ChangeApproval.objects.create(
+                    change=change,
+                    approver=user,
+                    is_required=True,
+                    status=ApprovalStatus.PENDING
+                )
+                approvers_added += 1
+                logger.info(
+                    f"Added approver {user.username} with org-role {role} "
+                    f"for change {change.id}"
+                )
+        
+        # Log if no users found for a required role
+        for required_role in required_roles:
+            users_with_role = ChangePolicyService.get_users_with_role_in_change_orgs(
+                change, required_role
+            )
+            if not users_with_role:
+                logger.warning(
+                    f"No user found with org-role {required_role} in change organizations "
+                    f"for change {change.id}"
+                )
         
         # Remove obsolete approvers (only if they haven't made a decision)
         # An approver has made a decision if approved_at is set
-        for role, approvals in existing_roles.items():
-            if role not in required_roles:
-                # This role is no longer required
-                for approval in approvals:
-                    # Only remove if no decision has been made (approved_at is null)
-                    if approval.approved_at is None:
-                        logger.info(
-                            f"Removing approver {approval.approver.username} with role {role} "
-                            f"for change {change.id} (no longer required and no decision made)"
-                        )
-                        approval.delete()
-                        approvers_removed += 1
-                    else:
-                        logger.info(
-                            f"Keeping approver {approval.approver.username} with role {role} "
-                            f"for change {change.id} (decision already made at: {approval.approved_at})"
-                        )
+        for approval in existing_approvals:
+            approver_id = approval.approver_id
+            # Check if this approver should still be assigned
+            if approver_id not in users_that_should_be_approvers:
+                # This approver is no longer required
+                # Only remove if no decision has been made (approved_at is null)
+                if approval.approved_at is None:
+                    role = ChangePolicyService.get_approver_role_in_change_context(change, approval.approver)
+                    logger.info(
+                        f"Removing approver {approval.approver.username} with role {role} "
+                        f"for change {change.id} (no longer required and no decision made)"
+                    )
+                    approval.delete()
+                    approvers_removed += 1
+                else:
+                    role = ChangePolicyService.get_approver_role_in_change_context(change, approval.approver)
+                    logger.info(
+                        f"Keeping approver {approval.approver.username} with role {role} "
+                        f"for change {change.id} (decision already made at: {approval.approved_at})"
+                    )
         
         return {
             'policy_found': policy is not None,

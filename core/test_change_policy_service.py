@@ -461,3 +461,133 @@ class ChangePolicyMultiOrgTestCase(TestCase):
         # user1 has INFO in org1, user2 has DEV in org2
         self.assertIn(self.user1, approvers)
         self.assertIn(self.user2, approvers)
+    
+    def test_all_approvers_from_all_orgs_with_same_role(self):
+        """
+        Test that ALL users with the required role from ALL organizations are assigned.
+        
+        Scenario: Change has 6 organizations, each with at least one APPROVER.
+        Expected: ALL approvers from ALL organizations should be assigned.
+        """
+        # Create 6 organizations (use different names than setUp to avoid conflicts)
+        orgs = []
+        for i in range(3, 9):  # Changed from 1-7 to 3-9 to avoid conflict with existing Org 1, Org 2
+            org = Organisation.objects.create(name=f"Org {i}")
+            orgs.append(org)
+        
+        # Create users - at least one APPROVER per organization
+        approvers = []
+        for i, org in enumerate(orgs):
+            # Create 2 approvers per org to make it more realistic
+            for j in range(2):
+                user = User.objects.create_user(
+                    username=f"approver_org{i+1}_{j+1}",
+                    email=f"approver{i+1}_{j+1}@example.com",
+                    password="testpass",
+                    name=f"Approver {i+1}-{j+1}",
+                    role=UserRole.USER  # Global role is USER
+                )
+                UserOrganisation.objects.create(
+                    user=user,
+                    organisation=org,
+                    role=UserRole.APPROVER,  # Org-specific role is APPROVER
+                    is_primary=(j == 0)
+                )
+                approvers.append(user)
+        
+        # Also create INFO and DEV users for each org to satisfy mandatory roles
+        info_users = []
+        dev_users = []
+        for i, org in enumerate(orgs):
+            info_user = User.objects.create_user(
+                username=f"info_org{i+1}",
+                email=f"info{i+1}@example.com",
+                password="testpass",
+                name=f"Info {i+1}",
+                role=UserRole.USER
+            )
+            UserOrganisation.objects.create(
+                user=info_user,
+                organisation=org,
+                role=UserRole.INFO,
+                is_primary=True
+            )
+            info_users.append(info_user)
+            
+            dev_user = User.objects.create_user(
+                username=f"dev_org{i+1}",
+                email=f"dev{i+1}@example.com",
+                password="testpass",
+                name=f"Dev {i+1}",
+                role=UserRole.USER
+            )
+            UserOrganisation.objects.create(
+                user=dev_user,
+                organisation=org,
+                role=UserRole.DEV,
+                is_primary=True
+            )
+            dev_users.append(dev_user)
+        
+        # Create a change policy that requires APPROVER role
+        policy = ChangePolicy.objects.create(
+            risk_level=RiskLevel.NORMAL,
+            security_relevant=False,
+            release_type=None
+        )
+        ChangePolicyRole.objects.create(
+            policy=policy,
+            role=UserRole.APPROVER
+        )
+        
+        # Create change with all 6 organizations
+        change = Change.objects.create(
+            project=self.project,
+            title="Change with 6 Organizations",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            created_by=approvers[0]
+        )
+        change.organisations.add(*orgs)
+        
+        # Sync approvers
+        result = ChangePolicyService.sync_change_approvers(change)
+        
+        # Check that approvers were added
+        self.assertGreater(result['approvers_added'], 0)
+        
+        # Get all approvals
+        approvals = ChangeApproval.objects.filter(change=change)
+        assigned_approvers = [a.approver for a in approvals]
+        
+        # ALL approvers from ALL organizations should be assigned (12 total: 2 per org)
+        for approver in approvers:
+            self.assertIn(
+                approver, 
+                assigned_approvers,
+                f"Approver {approver.username} should be assigned but is missing"
+            )
+        
+        # ALL INFO users should be assigned (6 total: 1 per org)
+        for info_user in info_users:
+            self.assertIn(
+                info_user,
+                assigned_approvers,
+                f"INFO user {info_user.username} should be assigned but is missing"
+            )
+        
+        # ALL DEV users should be assigned (6 total: 1 per org)
+        for dev_user in dev_users:
+            self.assertIn(
+                dev_user,
+                assigned_approvers,
+                f"DEV user {dev_user.username} should be assigned but is missing"
+            )
+        
+        # Total: 12 approvers + 6 INFO + 6 DEV = 24 approvals
+        self.assertEqual(
+            len(approvals), 
+            24,
+            f"Expected 24 approvals (12 APPROVER + 6 INFO + 6 DEV), but got {len(approvals)}"
+        )

@@ -517,6 +517,11 @@ class ChangeApproval(models.Model):
     def __str__(self):
         return f"{self.change.title} - {self.approver.username} ({self.status})"
     
+    def save(self, *args, **kwargs):
+        """Override save to automatically generate decision token."""
+        self.ensure_token()
+        super().save(*args, **kwargs)
+    
     def ensure_token(self):
         """Generate and save a decision token if not already set."""
         import secrets
