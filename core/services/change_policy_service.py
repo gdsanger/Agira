@@ -1,10 +1,9 @@
 """
 Service for managing Change Policy and automatic approver assignment.
 """
-from typing import Optional, Set, List
+from typing import Optional, Set, List, Dict
 import logging
 from django.db import transaction
-from django.db.models import Q
 from core.models import (
     Change, ChangePolicy, ChangeApproval, ChangePolicyRole,
     UserRole, User, ApprovalStatus, UserOrganisation
@@ -33,20 +32,15 @@ class ChangePolicyService:
         # Get change organization IDs
         change_org_ids = list(change.organisations.values_list('id', flat=True))
         
-        if change_org_ids:
-            # Find users with the specified role in at least one of the change's organizations
-            users = User.objects.filter(
-                active=True,
-                user_organisations__organisation_id__in=change_org_ids,
-                user_organisations__role=role
-            ).distinct()
-        else:
-            # If change has no organizations, find users with the role in any organization
-            # This allows policy application even when organizations are not yet determined
-            users = User.objects.filter(
-                active=True,
-                user_organisations__role=role
-            ).distinct()
+        if not change_org_ids:
+            return []
+
+        # Find users with the specified role in at least one of the change's organizations
+        users = User.objects.filter(
+            active=True,
+            user_organisations__organisation_id__in=change_org_ids,
+            user_organisations__role=role
+        ).distinct()
         
         return list(users)
     
@@ -132,7 +126,6 @@ class ChangePolicyService:
     def get_required_roles(policy: Optional[ChangePolicy]) -> Set[str]:
         """
         Get the set of required roles for a change based on the policy.
-        Always includes INFO and DEV roles.
         
         Args:
             policy: The ChangePolicy to get roles from (can be None)
@@ -140,8 +133,7 @@ class ChangePolicyService:
         Returns:
             Set of role strings
         """
-        # Start with mandatory roles
-        required_roles = {UserRole.INFO, UserRole.DEV}
+        required_roles = set()
         
         # Add roles from policy if one was found
         if policy:
@@ -182,24 +174,35 @@ class ChangePolicyService:
         # Find matching policy
         policy = ChangePolicyService.find_matching_policy(change)
 
-        # Get required roles (includes INFO and DEV always)
+        # Get required roles from policy only
         required_roles = ChangePolicyService.get_required_roles(policy)
 
         # Determine sync_roles: always include INFO and DEV; APPROVER only if in required_roles
         always_roles = {UserRole.INFO, UserRole.DEV}
-        sync_roles = always_roles | (required_roles - always_roles)
+        sync_roles = always_roles | required_roles
 
         # Track changes
         approvers_added = 0
         approvers_removed = 0
 
-        # Build target set: {(user_id, role)} from UserOrganisation
-        target: set = set()
+        # Build target set: {(user_id, role)} from UserOrganisation in a single query
+        target: Set[tuple] = set()
+        change_org_ids = list(change.organisations.values_list('id', flat=True))
+        user_ids_by_role: Dict[str, Set[int]] = {role: set() for role in sync_roles}
+
+        if change_org_ids:
+            org_roles = UserOrganisation.objects.filter(
+                organisation_id__in=change_org_ids,
+                role__in=sync_roles,
+                user__active=True,
+            ).values_list('user_id', 'role').distinct()
+
+            for user_id, role in org_roles:
+                user_ids_by_role[role].add(user_id)
+                target.add((user_id, role))
+
         for role in sync_roles:
-            users_with_role = ChangePolicyService.get_users_with_role_in_change_orgs(change, role)
-            for user in users_with_role:
-                target.add((user.id, role))
-            if not users_with_role:
+            if not user_ids_by_role[role]:
                 logger.warning(
                     f"No user found with org-role {role} in change organizations "
                     f"for change {change.id}"
@@ -210,25 +213,23 @@ class ChangePolicyService:
         existing_map = {(a.approver_id, a.role): a for a in existing_approvals}
 
         # Add missing (user_id, role) pairs
+        now = timezone.now()
         for (user_id, role) in target:
             if (user_id, role) not in existing_map:
-                user = User.objects.get(id=user_id)
                 is_info_or_dev = role in (UserRole.INFO, UserRole.DEV)
                 create_kwargs = dict(
                     change=change,
-                    approver=user,
+                    approver_id=user_id,
                     role=role,
                     is_required=not is_info_or_dev,
                     status=ApprovalStatus.INFO if is_info_or_dev else ApprovalStatus.PENDING,
                     notes="Nur zur Info" if is_info_or_dev else "",
-                    approved_at=timezone.now() if is_info_or_dev else None,
+                    approved_at=now if is_info_or_dev else None,
                 )
+                # Use create() (not bulk_create) so model save hooks/defaults are applied
+                # (e.g. unique decision_token generation).
                 ChangeApproval.objects.create(**create_kwargs)
                 approvers_added += 1
-                logger.info(
-                    f"Added approver {user.username} with org-role {role} "
-                    f"for change {change.id}"
-                )
 
         # Remove obsolete (user_id, role) pairs that are no longer in target,
         # but only if no decision has been made (approved_at IS NULL)
