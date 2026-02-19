@@ -126,7 +126,10 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="mb-0 text-muted">No organisations assigned</p>
+                <div class="alert alert-info mb-0" role="alert">
+                    <i class="bi bi-info-circle"></i>
+                    <small>No organisations assigned yet. Organisations may be determined later. Change policy will still be applied.</small>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -367,8 +370,8 @@
                                     <div class="btn-group" role="group">
                                         <button type="button"
                                                 class="btn btn-success btn-sm"
-                                                hx-post="{% url 'change-approve' change.id approval.id %}"
-                                                hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) location.reload(); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#approveModal{{ approval.id }}">
                                             <i class="bi bi-check-lg"></i> Approve
                                         </button>
                                         <button type="button"
@@ -486,6 +489,15 @@
                                             You are about to reject this change. A comment explaining the rejection is required.
                                         </div>
                                         <div class="mb-3">
+                                            <label for="reject_date_{{ approval.id }}" class="form-label">Datum <span class="text-danger">*</span></label>
+                                            <input type="date" 
+                                                   class="form-control" 
+                                                   id="reject_date_{{ approval.id }}" 
+                                                   name="decision_date" 
+                                                   required
+                                                   value="{{ today|date:'Y-m-d' }}">
+                                        </div>
+                                        <div class="mb-3">
                                             <label for="reject_comment_{{ approval.id }}" class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
                                             <textarea class="form-control" 
                                                       id="reject_comment_{{ approval.id }}" 
@@ -523,6 +535,15 @@
                                             You are about to abstain from approving this change. You may optionally provide a comment.
                                         </div>
                                         <div class="mb-3">
+                                            <label for="abstain_date_{{ approval.id }}" class="form-label">Datum <span class="text-danger">*</span></label>
+                                            <input type="date" 
+                                                   class="form-control" 
+                                                   id="abstain_date_{{ approval.id }}" 
+                                                   name="decision_date" 
+                                                   required
+                                                   value="{{ today|date:'Y-m-d' }}">
+                                        </div>
+                                        <div class="mb-3">
                                             <label for="abstain_comment_{{ approval.id }}" class="form-label">Comment (Optional)</label>
                                             <textarea class="form-control" 
                                                       id="abstain_comment_{{ approval.id }}" 
@@ -535,6 +556,43 @@
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                         <button type="submit" class="btn btn-secondary">
                                             <i class="bi bi-dash-circle"></i> Abstain
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Approve Modal for {{ approval.id }} -->
+                    <div class="modal fade" id="approveModal{{ approval.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Approve Change</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form hx-post="{% url 'change-approve' change.id approval.id %}" 
+                                      hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); if(resp.reload) { bootstrap.Modal.getInstance(document.getElementById('approveModal{{ approval.id }}')).hide(); location.reload(); } } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'An error occurred', 'error'); }">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <div class="alert alert-success">
+                                            <i class="bi bi-check-circle"></i>
+                                            You are about to approve this change. Please specify the decision date.
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="approve_date_{{ approval.id }}" class="form-label">Datum <span class="text-danger">*</span></label>
+                                            <input type="date" 
+                                                   class="form-control" 
+                                                   id="approve_date_{{ approval.id }}" 
+                                                   name="decision_date" 
+                                                   required
+                                                   value="{{ today|date:'Y-m-d' }}">
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="bi bi-check-lg"></i> Approve Change
                                         </button>
                                     </div>
                                 </form>

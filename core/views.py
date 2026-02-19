@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.conf import settings
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, date, time
 import logging
 import os
 import re
@@ -7154,6 +7155,10 @@ def change_detail(request, id):
     # Get items associated with this change (direct + release items, deduplicated)
     items = change.get_associated_items()
     
+    # Get today's date for the decision date default
+    from datetime import date
+    today = date.today()
+    
     context = {
         'change': change,
         'description_html': description_html,
@@ -7163,6 +7168,7 @@ def change_detail(request, id):
         'communication_plan_html': communication_plan_html,
         'all_users': all_users,
         'items': items,
+        'today': today,
     }
     return render(request, 'change_detail.html', context)
 
@@ -7544,20 +7550,41 @@ def change_remove_approver(request, id, approval_id):
 
 
 @login_required
-
 @require_http_methods(["POST"])
 def change_approve(request, id, approval_id):
-    """Approve a change - Sets status to Accept and approved_at to current time."""
+    """Approve a change - Sets status to Accept and requires decision date."""
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
     try:
-        # Set approved_at to current server time
-        approval.approved_at = timezone.now()
-        # Set status to Accept (new enum value)
+        # Get decision_date from request - it's required
+        decision_date_str = request.POST.get('decision_date', '').strip()
+        
+        if not decision_date_str:
+            return JsonResponse({
+                'success': False,
+                'error': 'Decision date is required for approval'
+            }, status=400)
+        
+        # Parse the date
+        try:
+            # Parse ISO format date (YYYY-MM-DD)
+            decision_date = datetime.strptime(decision_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid date format. Expected YYYY-MM-DD'
+            }, status=400)
+        
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
+        # Set status to Accept
         approval.status = ApprovalStatus.ACCEPT
-        # Set decision_at
-        approval.decision_at = timezone.now()
+        # Also set decision_at for compatibility
+        approval.decision_at = decision_datetime
         
         approval.save()
         
@@ -7567,7 +7594,7 @@ def change_approve(request, id, approval_id):
             verb='change.approved',
             target=change,
             actor=request.user if request.user.is_authenticated else None,
-            summary=f'{approval.approver.name} approved the change'
+            summary=f'{approval.approver.name} approved the change on {decision_date.isoformat()}'
         )
         
         return JsonResponse({
@@ -7576,13 +7603,14 @@ def change_approve(request, id, approval_id):
             'reload': True
         })
     except Exception as e:
+        logger.exception(f"Error approving change: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 @login_required
 @require_http_methods(["POST"])
 def change_reject(request, id, approval_id):
-    """Reject a change - Sets status to Reject and saves required comment."""
+    """Reject a change - Sets status to Reject and requires decision date and comment."""
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
@@ -7596,12 +7624,36 @@ def change_reject(request, id, approval_id):
                 'error': 'Comment is required for rejection'
             }, status=400)
         
-        # Set status to Reject (new enum value)
+        # Get decision_date from request - it's required
+        decision_date_str = request.POST.get('decision_date', '').strip()
+        
+        if not decision_date_str:
+            return JsonResponse({
+                'success': False,
+                'error': 'Decision date is required for rejection'
+            }, status=400)
+        
+        # Parse the date
+        try:
+            # Parse ISO format date (YYYY-MM-DD)
+            decision_date = datetime.strptime(decision_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid date format. Expected YYYY-MM-DD'
+            }, status=400)
+        
+        # Set status to Reject
         approval.status = ApprovalStatus.REJECT
         # Save the comment
         approval.comment = comment
-        # Set decision_at
-        approval.decision_at = timezone.now()
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
+        # Also set decision_at for compatibility
+        approval.decision_at = decision_datetime
         
         approval.save()
         
@@ -7611,7 +7663,7 @@ def change_reject(request, id, approval_id):
             verb='change.rejected',
             target=change,
             actor=request.user if request.user.is_authenticated else None,
-            summary=f'{approval.approver.name} rejected the change'
+            summary=f'{approval.approver.name} rejected the change on {decision_date.isoformat()}'
         )
         
         return JsonResponse({
@@ -7620,13 +7672,14 @@ def change_reject(request, id, approval_id):
             'reload': True
         })
     except Exception as e:
+        logger.exception(f"Error rejecting change: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 @login_required
 @require_http_methods(["POST"])
 def change_abstain(request, id, approval_id):
-    """Abstain from a change - Sets status to Abstained and saves optional comment."""
+    """Abstain from a change - Sets status to Abstained and requires decision date."""
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
     
@@ -7634,13 +7687,37 @@ def change_abstain(request, id, approval_id):
         # Get comment from request - it's optional for abstained
         comment = request.POST.get('comment', '').strip()
         
+        # Get decision_date from request - it's required
+        decision_date_str = request.POST.get('decision_date', '').strip()
+        
+        if not decision_date_str:
+            return JsonResponse({
+                'success': False,
+                'error': 'Decision date is required for abstention'
+            }, status=400)
+        
+        # Parse the date
+        try:
+            # Parse ISO format date (YYYY-MM-DD)
+            decision_date = datetime.strptime(decision_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid date format. Expected YYYY-MM-DD'
+            }, status=400)
+        
         # Set status to Abstained
         approval.status = ApprovalStatus.ABSTAINED
         # Save the comment if provided
         if comment:
             approval.comment = comment
-        # Set decision_at
-        approval.decision_at = timezone.now()
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
+        # Also set decision_at for compatibility
+        approval.decision_at = decision_datetime
         
         approval.save()
         
@@ -7650,7 +7727,7 @@ def change_abstain(request, id, approval_id):
             verb='change.abstained',
             target=change,
             actor=request.user if request.user.is_authenticated else None,
-            summary=f'{approval.approver.name} abstained from approving the change'
+            summary=f'{approval.approver.name} abstained from approving the change on {decision_date.isoformat()}'
         )
         
         return JsonResponse({
@@ -7659,6 +7736,7 @@ def change_abstain(request, id, approval_id):
             'reload': True
         })
     except Exception as e:
+        logger.exception(f"Error recording abstention: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
