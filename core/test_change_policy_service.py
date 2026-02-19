@@ -292,12 +292,10 @@ class ChangeApprovalDecisionDateTestCase(TestCase):
         self.assertEqual(self.approval.status, ApprovalStatus.ACCEPT)
         self.assertIsNotNone(self.approval.approved_at)
         
-        # Check that date is stored correctly (date only, no time)
-        expected_date = datetime(2024, 3, 15, 0, 0, 0)
-        self.assertEqual(
-            self.approval.approved_at.replace(tzinfo=None),
-            expected_date
-        )
+        # Check that date is stored correctly (date only, with timezone)
+        from datetime import time
+        expected_date = timezone.make_aware(datetime(2024, 3, 15, 0, 0, 0))
+        self.assertEqual(self.approval.approved_at, expected_date)
     
     def test_reject_requires_decision_date(self):
         """Test that reject action requires decision date"""
@@ -335,11 +333,8 @@ class ChangeApprovalDecisionDateTestCase(TestCase):
         self.assertEqual(self.approval.comment, 'Not ready yet')
         
         # Check that date is stored correctly
-        expected_date = datetime(2024, 3, 16, 0, 0, 0)
-        self.assertEqual(
-            self.approval.approved_at.replace(tzinfo=None),
-            expected_date
-        )
+        expected_date = timezone.make_aware(datetime(2024, 3, 16, 0, 0, 0))
+        self.assertEqual(self.approval.approved_at, expected_date)
     
     def test_abstain_requires_decision_date(self):
         """Test that abstain action requires decision date"""
@@ -377,11 +372,8 @@ class ChangeApprovalDecisionDateTestCase(TestCase):
         self.assertEqual(self.approval.comment, 'Cannot decide at this time')
         
         # Check that date is stored correctly
-        expected_date = datetime(2024, 3, 17, 0, 0, 0)
-        self.assertEqual(
-            self.approval.approved_at.replace(tzinfo=None),
-            expected_date
-        )
+        expected_date = timezone.make_aware(datetime(2024, 3, 17, 0, 0, 0))
+        self.assertEqual(self.approval.approved_at, expected_date)
     
     def test_invalid_date_format_returns_error(self):
         """Test that invalid date format returns error"""

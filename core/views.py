@@ -7553,7 +7553,7 @@ def change_remove_approver(request, id, approval_id):
 @require_http_methods(["POST"])
 def change_approve(request, id, approval_id):
     """Approve a change - Sets status to Accept and requires decision date."""
-    from datetime import datetime, date
+    from datetime import datetime, date, time
     
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
@@ -7578,12 +7578,15 @@ def change_approve(request, id, approval_id):
                 'error': 'Invalid date format. Expected YYYY-MM-DD'
             }, status=400)
         
-        # Store decision date in approved_at as date-only (datetime at midnight)
-        approval.approved_at = datetime.combine(decision_date, datetime.min.time())
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
         # Set status to Accept
         approval.status = ApprovalStatus.ACCEPT
         # Also set decision_at for compatibility
-        approval.decision_at = approval.approved_at
+        approval.decision_at = decision_datetime
         
         approval.save()
         
@@ -7610,7 +7613,7 @@ def change_approve(request, id, approval_id):
 @require_http_methods(["POST"])
 def change_reject(request, id, approval_id):
     """Reject a change - Sets status to Reject and requires decision date and comment."""
-    from datetime import datetime, date
+    from datetime import datetime, date, time
     
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
@@ -7648,10 +7651,13 @@ def change_reject(request, id, approval_id):
         approval.status = ApprovalStatus.REJECT
         # Save the comment
         approval.comment = comment
-        # Store decision date in approved_at as date-only (datetime at midnight)
-        approval.approved_at = datetime.combine(decision_date, datetime.min.time())
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
         # Also set decision_at for compatibility
-        approval.decision_at = approval.approved_at
+        approval.decision_at = decision_datetime
         
         approval.save()
         
@@ -7678,7 +7684,7 @@ def change_reject(request, id, approval_id):
 @require_http_methods(["POST"])
 def change_abstain(request, id, approval_id):
     """Abstain from a change - Sets status to Abstained and requires decision date."""
-    from datetime import datetime, date
+    from datetime import datetime, date, time
     
     change = get_object_or_404(Change, id=id)
     approval = get_object_or_404(ChangeApproval, id=approval_id, change=change)
@@ -7711,10 +7717,13 @@ def change_abstain(request, id, approval_id):
         # Save the comment if provided
         if comment:
             approval.comment = comment
-        # Store decision date in approved_at as date-only (datetime at midnight)
-        approval.approved_at = datetime.combine(decision_date, datetime.min.time())
+        # Store decision date in approved_at as date-only (datetime at midnight, timezone-aware)
+        decision_datetime = timezone.make_aware(
+            datetime.combine(decision_date, time.min)
+        )
+        approval.approved_at = decision_datetime
         # Also set decision_at for compatibility
-        approval.decision_at = approval.approved_at
+        approval.decision_at = decision_datetime
         
         approval.save()
         
