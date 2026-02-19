@@ -2141,6 +2141,7 @@ def item_generate_short_description_ai(request, item_id):
         }, status=403)
     
     item = get_object_or_404(Item, id=item_id)
+    activity_service = ActivityService()
     
     try:
         # Get current description
@@ -2166,7 +2167,6 @@ def item_generate_short_description_ai(request, item_id):
         item.save(update_fields=['short_description'])
         
         # Log activity - success
-        activity_service = ActivityService()
         activity_service.log(
             verb='item.short_description.ai_generated',
             target=item,
@@ -2181,7 +2181,6 @@ def item_generate_short_description_ai(request, item_id):
         
     except Exception as e:
         # Log activity - error
-        activity_service = ActivityService()
         activity_service.log(
             verb='item.short_description.ai_error',
             target=item,
