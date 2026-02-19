@@ -299,24 +299,14 @@ table.data-table tbody tr:nth-child(even) {
 {% if items %}
 <h2>Items aus Release</h2>
 
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Item ID</th>
-            <th>Typ</th>
-            <th>Titel</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in items %}
-        <tr>
-            <td>{{ item.id }}</td>
-            <td>{{ item.type.name|default:"—" }}</td>
-            <td>{{ item.title|default:"—" }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div style="margin-bottom: 15pt;">
+    {% for item in items %}
+    <div style="margin-bottom: 10pt;">
+        <div style="font-weight: bold;">{{ item.title|default:"—" }}</div>
+        <div>{% if item.short_description %}{{ item.short_description }}{% else %}&nbsp;{% endif %}</div>
+    </div>
+    {% endfor %}
+</div>
 {% endif %}
 
 <!-- 7. ORGANISATIONS SECTION -->
