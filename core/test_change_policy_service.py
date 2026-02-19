@@ -771,3 +771,72 @@ class ChangePolicyOrganisationScopeTestCase(TestCase):
                 role=UserRole.INFO,
             ).exists()
         )
+
+
+class ChangePolicyReleaseFallbackTestCase(TestCase):
+    """Policy matching should prefer release-specific rules and fall back to generic ones."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Fallback Project")
+        self.creator = User.objects.create_user(
+            username="fallback_creator", email="fallback_creator@example.com", password="testpass",
+            name="Fallback Creator", role=UserRole.USER
+        )
+        self.release_hotfix = Release.objects.create(
+            project=self.project,
+            name="Release 1.2.3",
+            version="1.2.3",
+            type=ReleaseType.HOTFIX,
+            status='Planned',
+            update_date=timezone.now(),
+        )
+
+    def test_find_matching_policy_falls_back_to_generic_when_release_specific_missing(self):
+        generic_policy = ChangePolicy.objects.create(
+            risk_level=RiskLevel.NORMAL,
+            security_relevant=False,
+            release_type=None,
+        )
+
+        change = Change.objects.create(
+            project=self.project,
+            title="Hotfix Change",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            release=self.release_hotfix,
+            created_by=self.creator,
+        )
+
+        policy = ChangePolicyService.find_matching_policy(change)
+
+        self.assertIsNotNone(policy)
+        self.assertEqual(policy.id, generic_policy.id)
+
+    def test_find_matching_policy_prefers_release_specific_over_generic(self):
+        generic_policy = ChangePolicy.objects.create(
+            risk_level=RiskLevel.NORMAL,
+            security_relevant=False,
+            release_type=None,
+        )
+        specific_policy = ChangePolicy.objects.create(
+            risk_level=RiskLevel.NORMAL,
+            security_relevant=False,
+            release_type=ReleaseType.HOTFIX,
+        )
+
+        change = Change.objects.create(
+            project=self.project,
+            title="Hotfix Change",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            release=self.release_hotfix,
+            created_by=self.creator,
+        )
+
+        policy = ChangePolicyService.find_matching_policy(change)
+
+        self.assertIsNotNone(policy)
+        self.assertEqual(policy.id, specific_policy.id)
+        self.assertNotEqual(policy.id, generic_policy.id)

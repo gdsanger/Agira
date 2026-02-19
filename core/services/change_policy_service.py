@@ -108,19 +108,15 @@ class ChangePolicyService:
         )
         
         # Handle release type matching
-        if change.release_id:
-            # Change has a release - match on release type
-            if change.release.type:
-                query = query.filter(release_type=change.release.type)
-            else:
-                # Release exists but has no type - no policy will match
-                return None
-        else:
-            # Change has no release - match policies with null release_type
-            query = query.filter(release_type__isnull=True)
-        
-        # Return first matching policy (should be unique due to constraint)
-        return query.first()
+        if change.release_id and change.release.type:
+            # Prefer release-specific policy, but fall back to generic policy (release_type is null)
+            specific_policy = query.filter(release_type=change.release.type).first()
+            if specific_policy:
+                return specific_policy
+            return query.filter(release_type__isnull=True).first()
+
+        # No release or release without type: use generic policy
+        return query.filter(release_type__isnull=True).first()
     
     @staticmethod
     def get_required_roles(policy: Optional[ChangePolicy]) -> Set[str]:
@@ -227,11 +223,10 @@ class ChangePolicyService:
                     notes="Nur zur Info" if is_info_or_dev else "",
                     approved_at=now if is_info_or_dev else None,
                 )
-                approvals_to_create.append(ChangeApproval(**create_kwargs))
+                # Use create() (not bulk_create) so model save hooks/defaults are applied
+                # (e.g. unique decision_token generation).
+                ChangeApproval.objects.create(**create_kwargs)
                 approvers_added += 1
-
-        if approvals_to_create:
-            ChangeApproval.objects.bulk_create(approvals_to_create)
 
         # Remove obsolete (user_id, role) pairs that are no longer in target,
         # but only if no decision has been made (approved_at IS NULL)
