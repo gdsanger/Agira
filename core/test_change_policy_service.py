@@ -469,9 +469,9 @@ class ChangePolicyMultiOrgTestCase(TestCase):
         Scenario: Change has 6 organizations, each with at least one APPROVER.
         Expected: ALL approvers from ALL organizations should be assigned.
         """
-        # Create 6 organizations (use different names than setUp to avoid conflicts)
+        # Create 6 organizations (use range 3-9 to generate orgs 3-8, avoiding conflict with existing Org 1, Org 2)
         orgs = []
-        for i in range(3, 9):  # Changed from 1-7 to 3-9 to avoid conflict with existing Org 1, Org 2
+        for i in range(3, 9):  # Creates Org 3, Org 4, Org 5, Org 6, Org 7, Org 8
             org = Organisation.objects.create(name=f"Org {i}")
             orgs.append(org)
         
