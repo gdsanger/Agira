@@ -709,3 +709,65 @@ class ChangePolicyInfoDevAttributesTestCase(TestCase):
             .values_list('approver_id', flat=True)
         )
         self.assertNotIn(approver_user.id, approver_ids)
+
+
+class ChangePolicyOrganisationScopeTestCase(TestCase):
+    """Ensure role resolution is strictly scoped to change organisations."""
+
+    def setUp(self):
+        self.org_on_change = Organisation.objects.create(name="Scoped Org")
+        self.org_off_change = Organisation.objects.create(name="Outside Org")
+        self.project = Project.objects.create(name="Project Scope")
+        self.creator = User.objects.create_user(
+            username="scope_creator", email="scope_creator@example.com", password="testpass",
+            name="Scope Creator", role=UserRole.USER
+        )
+        self.info_user = User.objects.create_user(
+            username="scope_info", email="scope_info@example.com", password="testpass",
+            name="Scope Info", role=UserRole.USER
+        )
+        UserOrganisation.objects.create(
+            user=self.info_user,
+            organisation=self.org_off_change,
+            role=UserRole.INFO,
+            is_primary=True,
+        )
+
+    def test_no_organisations_means_no_auto_assignment(self):
+        """Without change organisations, no UserOrganisation role may be used for assignment."""
+        change = Change.objects.create(
+            project=self.project,
+            title="No org change",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            created_by=self.creator,
+        )
+
+        result = ChangePolicyService.sync_change_approvers(change)
+
+        self.assertEqual(result['approvers_added'], 0)
+        self.assertEqual(ChangeApproval.objects.filter(change=change).count(), 0)
+
+    def test_users_outside_change_orgs_not_assigned(self):
+        """Users with matching role outside of change organisations must not be assigned."""
+        change = Change.objects.create(
+            project=self.project,
+            title="Scoped org change",
+            status=ChangeStatus.DRAFT,
+            risk=RiskLevel.NORMAL,
+            is_safety_relevant=False,
+            created_by=self.creator,
+        )
+        change.organisations.add(self.org_on_change)
+
+        result = ChangePolicyService.sync_change_approvers(change)
+
+        self.assertEqual(result['approvers_added'], 0)
+        self.assertFalse(
+            ChangeApproval.objects.filter(
+                change=change,
+                approver=self.info_user,
+                role=UserRole.INFO,
+            ).exists()
+        )
