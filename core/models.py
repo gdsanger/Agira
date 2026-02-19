@@ -443,8 +443,8 @@ class Change(models.Model):
     mitigation = models.TextField(blank=True)
     rollback_plan = models.TextField(blank=True)
     communication_plan = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(default=timezone.now, blank=True)
+    updated_at = models.DateTimeField(default=timezone.now, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_changes')
     release = models.ForeignKey(Release, on_delete=models.SET_NULL, null=True, blank=True, related_name='changes')
     organisations = models.ManyToManyField(Organisation, blank=True, related_name='changes')
@@ -459,6 +459,11 @@ class Change(models.Model):
             raise ValidationError({
                 'release': _('Release must belong to the same project as the change.')
             })
+
+    def save(self, *args, **kwargs):
+        if not kwargs.pop('_skip_auto_updated_at', False):
+            self.updated_at = timezone.now()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.project.name} - {self.title}"

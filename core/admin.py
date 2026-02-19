@@ -192,6 +192,13 @@ class ChangeAdmin(admin.ModelAdmin):
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
 
+    def save_model(self, request, obj, form, change):
+        if 'updated_at' in form.changed_data and form.cleaned_data.get('updated_at'):
+            obj.updated_at = form.cleaned_data['updated_at']
+            obj.save(_skip_auto_updated_at=True)
+        else:
+            super().save_model(request, obj, form, change)
+
 
 @admin.register(ChangeApproval)
 class ChangeApprovalAdmin(admin.ModelAdmin):
