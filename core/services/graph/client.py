@@ -106,18 +106,18 @@ class GraphClient:
                 logger.error(f"Failed to acquire token: {error_msg}")
                 raise ServiceError(f"Failed to acquire Graph API token: {error_msg}")
                 
-        except requests.exceptions.ConnectionError as e:
-            # Handle connection issues specifically
-            logger.error(f"Network error acquiring Graph API token: {str(e)}", exc_info=True)
-            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
+        except requests.exceptions.SSLError as e:
+            # Handle SSL/TLS errors explicitly (most specific, must come first)
+            logger.error(f"SSL/TLS error acquiring Graph API token: {str(e)}", exc_info=True)
+            raise ServiceError(f"SSL/TLS certificate error connecting to Microsoft Graph API: {str(e)}")
         except requests.exceptions.Timeout as e:
             # Handle timeout issues specifically
             logger.error(f"Timeout acquiring Graph API token: {str(e)}", exc_info=True)
             raise ServiceError(f"Request timeout when connecting to Microsoft Graph API: {str(e)}")
-        except requests.exceptions.SSLError as e:
-            # Handle SSL/TLS errors explicitly
-            logger.error(f"SSL/TLS error acquiring Graph API token: {str(e)}", exc_info=True)
-            raise ServiceError(f"SSL/TLS certificate error connecting to Microsoft Graph API: {str(e)}")
+        except requests.exceptions.ConnectionError as e:
+            # Handle connection issues (more general than SSLError)
+            logger.error(f"Network error acquiring Graph API token: {str(e)}", exc_info=True)
+            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
         except Exception as e:
             # Handle any other exceptions
             logger.error(f"Error acquiring Graph API token: {str(e)}", exc_info=True)
@@ -195,16 +195,20 @@ class GraphClient:
             # Return JSON response
             return response.json()
             
-        except requests.Timeout as e:
-            logger.error(f"Timeout making Graph API request: {str(e)}", exc_info=True)
-            raise ServiceError(f"Request timeout connecting to Microsoft Graph API: {str(e)}")
-        except requests.ConnectionError as e:
-            logger.error(f"Connection error making Graph API request: {str(e)}", exc_info=True)
-            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
         except requests.exceptions.SSLError as e:
+            # Handle SSL/TLS errors explicitly (most specific, must come first)
             logger.error(f"SSL/TLS error making Graph API request: {str(e)}", exc_info=True)
             raise ServiceError(f"SSL/TLS certificate error connecting to Microsoft Graph API: {str(e)}")
-        except requests.RequestException as e:
+        except requests.exceptions.Timeout as e:
+            # Handle timeout issues specifically
+            logger.error(f"Timeout making Graph API request: {str(e)}", exc_info=True)
+            raise ServiceError(f"Request timeout connecting to Microsoft Graph API: {str(e)}")
+        except requests.exceptions.ConnectionError as e:
+            # Handle connection issues (more general than SSLError)
+            logger.error(f"Connection error making Graph API request: {str(e)}", exc_info=True)
+            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            # Handle any other HTTP-related exceptions
             logger.error(f"HTTP error making Graph API request: {str(e)}", exc_info=True)
             raise ServiceError(f"HTTP error making Graph API request: {str(e)}")
     
