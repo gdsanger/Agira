@@ -765,7 +765,7 @@ def item_detail(request, item_id):
     item = get_object_or_404(
         Item.objects.select_related(
             'project', 'type', 'organisation', 'requester', 
-            'assigned_to', 'solution_release', 'parent'
+            'assigned_to', 'responsible', 'solution_release', 'parent'
         ).prefetch_related('nodes'),
         id=item_id
     )
@@ -775,6 +775,9 @@ def item_detail(request, item_id):
     
     # Get all users for the follower selection dropdown
     users = User.objects.all().order_by('name')
+    
+    # Get agents for responsible field
+    agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
     
     # Get all projects for the move modal
     projects = Project.objects.all().order_by('name')
@@ -816,6 +819,7 @@ def item_detail(request, item_id):
         'item': item,
         'followers': followers,
         'users': users,
+        'agents': agents,
         'projects': projects,
         'releases': releases,
         'parent_items': parent_items,
@@ -3937,6 +3941,8 @@ def item_create(request):
         users = User.objects.prefetch_related(
             'user_organisations__organisation'
         ).all().order_by('name')
+        # Filter agents for responsible field
+        agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
         statuses = ItemStatus.choices
         
         # Get active blueprints for the create form
@@ -3970,6 +3976,7 @@ def item_create(request):
             'item_types': item_types,
             'organisations': organisations,
             'users': users,
+            'agents': agents,
             'statuses': statuses,
             'default_requester': default_requester,
             'default_organisation': default_organisation,
@@ -4055,6 +4062,14 @@ def item_create(request):
         if assigned_to_id:
             item.assigned_to = get_object_or_404(User, id=assigned_to_id)
         
+        responsible_id = request.POST.get('responsible')
+        if responsible_id:
+            responsible_user = get_object_or_404(User, id=responsible_id)
+            # Validate that user has Agent role
+            if responsible_user.role != UserRole.AGENT:
+                raise ValidationError({'responsible': 'Responsible user must have role "Agent".'})
+            item.responsible = responsible_user
+        
         parent_id = request.POST.get('parent')
         if parent_id:
             item.parent = get_object_or_404(Item, id=parent_id)
@@ -4139,6 +4154,8 @@ def item_edit(request, item_id):
         users = User.objects.prefetch_related(
             'user_organisations__organisation'
         ).all().order_by('name')
+        # Filter agents for responsible field
+        agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
         statuses = ItemStatus.choices
         
         # Get releases for the current project
@@ -4157,6 +4174,7 @@ def item_edit(request, item_id):
             'item_types': item_types,
             'organisations': organisations,
             'users': users,
+            'agents': agents,
             'statuses': statuses,
             'releases': releases,
             'parent_items': parent_items,
@@ -4239,6 +4257,16 @@ def item_update(request, item_id):
             item.assigned_to = get_object_or_404(User, id=assigned_to_id)
         elif assigned_to_id == '':
             item.assigned_to = None
+        
+        responsible_id = request.POST.get('responsible')
+        if responsible_id:
+            responsible_user = get_object_or_404(User, id=responsible_id)
+            # Validate that user has Agent role
+            if responsible_user.role != UserRole.AGENT:
+                raise ValidationError({'responsible': 'Responsible user must have role "Agent".'})
+            item.responsible = responsible_user
+        elif responsible_id == '':
+            item.responsible = None
         
         parent_id = request.POST.get('parent')
         if parent_id:
