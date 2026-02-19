@@ -611,6 +611,10 @@
                             </div>
                         </div>
                         <div class="mb-3">
+                            <strong>Responsible:</strong>
+                            <div>{% if item.responsible %}{{ item.responsible.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Assigned To:</strong>
                             <div>{% if item.assigned_to %}{{ item.assigned_to.name }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
                         </div>

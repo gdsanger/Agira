@@ -329,6 +329,20 @@
                     </div>
                 </div>
                 
+                <!-- Responsible -->
+                <div class="mb-3">
+                    <label for="responsible" class="form-label">Responsible</label>
+                    <select class="form-select" id="responsible" name="responsible" form="itemForm">
+                        <option value="">None</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent.id }}" 
+                                {% if item and item.responsible and item.responsible.id == agent.id %}selected{% endif %}>
+                            {{ agent.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
                 <!-- Assigned To -->
                 <div class="mb-3">
                     <label for="assigned_to" class="form-label">Assigned To</label>
