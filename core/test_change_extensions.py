@@ -314,7 +314,8 @@ class ChangeApproverManagementTestCase(TestCase):
         )
         
         response = self.client.post(
-            reverse('change-approve', args=[self.change.id, approval.id])
+            reverse('change-approve', args=[self.change.id, approval.id]),
+            {'decision_date': '2024-03-15'}
         )
         
         # Refresh from database
@@ -336,10 +337,10 @@ class ChangeApproverManagementTestCase(TestCase):
             status=ApprovalStatus.PENDING
         )
         
-        # Try to reject without comment
+        # Try to reject without comment (but with date)
         response = self.client.post(
             reverse('change-reject', args=[self.change.id, approval.id]),
-            {}
+            {'decision_date': '2024-03-16'}
         )
         
         # Should fail
@@ -348,10 +349,13 @@ class ChangeApproverManagementTestCase(TestCase):
         self.assertFalse(response_data.get('success'))
         self.assertIn('required', response_data.get('error', '').lower())
         
-        # Now reject with comment
+        # Now reject with comment and date
         response = self.client.post(
             reverse('change-reject', args=[self.change.id, approval.id]),
-            {'comment': 'This change has issues'}
+            {
+                'comment': 'This change has issues',
+                'decision_date': '2024-03-16'
+            }
         )
         
         # Refresh from database
@@ -373,10 +377,10 @@ class ChangeApproverManagementTestCase(TestCase):
             status=ApprovalStatus.PENDING
         )
         
-        # Abstain without comment
+        # Abstain without comment but with date
         response = self.client.post(
             reverse('change-abstain', args=[self.change.id, approval.id]),
-            {}
+            {'decision_date': '2024-03-17'}
         )
         
         # Refresh from database
@@ -397,10 +401,13 @@ class ChangeApproverManagementTestCase(TestCase):
             status=ApprovalStatus.PENDING
         )
         
-        # Abstain with comment
+        # Abstain with comment and date
         response = self.client.post(
             reverse('change-abstain', args=[self.change.id, approval2.id]),
-            {'comment': 'Not my area of expertise'}
+            {
+                'comment': 'Not my area of expertise',
+                'decision_date': '2024-03-18'
+            }
         )
         
         # Refresh from database
