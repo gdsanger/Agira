@@ -209,6 +209,7 @@ class ChangePolicyService:
         existing_map = {(a.approver_id, a.role): a for a in existing_approvals}
 
         # Add missing (user_id, role) pairs
+        approvals_to_create = []
         now = timezone.now()
         for (user_id, role) in target:
             if (user_id, role) not in existing_map:
