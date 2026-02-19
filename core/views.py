@@ -4025,7 +4025,7 @@ def _send_responsible_notification(item, new_responsible):
         new_responsible: User instance who is now responsible
     """
     try:
-        from .services.mail import mail_service
+        from .services.graph.mail_service import send_email
         
         # Get the mail template
         template = MailTemplate.objects.filter(key='resp', is_active=True).first()
@@ -4063,11 +4063,11 @@ def _send_responsible_notification(item, new_responsible):
         message = message_template.render(Context(context))
         
         # Send email
-        mail_service.send_email(
-            to=[new_responsible.email],
+        send_email(
             subject=subject,
             body=message,
-            html=True
+            to=[new_responsible.email],
+            body_is_html=True
         )
         
         logger.info(f"Sent responsible notification to {new_responsible.email} for item {item.id}")
