@@ -243,6 +243,12 @@
                             <h6 class="mb-3">Solution Description</h6>
                             <div id="solution-editor"></div>
                             <textarea id="solution_description" name="solution_description" class="d-none">{% if item %}{{ item.solution_description }}{% endif %}</textarea>
+                            
+                            <h6 class="mb-3 mt-4">Short Description</h6>
+                            <div class="form-group">
+                                <textarea id="short_description" name="short_description" class="form-control" rows="4" placeholder="ISO-compliant short description (max 3-4 sentences)">{% if item %}{{ item.short_description }}{% endif %}</textarea>
+                                <small class="form-text text-muted">ISO-konforme Kurzbeschreibung (max. 3-4 Sätze) für Change Reports</small>
+                            </div>
                         </div>
                     </div>
                 </div>

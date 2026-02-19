@@ -568,6 +568,7 @@ class Item(models.Model):
     description = models.TextField(blank=True)
     user_input = models.TextField(blank=True, help_text=_('Original email text, not modified by AI'))
     solution_description = models.TextField(blank=True)
+    short_description = models.TextField(blank=True, help_text=_('ISO-compliant short description (max 3-4 sentences)'))
     type = models.ForeignKey(ItemType, on_delete=models.PROTECT, related_name='items')
     nodes = models.ManyToManyField(Node, blank=True, related_name='items')
     organisation = models.ForeignKey(Organisation, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')

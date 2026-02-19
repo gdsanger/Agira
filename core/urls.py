@@ -91,6 +91,7 @@ urlpatterns = [
     path('items/<int:item_id>/create-github-issue/', views.item_create_github_issue, name='item-create-github-issue'),
     path('items/<int:item_id>/ai/optimize-description/', views.item_optimize_description_ai, name='item-optimize-description-ai'),
     path('items/<int:item_id>/ai/generate-solution/', views.item_generate_solution_ai, name='item-generate-solution-ai'),
+    path('items/<int:item_id>/ai/generate-short-description/', views.item_generate_short_description_ai, name='item-generate-short-description-ai'),
     path('items/<int:item_id>/ai/pre-review/', views.item_pre_review, name='item-pre-review'),
     path('items/<int:item_id>/ai/save-pre-review/', views.item_save_pre_review, name='item-save-pre-review'),
     path('items/<int:item_id>/ai/rag-retrieval-raw/', views.item_rag_retrieval_raw, name='item-rag-retrieval-raw'),

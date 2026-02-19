@@ -2124,6 +2124,81 @@ Context from similar items and related information:
 
 @login_required
 @require_POST
+def item_generate_short_description_ai(request, item_id):
+    """
+    Generate short description using AI based on item description.
+    
+    Uses the item-short-description-agent to generate an ISO-compliant
+    short description (max 3-4 sentences) from the item description.
+    
+    Only available to users with Agent role.
+    """
+    # Check user role
+    if request.user.role != UserRole.AGENT:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This feature is only available to users with Agent role'
+        }, status=403)
+    
+    item = get_object_or_404(Item, id=item_id)
+    
+    try:
+        # Get current description
+        current_description = item.description or ""
+        
+        if not current_description.strip():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Item has no description. Please provide a description first.'
+            }, status=400)
+        
+        # Execute the item-short-description-agent
+        agent_service = AgentService()
+        short_description = agent_service.execute_agent(
+            filename='item-short-description-agent.yml',
+            input_text=current_description,
+            user=request.user,
+            client_ip=request.META.get('REMOTE_ADDR')
+        )
+        
+        # Update item short_description
+        item.short_description = short_description.strip()
+        item.save(update_fields=['short_description'])
+        
+        # Log activity - success
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.short_description.ai_generated',
+            target=item,
+            actor=request.user,
+            summary='Short description generated via AI (item-short-description-agent)',
+        )
+        
+        return JsonResponse({
+            'status': 'ok',
+            'short_description': short_description.strip()
+        })
+        
+    except Exception as e:
+        # Log activity - error
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.short_description.ai_error',
+            target=item,
+            actor=request.user,
+            summary=f'AI short description generation failed: {str(e)}',
+        )
+        
+        logger.error(f"AI short description generation failed for item {item_id}: {str(e)}")
+        
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Failed to generate short description. Please try again later.'
+        }, status=500)
+
+
+@login_required
+@require_POST
 def item_pre_review(request, item_id):
     """
     Generate a Pre-Review of an item using AI and RAG.
@@ -4132,6 +4207,7 @@ def item_update(request, item_id):
         
         item.user_input = user_input
         item.solution_description = request.POST.get('solution_description', item.solution_description)
+        item.short_description = request.POST.get('short_description', item.short_description)
         item.status = request.POST.get('status', item.status)
         
         # Update boolean fields
