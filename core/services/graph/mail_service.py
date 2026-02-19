@@ -398,17 +398,18 @@ def _process_attachment(attachment) -> dict:
         ServiceError: If attachment is too large or cannot be read
     """
     # Check size
-    if attachment.size > MAX_ATTACHMENT_SIZE_V1:
+    if attachment.size_bytes > MAX_ATTACHMENT_SIZE_V1:
         raise ServiceError(
             f"Attachment '{attachment.original_name}' is too large "
-            f"({attachment.size / (1024*1024):.1f} MB). "
+            f"({attachment.size_bytes / (1024*1024):.1f} MB). "
             f"Maximum size for v1 is {MAX_ATTACHMENT_SIZE_V1 / (1024*1024):.0f} MB"
         )
     
     # Read file and encode to base64
     try:
-        attachment.file.seek(0)
-        file_content = attachment.file.read()
+        from core.services.storage import AttachmentStorageService
+        storage = AttachmentStorageService()
+        file_content = storage.read_attachment(attachment)
         content_bytes = base64.b64encode(file_content).decode('utf-8')
     except Exception as e:
         raise ServiceError(f"Failed to read attachment '{attachment.original_name}': {str(e)}")
