@@ -7907,9 +7907,31 @@ def change_send_approval_requests(request, id):
     This endpoint is called when the "Get Approvals" button is clicked.
     """
     from core.services.changes.approval_mailer import send_change_approval_request_emails
-    from core.services.exceptions import ServiceError
+    from core.services.exceptions import ServiceError, ServiceDisabled, ServiceNotConfigured
+    from core.services.config import get_graph_config
     
     change = get_object_or_404(Change, id=id)
+    
+    # Validate Graph API service is configured before attempting to send emails
+    try:
+        config = get_graph_config()
+        if config is None or not config.enabled:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not enabled. Please enable Microsoft Graph API in system settings.'
+            }, status=400)
+        
+        if not config.tenant_id or not config.client_id or not config.client_secret:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not properly configured. Please configure Microsoft Graph API credentials in system settings.'
+            }, status=400)
+    except Exception as e:
+        logger.error(f"Error checking Graph API configuration: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Unable to verify email service configuration.'
+        }, status=500)
     
     try:
         # Build base URL for PDF generation and email links

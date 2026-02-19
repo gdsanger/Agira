@@ -106,10 +106,20 @@ class GraphClient:
                 logger.error(f"Failed to acquire token: {error_msg}")
                 raise ServiceError(f"Failed to acquire Graph API token: {error_msg}")
                 
+        except ServiceError:
+            # Re-raise ServiceError as-is
+            raise
+        except (ConnectionError, TimeoutError) as e:
+            # Handle connection issues specifically
+            logger.error(f"Network error acquiring Graph API token: {str(e)}", exc_info=True)
+            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
         except Exception as e:
-            if isinstance(e, ServiceError):
-                raise
-            logger.error(f"Error acquiring Graph API token: {str(e)}")
+            # Handle any other exceptions
+            logger.error(f"Error acquiring Graph API token: {str(e)}", exc_info=True)
+            # Check if it's an SSL/TLS error
+            error_str = str(e).lower()
+            if "ssl" in error_str or "tls" in error_str or "certificate" in error_str:
+                raise ServiceError(f"SSL/TLS error connecting to Microsoft Graph API: {str(e)}")
             raise ServiceError(f"Error acquiring Graph API token: {str(e)}")
     
     def request(
@@ -184,8 +194,21 @@ class GraphClient:
             # Return JSON response
             return response.json()
             
+        except ServiceError:
+            # Re-raise ServiceError as-is
+            raise
+        except requests.Timeout as e:
+            logger.error(f"Timeout making Graph API request: {str(e)}", exc_info=True)
+            raise ServiceError(f"Request timeout connecting to Microsoft Graph API: {str(e)}")
+        except requests.ConnectionError as e:
+            logger.error(f"Connection error making Graph API request: {str(e)}", exc_info=True)
+            raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
         except requests.RequestException as e:
-            logger.error(f"HTTP error making Graph API request: {str(e)}")
+            logger.error(f"HTTP error making Graph API request: {str(e)}", exc_info=True)
+            # Check if it's an SSL/TLS error
+            error_str = str(e).lower()
+            if "ssl" in error_str or "tls" in error_str or "certificate" in error_str:
+                raise ServiceError(f"SSL/TLS error connecting to Microsoft Graph API: {str(e)}")
             raise ServiceError(f"HTTP error making Graph API request: {str(e)}")
     
     def send_mail(self, sender_upn: str, payload: Dict[str, Any]) -> None:

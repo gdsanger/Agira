@@ -250,7 +250,17 @@ def send_email(
         
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Failed to send email: {error_msg}")
+        # Provide more user-friendly error messages for common issues
+        if "ServiceDisabled" in str(type(e).__name__):
+            error_msg = "Email service is not enabled"
+        elif "ServiceNotConfigured" in str(type(e).__name__):
+            error_msg = "Email service is not properly configured"
+        elif "Connection" in error_msg or "SSL" in error_msg or "TLS" in error_msg:
+            error_msg = f"Network connection error: {error_msg}"
+        elif "timeout" in error_msg.lower():
+            error_msg = f"Connection timeout: {error_msg}"
+        
+        logger.error(f"Failed to send email: {error_msg}", exc_info=True)
         
         # Update comment to Failed
         if comment:
