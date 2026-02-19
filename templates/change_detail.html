@@ -296,9 +296,19 @@
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Approvers</h5>
-                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addApproverModal">
-                    <i class="bi bi-plus-lg"></i>
-                </button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-success"
+                            hx-post="{% url 'change-send-approval-requests' change.id %}"
+                            hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'Failed to send approval requests', 'danger'); }"
+                            hx-indicator="#approval-request-spinner"
+                            title="Send approval request emails to all approvers">
+                        <span id="approval-request-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-send"></i> Get Approvals
+                    </button>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addApproverModal">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 {% if change.approvals.all %}

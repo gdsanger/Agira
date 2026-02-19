@@ -7740,6 +7740,229 @@ def change_abstain(request, id, approval_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
+@require_http_methods(["GET"])
+def change_approval_decision(request):
+    """
+    Public endpoint for email-based approval decision (approve/reject).
+    
+    Query parameters:
+    - token: Decision token (required)
+    - change_id: Change ID (required)
+    - decision: 'approve' or 'reject' (required)
+    
+    Returns HTML response with decision confirmation.
+    """
+    # Get query parameters
+    token = request.GET.get('token', '').strip()
+    change_id_str = request.GET.get('change_id', '').strip()
+    decision = request.GET.get('decision', '').strip().lower()
+    
+    # Validate parameters
+    if not token or not change_id_str or not decision:
+        return HttpResponse(
+            "<html><body><h1>Error</h1><p>Missing required parameters (token, change_id, or decision).</p></body></html>",
+            status=400
+        )
+    
+    if decision not in ['approve', 'reject']:
+        return HttpResponse(
+            "<html><body><h1>Error</h1><p>Invalid decision. Must be 'approve' or 'reject'.</p></body></html>",
+            status=400
+        )
+    
+    # Parse change_id
+    try:
+        change_id = int(change_id_str)
+    except ValueError:
+        return HttpResponse(
+            "<html><body><h1>Error</h1><p>Invalid change_id format.</p></body></html>",
+            status=400
+        )
+    
+    # Lookup approval by token and change_id
+    try:
+        approval = ChangeApproval.objects.select_related('change', 'approver').get(
+            change_id=change_id,
+            decision_token=token
+        )
+    except ChangeApproval.DoesNotExist:
+        return HttpResponse(
+            "<html><body><h1>Error</h1><p>Invalid or expired approval link.</p></body></html>",
+            status=403
+        )
+    
+    # Check if already decided (idempotency guard)
+    if approval.status != ApprovalStatus.PENDING:
+        return HttpResponse(
+            f"""<html><body>
+            <h1>Already Decided</h1>
+            <p>This approval request has already been processed.</p>
+            <p>Current status: <strong>{approval.status}</strong></p>
+            <p>Decision made at: <strong>{approval.decision_at}</strong></p>
+            </body></html>""",
+            status=400
+        )
+    
+    # Apply decision
+    now = timezone.now()
+    
+    if decision == 'approve':
+        approval.status = ApprovalStatus.ACCEPT
+        approval.decision_at = now
+        approval.approved_at = now
+        decision_text = "approved"
+        decision_emoji = "✅"
+    else:  # reject
+        approval.status = ApprovalStatus.REJECT
+        approval.decision_at = now
+        decision_text = "rejected"
+        decision_emoji = "❌"
+    
+    approval.save(update_fields=['status', 'decision_at', 'approved_at'])
+    
+    # Log activity
+    activity_service = ActivityService()
+    activity_service.log(
+        verb=f'change.{decision_text}_via_email',
+        target=approval.change,
+        actor=approval.approver,
+        summary=f'{approval.approver.name} {decision_text} the change via email link'
+    )
+    
+    # Build response HTML
+    response_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Decision Recorded</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                max-width: 600px;
+                margin: 50px auto;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }}
+            .card {{
+                background: white;
+                border-radius: 8px;
+                padding: 30px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            h1 {{
+                color: #333;
+                margin-top: 0;
+            }}
+            .emoji {{
+                font-size: 48px;
+                margin: 20px 0;
+            }}
+            .decision {{
+                color: {'#28a745' if decision == 'approve' else '#dc3545'};
+                font-weight: bold;
+                font-size: 20px;
+            }}
+            .info {{
+                margin: 20px 0;
+                color: #666;
+            }}
+            .thank-you {{
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+                color: #999;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="emoji">{decision_emoji}</div>
+            <h1>Decision Recorded</h1>
+            <p class="decision">You have {decision_text} this change.</p>
+            <div class="info">
+                <p><strong>Change:</strong> {approval.change.title}</p>
+                <p><strong>Your decision:</strong> {decision_text.capitalize()}</p>
+                <p><strong>Recorded at:</strong> {now.strftime('%Y-%m-%d %H:%M:%S')}</p>
+            </div>
+            {"<p><strong>Note:</strong> Since you rejected this change, the responsible team will be contacted to discuss next steps.</p>" if decision == 'reject' else ""}
+            <div class="thank-you">
+                <p>Thank you for your timely response!</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return HttpResponse(response_html)
+
+
+@login_required
+@require_http_methods(["POST"])
+def change_send_approval_requests(request, id):
+    """
+    Trigger sending approval request emails to all approvers for a Change.
+    
+    This endpoint is called when the "Get Approvals" button is clicked.
+    """
+    from core.services.changes.approval_mailer import send_change_approval_request_emails
+    from core.services.exceptions import ServiceError
+    
+    change = get_object_or_404(Change, id=id)
+    
+    try:
+        # Build base URL for PDF generation and email links
+        request_base_url = request.build_absolute_uri('/')
+        
+        # Send approval request emails
+        result = send_change_approval_request_emails(change, request_base_url)
+        
+        if result['success']:
+            # Log activity
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='change.approval_requests_sent',
+                target=change,
+                actor=request.user,
+                summary=f'Approval request emails sent to {result["sent_count"]} approvers'
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Approval request emails sent to {result["sent_count"]} approvers',
+                'sent_count': result['sent_count']
+            })
+        else:
+            # Partial failure
+            error_msg = f'Sent {result["sent_count"]} emails, but {result["failed_count"]} failed'
+            if result['errors']:
+                error_msg += f': {"; ".join(result["errors"][:3])}'  # Show first 3 errors
+            
+            logger.warning(f"Partial failure sending approval requests for Change {change.id}: {error_msg}")
+            
+            return JsonResponse({
+                'success': False,
+                'error': error_msg,
+                'sent_count': result['sent_count'],
+                'failed_count': result['failed_count']
+            }, status=500)
+    
+    except ServiceError as e:
+        logger.error(f"Service error sending approval requests for Change {change.id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+    
+    except Exception as e:
+        logger.exception(f"Unexpected error sending approval requests for Change {change.id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }, status=500)
+
+
 @login_required
 @require_http_methods(["POST"])
 def change_update_approver(request, id, approval_id):
