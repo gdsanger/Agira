@@ -7,7 +7,6 @@ for app-only authentication.
 """
 
 import logging
-import ssl
 import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
@@ -107,11 +106,15 @@ class GraphClient:
                 logger.error(f"Failed to acquire token: {error_msg}")
                 raise ServiceError(f"Failed to acquire Graph API token: {error_msg}")
                 
-        except (ConnectionError, TimeoutError) as e:
+        except requests.exceptions.ConnectionError as e:
             # Handle connection issues specifically
             logger.error(f"Network error acquiring Graph API token: {str(e)}", exc_info=True)
             raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
-        except (ssl.SSLError, requests.exceptions.SSLError) as e:
+        except requests.exceptions.Timeout as e:
+            # Handle timeout issues specifically
+            logger.error(f"Timeout acquiring Graph API token: {str(e)}", exc_info=True)
+            raise ServiceError(f"Request timeout when connecting to Microsoft Graph API: {str(e)}")
+        except requests.exceptions.SSLError as e:
             # Handle SSL/TLS errors explicitly
             logger.error(f"SSL/TLS error acquiring Graph API token: {str(e)}", exc_info=True)
             raise ServiceError(f"SSL/TLS certificate error connecting to Microsoft Graph API: {str(e)}")
@@ -198,7 +201,7 @@ class GraphClient:
         except requests.ConnectionError as e:
             logger.error(f"Connection error making Graph API request: {str(e)}", exc_info=True)
             raise ServiceError(f"Network connection error when connecting to Microsoft Graph API: {str(e)}")
-        except (ssl.SSLError, requests.exceptions.SSLError) as e:
+        except requests.exceptions.SSLError as e:
             logger.error(f"SSL/TLS error making Graph API request: {str(e)}", exc_info=True)
             raise ServiceError(f"SSL/TLS certificate error connecting to Microsoft Graph API: {str(e)}")
         except requests.RequestException as e:

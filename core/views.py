@@ -7915,13 +7915,22 @@ def change_send_approval_requests(request, id):
     # Validate Graph API service is configured before attempting to send emails
     try:
         config = get_graph_config()
-        if config is None or not config.enabled:
+        if config is None:
+            # Configuration object doesn't exist at all
+            return JsonResponse({
+                'success': False,
+                'error': 'Email service is not configured. Please configure Microsoft Graph API in system settings.'
+            }, status=400)
+        
+        if not config.enabled:
+            # Configuration exists but service is disabled
             return JsonResponse({
                 'success': False,
                 'error': 'Email service is not enabled. Please enable Microsoft Graph API in system settings.'
             }, status=400)
         
         if not config.tenant_id or not config.client_id or not config.client_secret:
+            # Service enabled but missing required credentials
             return JsonResponse({
                 'success': False,
                 'error': 'Email service is not properly configured. Please configure Microsoft Graph API credentials in system settings.'
