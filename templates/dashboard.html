@@ -197,7 +197,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('closedItemsChart');
     if (ctx) {
-        const chartData = {{ closed_items_chart_json|safe }};
+        const chartData = {{ closed_items_chart_json }};
         
         const labels = chartData.map(item => item.date_display);
         const data = chartData.map(item => item.count);
