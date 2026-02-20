@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Requests chart
     const reqCtx = document.getElementById('requestsChart');
     if (reqCtx) {
-        const reqData = {{ requests_chart_json }};
+        const reqData = {{ requests_chart_json|safe }};
         new Chart(reqCtx, {
             type: 'bar',
             data: {
@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Duration chart
     const durCtx = document.getElementById('durationChart');
     if (durCtx) {
-        const durData = {{ duration_chart_json }};
+        const durData = {{ duration_chart_json|safe }};
         new Chart(durCtx, {
             type: 'line',
             data: {

@@ -295,3 +295,18 @@ class AIJobStatisticsViewTests(TestCase):
         self.assertEqual(response.context['costs_week'], Decimal('0'))
         self.assertEqual(response.context['costs_month'], Decimal('0'))
         self.assertEqual(response.context['errors_7d'], 0)
+
+    def test_chart_json_not_html_escaped_in_rendered_page(self):
+        """Chart JSON must not be HTML-escaped in the rendered page (no &quot; etc.)."""
+        import json
+        self.client.force_login(self.user)
+        url = reverse('ai-job-statistics')
+        response = self.client.get(url)
+        content = response.content.decode('utf-8')
+        # If HTML-escaped, double-quotes become &quot; causing JS SyntaxError
+        self.assertNotIn('&quot;', content)
+        # The raw context JSON must also be parseable
+        req_json = response.context['requests_chart_json']
+        dur_json = response.context['duration_chart_json']
+        self.assertIsInstance(json.loads(req_json), dict)
+        self.assertIsInstance(json.loads(dur_json), dict)
