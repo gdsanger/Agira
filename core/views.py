@@ -4653,6 +4653,78 @@ def item_send_status_mail(request, item_id):
 
 @login_required
 @require_POST
+def item_send_status_update(request, item_id):
+    """Manually send a status-update email for an item using the 'featurenew' mail template."""
+    from .services.graph.mail_service import send_email
+    from .services.mail import get_notification_recipients_for_item
+    from .services.mail.template_processor import process_template
+
+    item = get_object_or_404(Item, id=item_id)
+
+    try:
+        # Load the 'featurenew' mail template (must exist and be active)
+        try:
+            template = MailTemplate.objects.get(key='featurenew', is_active=True)
+        except MailTemplate.DoesNotExist:
+            return JsonResponse(
+                {'ok': False, 'error': "Mail template 'featurenew' not found or inactive"},
+                status=404,
+            )
+
+        # Process template variables
+        processed = process_template(template, item)
+        subject = processed['subject']
+        message = processed['message']
+
+        # Determine recipients
+        recipients = get_notification_recipients_for_item(item)
+        to_address = recipients.get('to')
+        cc_list = recipients.get('cc') or []
+
+        if not to_address:
+            return JsonResponse(
+                {'ok': False, 'error': 'No recipient email available (requester has no email)'},
+                status=400,
+            )
+
+        # Send email via Graph mail service
+        result = send_email(
+            subject=subject,
+            body=message,
+            to=[to_address],
+            body_is_html=True,
+            cc=cc_list if cc_list else None,
+            sender=template.from_address if template.from_address else None,
+            item=item,
+            author=request.user,
+            visibility='Internal',
+            client_ip=request.META.get('REMOTE_ADDR'),
+        )
+
+        if not result.success:
+            return JsonResponse(
+                {'ok': False, 'error': result.error or 'Failed to send email'},
+                status=500,
+            )
+
+        # Log activity
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.manual_status_update_sent',
+            target=item,
+            actor=request.user,
+            summary='Manual status update sent',
+        )
+
+        return JsonResponse({'ok': True, 'message': 'Status update sent successfully'})
+
+    except Exception as e:
+        logger.error(f"Failed to send status update for item {item_id}: {str(e)}")
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
 def item_move_project(request, item_id):
     """Move item to a different project with optional email notification."""
     from .services.graph.mail_service import send_email

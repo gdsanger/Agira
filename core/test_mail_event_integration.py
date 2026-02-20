@@ -461,3 +461,170 @@ class ItemStatusMailTriggerIntegrationTestCase(TestCase):
         # Refresh item from DB
         item.refresh_from_db()
         self.assertEqual(item.status, ItemStatus.BACKLOG)
+
+
+class ItemSendStatusUpdateTestCase(TestCase):
+    """Tests for the manual send-status-update endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.user = User.objects.create_user(
+            username='updateuser',
+            email='updateuser@example.com',
+            password='testpass123',
+        )
+        self.user.name = 'Update User'
+        self.user.active = True
+        self.user.save()
+
+        self.requester = User.objects.create_user(
+            username='requesteruser',
+            email='requester@example.com',
+            password='testpass123',
+        )
+        self.requester.name = 'Requester User'
+        self.requester.save()
+
+        self.project = Project.objects.create(
+            name='Status Update Test Project',
+            description='Test project',
+            status=ProjectStatus.WORKING,
+        )
+
+        self.item_type = ItemType.objects.create(
+            key='feature',
+            name='Feature',
+            is_active=True,
+        )
+
+        self.template = MailTemplate.objects.create(
+            key='featurenew',
+            subject='New feature: {{ issue.title }}',
+            message='<p>Hello {{ issue.requester }}, your feature is ready.</p>',
+            from_name='Support',
+            from_address='support@example.com',
+            is_active=True,
+        )
+
+        self.client.login(username='updateuser', password='testpass123')
+
+    @patch('core.services.graph.mail_service.get_graph_config')
+    @patch('core.services.graph.mail_service.get_client')
+    def test_send_status_update_success(self, mock_get_client, mock_get_config):
+        """Successful manual status update email uses featurenew template and returns ok=True."""
+        item = Item.objects.create(
+            project=self.project,
+            title='My Feature',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            requester=self.requester,
+        )
+
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_config.default_mail_sender = 'default@example.com'
+        mock_get_config.return_value = mock_config
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        response = self.client.post(
+            reverse('item-send-status-update', args=[item.id]),
+            content_type='application/json',
+            data=json.dumps({}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data['ok'])
+
+        # Graph client must have been called
+        mock_client.send_mail.assert_called_once()
+
+    def test_send_status_update_missing_template_returns_error(self):
+        """Returns 404 with ok=False when featurenew template is missing."""
+        self.template.delete()
+
+        item = Item.objects.create(
+            project=self.project,
+            title='My Feature',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            requester=self.requester,
+        )
+
+        response = self.client.post(
+            reverse('item-send-status-update', args=[item.id]),
+            content_type='application/json',
+            data=json.dumps({}),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        data = json.loads(response.content)
+        self.assertFalse(data['ok'])
+        self.assertIn('featurenew', data['error'])
+
+    def test_send_status_update_inactive_template_returns_error(self):
+        """Returns 404 with ok=False when featurenew template is inactive."""
+        self.template.is_active = False
+        self.template.save()
+
+        item = Item.objects.create(
+            project=self.project,
+            title='My Feature',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            requester=self.requester,
+        )
+
+        response = self.client.post(
+            reverse('item-send-status-update', args=[item.id]),
+            content_type='application/json',
+            data=json.dumps({}),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        data = json.loads(response.content)
+        self.assertFalse(data['ok'])
+
+    def test_send_status_update_no_requester_returns_error(self):
+        """Returns 400 with ok=False when item has no requester email."""
+        item = Item.objects.create(
+            project=self.project,
+            title='My Feature',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            # No requester
+        )
+
+        response = self.client.post(
+            reverse('item-send-status-update', args=[item.id]),
+            content_type='application/json',
+            data=json.dumps({}),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertFalse(data['ok'])
+
+    def test_send_status_update_requires_login(self):
+        """Unauthenticated requests are redirected."""
+        self.client.logout()
+
+        item = Item.objects.create(
+            project=self.project,
+            title='My Feature',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            requester=self.requester,
+        )
+
+        response = self.client.post(
+            reverse('item-send-status-update', args=[item.id]),
+            content_type='application/json',
+            data=json.dumps({}),
+        )
+
+        # login_required redirects to login page
+        self.assertEqual(response.status_code, 302)
