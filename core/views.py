@@ -10401,7 +10401,13 @@ def blueprint_create_issue(request, id):
         
     except Exception as e:
         logger.error(f"Error creating issue from blueprint: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An internal error occurred while creating the issue from the blueprint.'
+            },
+            status=500
+        )
 
 
 @login_required
