@@ -6973,6 +6973,150 @@ def ai_jobs_history(request):
     return render(request, 'ai_jobs_history.html', context)
 
 
+@login_required
+def ai_job_statistics(request):
+    """AI Job Statistics dashboard with aggregated KPIs, tables, and charts."""
+    from datetime import timedelta
+    from django.db.models.functions import TruncDate
+    from django.db.models import Sum, Avg, Count
+    from .models import AIJobStatus
+
+    def _start_of_day(d):
+        """Return timezone-aware start-of-day datetime for a date object."""
+        return timezone.make_aware(datetime.combine(d, time.min))
+
+    now = timezone.now()
+    today = timezone.localdate()
+
+    # KPI: Costs today
+    costs_today = AIJobsHistory.objects.filter(
+        timestamp__gte=_start_of_day(today)
+    ).aggregate(total=Sum('costs'))['total'] or Decimal('0')
+
+    # KPI: Costs current calendar week (Mon–Sun)
+    start_of_week = today - timedelta(days=today.weekday())  # Monday
+    costs_week = AIJobsHistory.objects.filter(
+        timestamp__gte=_start_of_day(start_of_week)
+    ).aggregate(total=Sum('costs'))['total'] or Decimal('0')
+
+    # KPI: Costs current calendar month
+    start_of_month = today.replace(day=1)
+    costs_month = AIJobsHistory.objects.filter(
+        timestamp__gte=_start_of_day(start_of_month)
+    ).aggregate(total=Sum('costs'))['total'] or Decimal('0')
+
+    # KPI: Errors last 7 days (today + 6 preceding days = 7-day window)
+    start_of_7d_window = today - timedelta(days=6)
+    errors_7d = AIJobsHistory.objects.filter(
+        timestamp__gte=_start_of_day(start_of_7d_window),
+        status=AIJobStatus.ERROR
+    ).count()
+
+    # Table: per Agent
+    by_agent = (
+        AIJobsHistory.objects.values('agent')
+        .annotate(requests=Count('id'), total_costs=Sum('costs'))
+        .order_by('-requests')
+    )
+
+    # Table: per Model
+    by_model = (
+        AIJobsHistory.objects.filter(model__isnull=False)
+        .values('model__name')
+        .annotate(requests=Count('id'), total_costs=Sum('costs'))
+        .order_by('-requests')
+    )
+
+    # Table: per User
+    by_user = (
+        AIJobsHistory.objects.filter(user__isnull=False)
+        .values('user__username')
+        .annotate(requests=Count('id'), total_costs=Sum('costs'))
+        .order_by('-requests')
+    )
+
+    # Timeseries last 7 days: requests per day
+    requests_by_day_qs = (
+        AIJobsHistory.objects.filter(timestamp__gte=_start_of_day(start_of_7d_window))
+        .annotate(day=TruncDate('timestamp'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    requests_by_day_dict = {item['day']: item['count'] for item in requests_by_day_qs}
+
+    # Timeseries last 7 days: avg duration per day per agent
+    duration_by_day_agent_qs = (
+        AIJobsHistory.objects.filter(
+            timestamp__gte=_start_of_day(start_of_7d_window),
+            duration_ms__isnull=False
+        )
+        .annotate(day=TruncDate('timestamp'))
+        .values('day', 'agent')
+        .annotate(avg_duration=Avg('duration_ms'))
+        .order_by('day', 'agent')
+    )
+
+    # Build chart data structures
+    date_labels = []
+    requests_series = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        date_labels.append(day.strftime('%d.%m.'))
+        requests_series.append(requests_by_day_dict.get(day, 0))
+
+    # Build duration chart: one series per agent
+    agent_names = sorted({item['agent'] for item in duration_by_day_agent_qs})
+    duration_data = {}  # agent -> {day: avg_duration}
+    for item in duration_by_day_agent_qs:
+        agent = item['agent']
+        if agent not in duration_data:
+            duration_data[agent] = {}
+        duration_data[agent][item['day']] = float(item['avg_duration'] or 0)
+
+    duration_datasets = []
+    colors = [
+        'rgba(13, 110, 253, 0.7)',
+        'rgba(25, 135, 84, 0.7)',
+        'rgba(220, 53, 69, 0.7)',
+        'rgba(255, 193, 7, 0.7)',
+        'rgba(13, 202, 240, 0.7)',
+        'rgba(111, 66, 193, 0.7)',
+    ]
+    for idx, agent in enumerate(agent_names):
+        series = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            series.append(duration_data.get(agent, {}).get(day, None))
+        duration_datasets.append({
+            'label': agent,
+            'data': series,
+            'borderColor': colors[idx % len(colors)],
+            'backgroundColor': colors[idx % len(colors)].replace('0.7', '0.1'),
+            'tension': 0.3,
+            'spanGaps': True,
+        })
+
+    context = {
+        'costs_today': costs_today,
+        'costs_week': costs_week,
+        'costs_month': costs_month,
+        'errors_7d': errors_7d,
+        'by_agent': list(by_agent),
+        'by_model': list(by_model),
+        'by_user': list(by_user),
+        'requests_chart_json': json.dumps({
+            'labels': date_labels,
+            'data': requests_series,
+        }),
+        'duration_chart_json': json.dumps({
+            'labels': date_labels,
+            'datasets': duration_datasets,
+        }),
+    }
+    return render(request, 'ai_job_statistics.html', context)
+
+
 # ============================================================================
 # Weaviate Sync Views
 # ============================================================================

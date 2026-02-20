@@ -174,6 +174,7 @@ urlpatterns = [
     path('agents/<str:filename>/test/', views.agent_test, name='agent-test'),
     # AI Jobs History URLs
     path('ai-jobs-history/', views.ai_jobs_history, name='ai-jobs-history'),
+    path('ai-job-statistics/', views.ai_job_statistics, name='ai-job-statistics'),
     
     # Mail Template URLs
     path('mail-templates/', views.mail_templates, name='mail-templates'),
