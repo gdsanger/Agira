@@ -65,6 +65,7 @@ urlpatterns = [
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
     path('items/<int:item_id>/list-delete/', views_items.item_list_delete, name='item-list-delete'),
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
+    path('items/<int:item_id>/send-status-update/', views.item_send_status_update, name='item-send-status-update'),
     path('items/<int:item_id>/move-project/', views.item_move_project, name='item-move-project'),
     path('items/<int:item_id>/classify/', views.item_classify, name='item-classify'),
     path('items/<int:item_id>/change-status/', views.item_change_status, name='item-change-status'),
