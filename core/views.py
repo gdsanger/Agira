@@ -10496,7 +10496,13 @@ def item_create_blueprint_submit(request, item_id):
         
     except Exception as e:
         logger.error(f"Error creating blueprint from issue: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An unexpected error occurred while creating the blueprint.'
+            },
+            status=500
+        )
 
 
 @login_required
