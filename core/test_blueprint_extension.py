@@ -10,6 +10,7 @@ from core.models import (
     User, Organisation, Project, Item, ItemType, ItemStatus,
     IssueBlueprint, IssueBlueprintCategory
 )
+from unittest.mock import patch
 import json
 
 
@@ -438,3 +439,23 @@ This will be implemented in {{ project_name }}.
         self.assertIn('Implement Authentication with OAuth2', item.description)
         self.assertNotIn('{{', item.title)
         self.assertNotIn('{{', item.description)
+
+    def test_create_issue_internal_error_does_not_expose_exception(self):
+        """Test that a 500 response uses a generic message and does not leak exception details"""
+        url = reverse('blueprint-create-issue', args=[self.simple_blueprint.id])
+
+        secret_message = 'SECRET_DATABASE_CREDENTIALS_EXPOSED'
+
+        with patch('core.models.Item.objects.create', side_effect=Exception(secret_message)):
+            response = self.client.post(url, {
+                'project_id': self.project.id,
+                'variables': json.dumps({})
+            })
+
+        self.assertEqual(response.status_code, 500)
+        data = response.json()
+        self.assertFalse(data['success'])
+        # Generic message must be present
+        self.assertIn('internal error', data['error'].lower())
+        # Raw exception text must NOT be exposed
+        self.assertNotIn(secret_message, data['error'])
