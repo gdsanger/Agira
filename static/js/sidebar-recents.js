@@ -21,6 +21,23 @@
     let pinned = [];
 
     /**
+     * Safely escape text for insertion into HTML.
+     * This prevents HTML meta-characters from being interpreted as markup.
+     */
+    function escapeHtml(str) {
+        if (str === null || str === undefined) {
+            return '';
+        }
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\//g, '&#x2F;');
+    }
+
+    /**
      * Initialize the module
      */
     function init() {
@@ -254,7 +271,7 @@
                 <div class="recents-entry-content">
                     <div class="recents-entry-header">
                         <i class="bi ${typeIcon} me-1"></i>
-                        <span class="recents-entry-title">${entry.title}</span>
+                        <span class="recents-entry-title">${escapeHtml(entry.title)}</span>
                     </div>
                     <div class="recents-entry-meta">
                         <span class="recents-entry-type">${typeLabel}</span>
