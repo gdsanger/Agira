@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}AI Job Statistics - Agira{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1><i class="bi bi-bar-chart-fill me-2"></i>AI Job Statistics</h1>
+            <p class="text-muted">Aggregated metrics from AI job history</p>
+        </div>
+        <a href="{% url 'ai-jobs-history' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-clock-history me-1"></i>AI Jobs History
+        </a>
+    </div>
+</div>
+
+<!-- KPI Tiles: Costs + Errors -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">US${{ costs_today|floatformat:4 }}</div>
+                <div class="kpi-label">Costs Today</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-calendar-week"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">US${{ costs_week|floatformat:4 }}</div>
+                <div class="kpi-label">Costs This Week</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-calendar-month"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">US${{ costs_month|floatformat:4 }}</div>
+                <div class="kpi-label">Costs This Month</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card kpi-card-danger">
+            <div class="kpi-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ errors_7d }}</div>
+                <div class="kpi-label">Errors (Last 7 Days)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Aggregation Tables -->
+<div class="row g-3 mb-4">
+    <!-- By Agent -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-robot me-1"></i>By Agent</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Agent</th>
+                                <th class="text-end">Requests</th>
+                                <th class="text-end">Costs (US$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in by_agent %}
+                            <tr>
+                                <td>{{ row.agent }}</td>
+                                <td class="text-end">{{ row.requests }}</td>
+                                <td class="text-end">{{ row.total_costs|floatformat:4|default:"–" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">No data</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- By Model -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-cpu me-1"></i>By Model</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Model</th>
+                                <th class="text-end">Requests</th>
+                                <th class="text-end">Costs (US$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in by_model %}
+                            <tr>
+                                <td>{{ row.model__name }}</td>
+                                <td class="text-end">{{ row.requests }}</td>
+                                <td class="text-end">{{ row.total_costs|floatformat:4|default:"–" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">No data</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- By User -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-people me-1"></i>By User</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th class="text-end">Requests</th>
+                                <th class="text-end">Costs (US$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in by_user %}
+                            <tr>
+                                <td>{{ row.user__username }}</td>
+                                <td class="text-end">{{ row.requests }}</td>
+                                <td class="text-end">{{ row.total_costs|floatformat:4|default:"–" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">No data</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row g-3">
+    <!-- Requests per Day -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="bi bi-graph-up me-1"></i>Requests per Day (Last 7 Days)</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="requestsChart" style="max-height: 280px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avg Duration per Agent per Day -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="bi bi-stopwatch me-1"></i>Ø Duration per Agent per Day (Last 7 Days, ms)</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="durationChart" style="max-height: 280px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Requests chart
+    const reqCtx = document.getElementById('requestsChart');
+    if (reqCtx) {
+        const reqData = {{ requests_chart_json }};
+        new Chart(reqCtx, {
+            type: 'bar',
+            data: {
+                labels: reqData.labels,
+                datasets: [{
+                    label: 'Requests',
+                    data: reqData.data,
+                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+                }
+            }
+        });
+    }
+
+    // Duration chart
+    const durCtx = document.getElementById('durationChart');
+    if (durCtx) {
+        const durData = {{ duration_chart_json }};
+        new Chart(durCtx, {
+            type: 'line',
+            data: {
+                labels: durData.labels,
+                datasets: durData.datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Avg Duration (ms)' }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

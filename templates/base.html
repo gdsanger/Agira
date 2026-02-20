@@ -198,6 +198,10 @@
                             <i class="bi bi-clock-history sidebar-icon"></i>
                             <span class="sidebar-text">AI Jobs History</span>
                         </a>
+                        <a href="{% url 'ai-job-statistics' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'ai-job-statistics' %}active{% endif %}">
+                            <i class="bi bi-bar-chart-fill sidebar-icon"></i>
+                            <span class="sidebar-text">AI Job Statistics</span>
+                        </a>
                     </div>
                 </div>
                 
