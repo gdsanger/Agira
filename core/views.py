@@ -10665,4 +10665,10 @@ def item_apply_blueprint_submit(request, item_id):
         
     except Exception as e:
         logger.error(f"Error applying blueprint to issue: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An internal error occurred while applying the blueprint.'
+            },
+            status=500
+        )
