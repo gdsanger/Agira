@@ -9,6 +9,7 @@ from core.models import User
 from core.backends.azuread import AzureADAuth, AzureADAuthError
 import jwt
 import time
+from urllib.parse import urlparse
 
 
 @override_settings(
@@ -73,7 +74,9 @@ class AzureADAuthenticationTestCase(TestCase):
         
         # Should redirect to Azure AD
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.url.startswith('https://login.microsoftonline.com'))
+        parsed_url = urlparse(response.url)
+        self.assertEqual(parsed_url.scheme, 'https')
+        self.assertEqual(parsed_url.netloc, 'login.microsoftonline.com')
         
         # Flow should be stored in session
         self.assertIn('azure_ad_flow', self.client.session)
