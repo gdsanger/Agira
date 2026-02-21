@@ -9777,7 +9777,8 @@ def system_setting_update(request):
         error_msg = ', '.join([f"{k}: {', '.join(v)}" for k, v in e.message_dict.items()])
         return HttpResponse(f"Validation error: {error_msg}", status=400)
     except Exception as e:
-        return HttpResponse(f"Error updating settings: {str(e)}", status=400)
+        logger.exception("Error updating system settings")
+        return HttpResponse("An error occurred while updating system settings.", status=400)
 
 
 # Change Policy Views
