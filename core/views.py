@@ -10279,7 +10279,13 @@ def blueprint_export(request, id):
         
     except BlueprintSerializationError as e:
         logger.error(f"Error exporting blueprint: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'Failed to export blueprint due to a validation or formatting error.'
+            },
+            status=400
+        )
     except Exception as e:
         logger.error(f"Unexpected error exporting blueprint: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': 'An unexpected error occurred'}, status=500)
