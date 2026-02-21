@@ -9629,8 +9629,12 @@ def email_send_reply(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
-        logger.error(f"Error sending email: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        # Log full exception details server-side, but return a generic message to the client
+        logger.exception("Unexpected error while sending email")
+        return JsonResponse(
+            {'success': False, 'error': 'An internal error occurred while sending the email.'},
+            status=500,
+        )
 
 
 # ==================== Global Settings Views ====================
