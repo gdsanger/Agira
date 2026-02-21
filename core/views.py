@@ -9959,7 +9959,13 @@ def change_policy_update(request, id):
         
     except Exception as e:
         logger.error(f"Error updating change policy: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An unexpected error occurred while updating the change policy.'
+            },
+            status=500
+        )
 
 
 @login_required
