@@ -6026,6 +6026,54 @@ def organisation_update_user(request, id):
 
 
 @login_required
+@require_http_methods(["POST"])
+def organisation_create_user(request, id):
+    """Create a new user and add them to the organisation as primary member."""
+    organisation = get_object_or_404(Organisation, id=id)
+
+    username = request.POST.get('username', '').strip()
+    email = request.POST.get('email', '').strip().lower()
+    name = request.POST.get('name', '').strip()
+    role = request.POST.get('role', UserRole.USER)
+
+    # Duplicate-email check (case-insensitive via lowercasing)
+    if User.objects.filter(email__iexact=email).exists():
+        return JsonResponse(
+            {'success': False, 'global_error': 'A user with this email address already exists.'},
+            status=400
+        )
+
+    try:
+        with transaction.atomic():
+            user = User(username=username, email=email, name=name, role=role, active=True)
+            user.set_unusable_password()
+            user.full_clean()
+            user.save()
+
+            UserOrganisation.objects.create(
+                organisation=organisation,
+                user=user,
+                role=role,
+                is_primary=True,
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'User {name} created successfully.',
+            'user_id': user.id,
+        })
+    except ValidationError as e:
+        errors = {}
+        if hasattr(e, 'message_dict'):
+            errors = {field: list(msgs) for field, msgs in e.message_dict.items()}
+        else:
+            errors['__all__'] = list(e.messages)
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
 
 @require_http_methods(["POST"])
 def organisation_link_project(request, id):

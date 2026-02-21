@@ -55,9 +55,14 @@
             <div class="tab-pane fade show active" id="users" role="tabpanel" aria-labelledby="users-tab">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5>Users</h5>
-                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
-                        + Add User
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createUserModal">
+                            + Neuen Benutzer anlegen
+                        </button>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                            + Add User
+                        </button>
+                    </div>
                 </div>
                 {% if user_organisations %}
                 <div class="table-responsive">
@@ -334,12 +339,143 @@
     </div>
 </div>
 
+<!-- Create New User Modal -->
+<div class="modal fade" id="createUserModal" tabindex="-1" aria-labelledby="createUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createUserModalLabel">Neuen Benutzer anlegen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="createUserForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div id="createUserGlobalError" class="alert alert-warning d-none"></div>
+                    <div class="mb-3">
+                        <label for="create_username" class="form-label">Username *</label>
+                        <input type="text" class="form-control" id="create_username" name="username" required autocomplete="username">
+                        <div class="invalid-feedback" id="create_username_error"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_email" class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="create_email" name="email" required autocomplete="email">
+                        <div class="invalid-feedback" id="create_email_error"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_name" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="create_name" name="name" required>
+                        <div class="invalid-feedback" id="create_name_error"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_role" class="form-label">Role *</label>
+                        <select class="form-select" id="create_role" name="role" required>
+                            {% for value, label in user_roles %}
+                            <option value="{{ value }}"{% if value == default_role %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback" id="create_role_error"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Benutzer anlegen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container"></div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// Handle Create User form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const createUserForm = document.getElementById('createUserForm');
+    if (createUserForm) {
+        createUserForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Clear previous errors
+            document.getElementById('createUserGlobalError').classList.add('d-none');
+            document.getElementById('createUserGlobalError').textContent = '';
+            ['create_username', 'create_email', 'create_name', 'create_role'].forEach(function(id) {
+                const el = document.getElementById(id);
+                el.classList.remove('is-invalid');
+                document.getElementById(id + '_error').textContent = '';
+            });
+
+            const formData = new FormData(createUserForm);
+            fetch("{% url 'organisation-create-user' organisation.id %}", {
+                method: 'POST',
+                headers: {'X-CSRFToken': formData.get('csrfmiddlewaretoken')},
+                body: formData,
+            })
+            .then(function(response) {
+                return response.json().then(function(data) {
+                    return {ok: response.ok, data: data};
+                });
+            })
+            .then(function(result) {
+                if (result.ok && result.data.success) {
+                    showToast('success', 'Success', result.data.message);
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('createUserModal'));
+                    if (modal) modal.hide();
+                    createUserForm.reset();
+                    setTimeout(function() { window.location.reload(); }, 1000);
+                } else {
+                    if (result.data.global_error) {
+                        const globalErr = document.getElementById('createUserGlobalError');
+                        globalErr.textContent = result.data.global_error;
+                        globalErr.classList.remove('d-none');
+                    } else if (result.data.errors) {
+                        const fieldMap = {
+                            username: 'create_username',
+                            email: 'create_email',
+                            name: 'create_name',
+                            role: 'create_role',
+                        };
+                        let hasFieldError = false;
+                        Object.entries(result.data.errors).forEach(function([field, msgs]) {
+                            const inputId = fieldMap[field];
+                            if (inputId) {
+                                document.getElementById(inputId).classList.add('is-invalid');
+                                document.getElementById(inputId + '_error').textContent = msgs.join(' ');
+                                hasFieldError = true;
+                            } else {
+                                const globalErr = document.getElementById('createUserGlobalError');
+                                globalErr.textContent = msgs.join(' ');
+                                globalErr.classList.remove('d-none');
+                            }
+                        });
+                    } else {
+                        showToast('error', 'Error', result.data.error || 'Operation failed');
+                    }
+                }
+            })
+            .catch(function() {
+                showToast('error', 'Error', 'An unexpected error occurred');
+            });
+        });
+    }
+
+    // Reset create user modal on close
+    const createUserModal = document.getElementById('createUserModal');
+    if (createUserModal) {
+        createUserModal.addEventListener('hidden.bs.modal', function() {
+            createUserForm.reset();
+            document.getElementById('createUserGlobalError').classList.add('d-none');
+            document.getElementById('createUserGlobalError').textContent = '';
+            ['create_username', 'create_email', 'create_name', 'create_role'].forEach(function(id) {
+                document.getElementById(id).classList.remove('is-invalid');
+                document.getElementById(id + '_error').textContent = '';
+            });
+        });
+    }
+});
+
 // Populate edit user modal with current values
 document.addEventListener('DOMContentLoaded', function() {
     const editUserModal = document.getElementById('editUserModal');
