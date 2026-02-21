@@ -10245,7 +10245,13 @@ def blueprint_delete(request, id):
         
     except Exception as e:
         logger.error(f"Error deleting blueprint: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An error occurred while deleting the blueprint.'
+            },
+            status=500
+        )
 
 
 @login_required
