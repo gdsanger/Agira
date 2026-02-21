@@ -9509,7 +9509,10 @@ def email_prepare_reply(request, comment_id):
         })
     except Exception as e:
         logger.error(f"Error preparing reply: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {'success': False, 'error': 'An internal error occurred while preparing the reply.'},
+            status=500,
+        )
 
 
 @login_required
@@ -9533,7 +9536,10 @@ def email_prepare_reply_all(request, comment_id):
         })
     except Exception as e:
         logger.error(f"Error preparing reply all: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {'success': False, 'error': 'An internal error occurred while preparing the reply-all.'},
+            status=500,
+        )
 
 
 @login_required
@@ -9557,7 +9563,10 @@ def email_prepare_forward(request, comment_id):
         })
     except Exception as e:
         logger.error(f"Error preparing forward: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse(
+            {'success': False, 'error': 'An internal error occurred while preparing the forward.'},
+            status=500,
+        )
 
 
 @login_required
