@@ -9690,7 +9690,8 @@ def global_settings_update(request):
         error_msg = ', '.join([f"{k}: {', '.join(v)}" for k, v in e.message_dict.items()])
         return HttpResponse(f"Validation error: {error_msg}", status=400)
     except Exception as e:
-        return HttpResponse(f"Error updating settings: {str(e)}", status=400)
+        logger.exception("Unexpected error while updating global settings.")
+        return HttpResponse("An error occurred while updating settings.", status=400)
 
 
 def public_logo(request):
