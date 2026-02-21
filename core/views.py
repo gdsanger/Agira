@@ -10361,7 +10361,13 @@ def blueprint_import(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         logger.error(f"Unexpected error importing blueprint: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+        return JsonResponse(
+            {
+                'success': False,
+                'error': 'An unexpected error occurred while importing the blueprint. Please try again later.'
+            },
+            status=500
+        )
 
 
 @login_required
