@@ -13,7 +13,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.contrib.contenttypes.models import ContentType
 
-from core.models import Attachment, AttachmentLink, Project, Item, ItemComment, User, AttachmentRole
+from core.models import Attachment, AttachmentLink, Change, Project, Item, ItemComment, User, AttachmentRole
 from .errors import AttachmentTooLarge, AttachmentNotFound, AttachmentWriteError
 from .paths import build_attachment_path, get_absolute_path, sanitize_filename
 
@@ -92,6 +92,8 @@ class AttachmentStorageService:
             return AttachmentRole.ITEM_FILE
         elif isinstance(target, ItemComment):
             return AttachmentRole.COMMENT_ATTACHMENT
+        elif isinstance(target, Change):
+            return AttachmentRole.CHANGE_FILE
         else:
             raise ValueError(f"Unsupported target type: {type(target).__name__}")
     
