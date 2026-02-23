@@ -288,6 +288,22 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Attachments -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Attachments</h5>
+            </div>
+            <div class="card-body" id="change-attachments-section"
+                 hx-get="{% url 'change-attachments-tab' change.id %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2">Loading attachments…</span>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Right Column: Approvals & Metadata -->

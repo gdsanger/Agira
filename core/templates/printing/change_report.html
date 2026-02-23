@@ -336,10 +336,26 @@ table.data-table tbody tr:nth-child(even) {
 <!-- 8. ATTACHMENTS / REFERENCES SECTION -->
 <h2>Anhänge &amp; Referenzen</h2>
 
-<p class="empty-value">
-    Anhangslisten würden hier erscheinen (nur Metadaten).<br>
-    Hinweis: Binärdaten werden aus Compliance-Gründen nicht in diesem Bericht eingebettet.
-</p>
+{% if change_attachments %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Dateiname</th>
+            <th>Upload-Datum</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for attachment in change_attachments %}
+        <tr>
+            <td>{{ attachment.original_name }}</td>
+            <td>{% if attachment.created_at %}{{ attachment.created_at|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty-value">Keine Anhänge vorhanden.</p>
+{% endif %}
 
 {% endblock %}
 

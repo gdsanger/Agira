@@ -136,6 +136,10 @@ urlpatterns = [
     path('changes/<int:id>/ai/optimize-mitigation/', views.change_optimize_mitigation, name='change-optimize-mitigation'),
     path('changes/<int:id>/ai/optimize-rollback/', views.change_optimize_rollback, name='change-optimize-rollback'),
     path('changes/<int:id>/ai/assess-risk/', views.change_assess_risk, name='change-assess-risk'),
+    path('changes/<int:change_id>/upload-attachment/', views.change_upload_attachment, name='change-upload-attachment'),
+    path('changes/<int:change_id>/tabs/attachments/', views.change_attachments_tab, name='change-attachments-tab'),
+    path('changes/attachments/<int:attachment_id>/delete/', views.change_delete_attachment, name='change-delete-attachment'),
+    path('changes/attachments/<int:attachment_id>/download/', views.change_download_attachment, name='change-download-attachment'),
     
     # Organisation URLs
     path('organisations/', views.organisations, name='organisations'),
