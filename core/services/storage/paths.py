@@ -58,16 +58,17 @@ def build_attachment_path(target, attachment_id: int, original_name: str) -> str
     - projects/{project_id}/project/{attachment_id}__{safe_filename}
     - projects/{project_id}/items/{item_id}/item/{attachment_id}__{safe_filename}
     - projects/{project_id}/items/{item_id}/comments/{comment_id}/comment/{attachment_id}__{safe_filename}
+    - projects/{project_id}/changes/{change_id}/change/{attachment_id}__{safe_filename}
     
     Args:
-        target: Target object (Project, Item, or ItemComment)
+        target: Target object (Project, Item, ItemComment, or Change)
         attachment_id: Unique attachment ID
         original_name: Original filename
         
     Returns:
         Relative path from AGIRA_DATA_DIR
     """
-    from core.models import Project, Item, ItemComment
+    from core.models import Project, Item, ItemComment, Change
     
     safe_filename = sanitize_filename(original_name)
     filename_with_id = f"{attachment_id}__{safe_filename}"
@@ -100,6 +101,16 @@ def build_attachment_path(target, attachment_id: int, original_name: str) -> str
             'comments',
             str(target.id),
             'comment',
+            filename_with_id
+        )
+    elif isinstance(target, Change):
+        # projects/{project_id}/changes/{change_id}/change/{attachment_id}__{safe_filename}
+        path = os.path.join(
+            'projects',
+            str(target.project.id),
+            'changes',
+            str(target.id),
+            'change',
             filename_with_id
         )
     else:
