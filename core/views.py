@@ -7827,7 +7827,12 @@ def change_upload_attachment(request, change_id):
         return response
 
     except ValidationError as e:
-        return HttpResponse(f"Validation error: {str(e)}", status=400)
+        logger.warning(
+            "Validation error during change attachment upload for change %s: %s",
+            change_id,
+            e,
+        )
+        return HttpResponse("Invalid attachment data.", status=400)
     except PermissionError:
         return HttpResponse("Permission denied", status=403)
     except Exception as e:
