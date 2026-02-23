@@ -658,7 +658,7 @@ def changes(request):
     """Changes list page view."""
     changes_list = Change.objects.all().select_related(
         'project', 'created_by', 'release'
-    ).prefetch_related('approvals__approver')
+    ).prefetch_related('approvals__approver').order_by('-planned_date')
     
     # Server-side search filter
     q = request.GET.get('q', '')
@@ -7659,7 +7659,7 @@ def change_update(request, id):
             summary=f'Change "{change.title}" was updated'
         )
         
-        return JsonResponse({'success': True, 'message': 'Change updated successfully'})
+        return JsonResponse({'success': True, 'message': 'Change updated successfully', 'redirect': f'/changes/{change.id}/'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
