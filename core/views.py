@@ -658,7 +658,7 @@ def changes(request):
     """Changes list page view."""
     changes_list = Change.objects.all().select_related(
         'project', 'created_by', 'release'
-    ).prefetch_related('approvals__approver').order_by('-planned_date')
+    ).prefetch_related('approvals__approver').order_by('-planned_start')
     
     # Server-side search filter
     q = request.GET.get('q', '')
