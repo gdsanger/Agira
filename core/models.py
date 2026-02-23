@@ -120,6 +120,7 @@ class EmailDeliveryStatus(models.TextChoices):
 class AttachmentRole(models.TextChoices):
     PROJECT_FILE = 'ProjectFile', _('Project File')
     ITEM_FILE = 'ItemFile', _('Item File')
+    CHANGE_FILE = 'ChangeFile', _('Change File')
     COMMENT_ATTACHMENT = 'CommentAttachment', _('Comment Attachment')
     APPROVER_ATTACHMENT = 'ApproverAttachment', _('Approver Attachment')
     TRANSKRIPT = 'transkript', _('Meeting Transcript')

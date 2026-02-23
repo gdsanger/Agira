@@ -1,0 +1,127 @@
+{% load agira_filters %}
+{% load static %}
+<div
+    id="change-upload-drop-zone"
+    class="upload-drop-zone mb-3"
+    data-upload-zone="true"
+    data-component-key="change-attachments"
+    data-upload-url="{% url 'change-upload-attachment' change.id %}"
+    data-refresh-url="{% url 'change-attachments-tab' change.id %}"
+    data-refresh-target="#change-attachments-list"
+    data-max-file-size="26214400">
+    <div class="upload-drop-zone-icon">
+        <i class="bi bi-cloud-upload"></i>
+    </div>
+    <div class="upload-drop-zone-text">
+        <strong>Drag &amp; drop files here</strong> or click to select
+    </div>
+    <div class="upload-drop-zone-subtext">
+        Support for multiple files &bull; Maximum 25 MB per file
+    </div>
+    <input
+        type="file"
+        id="change-file-input"
+        name="file"
+        multiple
+        accept="*/*">
+</div>
+
+<!-- Upload Progress Container -->
+<div id="change-upload-progress-container"></div>
+
+<hr class="my-3">
+
+<!-- Attachments List -->
+<div id="change-attachments-list">
+    {% if attachments %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">Typ</th>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Uploaded</th>
+                        <th>Uploaded By</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attachment in attachments %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-primary" style="font-size: 0.7rem; min-width: 45px;" title="{{ attachment.file_type }}">
+                                {{ attachment.file_type|default:"FILE" }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong>{{ attachment.original_name }}</strong>
+                            {% if attachment.content_type %}
+                                <br><small class="text-muted">{{ attachment.content_type }}</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ attachment.size_bytes|filesize }}</td>
+                        <td>
+                            <small class="text-muted">{{ attachment.created_at|date:"Y-m-d H:i" }}</small>
+                        </td>
+                        <td>
+                            {% if attachment.created_by %}
+                                {{ attachment.created_by.name }}
+                            {% else %}
+                                <span class="text-muted">&mdash;</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <!-- Download Button -->
+                            <a href="{% url 'change-download-attachment' attachment.id %}"
+                               class="btn btn-sm btn-outline-primary me-1"
+                               title="Download attachment">
+                                <i class="bi bi-download"></i>
+                            </a>
+                            <!-- Delete Button -->
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    data-delete-url="{% url 'change-delete-attachment' attachment.id %}"
+                                    data-refresh-url="{% url 'change-attachments-tab' change.id %}"
+                                    onclick="deleteChangeAttachment(this)"
+                                    title="Delete attachment">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                </svg>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="text-center text-muted py-3">
+            <div class="mb-2">📎</div>
+            <div>No attachments yet</div>
+            <small>Upload a file to get started!</small>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function deleteChangeAttachment(btn) {
+    if (!confirm('Delete this attachment?')) return;
+    var deleteUrl = btn.dataset.deleteUrl;
+    var refreshUrl = btn.dataset.refreshUrl;
+    fetch(deleteUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+        },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            htmx.ajax('GET', refreshUrl, {target: '#change-attachments-section'});
+        } else {
+            alert('Delete failed: ' + (data.error || 'Unknown error'));
+        }
+    });
+}
+</script>

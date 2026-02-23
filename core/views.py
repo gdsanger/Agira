@@ -7419,6 +7419,15 @@ def change_detail(request, id):
     # Get items associated with this change (direct + release items, deduplicated)
     items = change.get_associated_items()
     
+    # Load change attachments
+    change_ct = ContentType.objects.get_for_model(Change)
+    change_attachment_links = AttachmentLink.objects.filter(
+        target_content_type=change_ct,
+        target_object_id=change.id,
+        role=AttachmentRole.CHANGE_FILE,
+    ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+    change_attachments = [link.attachment for link in change_attachment_links if not link.attachment.is_deleted]
+    
     # Get today's date for the decision date default
     from datetime import date
     today = date.today()
@@ -7432,6 +7441,7 @@ def change_detail(request, id):
         'communication_plan_html': communication_plan_html,
         'all_users': all_users,
         'items': items,
+        'change_attachments': change_attachments,
         'today': today,
     }
     return render(request, 'change_detail.html', context)
@@ -7705,6 +7715,15 @@ def change_print(request, id):
     # Get organisations
     organisations = change.organisations.all()
     
+    # Get change attachments
+    change_ct = ContentType.objects.get_for_model(Change)
+    change_attachment_links = AttachmentLink.objects.filter(
+        target_content_type=change_ct,
+        target_object_id=change.id,
+        role=AttachmentRole.CHANGE_FILE,
+    ).select_related('attachment').order_by('-created_at')
+    change_attachments = [link.attachment for link in change_attachment_links if not link.attachment.is_deleted]
+    
     # Get system settings for header/footer
     system_setting = SystemSetting.get_instance()
     
@@ -7719,6 +7738,7 @@ def change_print(request, id):
         'items': items,
         'approvals': approvals,
         'organisations': organisations,
+        'change_attachments': change_attachments,
         'now': datetime.now(),
         'system_setting': system_setting,
         'change_reference': change_reference,
@@ -7738,6 +7758,143 @@ def change_print(request, id):
     response['Content-Disposition'] = f'inline; filename="{result.filename}"'
     
     return response
+
+
+@login_required
+def change_attachments_tab(request, change_id):
+    """HTMX endpoint to load change attachments tab."""
+    change = get_object_or_404(Change, id=change_id)
+
+    content_type = ContentType.objects.get_for_model(Change)
+    attachment_links = AttachmentLink.objects.filter(
+        target_content_type=content_type,
+        target_object_id=change.id,
+        role=AttachmentRole.CHANGE_FILE,
+    ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+
+    attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+
+    context = {
+        'change': change,
+        'attachments': attachments,
+    }
+    return render(request, 'partials/change_attachments_tab.html', context)
+
+
+@login_required
+@require_POST
+def change_upload_attachment(request, change_id):
+    """HTMX endpoint to upload an attachment to a change."""
+    change = get_object_or_404(Change, id=change_id)
+
+    if 'file' not in request.FILES:
+        return HttpResponse("No file provided", status=400)
+
+    uploaded_file = request.FILES['file']
+
+    try:
+        storage_service = AttachmentStorageService()
+        attachment = storage_service.store_attachment(
+            file=uploaded_file,
+            target=change,
+            role=AttachmentRole.CHANGE_FILE,
+            created_by=request.user,
+        )
+
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='attachment.uploaded',
+            target=change,
+            actor=request.user,
+            summary=f"Uploaded file: {attachment.original_name}",
+        )
+
+        content_type = ContentType.objects.get_for_model(Change)
+        attachment_links = AttachmentLink.objects.filter(
+            target_content_type=content_type,
+            target_object_id=change.id,
+            role=AttachmentRole.CHANGE_FILE,
+        ).select_related('attachment', 'attachment__created_by').order_by('-created_at')
+
+        attachments = [link.attachment for link in attachment_links if not link.attachment.is_deleted]
+
+        context = {
+            'change': change,
+            'attachments': attachments,
+        }
+        response = render(request, 'partials/change_attachments_tab.html', context)
+        response['HX-Trigger'] = 'attachmentUploaded'
+        return response
+
+    except ValidationError as e:
+        logger.warning(
+            "Validation error during change attachment upload for change %s: %s",
+            change_id,
+            e,
+        )
+        return HttpResponse("Invalid attachment data.", status=400)
+    except PermissionError:
+        return HttpResponse("Permission denied", status=403)
+    except Exception as e:
+        logger.error(f"Attachment upload failed for change {change_id}: {str(e)}")
+        return HttpResponse("Upload failed. Please try again.", status=500)
+
+
+@login_required
+@require_POST
+def change_delete_attachment(request, attachment_id):
+    """Delete a change attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+
+        attachment_link = AttachmentLink.objects.filter(
+            attachment=attachment,
+            role=AttachmentRole.CHANGE_FILE,
+        ).first()
+        change = attachment_link.target if attachment_link else None
+
+        filename = attachment.original_name
+
+        storage_service = AttachmentStorageService()
+        storage_service.delete_attachment(attachment, hard=True)
+
+        if change:
+            activity_service = ActivityService()
+            activity_service.log(
+                verb='attachment.deleted',
+                target=change,
+                actor=request.user,
+                summary=f"Deleted file: {filename}",
+            )
+
+        return JsonResponse({'success': True, 'message': 'Attachment deleted successfully'})
+    except Exception as e:
+        logger.error(f"Attachment deletion failed for attachment {attachment_id}: {e}", exc_info=True)
+        return JsonResponse(
+            {'success': False, 'error': 'An error occurred while deleting the attachment.'},
+            status=500,
+        )
+
+
+@login_required
+def change_download_attachment(request, attachment_id):
+    """Download a change attachment."""
+    try:
+        attachment = get_object_or_404(Attachment, id=attachment_id)
+
+        if attachment.is_deleted:
+            return HttpResponse("Attachment not found", status=404)
+
+        storage_service = AttachmentStorageService()
+        file_content = storage_service.read_attachment(attachment)
+
+        response = HttpResponse(file_content, content_type=attachment.content_type or 'application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{attachment.original_name}"'
+        response['Content-Length'] = len(file_content)
+
+        return response
+    except Exception as e:
+        return HttpResponse(f"Download failed: {str(e)}", status=500)
 
 
 @login_required
