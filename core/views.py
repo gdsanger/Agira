@@ -8591,7 +8591,7 @@ def change_send_update_reminder(request, id):
         logger.error(f"Service error sending update reminders for Change {change.id}: {str(e)}")
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': 'Failed to send update-reminder emails. Please contact the system administrator.'
         }, status=500)
 
     except Exception as e:
