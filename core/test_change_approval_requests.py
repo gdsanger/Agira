@@ -303,3 +303,388 @@ class GenerateChangePdfBytesTestCase(TestCase):
             generate_change_pdf_bytes(self.change, "http://testserver")
 
         self.assertIn("too large", str(ctx.exception).lower())
+
+
+class ChangeUpdateReminderServiceTestCase(TestCase):
+    """Tests for send_change_update_reminder_emails service function"""
+
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin_ur",
+            email="admin_ur@example.com",
+            password="testpass",
+            name="Admin UR"
+        )
+        self.pending_approver = User.objects.create_user(
+            username="pending_ur",
+            email="pending_ur@example.com",
+            password="testpass",
+            name="Pending Approver UR"
+        )
+        self.accept_approver = User.objects.create_user(
+            username="accept_ur",
+            email="accept_ur@example.com",
+            password="testpass",
+            name="Accept Approver UR"
+        )
+        self.reject_approver = User.objects.create_user(
+            username="reject_ur",
+            email="reject_ur@example.com",
+            password="testpass",
+            name="Reject Approver UR"
+        )
+        self.project = Project.objects.create(
+            name="UR Test Project",
+            status="ACTIVE",
+            created_by=self.admin_user
+        )
+        self.change = Change.objects.create(
+            title="UR Test Change",
+            description="desc",
+            project=self.project,
+            status=ChangeStatus.DRAFT,
+            risk_level=RiskLevel.MEDIUM,
+            created_by=self.admin_user
+        )
+        self.pending_approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.pending_approver,
+            status=ApprovalStatus.PENDING
+        )
+        self.accept_approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.accept_approver,
+            status=ApprovalStatus.ACCEPT
+        )
+        self.reject_approval = ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.reject_approver,
+            status=ApprovalStatus.REJECT
+        )
+        MailTemplate.objects.create(
+            key="change-update-reminder",
+            subject="Update-Erinnerung: {{ change_title }} ({{ change_id }})",
+            message="<p>Erinnerung: {{ change_id }} - {{ change_title }}</p>",
+            is_active=True
+        )
+
+    @patch('core.services.changes.approval_mailer.send_email')
+    @patch('core.services.changes.approval_mailer.create_attachment_from_bytes')
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_sends_to_pending_and_accept_not_reject(self, mock_pdf, mock_attach, mock_send):
+        """PENDING and ACCEPT approvers receive mail; REJECT does not."""
+        from core.services.changes.approval_mailer import send_change_update_reminder_emails
+        mock_pdf.return_value = b"pdf"
+        mock_attach.return_value = Mock()
+        mock_result = Mock()
+        mock_result.success = True
+        mock_send.return_value = mock_result
+
+        result = send_change_update_reminder_emails(self.change, "http://testserver")
+
+        self.assertEqual(result['sent_count'], 2)
+        self.assertEqual(result['failed_count'], 0)
+        sent_emails = [call.kwargs['to'][0] for call in mock_send.call_args_list]
+        self.assertIn(self.pending_approver.email, sent_emails)
+        self.assertIn(self.accept_approver.email, sent_emails)
+        self.assertNotIn(self.reject_approver.email, sent_emails)
+
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_missing_template_raises_service_error(self, mock_pdf):
+        """Missing or inactive template raises ServiceError."""
+        from core.services.changes.approval_mailer import send_change_update_reminder_emails
+        MailTemplate.objects.filter(key='change-update-reminder').delete()
+        with self.assertRaises(ServiceError) as ctx:
+            send_change_update_reminder_emails(self.change, "http://testserver")
+        self.assertIn("change-update-reminder", str(ctx.exception))
+
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_inactive_template_raises_service_error(self, mock_pdf):
+        """Inactive template raises ServiceError."""
+        from core.services.changes.approval_mailer import send_change_update_reminder_emails
+        MailTemplate.objects.filter(key='change-update-reminder').update(is_active=False)
+        with self.assertRaises(ServiceError):
+            send_change_update_reminder_emails(self.change, "http://testserver")
+
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_oversized_pdf_raises_service_error(self, mock_pdf):
+        """PDF exceeding 3 MB raises ServiceError."""
+        from core.services.changes.approval_mailer import send_change_update_reminder_emails
+        mock_pdf.side_effect = ServiceError("PDF too large")
+        with self.assertRaises(ServiceError) as ctx:
+            send_change_update_reminder_emails(self.change, "http://testserver")
+        self.assertIn("PDF", str(ctx.exception))
+
+    @patch('core.services.changes.approval_mailer.send_email')
+    @patch('core.services.changes.approval_mailer.create_attachment_from_bytes')
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_attachment_passed_to_send_email(self, mock_pdf, mock_attach, mock_send):
+        """PDF attachment is passed to send_email."""
+        from core.services.changes.approval_mailer import send_change_update_reminder_emails
+        mock_pdf.return_value = b"pdf"
+        fake_attachment = Mock()
+        mock_attach.return_value = fake_attachment
+        mock_result = Mock()
+        mock_result.success = True
+        mock_send.return_value = mock_result
+
+        send_change_update_reminder_emails(self.change, "http://testserver")
+
+        for call in mock_send.call_args_list:
+            self.assertIn(fake_attachment, call.kwargs['attachments'])
+
+
+class ChangeUpdateCompletedServiceTestCase(TestCase):
+    """Tests for send_change_update_completed_emails service function"""
+
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin_uc",
+            email="admin_uc@example.com",
+            password="testpass",
+            name="Admin UC"
+        )
+        self.pending_approver = User.objects.create_user(
+            username="pending_uc",
+            email="pending_uc@example.com",
+            password="testpass",
+            name="Pending Approver UC"
+        )
+        self.reject_approver = User.objects.create_user(
+            username="reject_uc",
+            email="reject_uc@example.com",
+            password="testpass",
+            name="Reject Approver UC"
+        )
+        self.project = Project.objects.create(
+            name="UC Test Project",
+            status="ACTIVE",
+            created_by=self.admin_user
+        )
+        self.change = Change.objects.create(
+            title="UC Test Change",
+            description="desc",
+            project=self.project,
+            status=ChangeStatus.DRAFT,
+            risk_level=RiskLevel.MEDIUM,
+            created_by=self.admin_user
+        )
+        ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.pending_approver,
+            status=ApprovalStatus.PENDING
+        )
+        ChangeApproval.objects.create(
+            change=self.change,
+            approver=self.reject_approver,
+            status=ApprovalStatus.REJECT
+        )
+        MailTemplate.objects.create(
+            key="change-update-completed",
+            subject="Update abgeschlossen: {{ change_title }} ({{ change_id }})",
+            message="<p>Abgeschlossen: {{ change_id }} - {{ change_title }}</p>",
+            is_active=True
+        )
+
+    @patch('core.services.changes.approval_mailer.send_email')
+    @patch('core.services.changes.approval_mailer.create_attachment_from_bytes')
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_sets_executed_at(self, mock_pdf, mock_attach, mock_send):
+        """executed_at is always set/overwritten when action is triggered."""
+        from core.services.changes.approval_mailer import send_change_update_completed_emails
+        mock_pdf.return_value = b"pdf"
+        mock_attach.return_value = Mock()
+        mock_result = Mock()
+        mock_result.success = True
+        mock_send.return_value = mock_result
+
+        before = timezone.now()
+        send_change_update_completed_emails(self.change, "http://testserver")
+        after = timezone.now()
+
+        self.change.refresh_from_db()
+        self.assertIsNotNone(self.change.executed_at)
+        self.assertGreaterEqual(self.change.executed_at, before)
+        self.assertLessEqual(self.change.executed_at, after)
+
+    @patch('core.services.changes.approval_mailer.send_email')
+    @patch('core.services.changes.approval_mailer.create_attachment_from_bytes')
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_overwrites_existing_executed_at(self, mock_pdf, mock_attach, mock_send):
+        """executed_at is overwritten even when already set."""
+        from core.services.changes.approval_mailer import send_change_update_completed_emails
+        old_time = timezone.now() - timezone.timedelta(days=10)
+        self.change.executed_at = old_time
+        self.change.save(update_fields=['executed_at'])
+
+        mock_pdf.return_value = b"pdf"
+        mock_attach.return_value = Mock()
+        mock_result = Mock()
+        mock_result.success = True
+        mock_send.return_value = mock_result
+
+        send_change_update_completed_emails(self.change, "http://testserver")
+        self.change.refresh_from_db()
+        self.assertGreater(self.change.executed_at, old_time)
+
+    @patch('core.services.changes.approval_mailer.send_email')
+    @patch('core.services.changes.approval_mailer.create_attachment_from_bytes')
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_reject_approver_does_not_receive_mail(self, mock_pdf, mock_attach, mock_send):
+        """REJECT approvers do not receive mail."""
+        from core.services.changes.approval_mailer import send_change_update_completed_emails
+        mock_pdf.return_value = b"pdf"
+        mock_attach.return_value = Mock()
+        mock_result = Mock()
+        mock_result.success = True
+        mock_send.return_value = mock_result
+
+        result = send_change_update_completed_emails(self.change, "http://testserver")
+
+        sent_emails = [call.kwargs['to'][0] for call in mock_send.call_args_list]
+        self.assertNotIn(self.reject_approver.email, sent_emails)
+        self.assertIn(self.pending_approver.email, sent_emails)
+
+    @patch('core.services.changes.approval_mailer.generate_change_pdf_bytes')
+    def test_missing_template_raises_service_error(self, mock_pdf):
+        """Missing template raises ServiceError."""
+        from core.services.changes.approval_mailer import send_change_update_completed_emails
+        MailTemplate.objects.filter(key='change-update-completed').delete()
+        with self.assertRaises(ServiceError):
+            send_change_update_completed_emails(self.change, "http://testserver")
+
+
+class ChangeUpdateReminderEndpointTestCase(TestCase):
+    """Smoke tests for /changes/<id>/send-update-reminder/ endpoint"""
+
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin_ep_ur",
+            email="admin_ep_ur@example.com",
+            password="testpass",
+            name="Admin EP UR"
+        )
+        self.project = Project.objects.create(
+            name="EP UR Project",
+            status="ACTIVE",
+            created_by=self.admin_user
+        )
+        self.change = Change.objects.create(
+            title="EP UR Change",
+            description="desc",
+            project=self.project,
+            status=ChangeStatus.DRAFT,
+            risk_level=RiskLevel.MEDIUM,
+            created_by=self.admin_user
+        )
+        self.client = Client()
+        self.client.login(username="admin_ep_ur", password="testpass")
+        self.url = reverse('change-send-update-reminder', kwargs={'id': self.change.id})
+
+    def test_unauthenticated_redirected(self):
+        self.client.logout()
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_get_not_allowed(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_nonexistent_change_404(self):
+        url = reverse('change-send-update-reminder', kwargs={'id': 99999})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+
+    @patch('core.views.get_graph_config')
+    def test_disabled_service_returns_400(self, mock_get_config):
+        mock_config = Mock()
+        mock_config.enabled = False
+        mock_get_config.return_value = mock_config
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+
+    @patch('core.services.changes.approval_mailer.send_change_update_reminder_emails')
+    @patch('core.views.get_graph_config')
+    def test_successful_send_returns_200(self, mock_get_config, mock_send):
+        mock_config = Mock()
+        mock_config.enabled = True
+        mock_config.tenant_id = "t"
+        mock_config.client_id = "c"
+        mock_config.client_secret = "s"
+        mock_get_config.return_value = mock_config
+        mock_send.return_value = {'success': True, 'sent_count': 1, 'failed_count': 0, 'errors': []}
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['sent_count'], 1)
+
+
+class ChangeUpdateCompletedEndpointTestCase(TestCase):
+    """Smoke tests for /changes/<id>/send-update-completed/ endpoint"""
+
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin_ep_uc",
+            email="admin_ep_uc@example.com",
+            password="testpass",
+            name="Admin EP UC"
+        )
+        self.project = Project.objects.create(
+            name="EP UC Project",
+            status="ACTIVE",
+            created_by=self.admin_user
+        )
+        self.change = Change.objects.create(
+            title="EP UC Change",
+            description="desc",
+            project=self.project,
+            status=ChangeStatus.DRAFT,
+            risk_level=RiskLevel.MEDIUM,
+            created_by=self.admin_user
+        )
+        self.client = Client()
+        self.client.login(username="admin_ep_uc", password="testpass")
+        self.url = reverse('change-send-update-completed', kwargs={'id': self.change.id})
+
+    def test_unauthenticated_redirected(self):
+        self.client.logout()
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_get_not_allowed(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_nonexistent_change_404(self):
+        url = reverse('change-send-update-completed', kwargs={'id': 99999})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+
+    @patch('core.views.get_graph_config')
+    def test_disabled_service_returns_400(self, mock_get_config):
+        mock_config = Mock()
+        mock_config.enabled = False
+        mock_get_config.return_value = mock_config
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+
+    @patch('core.services.changes.approval_mailer.send_change_update_completed_emails')
+    @patch('core.views.get_graph_config')
+    def test_successful_send_returns_200(self, mock_get_config, mock_send):
+        mock_config = Mock()
+        mock_config.enabled = True
+        mock_config.tenant_id = "t"
+        mock_config.client_id = "c"
+        mock_config.client_secret = "s"
+        mock_get_config.return_value = mock_config
+        mock_send.return_value = {'success': True, 'sent_count': 1, 'failed_count': 0, 'errors': []}
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['sent_count'], 1)
