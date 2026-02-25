@@ -467,7 +467,8 @@ def _send_change_info_emails(change: Change, request_base_url: str, template_key
 
         except Exception as e:
             failed_count += 1
-            error_msg = f"{approval.approver.email}: {str(e)}"
+            # Do not propagate raw exception details to callers; log them instead.
+            error_msg = f"{approval.approver.email}: unexpected error while sending email"
             errors.append(error_msg)
             logger.error(
                 f"Exception sending {template_key} email to {approval.approver.email} "

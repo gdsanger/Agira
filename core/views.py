@@ -8582,7 +8582,7 @@ def change_send_update_reminder(request, id):
 
             return JsonResponse({
                 'success': False,
-                'error': error_msg,
+                'error': 'Some update-reminder emails could not be sent. Please contact the system administrator if the problem persists.',
                 'sent_count': result['sent_count'],
                 'failed_count': result['failed_count']
             }, status=500)
