@@ -8683,14 +8683,14 @@ def change_send_update_completed(request, id):
         logger.error(f"Service error sending update-completed emails for Change {change.id}: {str(e)}")
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': 'A service error occurred while sending update-completed emails. Please contact the system administrator.'
         }, status=500)
 
     except Exception as e:
         logger.exception(f"Unexpected error sending update-completed emails for Change {change.id}: {str(e)}")
         return JsonResponse({
             'success': False,
-            'error': f'Unexpected error: {str(e)}'
+            'error': 'An unexpected error occurred while sending update-completed emails. Please contact the system administrator.'
         }, status=500)
 
 
