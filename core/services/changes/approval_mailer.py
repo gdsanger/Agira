@@ -13,7 +13,7 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import MailTemplate, Attachment, Change, ChangeApproval
+from core.models import MailTemplate, Attachment, Change, ChangeApproval, ApprovalStatus
 from core.services.graph.mail_service import send_email, GraphSendResult
 from core.services.exceptions import ServiceError
 from core.printing.service import PdfRenderService
@@ -377,3 +377,147 @@ def send_change_approval_reminder_emails(change: Change, request_base_url: str) 
         'failed_count': failed_count,
         'errors': errors,
     }
+
+
+def _send_change_info_emails(change: Change, request_base_url: str, template_key: str) -> dict:
+    """
+    Shared helper: send info-only emails (no approve/reject links) to all
+    approvers whose status is PENDING or ACCEPT.
+
+    Args:
+        change: Change instance
+        request_base_url: Base URL for PDF generation
+        template_key: MailTemplate key to use
+
+    Returns:
+        Dict with 'success', 'sent_count', 'failed_count', 'errors'
+
+    Raises:
+        ServiceError: If template not found or PDF generation fails
+    """
+    # Load template
+    try:
+        template = MailTemplate.objects.get(key=template_key, is_active=True)
+    except MailTemplate.DoesNotExist:
+        raise ServiceError(
+            f"MailTemplate with key '{template_key}' not found or not active. "
+            "Please create and activate this template in the admin interface."
+        )
+
+    # Generate PDF
+    try:
+        pdf_bytes = generate_change_pdf_bytes(change, request_base_url)
+        pdf_filename = f"change-{change.id}.pdf"
+    except Exception as e:
+        logger.error(f"Failed to generate PDF for Change {change.id}: {str(e)}")
+        raise ServiceError(f"Failed to generate Change PDF: {str(e)}")
+
+    # Create attachment from PDF bytes
+    try:
+        pdf_attachment = create_attachment_from_bytes(pdf_bytes, pdf_filename, change)
+    except Exception as e:
+        logger.error(f"Failed to create attachment for Change {change.id}: {str(e)}")
+        raise ServiceError(f"Failed to create PDF attachment: {str(e)}")
+
+    # Track results
+    sent_count = 0
+    failed_count = 0
+    errors = []
+
+    # Send to approvers with PENDING or ACCEPT status (not REJECT)
+    eligible_approvals = change.approvals.select_related('approver').filter(
+        status__in=[ApprovalStatus.PENDING, ApprovalStatus.ACCEPT]
+    )
+    for approval in eligible_approvals:
+        try:
+            # Render template (no approve/reject URLs needed)
+            variables = {
+                '{{ change_id }}': str(change.id),
+                '{{ change_title }}': change.title,
+            }
+            subject = template.subject
+            message = template.message
+            for var, value in variables.items():
+                subject = subject.replace(var, value)
+                message = message.replace(var, value)
+
+            # Send email
+            result: GraphSendResult = send_email(
+                subject=subject,
+                body=message,
+                to=[approval.approver.email],
+                body_is_html=True,
+                attachments=[pdf_attachment],
+            )
+
+            if result.success:
+                sent_count += 1
+                logger.info(
+                    f"Sent {template_key} email to {approval.approver.email} "
+                    f"for Change {change.id}"
+                )
+            else:
+                failed_count += 1
+                error_msg = f"{approval.approver.email}: {result.error}"
+                errors.append(error_msg)
+                logger.error(
+                    f"Failed to send {template_key} email to {approval.approver.email} "
+                    f"for Change {change.id}: {result.error}"
+                )
+
+        except Exception as e:
+            failed_count += 1
+            error_msg = f"{approval.approver.email}: {str(e)}"
+            errors.append(error_msg)
+            logger.error(
+                f"Exception sending {template_key} email to {approval.approver.email} "
+                f"for Change {change.id}: {str(e)}"
+            )
+
+    return {
+        'success': failed_count == 0,
+        'sent_count': sent_count,
+        'failed_count': failed_count,
+        'errors': errors,
+    }
+
+
+def send_change_update_reminder_emails(change: Change, request_base_url: str) -> dict:
+    """
+    Send update-reminder info emails to all PENDING/ACCEPT approvers for a Change.
+    No approve/reject links are included.
+
+    Args:
+        change: Change instance
+        request_base_url: Base URL for PDF generation
+
+    Returns:
+        Dict with 'success', 'sent_count', 'failed_count', 'errors'
+
+    Raises:
+        ServiceError: If template not found or PDF generation fails
+    """
+    return _send_change_info_emails(change, request_base_url, "change-update-reminder")
+
+
+def send_change_update_completed_emails(change: Change, request_base_url: str) -> dict:
+    """
+    Send update-completed info emails to all PENDING/ACCEPT approvers for a Change
+    and set change.executed_at to now (always overwrite).
+    No approve/reject links are included.
+
+    Args:
+        change: Change instance
+        request_base_url: Base URL for PDF generation
+
+    Returns:
+        Dict with 'success', 'sent_count', 'failed_count', 'errors'
+
+    Raises:
+        ServiceError: If template not found or PDF generation fails
+    """
+    # Always set executed_at before sending mails
+    change.executed_at = timezone.now()
+    change.save(update_fields=["executed_at"])
+
+    return _send_change_info_emails(change, request_base_url, "change-update-completed")

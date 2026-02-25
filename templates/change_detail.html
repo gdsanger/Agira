@@ -329,6 +329,22 @@
                         <span id="approval-reminder-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                         <i class="bi bi-bell"></i> Send Reminder
                     </button>
+                    <button class="btn btn-sm btn-info"
+                            hx-post="{% url 'change-send-update-reminder' change.id %}"
+                            hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'Failed to send update reminder', 'danger'); }"
+                            hx-indicator="#update-reminder-spinner"
+                            title="Update-Erinnerung an alle Approver (PENDING/ACCEPT) senden">
+                        <span id="update-reminder-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-arrow-clockwise"></i> Update-Erinnerung senden
+                    </button>
+                    <button class="btn btn-sm btn-secondary"
+                            hx-post="{% url 'change-send-update-completed' change.id %}"
+                            hx-on::after-request="if(event.detail.successful) { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.message, 'success'); } else { const resp = JSON.parse(event.detail.xhr.response); showToast(resp.error || 'Failed to send update completed', 'danger'); }"
+                            hx-indicator="#update-completed-spinner"
+                            title="Update abgeschlossen – Benachrichtigung senden und executed_at setzen">
+                        <span id="update-completed-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        <i class="bi bi-check-circle"></i> Update abgeschlossen senden
+                    </button>
                     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addApproverModal">
                         <i class="bi bi-plus-lg"></i>
                     </button>
