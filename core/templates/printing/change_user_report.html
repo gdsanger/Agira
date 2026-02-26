@@ -1,0 +1,255 @@
+{% extends "printing/base.html" %}
+
+{% block title %}Change Anwender-Report - {{ change.id }}{% endblock %}
+
+{% block inline_styles %}
+/* Custom styles for Change Anwender-Report PDF */
+@page {
+    size: A4;
+    margin: 18mm 20mm 18mm 20mm; /* top, right, bottom, left */
+}
+
+/* Header-specific styles */
+.header-content h2 {
+    margin: 0;
+    padding: 0;
+    border: none;
+    font-size: 14pt;
+    color: #1a202c;
+}
+
+.header-content img {
+    display: block;
+}
+
+/* Typography */
+body {
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #333;
+}
+
+h1 {
+    font-size: 18pt;
+    font-weight: bold;
+    margin-bottom: 10pt;
+    color: #1a202c;
+}
+
+h2 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin-top: 15pt;
+    margin-bottom: 8pt;
+    color: #2d3748;
+    border-bottom: 1px solid #cbd5e0;
+    padding-bottom: 3pt;
+}
+
+h3 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin-top: 12pt;
+    margin-bottom: 6pt;
+    color: #4a5568;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 2pt;
+}
+
+/* Key-value table styles */
+table.kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15pt;
+}
+
+table.kv-table th,
+table.kv-table td {
+    border: 0.5pt solid #cbd5e0;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+}
+
+table.kv-table th {
+    background-color: #4a5568;
+    color: white;
+    font-weight: bold;
+}
+
+table.kv-table tbody tr:nth-child(odd) {
+    background-color: #f7fafc;
+}
+
+table.kv-table tbody tr:nth-child(even) {
+    background-color: white;
+}
+
+table.kv-table td:first-child {
+    font-weight: bold;
+    width: 35%;
+}
+
+/* Data table styles */
+table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15pt;
+}
+
+table.data-table th,
+table.data-table td {
+    border: 0.5pt solid #cbd5e0;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+}
+
+table.data-table th {
+    background-color: #4a5568;
+    color: white;
+    font-weight: bold;
+}
+
+table.data-table tbody tr:nth-child(odd) {
+    background-color: #f7fafc;
+}
+
+table.data-table tbody tr:nth-child(even) {
+    background-color: white;
+}
+
+/* Metadata section */
+.metadata {
+    font-size: 9pt;
+    color: #718096;
+    margin-bottom: 15pt;
+}
+
+/* Text content */
+.text-content {
+    margin-bottom: 10pt;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.text-label {
+    font-weight: bold;
+    margin-bottom: 5pt;
+}
+
+.empty-value {
+    color: #a0aec0;
+    font-style: italic;
+}
+
+.item-type-section {
+    margin-bottom: 20pt;
+}
+{% endblock %}
+
+{% block header_content %}
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5em 0;">
+    <div style="flex: 1;">
+        <h2 style="margin: 0; font-size: 14pt; color: #1a202c;">{{ system_setting.system_name }}</h2>
+    </div>
+    {% if system_setting.company_logo %}
+    <div style="flex: 0 0 auto; text-align: right;">
+        <img src="{{ system_setting.company_logo.url }}" alt="Company Logo" style="max-height: 40px; max-width: 150px;" />
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- 1. HEADER SECTION -->
+<h1>Change Anwender-Report</h1>
+
+<div class="metadata">
+    <strong>Change-Referenz:</strong> {{ change.created_at|date:"Ymd" }}-{{ change.id }}<br>
+    <strong>Report erstellt:</strong> {{ now|date:"Y-m-d H:i:s" }}
+</div>
+
+<!-- 2. CHANGE OVERVIEW SECTION -->
+<h2>Change-Übersicht</h2>
+
+<table class="kv-table">
+    <thead>
+        <tr>
+            <th>Feld</th>
+            <th>Wert</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Titel</td>
+            <td>{{ change.title|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Projekt</td>
+            <td>{{ change.project.name|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>{{ change.get_status_display|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td>Release</td>
+            <td>{% if change.release %}{{ change.release.version }} ({{ change.release.get_type_display }}){% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Geplanter Start</td>
+            <td>{% if change.planned_start %}{{ change.planned_start|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Geplantes Ende</td>
+            <td>{% if change.planned_end %}{{ change.planned_end|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- 3. DESCRIPTION SECTION -->
+<h2>Beschreibung</h2>
+
+<div class="text-content">{% if change.description %}{{ change.description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+
+<!-- 4. ITEMS SECTION (grouped by type) -->
+{% if items %}
+<h2>Items aus Release</h2>
+
+{% regroup items by type as items_by_type %}
+{% for type_group in items_by_type %}
+<div class="item-type-section">
+    <h3>{{ type_group.grouper.name|default:"—" }}</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width: 10%;">Item ID</th>
+                <th style="width: 25%;">Titel</th>
+                <th style="width: 65%;">Lösungsbeschreibung</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in type_group.list %}
+            <tr>
+                <td>#{{ item.id }}</td>
+                <td>{{ item.title|default:"—" }}</td>
+                <td>{% if item.solution_description %}{{ item.solution_description }}{% else %}<span class="empty-value">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}
+
+{% block footer_left %}
+{{ change_reference }}_Anwender-Report.pdf
+{% endblock %}
+
+{% block footer_center %}
+{{ now|date:"Y-m-d H:i" }}
+{% endblock %}

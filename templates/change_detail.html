@@ -27,6 +27,9 @@
             <a href="{% url 'change-print' change.id %}" class="btn btn-secondary" target="_blank">
                 <i class="bi bi-printer"></i> Drucken
             </a>
+            <a href="{% url 'change-print-user-report' change.id %}" class="btn btn-secondary" target="_blank">
+                <i class="bi bi-file-earmark-person"></i> Anwender-Report
+            </a>
             <a href="{% url 'change-edit' change.id %}" class="btn btn-primary">
                 <i class="bi bi-pencil"></i> Edit
             </a>
