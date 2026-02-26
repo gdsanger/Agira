@@ -7761,6 +7761,55 @@ def change_print(request, id):
 
 
 @login_required
+def change_print_user_report(request, id):
+    """Generate and return Anwender-Report PDF for a change using WeasyPrint."""
+    from datetime import datetime
+    from core.printing import PdfRenderService
+
+    # Get the change with all related data
+    change = get_object_or_404(
+        Change.objects.select_related(
+            'project', 'created_by', 'release'
+        ),
+        id=id
+    )
+
+    # Get associated items (same query as change_print)
+    items = change.get_associated_items()
+
+    # Get system settings for header/footer
+    system_setting = SystemSetting.get_instance()
+
+    # Generate filename: change_<id>_user_report.pdf
+    change_reference = f"{change.created_at.strftime('%Y%m%d')}-{change.id}"
+    filename = f"change_{change.id}_user_report.pdf"
+
+    # Prepare context for template
+    context = {
+        'change': change,
+        'items': items,
+        'now': datetime.now(),
+        'system_setting': system_setting,
+        'change_reference': change_reference,
+    }
+
+    # Render PDF using WeasyPrint
+    service = PdfRenderService()
+    result = service.render(
+        template_name='printing/change_user_report.html',
+        context=context,
+        base_url=request.build_absolute_uri('/'),
+        filename=filename
+    )
+
+    # Create response with PDF
+    response = HttpResponse(result.pdf_bytes, content_type=result.content_type)
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+
+    return response
+
+
+@login_required
 def change_attachments_tab(request, change_id):
     """HTMX endpoint to load change attachments tab."""
     change = get_object_or_404(Change, id=change_id)
