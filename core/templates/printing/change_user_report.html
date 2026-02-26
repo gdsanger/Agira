@@ -1,9 +1,10 @@
 {% extends "printing/base.html" %}
+{% load agira_filters %}
 
-{% block title %}Change Anwender-Report - {{ change.id }}{% endblock %}
+{% block title %}What's New - {{ change.id }}{% endblock %}
 
 {% block inline_styles %}
-/* Custom styles for Change Anwender-Report PDF */
+/* Custom styles for What's New PDF */
 @page {
     size: A4;
     margin: 18mm 20mm 18mm 20mm; /* top, right, bottom, left */
@@ -15,7 +16,7 @@
     padding: 0;
     border: none;
     font-size: 14pt;
-    color: #1a202c;
+    color: #00546c;
 }
 
 .header-content img {
@@ -26,35 +27,46 @@
 body {
     font-family: 'Helvetica', 'Arial', sans-serif;
     font-size: 10pt;
-    line-height: 1.4;
-    color: #333;
+    line-height: 1.5;
+    color: #565656;
 }
 
 h1 {
-    font-size: 18pt;
+    font-size: 22pt;
     font-weight: bold;
-    margin-bottom: 10pt;
-    color: #1a202c;
+    margin-bottom: 6pt;
+    color: #00546c;
+    border-bottom: 2pt solid #00546c;
+    padding-bottom: 4pt;
 }
 
 h2 {
-    font-size: 14pt;
+    font-size: 13pt;
     font-weight: bold;
-    margin-top: 15pt;
+    margin-top: 18pt;
     margin-bottom: 8pt;
-    color: #2d3748;
-    border-bottom: 1px solid #cbd5e0;
+    color: #00546c;
+    border-bottom: 0.5pt solid #00546c;
     padding-bottom: 3pt;
 }
 
 h3 {
-    font-size: 12pt;
+    font-size: 11pt;
     font-weight: bold;
-    margin-top: 12pt;
+    margin-top: 18pt;
     margin-bottom: 6pt;
-    color: #4a5568;
-    border-bottom: 1px solid #e2e8f0;
-    padding-bottom: 2pt;
+    color: white;
+    background-color: #00546c;
+    padding: 4pt 8pt;
+    border-radius: 2pt;
+}
+
+h4 {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-top: 10pt;
+    margin-bottom: 4pt;
+    color: #00546c;
 }
 
 /* Key-value table styles */
@@ -73,13 +85,13 @@ table.kv-table td {
 }
 
 table.kv-table th {
-    background-color: #4a5568;
+    background-color: #00546c;
     color: white;
     font-weight: bold;
 }
 
 table.kv-table tbody tr:nth-child(odd) {
-    background-color: #f7fafc;
+    background-color: #f0f7fa;
 }
 
 table.kv-table tbody tr:nth-child(even) {
@@ -89,58 +101,58 @@ table.kv-table tbody tr:nth-child(even) {
 table.kv-table td:first-child {
     font-weight: bold;
     width: 35%;
-}
-
-/* Data table styles */
-table.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 15pt;
-}
-
-table.data-table th,
-table.data-table td {
-    border: 0.5pt solid #cbd5e0;
-    padding: 6pt 8pt;
-    text-align: left;
-    vertical-align: top;
-}
-
-table.data-table th {
-    background-color: #4a5568;
-    color: white;
-    font-weight: bold;
-}
-
-table.data-table tbody tr:nth-child(odd) {
-    background-color: #f7fafc;
-}
-
-table.data-table tbody tr:nth-child(even) {
-    background-color: white;
+    color: #565656;
 }
 
 /* Metadata section */
 .metadata {
     font-size: 9pt;
-    color: #718096;
+    color: #888;
     margin-bottom: 15pt;
 }
 
-/* Text content */
-.text-content {
-    margin-bottom: 10pt;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+/* Item entry */
+.item-entry {
+    margin-bottom: 8pt;
 }
 
-.text-label {
-    font-weight: bold;
-    margin-bottom: 5pt;
+.item-entry p {
+    margin: 4pt 0 0 0;
+    color: #565656;
+}
+
+.item-entry hr {
+    border: none;
+    border-top: 0.5pt solid #d0d0d0;
+    margin: 8pt 0;
+}
+
+/* Rendered markdown content */
+.markdown-content {
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #565656;
+}
+
+.markdown-content p {
+    margin: 0 0 6pt 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 4pt 0 6pt 1em;
+    padding: 0;
+}
+
+.markdown-content code {
+    background-color: #f4f4f4;
+    padding: 1pt 3pt;
+    font-size: 9pt;
+    border-radius: 2pt;
 }
 
 .empty-value {
-    color: #a0aec0;
+    color: #aaa;
     font-style: italic;
 }
 
@@ -152,7 +164,7 @@ table.data-table tbody tr:nth-child(even) {
 {% block header_content %}
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5em 0;">
     <div style="flex: 1;">
-        <h2 style="margin: 0; font-size: 14pt; color: #1a202c;">{{ system_setting.system_name }}</h2>
+        <h2 style="margin: 0; font-size: 14pt; color: #00546c;">{{ system_setting.system_name }}</h2>
     </div>
     {% if system_setting.company_logo %}
     <div style="flex: 0 0 auto; text-align: right;">
@@ -164,7 +176,7 @@ table.data-table tbody tr:nth-child(even) {
 
 {% block content %}
 <!-- 1. HEADER SECTION -->
-<h1>Change Anwender-Report</h1>
+<h1>What's New</h1>
 
 <div class="metadata">
     <strong>Change-Referenz:</strong> {{ change.created_at|date:"Ymd" }}-{{ change.id }}<br>
@@ -172,7 +184,7 @@ table.data-table tbody tr:nth-child(even) {
 </div>
 
 <!-- 2. CHANGE OVERVIEW SECTION -->
-<h2>Change-Übersicht</h2>
+<h2>Übersicht</h2>
 
 <table class="kv-table">
     <thead>
@@ -212,34 +224,23 @@ table.data-table tbody tr:nth-child(even) {
 <!-- 3. DESCRIPTION SECTION -->
 <h2>Beschreibung</h2>
 
-<div class="text-content">{% if change.description %}{{ change.description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+<div class="markdown-content">{% if change.description %}{{ change.description|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
 <!-- 4. ITEMS SECTION (grouped by type) -->
 {% if items %}
-<h2>Items aus Release</h2>
+<h2>Neuerungen</h2>
 
 {% regroup items by type as items_by_type %}
 {% for type_group in items_by_type %}
 <div class="item-type-section">
     <h3>{{ type_group.grouper.name|default:"—" }}</h3>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th style="width: 10%;">Item ID</th>
-                <th style="width: 25%;">Titel</th>
-                <th style="width: 65%;">Lösungsbeschreibung</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in type_group.list %}
-            <tr>
-                <td>#{{ item.id }}</td>
-                <td>{{ item.title|default:"—" }}</td>
-                <td>{% if item.solution_description %}{{ item.solution_description }}{% else %}<span class="empty-value">—</span>{% endif %}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {% for item in type_group.list %}
+    <div class="item-entry">
+        <h4>#{{ item.id }}: {{ item.title|default:"—" }}</h4>
+        <div class="markdown-content">{% if item.solution_description %}{{ item.solution_description|render_markdown }}{% else %}<span class="empty-value">Keine Lösungsbeschreibung vorhanden</span>{% endif %}</div>
+        {% if not forloop.last %}<hr>{% endif %}
+    </div>
+    {% endfor %}
 </div>
 {% endfor %}
 {% endif %}
@@ -247,9 +248,8 @@ table.data-table tbody tr:nth-child(even) {
 {% endblock %}
 
 {% block footer_left %}
-{{ change_reference }}_Anwender-Report.pdf
+{{ now|date:"Y-m-d H:i" }}
 {% endblock %}
 
 {% block footer_center %}
-{{ now|date:"Y-m-d H:i" }}
 {% endblock %}
