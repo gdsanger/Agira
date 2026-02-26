@@ -233,7 +233,6 @@ table.kv-table td:first-child {
 {% regroup items by type as items_by_type %}
 {% for type_group in items_by_type %}
 <div class="item-type-section">
-    <h3>{{ type_group.grouper.name|default:"—" }}</h3>
     {% for item in type_group.list %}
     <div class="item-entry">
         <h4>#{{ item.id }}: {{ item.title|default:"—" }}</h4>
