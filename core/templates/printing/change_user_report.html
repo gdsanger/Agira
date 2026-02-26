@@ -236,7 +236,7 @@ table.kv-table td:first-child {
     {% for item in type_group.list %}
     <div class="item-entry">
         <h3>#{{ item.id }}: {{ item.title|default:"—" }}</h3>
-        <div class="markdown-content">{% if item.solution_description %}{{ item.solution_description|render_markdown }}{% else %}<span class="empty-value">Keine Lösungsbeschreibung vorhanden</span>{% endif %}</div>
+        <div class="markdown-content">{% if item.solution_description %}{{ item.short_description|render_markdown }}{% else %}<span class="empty-value">Keine Lösungsbeschreibung vorhanden</span>{% endif %}</div>
         {% if not forloop.last %}<hr>{% endif %}
     </div>
     {% endfor %}
