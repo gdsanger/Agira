@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}User Settings - Agira{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+        <li class="breadcrumb-item active">User Settings</li>
+    </ol>
+</nav>
+
+<!-- Page Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1>User Settings</h1>
+            <p class="text-muted">Manage your personal settings and preferences</p>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Form -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">GitHub Integration</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{% url 'user-settings-update' %}">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label for="github_pat" class="form-label">
+                            GitHub Personal Access Token
+                        </label>
+                        <input type="password"
+                               class="form-control"
+                               id="github_pat"
+                               name="github_pat"
+                               placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                               value="">
+                        <div class="form-text">
+                            {% if has_github_pat %}
+                            <span class="text-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                                PAT is configured. Enter a new token to update it, or leave blank to keep the existing one.
+                            </span>
+                            {% else %}
+                            <span class="text-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                No PAT configured. You need to set a GitHub Personal Access Token to create GitHub issues.
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="form-text mt-2">
+                            <strong>How to create a GitHub Personal Access Token:</strong>
+                            <ol class="mb-0 mt-1">
+                                <li>Go to <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)</a></li>
+                                <li>Click "Generate new token" → "Generate new token (classic)"</li>
+                                <li>Give it a descriptive name (e.g., "Agira Issue Creation")</li>
+                                <li>Select the following scopes: <code>repo</code> (Full control of private repositories)</li>
+                                <li>Click "Generate token" and copy the token immediately (you won't be able to see it again)</li>
+                                <li>Paste the token in the field above</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Save Settings
+                        </button>
+                        {% if has_github_pat %}
+                        <button type="button" class="btn btn-outline-danger" onclick="clearGitHubPAT()">
+                            <i class="bi bi-trash"></i> Clear PAT
+                        </button>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- User Information (read-only) -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">User Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Username</label>
+                    <p class="form-control-plaintext">{{ user.username }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Name</label>
+                    <p class="form-control-plaintext">{{ user.name }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Email</label>
+                    <p class="form-control-plaintext">{{ user.email }}</p>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label fw-bold">Role</label>
+                    <p class="form-control-plaintext">{{ user.get_role_display }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function clearGitHubPAT() {
+        if (confirm('Are you sure you want to clear your GitHub Personal Access Token? You will not be able to create GitHub issues until you set a new token.')) {
+            // Submit the form with an empty PAT to clear it
+            const form = document.querySelector('form');
+            const patInput = document.getElementById('github_pat');
+            patInput.value = '';
+
+            // Add a hidden input to indicate we want to clear the PAT
+            const clearInput = document.createElement('input');
+            clearInput.type = 'hidden';
+            clearInput.name = 'clear_pat';
+            clearInput.value = 'true';
+            form.appendChild(clearInput);
+
+            form.submit();
+        }
+    }
+</script>
+{% endblock %}

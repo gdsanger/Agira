@@ -14,15 +14,18 @@
                 </h6>
                 <p class="mb-3">
                     <small class="text-muted">
-                        Create a new GitHub issue for this item. 
+                        Create a new GitHub issue for this item.
                         {% if can_create_issue %}
                             <span class="text-success">✓ Status is valid ({{ item.status }})</span>
                         {% else %}
                             <span class="text-danger">✗ Status must be Backlog, Working, or Testing (current: {{ item.status }})</span>
                         {% endif %}
+                        {% if not user_has_github_pat %}
+                            <br><span class="text-danger">✗ GitHub Personal Access Token not configured</span>
+                        {% endif %}
                     </small>
                 </p>
-                {% if can_create_issue %}
+                {% if can_create_issue and user_has_github_pat %}
                     {% if has_existing_issue %}
                         <!-- Follow-up issue creation - requires notes -->
                         <div class="alert alert-info mb-3">
@@ -57,7 +60,14 @@
                     {% endif %}
                 {% else %}
                     <div class="alert alert-warning mb-0">
-                        <small>Cannot create GitHub issue. Item status must be Backlog, Working, or Testing.</small>
+                        <small>
+                            {% if not can_create_issue %}
+                                Cannot create GitHub issue. Item status must be Backlog, Working, or Testing.
+                            {% elif not user_has_github_pat %}
+                                Cannot create GitHub issue. You need to configure your GitHub Personal Access Token in
+                                <a href="{% url 'user-settings' %}" class="alert-link">User Settings</a>.
+                            {% endif %}
+                        </small>
                     </div>
                 {% endif %}
             </div>

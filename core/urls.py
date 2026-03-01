@@ -8,7 +8,11 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
-    
+
+    # User Settings URLs
+    path('user/settings/', views.user_settings, name='user-settings'),
+    path('user/settings/update/', views.user_settings_update, name='user-settings-update'),
+
     # Azure AD SSO authentication URLs
     path('auth/azuread/login/', views_azuread.azuread_login, name='azuread-login'),
     path('auth/azuread/callback/', views_azuread.azuread_callback, name='azuread-callback'),

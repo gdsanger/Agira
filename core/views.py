@@ -1250,6 +1250,7 @@ def item_github_tab(request, item_id):
         'external_mappings': external_mappings,
         'can_create_issue': can_create_issue,
         'has_existing_issue': has_existing_issue,
+        'user_has_github_pat': request.user.has_github_pat(),
     }
     return render(request, 'partials/item_github_tab.html', context)
 
@@ -1554,14 +1555,19 @@ def item_create_github_issue(request, item_id):
     try:
         # Initialize GitHub service
         github_service = GitHubService()
-        
+
         # Check if GitHub is enabled and configured
         if not github_service.is_enabled():
             return HttpResponse("GitHub integration is not enabled. Please enable it in GitHub Configuration.", status=400)
-        
-        if not github_service.is_configured():
-            return HttpResponse("GitHub integration is not configured. Please add a GitHub token in GitHub Configuration.", status=400)
-        
+
+        # Check if user has a GitHub PAT configured
+        if not request.user.has_github_pat():
+            return HttpResponse(
+                "You need to configure your GitHub Personal Access Token before creating issues. "
+                "Please go to User Settings to set up your PAT.",
+                status=400
+            )
+
         # Check if item has valid status
         if not github_service.can_create_issue_for_item(item):
             return HttpResponse(
@@ -1603,7 +1609,8 @@ def item_create_github_issue(request, item_id):
             mapping = github_service.create_issue_for_item(
                 item=item,
                 actor=request.user,
-                body=issue_body
+                body=issue_body,
+                user=request.user
             )
             
             # For follow-up issues, update the references section to include the newly created issue
@@ -1632,6 +1639,7 @@ def item_create_github_issue(request, item_id):
                         'external_mappings': external_mappings,
                         'can_create_issue': can_create_issue,
                         'has_existing_issue': has_existing_issue,
+                        'user_has_github_pat': request.user.has_github_pat(),
                     }
                     
                     # Render the GitHub tab to HTML string
@@ -1650,12 +1658,13 @@ def item_create_github_issue(request, item_id):
             external_mappings = item.external_mappings.all().order_by('-last_synced_at')
             can_create_issue = github_service.can_create_issue_for_item(item)
             has_existing_issue = item.external_mappings.filter(kind='Issue').exists()
-            
+
             context = {
                 'item': item,
                 'external_mappings': external_mappings,
                 'can_create_issue': can_create_issue,
                 'has_existing_issue': has_existing_issue,
+                'user_has_github_pat': request.user.has_github_pat(),
             }
             response = render(request, 'partials/item_github_tab.html', context)
             response['HX-Trigger'] = 'githubIssueCreated'
@@ -11166,3 +11175,42 @@ def item_apply_blueprint_submit(request, item_id):
             },
             status=500
         )
+
+
+# User Settings Views
+
+@login_required
+def user_settings(request):
+    """User Settings view for managing personal preferences."""
+    context = {
+        'user': request.user,
+        'has_github_pat': request.user.has_github_pat(),
+    }
+    return render(request, 'user_settings.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def user_settings_update(request):
+    """Update User Settings."""
+    user = request.user
+
+    try:
+        # Update GitHub PAT
+        github_pat = request.POST.get('github_pat', '').strip()
+        if github_pat:
+            user.github_pat = github_pat
+            user.save()
+            messages.success(request, 'GitHub Personal Access Token updated successfully.')
+        elif 'github_pat' in request.POST:
+            # Empty string means user wants to clear the PAT
+            user.github_pat = ''
+            user.save()
+            messages.success(request, 'GitHub Personal Access Token cleared successfully.')
+
+        return redirect('user-settings')
+
+    except Exception as e:
+        logger.error(f"Error updating user settings: {e}", exc_info=True)
+        messages.error(request, 'An error occurred while updating your settings.')
+        return redirect('user-settings')
