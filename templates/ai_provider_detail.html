@@ -15,13 +15,15 @@
             <h1>{{ provider.name }}</h1>
             <p class="text-muted">{{ provider.get_provider_type_display }}</p>
         </div>
+        {% if user.is_superuser %}
         <div class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-danger" 
+            <button type="button" class="btn btn-outline-danger"
                     hx-post="{% url 'ai-provider-delete' provider.id %}"
                     hx-confirm="Are you sure you want to delete this provider and all its models?">
                 Delete Provider
             </button>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -33,19 +35,19 @@
                 <h5 class="mb-0">Provider Details</h5>
             </div>
             <div class="card-body">
-                <form hx-post="{% url 'ai-provider-update' provider.id %}" 
+                <form hx-post="{% url 'ai-provider-update' provider.id %}"
                       hx-swap="none"
                       hx-on::after-request="if(event.detail.successful) showToast('Provider updated successfully', 'success')">
                     {% csrf_token %}
-                    
+
                     <div class="mb-3">
                         <label for="name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="name" name="name" value="{{ provider.name }}" required>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ provider.name }}" required {% if not user.is_superuser %}readonly{% endif %}>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="provider_type" class="form-label">Provider Type</label>
-                        <select class="form-select" id="provider_type" name="provider_type" required>
+                        <select class="form-select" id="provider_type" name="provider_type" required {% if not user.is_superuser %}disabled{% endif %}>
                             {% for type_value, type_label in provider_types %}
                             <option value="{{ type_value }}" {% if provider.provider_type == type_value %}selected{% endif %}>
                                 {{ type_label }}
@@ -53,34 +55,38 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="api_key" class="form-label">API Key</label>
                         <div class="input-group">
-                            <input type="password" class="form-control" id="api_key" name="api_key" value="********************" placeholder="Leave empty to keep current">
+                            <input type="password" class="form-control" id="api_key" name="api_key" value="********************" placeholder="Leave empty to keep current" {% if not user.is_superuser %}readonly{% endif %}>
+                            {% if user.is_superuser %}
                             <button type="button" class="btn btn-outline-secondary" onclick="copyApiKey({{ provider.id }})">
                                 📋 Copy
                             </button>
+                            {% endif %}
                         </div>
-                        <div class="form-text">API key is encrypted. Click Copy to get the actual value.</div>
+                        <div class="form-text">API key is encrypted. {% if user.is_superuser %}Click Copy to get the actual value.{% endif %}</div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="organization_id" class="form-label">Organization ID</label>
-                        <input type="text" class="form-control" id="organization_id" name="organization_id" value="{{ provider.organization_id }}">
+                        <input type="text" class="form-control" id="organization_id" name="organization_id" value="{{ provider.organization_id }}" {% if not user.is_superuser %}readonly{% endif %}>
                     </div>
-                    
+
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="active" name="active" {% if provider.active %}checked{% endif %}>
+                        <input type="checkbox" class="form-check-input" id="active" name="active" {% if provider.active %}checked{% endif %} {% if not user.is_superuser %}disabled{% endif %}>
                         <label class="form-check-label" for="active">Active</label>
                     </div>
-                    
+
                     <div class="mb-3">
                         <small class="text-muted">Created: {{ provider.created_at|date:"Y-m-d H:i" }}</small><br>
                         <small class="text-muted">Updated: {{ provider.updated_at|date:"Y-m-d H:i" }}</small>
                     </div>
-                    
+
+                    {% if user.is_superuser %}
                     <button type="submit" class="btn btn-primary">Save Changes</button>
+                    {% endif %}
                 </form>
             </div>
         </div>
@@ -91,8 +97,9 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">AI Models</h5>
+                {% if user.is_superuser %}
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                    <button type="button" class="btn btn-sm btn-outline-primary"
                             hx-post="{% url 'ai-provider-fetch-models' provider.id %}"
                             hx-target="#models-list"
                             hx-indicator="#fetch-indicator"
@@ -103,6 +110,7 @@
                         + Add Model
                     </button>
                 </div>
+                {% endif %}
             </div>
             <div class="card-body" id="models-list">
                 <div id="fetch-indicator" class="htmx-indicator">

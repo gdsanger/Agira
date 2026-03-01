@@ -10,12 +10,16 @@
             <p class="text-muted">{% if is_new %}Configure a new AI agent{% else %}Update agent configuration{% endif %}</p>
         </div>
         <div>
-            {% if not is_new %}
+            {% if not is_new and user.is_superuser %}
             <button type="button" class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#testModal">
                 Test Agent
             </button>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
                 Delete
+            </button>
+            {% elif not is_new %}
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#testModal">
+                Test Agent
             </button>
             {% endif %}
         </div>
@@ -34,12 +38,12 @@
                     
                     <div class="mb-3">
                         <label for="name" class="form-label">Agent Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="name" name="name" value="{{ agent.name }}" required>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ agent.name }}" required {% if not user.is_superuser %}readonly{% endif %}>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="description" class="form-label">Description</label>
-                        <textarea class="form-control" id="description" name="description" rows="3">{{ agent.description }}</textarea>
+                        <textarea class="form-control" id="description" name="description" rows="3" {% if not user.is_superuser %}readonly{% endif %}>{{ agent.description }}</textarea>
                     </div>
                     
                     <!-- AI Configuration -->
@@ -48,7 +52,7 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="provider" class="form-label">Provider <span class="text-danger">*</span></label>
-                            <select class="form-select" id="provider" name="provider" required>
+                            <select class="form-select" id="provider" name="provider" required {% if not user.is_superuser %}disabled{% endif %}>
                                 {% for value, label in provider_types %}
                                 <option value="{{ value }}" {% if agent.provider == value or agent.provider|lower == value|lower %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
@@ -56,7 +60,7 @@
                         </div>
                         <div class="col-md-6">
                             <label for="model" class="form-label">Model <span class="text-danger">*</span></label>
-                            <select class="form-select" id="model" name="model" required>
+                            <select class="form-select" id="model" name="model" required {% if not user.is_superuser %}disabled{% endif %}>
                                 <option value="" class="placeholder-option">-- Select a model --</option>
                                 {% for provider in providers %}
                                     {% for model in provider.models.all %}
@@ -76,13 +80,13 @@
                     
                     <div class="mb-3">
                         <label for="role" class="form-label">Role</label>
-                        <textarea class="form-control" id="role" name="role" rows="2">{{ agent.role }}</textarea>
+                        <textarea class="form-control" id="role" name="role" rows="2" {% if not user.is_superuser %}readonly{% endif %}>{{ agent.role }}</textarea>
                         <small class="text-muted">Define the agent's role or persona</small>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="task" class="form-label">Task</label>
-                        <textarea class="form-control" id="task" name="task" rows="8">{{ agent.task }}</textarea>
+                        <textarea class="form-control" id="task" name="task" rows="8" {% if not user.is_superuser %}readonly{% endif %}>{{ agent.task }}</textarea>
                         <small class="text-muted">Describe the agent's task and instructions</small>
                     </div>
                     
@@ -165,12 +169,14 @@
                     </div>
                     
                     <!-- Submit Buttons -->
+                    {% if user.is_superuser %}
                     <div class="mt-4">
                         <button type="submit" class="btn btn-primary">
                             {% if is_new %}Create Agent{% else %}Save Changes{% endif %}
                         </button>
                         <a href="{% url 'agents' %}" class="btn btn-secondary">Cancel</a>
                     </div>
+                    {% endif %}
                 </form>
             </div>
         </div>

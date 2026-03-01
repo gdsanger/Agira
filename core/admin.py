@@ -547,19 +547,31 @@ class AIProviderAdmin(admin.ModelAdmin):
     list_filter = ['provider_type', 'active']
     search_fields = ['name']
     readonly_fields = ['created_at', 'updated_at']
-    
+
     fieldsets = (
         (None, {'fields': ('name', 'provider_type', 'active')}),
         ('API Configuration', {'fields': ('api_key', 'organization_id')}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
-    
+
     def get_form(self, request, obj=None, **kwargs):
         """Mask API key in admin forms"""
         form = super().get_form(request, obj, **kwargs)
         if obj and 'api_key' in form.base_fields:
             form.base_fields['api_key'].widget.attrs['placeholder'] = '••••••••'
         return form
+
+    def has_add_permission(self, request):
+        """Only superusers can create AIProviders"""
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        """Only superusers can edit AIProviders"""
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        """Only superusers can delete AIProviders"""
+        return request.user.is_superuser
 
 
 @admin.register(AIModel)
@@ -569,12 +581,24 @@ class AIModelAdmin(admin.ModelAdmin):
     search_fields = ['name', 'model_id']
     autocomplete_fields = ['provider']
     readonly_fields = ['created_at', 'updated_at']
-    
+
     fieldsets = (
         (None, {'fields': ('provider', 'name', 'model_id', 'active', 'is_default')}),
         ('Pricing', {'fields': ('input_price_per_1m_tokens', 'output_price_per_1m_tokens')}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
+    def has_add_permission(self, request):
+        """Only superusers can create AIModels"""
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        """Only superusers can edit AIModels"""
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        """Only superusers can delete AIModels"""
+        return request.user.is_superuser
 
 
 @admin.register(AIJobsHistory)

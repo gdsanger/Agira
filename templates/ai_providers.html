@@ -9,9 +9,11 @@
             <h1>AI Providers</h1>
             <p class="text-muted">Manage AI provider configurations and models</p>
         </div>
+        {% if user.is_superuser %}
         <a href="{% url 'ai-provider-create' %}" class="btn btn-primary">
             + New Provider
         </a>
+        {% endif %}
     </div>
 </div>
 
