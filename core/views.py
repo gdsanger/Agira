@@ -8,6 +8,7 @@ from django.db.models import Q, Count
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from django.urls import reverse
 from django.conf import settings
@@ -68,6 +69,17 @@ ALLOWED_ATTRIBUTES = {
 
 # RAG context constants
 RAG_NO_CONTEXT_MESSAGE = "No additional context found."
+
+def require_admin(view_func):
+    """
+    Decorator to restrict view access to superuser (admin) only.
+    Returns HTTP 403 Forbidden for non-admin users.
+    """
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return HttpResponse("Forbidden: Admin access required", status=403)
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 def home(request):
     """Home page view."""
@@ -6175,6 +6187,7 @@ def ai_provider_detail(request, id):
 
 
 @login_required
+@require_admin
 def ai_provider_create(request):
     """Create a new AI Provider."""
     if request.method == 'GET':
@@ -6205,7 +6218,7 @@ def ai_provider_create(request):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_provider_update(request, id):
     """Update AI Provider."""
@@ -6238,7 +6251,7 @@ def ai_provider_update(request, id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_provider_delete(request, id):
     """Delete AI Provider."""
@@ -6274,7 +6287,7 @@ def ai_provider_get_api_key(request, id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_provider_fetch_models(request, id):
     """Fetch available models from the provider API and save them to the database."""
@@ -6406,8 +6419,10 @@ def ai_provider_fetch_models(request, id):
         return render(request, 'partials/ai_models_list.html', context)
 
 
-@login_required
 
+
+@login_required
+@require_admin
 @require_http_methods(["POST"])
 def ai_model_create(request, provider_id):
     """Create a new AI Model for a provider."""
@@ -6445,7 +6460,7 @@ def ai_model_create(request, provider_id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_model_update(request, provider_id, model_id):
     """Update an AI Model."""
@@ -6483,7 +6498,7 @@ def ai_model_update(request, provider_id, model_id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_model_delete(request, provider_id, model_id):
     """Delete an AI Model."""
@@ -6506,7 +6521,7 @@ def ai_model_delete(request, provider_id, model_id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_model_update_field(request, provider_id, model_id):
     """Update a single field of an AI Model via HTMX."""
@@ -6548,7 +6563,7 @@ def ai_model_update_field(request, provider_id, model_id):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def ai_model_toggle_active(request, provider_id, model_id):
     """Toggle the active status of an AI Model via HTMX."""
@@ -6632,6 +6647,7 @@ def agent_detail(request, filename):
 
 
 @login_required
+@require_admin
 def agent_create(request):
     """Agent create page view."""
     # Get all active providers and their models
@@ -6662,7 +6678,7 @@ def agent_create(request):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def agent_save(request, filename):
     """Save agent (update existing)."""
@@ -6792,7 +6808,7 @@ def agent_save(request, filename):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def agent_create_save(request):
     """Save agent (create new)."""
@@ -6900,7 +6916,7 @@ def agent_create_save(request):
 
 
 @login_required
-
+@require_admin
 @require_http_methods(["POST"])
 def agent_delete(request, filename):
     """Delete an agent."""
