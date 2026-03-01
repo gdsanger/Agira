@@ -165,6 +165,14 @@
                             <i class="bi bi-check-circle sidebar-icon"></i>
                             <span class="sidebar-text">Ready for Release</span>
                         </a>
+                        <a href="{% url 'items-assigned' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-assigned' %}active{% endif %}">
+                            <i class="bi bi-person-check sidebar-icon"></i>
+                            <span class="sidebar-text">Assigned</span>
+                        </a>
+                        <a href="{% url 'items-responsible' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-responsible' %}active{% endif %}">
+                            <i class="bi bi-person-badge sidebar-icon"></i>
+                            <span class="sidebar-text">Responsible</span>
+                        </a>
                     </div>
                 </div>
                 
