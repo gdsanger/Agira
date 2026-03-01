@@ -162,6 +162,135 @@ class ItemsReadyView(StatusItemListView):
     page_description = "Items ready to be released"
 
 
+class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
+    """
+    Base class for user-scoped Item list views (assigned_to, responsible).
+
+    Similar to StatusItemListView but filters by user relationship instead of status.
+    Shows items across all statuses (except closed) for the current user.
+    Pipeline order: User-Scope → Filter → Table
+    """
+    model = Item
+    table_class = ItemTable
+    filterset_class = ItemFilter
+    template_name = 'items_list.html'
+    context_object_name = 'items'
+    paginate_by = getattr(settings, 'ITEMS_PER_PAGE', 25)
+
+    # Subclasses must set this to the field name ('assigned_to' or 'responsible')
+    user_field = None
+
+    # Page title and description for subclasses to override
+    page_title = "Items"
+    page_description = ""
+
+    def get_queryset(self):
+        """
+        Get the base queryset filtered by user relationship.
+
+        This enforces the user scope before any other filters are applied.
+        The user scope cannot be removed via UI filters.
+        """
+        if self.user_field is None:
+            raise NotImplementedError("Subclasses must set user_field")
+
+        # Base queryset with user scope (fixed, not UI-removable)
+        # Exclude closed items by default
+        filter_kwargs = {
+            self.user_field: self.request.user,
+        }
+        queryset = Item.objects.filter(**filter_kwargs).exclude(
+            status=ItemStatus.CLOSED
+        ).select_related(
+            'project', 'type', 'organisation', 'requester', 'assigned_to'
+        )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        """
+        Add additional context for the template.
+        """
+        context = super().get_context_data(**kwargs)
+
+        # Add page title and description
+        context['page_title'] = self.page_title
+        context['page_description'] = self.page_description
+
+        # Add distinct values for header filters
+        context['distinct_values'] = self.get_distinct_values()
+
+        return context
+
+    def get_distinct_values(self):
+        """
+        Get distinct values for header-based filters.
+
+        Returns distinct values from the user-scoped + currently filtered queryset.
+        This ensures that the distinct values are relevant to the current view.
+
+        Performance: Limited to 100 distinct values per field to prevent unbounded queries.
+        """
+        # Get the filtered queryset (after user scope and user filters)
+        filtered_qs = self.get_queryset()
+
+        # Apply user filters if any
+        filterset = self.filterset_class(self.request.GET, queryset=filtered_qs)
+        if filterset.is_valid():
+            filtered_qs = filterset.qs
+
+        distinct_values = {}
+
+        # Project distinct values
+        projects = Project.objects.filter(
+            id__in=filtered_qs.values_list('project_id', flat=True).distinct()[:100]
+        ).order_by('name')
+        distinct_values['project'] = list(projects)
+
+        # Type distinct values
+        types = ItemType.objects.filter(
+            id__in=filtered_qs.values_list('type_id', flat=True).distinct()[:100]
+        ).order_by('name')
+        distinct_values['type'] = list(types)
+
+        # Organisation distinct values
+        org_ids = filtered_qs.exclude(organisation__isnull=True).values_list(
+            'organisation_id', flat=True
+        ).distinct()[:100]
+        organisations = Organisation.objects.filter(id__in=org_ids).order_by('name')
+        distinct_values['organisation'] = list(organisations)
+
+        # Requester distinct values
+        requester_ids = filtered_qs.exclude(requester__isnull=True).values_list(
+            'requester_id', flat=True
+        ).distinct()[:100]
+        requesters = User.objects.filter(id__in=requester_ids).order_by('username')
+        distinct_values['requester'] = list(requesters)
+
+        # Assigned to distinct values
+        assigned_ids = filtered_qs.exclude(assigned_to__isnull=True).values_list(
+            'assigned_to_id', flat=True
+        ).distinct()[:100]
+        assigned_users = User.objects.filter(id__in=assigned_ids).order_by('username')
+        distinct_values['assigned_to'] = list(assigned_users)
+
+        return distinct_values
+
+
+class ItemsAssignedToMeView(UserScopedItemListView):
+    """Items Assigned to Me - items assigned to the current user."""
+    user_field = 'assigned_to'
+    page_title = "Items - Assigned to Me"
+    page_description = "Items assigned to you"
+
+
+class ItemsResponsibleForView(UserScopedItemListView):
+    """Items I'm Responsible For - items where current user is responsible."""
+    user_field = 'responsible'
+    page_title = "Items - Responsible For"
+    page_description = "Items you are responsible for"
+
+
 class ItemsKanbanView(LoginRequiredMixin, FilterView):
     """
     Kanban board view for all non-closed items.
@@ -219,30 +348,41 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
 def item_list_delete(request, item_id):
     """
     Delete an item from a list view and return the refreshed list HTML.
-    
+
     This endpoint is called via HTMX from the list view delete button.
     After deletion, it re-renders the complete list container with updated data.
     """
     if request.method != 'POST':
         return HttpResponse('Method not allowed', status=405)
-    
+
     # Get the item and its status before deletion
     item = get_object_or_404(Item, id=item_id)
     item_status = item.status
-    
+
     # Delete the item
     item.delete()
-    
-    # Determine which view class to use based on the status
-    view_class_map = {
-        ItemStatus.INBOX: ItemsInboxView,
-        ItemStatus.BACKLOG: ItemsBacklogView,
-        ItemStatus.WORKING: ItemsWorkingView,
-        ItemStatus.TESTING: ItemsTestingView,
-        ItemStatus.READY_FOR_RELEASE: ItemsReadyView,
-    }
-    
-    view_class = view_class_map.get(item_status)
+
+    # Check the HTTP Referer to determine which view to re-render
+    # This allows us to support both status-based and user-scoped views
+    referer = request.META.get('HTTP_REFERER', '')
+    view_class = None
+
+    # Check for user-scoped views first
+    if '/items/assigned/' in referer:
+        view_class = ItemsAssignedToMeView
+    elif '/items/responsible/' in referer:
+        view_class = ItemsResponsibleForView
+    else:
+        # Fallback to status-based views
+        view_class_map = {
+            ItemStatus.INBOX: ItemsInboxView,
+            ItemStatus.BACKLOG: ItemsBacklogView,
+            ItemStatus.WORKING: ItemsWorkingView,
+            ItemStatus.TESTING: ItemsTestingView,
+            ItemStatus.READY_FOR_RELEASE: ItemsReadyView,
+        }
+        view_class = view_class_map.get(item_status)
+
     if not view_class:
         # Fallback: render empty container
         return HttpResponse(

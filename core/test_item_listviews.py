@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from core.models import (
     Item, ItemStatus, ItemType, Project, Organisation,
-    User, ProjectStatus
+    User, ProjectStatus, UserRole
 )
 
 
@@ -312,3 +312,259 @@ class ItemListViewTestCase(TestCase):
         # Should be sorted by title
         self.assertEqual(items[0].title, "Backlog Item 1")
         self.assertEqual(items[1].title, "Backlog Item 2")
+
+
+class UserScopedItemListViewTestCase(TestCase):
+    """Test cases for user-scoped Item list views (Assigned, Responsible)"""
+
+    def setUp(self):
+        """Set up test data"""
+        # Create client
+        self.client = Client()
+
+        # Create organisation
+        self.org = Organisation.objects.create(
+            name="Test Organisation"
+        )
+
+        # Create test users
+        self.agent_user = User.objects.create(
+            username="agent1",
+            email="agent@example.com",
+            role=UserRole.AGENT,
+            active=True
+        )
+        self.agent_user.set_password("testpass123")
+        self.agent_user.save()
+
+        self.regular_user = User.objects.create(
+            username="regular1",
+            email="regular@example.com",
+            role=UserRole.USER,
+            active=True
+        )
+        self.regular_user.set_password("testpass123")
+        self.regular_user.save()
+
+        self.other_user = User.objects.create(
+            username="other1",
+            email="other@example.com",
+            active=True
+        )
+
+        # Create project
+        self.project = Project.objects.create(
+            name="Test Project",
+            status=ProjectStatus.WORKING
+        )
+
+        # Create item type
+        self.item_type = ItemType.objects.create(
+            key="task",
+            name="Task"
+        )
+
+        # Create items assigned to agent_user
+        self.assigned_inbox = Item.objects.create(
+            title="Assigned Inbox Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            assigned_to=self.agent_user,
+        )
+
+        self.assigned_working = Item.objects.create(
+            title="Assigned Working Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            assigned_to=self.agent_user,
+        )
+
+        # Create item assigned to other user
+        self.assigned_to_other = Item.objects.create(
+            title="Assigned to Other",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+            assigned_to=self.other_user,
+        )
+
+        # Create items where agent_user is responsible
+        self.responsible_backlog = Item.objects.create(
+            title="Responsible Backlog Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+            responsible=self.agent_user,
+        )
+
+        self.responsible_testing = Item.objects.create(
+            title="Responsible Testing Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.TESTING,
+            responsible=self.agent_user,
+        )
+
+        # Create item where other user is responsible
+        self.responsible_other = Item.objects.create(
+            title="Responsible by Other",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            responsible=self.other_user,
+        )
+
+        # Create closed item (should be excluded)
+        self.assigned_closed = Item.objects.create(
+            title="Assigned Closed Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            assigned_to=self.agent_user,
+        )
+
+        self.responsible_closed = Item.objects.create(
+            title="Responsible Closed Item",
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+            responsible=self.agent_user,
+        )
+
+        # Login as agent_user
+        self.client.login(username='agent1', password='testpass123')
+
+    def test_assigned_view_shows_only_assigned_items(self):
+        """Test that assigned view only shows items assigned to current user"""
+        response = self.client.get(reverse('items-assigned'))
+        self.assertEqual(response.status_code, 200)
+
+        # Check that table is in context
+        self.assertIn('table', response.context)
+
+        # Get items from table
+        items = list(response.context['table'].data)
+
+        # Should have 2 items (inbox + working, excluding closed)
+        self.assertEqual(len(items), 2)
+
+        # All items should be assigned to agent_user
+        for item in items:
+            self.assertEqual(item.assigned_to, self.agent_user)
+            self.assertNotEqual(item.status, ItemStatus.CLOSED)
+
+        # Verify specific items are present
+        item_titles = [item.title for item in items]
+        self.assertIn("Assigned Inbox Item", item_titles)
+        self.assertIn("Assigned Working Item", item_titles)
+        self.assertNotIn("Assigned to Other", item_titles)
+        self.assertNotIn("Assigned Closed Item", item_titles)
+
+    def test_responsible_view_shows_only_responsible_items(self):
+        """Test that responsible view only shows items where current user is responsible"""
+        response = self.client.get(reverse('items-responsible'))
+        self.assertEqual(response.status_code, 200)
+
+        # Check that table is in context
+        self.assertIn('table', response.context)
+
+        # Get items from table
+        items = list(response.context['table'].data)
+
+        # Should have 2 items (backlog + testing, excluding closed)
+        self.assertEqual(len(items), 2)
+
+        # All items should have agent_user as responsible
+        for item in items:
+            self.assertEqual(item.responsible, self.agent_user)
+            self.assertNotEqual(item.status, ItemStatus.CLOSED)
+
+        # Verify specific items are present
+        item_titles = [item.title for item in items]
+        self.assertIn("Responsible Backlog Item", item_titles)
+        self.assertIn("Responsible Testing Item", item_titles)
+        self.assertNotIn("Responsible by Other", item_titles)
+        self.assertNotIn("Responsible Closed Item", item_titles)
+
+    def test_user_scoped_views_exclude_closed_items(self):
+        """Test that user-scoped views exclude closed items by default"""
+        # Check assigned view
+        response = self.client.get(reverse('items-assigned'))
+        items = list(response.context['table'].data)
+        for item in items:
+            self.assertNotEqual(item.status, ItemStatus.CLOSED)
+
+        # Check responsible view
+        response = self.client.get(reverse('items-responsible'))
+        items = list(response.context['table'].data)
+        for item in items:
+            self.assertNotEqual(item.status, ItemStatus.CLOSED)
+
+    def test_assigned_view_with_filters(self):
+        """Test that filters work correctly in assigned view"""
+        # Search for "Working"
+        response = self.client.get(reverse('items-assigned'), {'q': 'Working'})
+        self.assertEqual(response.status_code, 200)
+
+        items = list(response.context['table'].data)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].title, "Assigned Working Item")
+
+    def test_responsible_view_with_filters(self):
+        """Test that filters work correctly in responsible view"""
+        # Search for "Testing"
+        response = self.client.get(reverse('items-responsible'), {'q': 'Testing'})
+        self.assertEqual(response.status_code, 200)
+
+        items = list(response.context['table'].data)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].title, "Responsible Testing Item")
+
+    def test_user_scope_not_removable(self):
+        """Test that user scope cannot be removed via filters"""
+        # Try to see other user's items (should not work)
+        response = self.client.get(reverse('items-assigned'))
+        items = list(response.context['table'].data)
+
+        # Should never contain items assigned to other users
+        for item in items:
+            self.assertEqual(item.assigned_to, self.agent_user)
+
+    def test_user_scoped_views_login_required(self):
+        """Test that login is required for user-scoped views"""
+        self.client.logout()
+
+        views = ['items-assigned', 'items-responsible']
+
+        for view_name in views:
+            response = self.client.get(reverse(view_name))
+            # Should redirect to login
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(response.url.startswith('/login/'))
+
+    def test_user_scoped_views_page_title(self):
+        """Test that page titles are set correctly"""
+        # Check assigned view
+        response = self.client.get(reverse('items-assigned'))
+        self.assertEqual(response.context['page_title'], "Items - Assigned to Me")
+
+        # Check responsible view
+        response = self.client.get(reverse('items-responsible'))
+        self.assertEqual(response.context['page_title'], "Items - Responsible For")
+
+    def test_distinct_values_in_user_scoped_views(self):
+        """Test that distinct values are computed correctly for user-scoped views"""
+        response = self.client.get(reverse('items-assigned'))
+        self.assertEqual(response.status_code, 200)
+
+        # Check distinct_values is in context
+        self.assertIn('distinct_values', response.context)
+
+        distinct = response.context['distinct_values']
+
+        # Check structure
+        self.assertIn('project', distinct)
+        self.assertIn('type', distinct)
+        self.assertIn('organisation', distinct)
