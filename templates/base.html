@@ -107,6 +107,9 @@
         {% if user.is_authenticated %}
         <div class="topbar-user ms-auto">
             <span class="text-muted me-3">{{ user.username }}</span>
+            <a href="{% url 'user-settings' %}" class="btn btn-sm btn-outline-primary me-2">
+                <i class="bi bi-gear"></i> Settings
+            </a>
             <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-box-arrow-right"></i> Abmelden
             </a>

@@ -220,9 +220,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     active = models.BooleanField(default=True)
     
     # Azure AD SSO fields
-    azure_ad_object_id = models.CharField(max_length=255, unique=True, null=True, blank=True, 
+    azure_ad_object_id = models.CharField(max_length=255, unique=True, null=True, blank=True,
                                           help_text=_('Azure AD Object ID for SSO'))
-    
+
+    # GitHub Personal Access Token for API operations
+    github_pat = EncryptedCharField(max_length=500, blank=True, default='',
+                                    help_text=_('Personal GitHub token for creating issues'))
+
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -254,7 +258,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_primary_organisation(self):
         """
         Get the user's primary organisation.
-        
+
         Returns:
             Organisation: The primary organisation if exists, None otherwise
         """
@@ -263,6 +267,15 @@ class User(AbstractBaseUser, PermissionsMixin):
             return primary_org.organisation
         except UserOrganisation.DoesNotExist:
             return None
+
+    def has_github_pat(self):
+        """
+        Check if the user has a GitHub Personal Access Token configured.
+
+        Returns:
+            bool: True if PAT is configured, False otherwise
+        """
+        return bool(self.github_pat and self.github_pat.strip())
 
 
 class UserOrganisation(models.Model):

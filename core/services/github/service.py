@@ -62,27 +62,46 @@ class GitHubService(IntegrationBase):
         config = self._get_config()
         return bool(config.github_token)
     
-    def _get_client(self) -> GitHubClient:
+    def _get_client(self, user: Optional[User] = None) -> GitHubClient:
         """
         Get GitHub API client.
-        
+
+        Args:
+            user: Optional User object. If provided and has a GitHub PAT, uses user's token.
+                 Otherwise falls back to global token.
+
         Returns:
             Configured GitHub client
-            
+
         Raises:
             IntegrationDisabled: If GitHub is disabled
-            IntegrationNotConfigured: If GitHub is not configured
+            IntegrationNotConfigured: If GitHub is not configured and user has no PAT
+            ValueError: If user is required but has no PAT configured
         """
         self._check_availability()
-        
-        if self._client is None:
-            config = self._get_config()
-            self._client = GitHubClient(
-                token=config.github_token,
-                base_url=config.github_api_base_url,
-            )
-        
-        return self._client
+
+        # Determine which token to use
+        token = None
+        config = self._get_config()
+
+        if user and user.has_github_pat():
+            # Use user-specific PAT
+            token = user.github_pat
+            logger.debug(f"Using GitHub PAT for user {user.username}")
+        elif config.github_token:
+            # Fall back to global token
+            token = config.github_token
+            logger.debug("Using global GitHub token")
+        else:
+            # No token available
+            raise IntegrationNotConfigured("No GitHub token available (neither user PAT nor global token)")
+
+        # Create a new client instance with the selected token
+        # We don't cache the client anymore since the token can vary per user
+        return GitHubClient(
+            token=token,
+            base_url=config.github_api_base_url,
+        )
     
     def _get_repo_info(self, item: Item) -> tuple[str, str]:
         """
@@ -188,10 +207,11 @@ class GitHubService(IntegrationBase):
         labels: Optional[list[str]] = None,
         actor=None,
         change_status_to_working: bool = True,
+        user: Optional[User] = None,
     ) -> ExternalIssueMapping:
         """
         Create a GitHub issue for an Agira item.
-        
+
         Args:
             item: Agira item to create issue for
             title: Issue title (default: item.title)
@@ -199,16 +219,17 @@ class GitHubService(IntegrationBase):
             labels: List of label names
             actor: User creating the issue
             change_status_to_working: If True, changes item status to WORKING (default: True)
-            
+            user: User whose GitHub PAT should be used. If None, uses global token.
+
         Returns:
             Created ExternalIssueMapping
-            
+
         Raises:
             IntegrationDisabled: If GitHub is disabled
             IntegrationNotConfigured: If GitHub is not configured
-            ValueError: If project doesn't have GitHub repo
+            ValueError: If project doesn't have GitHub repo or user has no PAT when required
         """
-        client = self._get_client()
+        client = self._get_client(user=user)
         owner, repo = self._get_repo_info(item)
         
         # Prepare issue data
