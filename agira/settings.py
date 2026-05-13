@@ -55,6 +55,7 @@ APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:8000')
 CSRF_TRUSTED_ORIGINS = [
     "https://agira.angermeier.net",
     "https://agira.isarlabs.de",
+    "https://agira.angerlabs.de",
     "http://localhost:8005",
     "http://localhost:8006",
     "http://127.0.0.1"
