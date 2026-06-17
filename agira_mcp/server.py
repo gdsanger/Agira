@@ -38,8 +38,12 @@ from mcp.server.fastmcp import FastMCP
 from .client import AgiraClient, AgiraError
 
 # Per-request user token (set by the ASGI middleware for HTTP transport).
-_current_user_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_user_token", default=None
+# The default is a sentinel (not None) so we can tell "no HTTP request context"
+# (stdio transport) apart from "HTTP request without a token". Only the former
+# may fall back to the AGIRA_USER_TOKEN env var.
+_UNSET = object()
+_current_user_token: contextvars.ContextVar = contextvars.ContextVar(
+    "current_user_token", default=_UNSET
 )
 
 
@@ -52,8 +56,17 @@ def _client() -> AgiraClient:
 
 
 def _user_token() -> str | None:
-    """Resolve the acting user's token: per-request (HTTP) or env (stdio)."""
-    return _current_user_token.get() or os.environ.get("AGIRA_USER_TOKEN") or None
+    """Resolve the acting user's token.
+
+    Under HTTP transport the middleware always sets the context var (to the
+    request's token, or None when absent), so we use exactly what the request
+    carried and never fall back to the env var. Under stdio transport the
+    context var is never set, so we fall back to AGIRA_USER_TOKEN.
+    """
+    value = _current_user_token.get()
+    if value is _UNSET:
+        return os.environ.get("AGIRA_USER_TOKEN") or None
+    return value or None
 
 
 mcp = FastMCP("agira")
