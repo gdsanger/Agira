@@ -34,12 +34,17 @@ import contextvars
 import os
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .client import AgiraClient, AgiraError
 
 # Per-request user token (set by the ASGI middleware for HTTP transport).
-_current_user_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_user_token", default=None
+# The default is a sentinel (not None) so we can tell "no HTTP request context"
+# (stdio transport) apart from "HTTP request without a token". Only the former
+# may fall back to the AGIRA_USER_TOKEN env var.
+_UNSET = object()
+_current_user_token: contextvars.ContextVar = contextvars.ContextVar(
+    "current_user_token", default=_UNSET
 )
 
 
@@ -52,11 +57,51 @@ def _client() -> AgiraClient:
 
 
 def _user_token() -> str | None:
-    """Resolve the acting user's token: per-request (HTTP) or env (stdio)."""
-    return _current_user_token.get() or os.environ.get("AGIRA_USER_TOKEN") or None
+    """Resolve the acting user's token.
+
+    Under HTTP transport the middleware always sets the context var (to the
+    request's token, or None when absent), so we use exactly what the request
+    carried and never fall back to the env var. Under stdio transport the
+    context var is never set, so we fall back to AGIRA_USER_TOKEN.
+    """
+    value = _current_user_token.get()
+    if value is _UNSET:
+        return os.environ.get("AGIRA_USER_TOKEN") or None
+    return value or None
 
 
-mcp = FastMCP("agira")
+# Default SDK hosts/origins (localhost only) — kept so stdio and local HTTP
+# keep working. The MCP SDK enables DNS-rebinding protection and answers 421
+# for any Host header not on this allowlist.
+_DEFAULT_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+_DEFAULT_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+
+
+def _transport_security() -> TransportSecuritySettings | None:
+    """Build transport-security settings from env.
+
+    When the server runs behind a reverse proxy, nginx forwards the public
+    Host header (e.g. ``agiramcp.example.com``), which is not on the SDK's
+    localhost-only allowlist and would be rejected with 421. Set
+    ``AGIRA_MCP_ALLOWED_HOSTS`` (comma-separated, no scheme) to the public
+    host(s) to allow them. Returns None to keep the SDK defaults (local only).
+    """
+    hosts = [h.strip() for h in os.environ.get("AGIRA_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if not hosts:
+        return None
+    origins = [o.strip() for o in os.environ.get("AGIRA_MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    # Default origins to https://<host> for each configured host if none given.
+    if not origins:
+        origins = [f"https://{h}" for h in hosts]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_DEFAULT_HOSTS + hosts,
+        allowed_origins=_DEFAULT_ORIGINS + origins,
+    )
+
+
+_security = _transport_security()
+mcp = FastMCP("agira", **({"transport_security": _security} if _security else {}))
 
 
 # --------------------------------------------------------------------------
