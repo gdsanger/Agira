@@ -11,10 +11,30 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ValidationError
 
-from core.models import Project, Item, ItemType, ItemStatus
+from core.models import Project, Item, ItemType, ItemStatus, User, UserRole
 from core.services.rag import build_context
 
 logger = logging.getLogger(__name__)
+
+
+# Header used by the Agira MCP server to identify the acting user.
+MCP_USER_TOKEN_HEADER = 'HTTP_X_AGIRA_USER_TOKEN'
+
+
+def resolve_mcp_user(request):
+    """
+    Resolve the acting user from the per-user MCP token header.
+
+    The MCP server forwards the connecting user's personal token in the
+    `x-agira-user-token` header. We map it to a User via `mcp_token`.
+
+    Returns:
+        User instance if a valid token was provided, otherwise None.
+    """
+    token = request.META.get(MCP_USER_TOKEN_HEADER, '').strip()
+    if not token:
+        return None
+    return User.objects.filter(mcp_token=token, active=True).first()
 
 
 # Helper function to serialize Project model
@@ -61,6 +81,7 @@ def serialize_item(item):
         'organisation_id': item.organisation_id,
         'requester_id': item.requester_id,
         'assigned_to_id': item.assigned_to_id,
+        'responsible_id': item.responsible_id,
         'parent_id': item.parent_id,
         'solution_release_id': item.solution_release_id,
         'intern': item.intern,
@@ -468,7 +489,19 @@ def api_project_create_item(request, project_id):
             item_type = ItemType.objects.get(id=data['type_id'])
         except ItemType.DoesNotExist:
             return JsonResponse({'error': 'Invalid type_id'}, status=400)
-        
+
+        # Resolve the acting MCP user and use them as `responsible`.
+        # `responsible` requires the Agent role (see Item.clean); we guard
+        # explicitly here so the caller gets a clear message instead of a
+        # generic validation dump.
+        responsible = resolve_mcp_user(request)
+        if responsible is not None and responsible.role != UserRole.AGENT:
+            return JsonResponse(
+                {'error': f'User "{responsible.username}" cannot be set as responsible: '
+                          f'requires the "Agent" role.'},
+                status=400
+            )
+
         # Create item
         item = Item(
             project=project,
@@ -479,6 +512,7 @@ def api_project_create_item(request, project_id):
             solution_description=data.get('solution_description', ''),
             status=data.get('status', ItemStatus.INBOX),
             intern=data.get('intern', False),
+            responsible=responsible,
         )
         
         # Validate and save
