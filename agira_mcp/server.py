@@ -34,6 +34,7 @@ import contextvars
 import os
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .client import AgiraClient, AgiraError
 
@@ -56,7 +57,38 @@ def _user_token() -> str | None:
     return _current_user_token.get() or os.environ.get("AGIRA_USER_TOKEN") or None
 
 
-mcp = FastMCP("agira")
+# Default SDK hosts/origins (localhost only) — kept so stdio and local HTTP
+# keep working. The MCP SDK enables DNS-rebinding protection and answers 421
+# for any Host header not on this allowlist.
+_DEFAULT_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+_DEFAULT_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+
+
+def _transport_security() -> TransportSecuritySettings | None:
+    """Build transport-security settings from env.
+
+    When the server runs behind a reverse proxy, nginx forwards the public
+    Host header (e.g. ``agiramcp.example.com``), which is not on the SDK's
+    localhost-only allowlist and would be rejected with 421. Set
+    ``AGIRA_MCP_ALLOWED_HOSTS`` (comma-separated, no scheme) to the public
+    host(s) to allow them. Returns None to keep the SDK defaults (local only).
+    """
+    hosts = [h.strip() for h in os.environ.get("AGIRA_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if not hosts:
+        return None
+    origins = [o.strip() for o in os.environ.get("AGIRA_MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    # Default origins to https://<host> for each configured host if none given.
+    if not origins:
+        origins = [f"https://{h}" for h in hosts]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_DEFAULT_HOSTS + hosts,
+        allowed_origins=_DEFAULT_ORIGINS + origins,
+    )
+
+
+_security = _transport_security()
+mcp = FastMCP("agira", **({"transport_security": _security} if _security else {}))
 
 
 # --------------------------------------------------------------------------
