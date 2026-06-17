@@ -227,6 +227,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     github_pat = EncryptedCharField(max_length=500, blank=True, default='',
                                     help_text=_('Personal GitHub token for creating issues'))
 
+    # Per-user token used by the Agira MCP server to attribute actions
+    # (e.g. set as `responsible` on items created via Claude). Not a login credential.
+    mcp_token = models.CharField(max_length=64, unique=True, null=True, blank=True,
+                                 help_text=_('Personal token for the Agira MCP connector (Claude). '
+                                             'Leave empty to disable MCP access for this user.'))
+
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -241,7 +247,12 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.name} ({self.username})"
-    
+
+    def generate_mcp_token(self):
+        """Generate and assign a new MCP token for this user (does not save)."""
+        self.mcp_token = secrets.token_urlsafe(32)
+        return self.mcp_token
+
     def get_primary_org_short(self):
         """
         Get the short code of the user's primary organisation.

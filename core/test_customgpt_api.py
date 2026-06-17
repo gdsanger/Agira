@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 
 from core.models import (
     Organisation, UserOrganisation, Project, ProjectStatus,
-    ItemType, Item, ItemStatus
+    ItemType, Item, ItemStatus, UserRole
 )
 
 User = get_user_model()
@@ -424,3 +424,69 @@ class CustomGPTItemContextAPITest(TestCase):
             **self.headers
         )
         self.assertEqual(response.status_code, 404)
+
+
+class MCPResponsibleTests(TestCase):
+    """Tests for the per-user MCP token -> responsible attribution on create."""
+
+    def setUp(self):
+        os.environ['CUSTOMGPT_API_SECRET'] = 'test-secret-123'
+        self.client = Client()
+        self.headers = {'HTTP_X_API_SECRET': 'test-secret-123'}
+
+        self.project = Project.objects.create(
+            name='MCP Project', description='', status=ProjectStatus.WORKING
+        )
+        self.item_type = ItemType.objects.create(
+            key='task', name='Task', description='A task'
+        )
+
+        # An Agent user (allowed as responsible) with an MCP token.
+        self.agent = User.objects.create_user(
+            username='agent1', email='agent1@example.com', name='Agent One',
+            role=UserRole.AGENT, mcp_token='agent-token-123',
+        )
+        # A non-Agent user (not allowed as responsible) with an MCP token.
+        self.plain = User.objects.create_user(
+            username='user1', email='user1@example.com', name='User One',
+            role=UserRole.USER, mcp_token='user-token-123',
+        )
+
+    def tearDown(self):
+        if 'CUSTOMGPT_API_SECRET' in os.environ:
+            del os.environ['CUSTOMGPT_API_SECRET']
+
+    def _create(self, user_token=None):
+        headers = dict(self.headers)
+        if user_token is not None:
+            headers['HTTP_X_AGIRA_USER_TOKEN'] = user_token
+        return self.client.post(
+            f'/api/customgpt/projects/{self.project.id}/items',
+            data=json.dumps({'title': 'Via MCP', 'type_id': self.item_type.id}),
+            content_type='application/json',
+            **headers,
+        )
+
+    def test_agent_token_sets_responsible(self):
+        response = self._create(user_token='agent-token-123')
+        self.assertEqual(response.status_code, 201)
+        data = json.loads(response.content)
+        self.assertEqual(data['responsible_id'], self.agent.id)
+
+    def test_non_agent_token_rejected(self):
+        response = self._create(user_token='user-token-123')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Agent', json.loads(response.content)['error'])
+        self.assertFalse(Item.objects.filter(title='Via MCP').exists())
+
+    def test_no_token_creates_without_responsible(self):
+        response = self._create(user_token=None)
+        self.assertEqual(response.status_code, 201)
+        data = json.loads(response.content)
+        self.assertIsNone(data['responsible_id'])
+
+    def test_unknown_token_creates_without_responsible(self):
+        response = self._create(user_token='does-not-exist')
+        self.assertEqual(response.status_code, 201)
+        data = json.loads(response.content)
+        self.assertIsNone(data['responsible_id'])
