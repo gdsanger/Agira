@@ -318,7 +318,11 @@ paths:
   /projects/{projectId}/items:
     post:
       summary: Create a new item in a project
-      description: Creates a new item within the specified project.
+      description: >-
+        Creates a new item within the specified project. If the optional
+        `x-agira-user-token` header is provided (used by the MCP connector), the
+        matching user is set as the item's `responsible` (requires the "Agent"
+        role).
       operationId: createItem
       tags:
         - Items
@@ -332,6 +336,14 @@ paths:
             type: integer
             format: int64
             example: 1
+        - name: x-agira-user-token
+          in: header
+          required: false
+          description: >-
+            Personal MCP token of the acting user. When present and valid, the
+            user is recorded as the item's `responsible`.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -533,6 +545,15 @@ components:
           format: int64
           nullable: true
           description: ID of the user assigned to this item
+          example: 7
+        responsible_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: >-
+            ID of the user responsible for this item. When created via the MCP
+            connector, this is set from the acting user's token. The user must
+            have the "Agent" role.
           example: 7
         parent_id:
           type: integer

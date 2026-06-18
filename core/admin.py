@@ -108,21 +108,40 @@ class UserAdmin(BaseUserAdmin):
     ordering = ['username']
     inlines = [UserOrganisationInline]
     
+    actions = ['generate_mcp_tokens', 'clear_mcp_tokens']
+
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Personal info', {'fields': ('name', 'email', 'role', 'active')}),
+        ('MCP / Claude', {'fields': ('mcp_token',),
+                          'description': 'Token for the Agira MCP connector. Use the '
+                                         '"Generate MCP token" action to create one.'}),
         ('Permissions', {'fields': ('is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
-    
+
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
             'fields': ('username', 'name', 'email', 'password1', 'password2', 'role', 'active'),
         }),
     )
-    
+
     readonly_fields = ['last_login', 'date_joined']
+
+    @admin.action(description='Generate MCP token')
+    def generate_mcp_tokens(self, request, queryset):
+        count = 0
+        for user in queryset:
+            user.generate_mcp_token()
+            user.save(update_fields=['mcp_token'])
+            count += 1
+        self.message_user(request, f'Generated MCP token for {count} user(s).')
+
+    @admin.action(description='Clear MCP token (revoke access)')
+    def clear_mcp_tokens(self, request, queryset):
+        count = queryset.update(mcp_token=None)
+        self.message_user(request, f'Cleared MCP token for {count} user(s).')
 
 
 @admin.register(UserOrganisation)
