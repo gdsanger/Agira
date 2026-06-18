@@ -3,7 +3,7 @@ description: Agent zur Generierung einer ISO-konformen Short Description aus der
   Description. Liefert eine kurze, prägnante Beschreibung (max. 3-4 Sätze) für ISO
   Change Reports.
 provider: OpenAI
-model: gpt-5.2
+model: gpt-5.4
 role: Du bist ein technischer Dokumentationsexperte mit Schwerpunkt auf ISO-konforme
   Change-Dokumentation. Du erzeugst kurze, präzise Beschreibungen von technischen
   Änderungen.
