@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ValidationError
 
 from core.models import Project, Item, ItemType, ItemStatus, User, UserRole
-from core.services.rag import build_context
+from core.services.rag import build_extended_context
 
 logger = logging.getLogger(__name__)
 
@@ -90,37 +90,18 @@ def serialize_item(item):
     }
 
 
-# Helper function to serialize RAGContext to dict
+# Helper function to serialize ExtendedRAGContext to dict
 def serialize_rag_context(context):
     """
-    Serialize a RAGContext instance to a dictionary.
-    
-    Args:
-        context: RAGContext instance
-        
-    Returns:
-        Dictionary with RAG context data
+    Serialize an ExtendedRAGContext instance to a dictionary.
+
+    Returns a backward-compatible structure with an `items` key (= all retrieved
+    items) plus the richer layer_a/b/c and optimized_query fields.
     """
-    return {
-        'query': context.query,
-        'alpha': context.alpha,
-        'summary': context.summary,
-        'items': [
-            {
-                'object_type': obj.object_type,
-                'object_id': obj.object_id,
-                'title': obj.title,
-                'content': obj.content,
-                'source': obj.source,
-                'relevance_score': obj.relevance_score,
-                'link': obj.link,
-                'updated_at': obj.updated_at,
-            }
-            for obj in context.items
-        ],
-        'stats': context.stats,
-        'debug': context.debug,
-    }
+    result = context.to_dict()
+    # Backward-compat alias so MCP clients reading `items` still work
+    result['items'] = result['all_items']
+    return result
 
 
 # Projects Endpoints
@@ -551,19 +532,22 @@ def api_item_context(request, item_id):
     try:
         # Verify item exists
         item = Item.objects.get(id=item_id)
-        
-        # Build query from item title and description
-        query = f"{item.title} {item.description}".strip()
-        
-        # Build RAG context using existing service
-        context = build_context(
+
+        # Use description as primary query, fall back to title (matches UI RAG button)
+        query = (item.description or item.title or "").strip()
+        if not query:
+            return JsonResponse({'error': 'Item has no description or title to search with'}, status=400)
+
+        # Build extended RAG context via the same pipeline as the UI RAG Retrieval button:
+        # question-optimization-agent + parallel hybrid search + A/B/C-fusion.
+        # item_id is intentionally omitted — it is DEPRECATED in build_extended_context
+        # (Issue #395) and previously caused 0 results by filtering on parent_object_id.
+        context = build_extended_context(
             query=query,
             project_id=str(item.project_id),
-            item_id=str(item.id),
-            current_item_id=str(item.id),  # Exclude current item from results (Issue #392)
-            limit=20,
+            current_item_id=str(item.id),
         )
-        
+
         # Return the RAG result 1:1 as JSON
         return JsonResponse(serialize_rag_context(context))
         
