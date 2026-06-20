@@ -6,7 +6,11 @@
       "Bash(python3 -m py_compile agira_mcp/server.py agira_mcp/client.py agira_mcp/__init__.py core/views_api.py core/models.py core/admin.py core/migrations/0063_add_user_mcp_token.py)",
       "Bash(.venv/bin/python -c \"import mcp, httpx; from mcp.server.fastmcp import FastMCP; print\\('mcp + httpx OK'\\)\")",
       "Bash(agira_mcp/.venv/bin/python -)",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('core/views_api.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
