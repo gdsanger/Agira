@@ -206,6 +206,38 @@ class GitHubClient:
 
         return self.http.post(path, json=payload)
 
+    def update_pr(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        body: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Update an existing pull request (e.g. its body).
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            number: PR number
+            body: New PR body (markdown). Omitted if None.
+            title: New PR title. Omitted if None.
+
+        Returns:
+            Updated PR data as dictionary
+        """
+        path = f'/repos/{owner}/{repo}/pulls/{number}'
+        payload = {}
+
+        if body is not None:
+            payload['body'] = body
+
+        if title is not None:
+            payload['title'] = title
+
+        return self.http.patch(path, json=payload)
+
     def list_prs(
         self,
         owner: str,

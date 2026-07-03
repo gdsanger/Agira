@@ -242,15 +242,16 @@ class Command(BaseCommand):
             branch = self._create_branch_and_pr(job, repo_dir)
             result = self._run_cli(job, repo_dir, timeout, idle_timeout)
         except subprocess.TimeoutExpired:
-            self._fail_job(
-                job,
-                error=f"Job exceeded the {timeout}s timeout and was terminated.",
-            )
+            error = f"Job exceeded the {timeout}s timeout and was terminated."
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} timed out after {timeout}s"))
             return
         except Exception as exc:  # noqa: BLE001 — any setup/launch failure is a job failure
             logger.exception("Failed to run Claude for job #%s", job.pk)
-            self._fail_job(job, error=f"Worker error: {exc}")
+            error = f"Worker error: {exc}"
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed: {exc}"))
             return
 
@@ -264,20 +265,22 @@ class Command(BaseCommand):
                 or result.get('stderr')
                 or f"Claude exited with status {result.get('returncode')}."
             ).strip()
-            self._fail_job(job, error=detail or "Claude reported an error.")
+            error = detail or "Claude reported an error."
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed"))
             return
 
         if not result.get('saw_result'):
             # Process exited 0 but never emitted a result event — treat as a
             # failure so it is not silently marked done.
-            self._fail_job(
-                job,
-                error="Claude exited without emitting a final result event.",
-            )
+            error = "Claude exited without emitting a final result event."
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
             return
 
+        self._update_pr_body(job, summary=result.get('result_text'))
         job.transition_to(ClaudeQueueJobStatus.DONE)
         self.stdout.write(self.style.SUCCESS(f"Job #{job.pk} done"))
 
@@ -466,6 +469,33 @@ class Command(BaseCommand):
             f"Model: {job.get_model_display()}\n"
             f"Job: #{job.pk}"
         )
+
+    def _update_pr_body(self, job, *, summary=None, error=None):
+        """Replace the draft PR body with Claude's run summary (or a failure note).
+
+        Runs through ``GitHubService`` — the same infra that opened the PR — so
+        there is no parallel gh path. Idempotent: always overwrites the body
+        rather than appending, so re-runs don't duplicate content. Best-effort;
+        a PR body update failure must not affect the job's own terminal status.
+        The success body is what gets indexed into Weaviate as RAG context, so
+        an empty/generic body here is a real loss, not just a readability nit.
+        """
+        if not job.pr_number:
+            return
+
+        header = self._pr_body(job)
+        if error is not None:
+            body = f"{header}\n\n---\n\n**Run failed:** {error.strip()}"
+        else:
+            text = (summary or '').strip() or '_No summary provided._'
+            body = f"{header}\n\n---\n\n## Claude Summary\n\n{text}"
+
+        try:
+            from core.services.github.service import GitHubService
+
+            GitHubService().update_pr_body(job.item, number=job.pr_number, body=body)
+        except Exception as exc:  # noqa: BLE001 — best-effort, don't fail the job over this
+            logger.warning("Failed to update PR #%s body for job #%s: %s", job.pr_number, job.pk, exc)
 
     def _push_branch(self, repo_dir, branch):
         """Push the branch after the Claude run (best-effort)."""

@@ -434,3 +434,70 @@ class DraftPrTests(ClaudeWorkerTestBase):
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
         self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
+
+
+class UpdatePrBodyTests(ClaudeWorkerTestBase):
+    """_update_pr_body replaces the draft body via GitHubService, not a parallel path."""
+
+    def _job_with_pr(self, pr_number=42):
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item)
+        job.pr_number = pr_number
+        job.save(update_fields=['pr_number'])
+        return job
+
+    def test_success_body_includes_header_and_summary(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(job, summary='Implemented the thing.')
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertEqual(call_kwargs['number'], 42)
+        self.assertIn('Automated draft PR', call_kwargs['body'])
+        self.assertIn('## Claude Summary', call_kwargs['body'])
+        self.assertIn('Implemented the thing.', call_kwargs['body'])
+
+    def test_failure_body_includes_header_and_error_not_summary_heading(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(job, error='Claude reported an error.')
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertIn('Automated draft PR', call_kwargs['body'])
+        self.assertIn('Run failed', call_kwargs['body'])
+        self.assertIn('Claude reported an error.', call_kwargs['body'])
+        self.assertNotIn('## Claude Summary', call_kwargs['body'])
+
+    def test_no_pr_number_skips_update(self):
+        from unittest.mock import MagicMock
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item)  # pr_number left unset
+        fake_service = MagicMock()
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(job, summary='Should not be sent.')
+
+        fake_service.update_pr_body.assert_not_called()
+
+    def test_body_update_failure_does_not_raise(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+        fake_service.update_pr_body.side_effect = RuntimeError('API down')
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(job, summary='fine')  # must not raise
