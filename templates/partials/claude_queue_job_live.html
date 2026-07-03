@@ -30,7 +30,7 @@ Expects `job` and `active_statuses` in context.
     {% else %}
     <div class="mb-3">
         <label class="text-muted small text-uppercase">Current step</label>
-        <div class="p-3 bg-light rounded border">
+        <div class="p-3 rounded border">
             {% if job.progress_text %}
             {{ job.progress_text }}
             {% elif job.status == 'queued' %}
