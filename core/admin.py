@@ -643,15 +643,15 @@ class AIJobsHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(ClaudeQueueJob)
 class ClaudeQueueJobAdmin(admin.ModelAdmin):
-    list_display = ['id', 'created_at', 'project', 'item', 'status', 'model', 'pr_number', 'total_cost_usd', 'num_turns']
-    list_filter = ['status', 'model', 'project']
+    list_display = ['id', 'created_at', 'project', 'item', 'status', 'model', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
+    list_filter = ['status', 'model', 'project', 'pr_state']
     search_fields = ['item__title', 'project__name', 'branch_name', 'session_id', 'error_text']
     autocomplete_fields = ['item', 'project']
     readonly_fields = ['created_at', 'started_at', 'finished_at']
 
     fieldsets = (
         (None, {'fields': ('item', 'project', 'status', 'model')}),
-        ('Worker Result', {'fields': ('branch_name', 'pr_number', 'pr_url')}),
+        ('Worker Result', {'fields': ('branch_name', 'pr_number', 'pr_url', 'pr_state')}),
         ('Claude Metrics', {'fields': ('session_id', 'num_turns', 'total_cost_usd')}),
         ('Progress', {'fields': ('progress_text', 'error_text')}),
         ('Timestamps', {'fields': ('created_at', 'started_at', 'finished_at')}),

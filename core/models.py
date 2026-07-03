@@ -1856,6 +1856,11 @@ class ClaudeQueueJob(models.Model):
     pr_number = models.IntegerField(null=True, blank=True)
     pr_url = models.URLField(max_length=500, null=True, blank=True)
 
+    # Mirrored from ExternalIssueMapping.state by the GitHub PR webhook, so a
+    # forgotten commit/merge is visible right next to the job instead of only
+    # discoverable by clicking through to GitHub.
+    pr_state = models.CharField(max_length=50, blank=True, help_text=_('Latest known GitHub PR state: open, closed, or merged'))
+
     # From the Claude result event
     session_id = models.CharField(max_length=255, null=True, blank=True)
     num_turns = models.IntegerField(null=True, blank=True)

@@ -3,6 +3,7 @@ from . import views
 from . import views_azuread
 from . import views_embed
 from . import views_items
+from . import views_webhooks
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -273,4 +274,7 @@ urlpatterns = [
     path('embed/issues/<int:issue_id>/comments/', views_embed.embed_issue_add_comment, name='embed-issue-add-comment'),
     path('embed/issues/<int:issue_id>/upload-attachment/', views_embed.embed_issue_upload_attachment, name='embed-issue-upload-attachment'),
     path('embed/issues/<int:issue_id>/attachments/', views_embed.embed_issue_attachments, name='embed-issue-attachments'),
+
+    # Inbound webhooks (external systems, secret-authenticated)
+    path('webhooks/github/pull-request/', views_webhooks.github_pull_request_webhook, name='github-pull-request-webhook'),
 ]

@@ -52,6 +52,9 @@ Expects `job` and `active_statuses` in context.
                 <a href="{{ job.pr_url }}" target="_blank" rel="noopener">
                     <i class="bi bi-git"></i> PR #{{ job.pr_number }}
                 </a>
+                {% if job.pr_state %}
+                <span class="badge {% if job.pr_state == 'merged' %}bg-success{% elif job.pr_state == 'closed' %}bg-secondary{% else %}bg-info text-dark{% endif %}">{{ job.pr_state }}</span>
+                {% endif %}
                 {% else %}
                 <span class="text-muted">—</span>
                 {% endif %}
