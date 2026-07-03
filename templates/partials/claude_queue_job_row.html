@@ -1,3 +1,4 @@
+{% load agira_filters %}
 {% comment %}
 One table row for a ClaudeQueueJob. While the job is still active it carries
 HTMX polling attributes and refreshes itself every few seconds; once it reaches
@@ -25,7 +26,7 @@ Expects `job` and `active_statuses` in context.
             <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}
         </span>
         {% elif job.progress_text %}
-        <span class="text-muted">{{ job.progress_text|truncatechars:80 }}</span>
+        <span class="text-muted">{{ job.progress_text|render_markdown|striptags|truncatechars:80 }}</span>
         {% else %}
         <span class="text-muted">—</span>
         {% endif %}

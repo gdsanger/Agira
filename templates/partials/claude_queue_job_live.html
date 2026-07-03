@@ -1,3 +1,4 @@
+{% load agira_filters %}
 {% comment %}
 Live status block for the job detail page. Polls itself every few seconds while
 the job is active; stops once the job settles. Shows the current step while
@@ -32,7 +33,7 @@ Expects `job` and `active_statuses` in context.
         <label class="text-muted small text-uppercase">Current step</label>
         <div class="p-3 rounded border">
             {% if job.progress_text %}
-            {{ job.progress_text }}
+            <div class="markdown-viewer">{{ job.progress_text|render_markdown }}</div>
             {% elif job.status == 'queued' %}
             <span class="text-muted">Waiting in queue…</span>
             {% else %}
