@@ -16,6 +16,7 @@ from core.models import (
     ItemStatus,
     ExternalIssueMapping,
     ExternalIssueKind,
+    ClaudeQueueJob,
     Activity,
     User,
 )
@@ -513,7 +514,86 @@ class GitHubService(IntegrationBase):
         )
         
         return mapping
-    
+
+    def apply_pr_webhook_event(self, pull_request_data: dict) -> dict:
+        """
+        Apply a GitHub `pull_request` webhook event to the matching mapping.
+
+        The item is found via ``ExternalIssueMapping.github_id`` (written by the
+        PR bootstrap) — no guessing from branch name or PR body. Re-delivery of
+        the same event is safe: the item only advances Working → Testing while
+        it is still Working, and all other writes are plain overwrites of the
+        latest known state.
+
+        Args:
+            pull_request_data: The `pull_request` object from the webhook payload
+
+        Returns:
+            Dict describing the outcome: matched, mapping_id, item_id,
+            old_state, new_state, item_transitioned
+        """
+        github_id = pull_request_data.get('id')
+        result = {
+            'matched': False,
+            'mapping_id': None,
+            'item_id': None,
+            'old_state': None,
+            'new_state': None,
+            'item_transitioned': False,
+        }
+
+        try:
+            mapping = ExternalIssueMapping.objects.select_related('item').get(
+                github_id=github_id,
+                kind=ExternalIssueKind.PR,
+            )
+        except ExternalIssueMapping.DoesNotExist:
+            logger.info(f"No ExternalIssueMapping for PR github_id={github_id}; ignoring webhook event")
+            return result
+
+        item = mapping.item
+        old_state = mapping.state
+        new_state = self._map_state(pull_request_data, 'pr')
+
+        mapping.state = new_state
+        mapping.html_url = pull_request_data.get('html_url') or mapping.html_url
+        mapping.last_synced_at = timezone.now()
+        mapping.save()
+
+        # Mirror onto the job so the PR status is visible right next to the run
+        # (a forgotten commit/merge shows up there instead of only on GitHub).
+        ClaudeQueueJob.objects.filter(item=item, pr_number=mapping.number).update(pr_state=new_state)
+
+        result.update({
+            'matched': True,
+            'mapping_id': mapping.id,
+            'item_id': item.id,
+            'old_state': old_state,
+            'new_state': new_state,
+        })
+
+        if old_state != new_state:
+            self._log_activity(
+                item=item,
+                verb='github.pr_state_changed',
+                summary=f"GitHub PR #{mapping.number} changed from {old_state} to {new_state}",
+            )
+
+        if new_state == 'merged' and item.status == ItemStatus.WORKING:
+            from core.services.activity import ActivityService
+
+            old_item_status = item.status
+            item.status = ItemStatus.TESTING
+            item.save()
+            ActivityService().log_status_change(
+                item=item,
+                from_status=old_item_status,
+                to_status=ItemStatus.TESTING,
+            )
+            result['item_transitioned'] = True
+
+        return result
+
     def sync_item(self, item: Item) -> int:
         """
         Synchronize all ExternalIssueMappings for an item.
