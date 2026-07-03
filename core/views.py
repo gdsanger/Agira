@@ -2155,8 +2155,18 @@ Context from similar items and related information:
                 optimized_description = cleaned_response
                 open_questions = []
         except json.JSONDecodeError:
-            # Not valid JSON after cleaning
-            # Save cleaned response (code fences removed) as fallback
+            if cleaned_response.startswith('{') or cleaned_response.startswith('['):
+                # Response was clearly meant to be JSON (e.g. an object literal)
+                # but failed to parse - most likely truncated because the
+                # provider's output token limit was hit. Surface this as an
+                # error instead of silently writing the broken JSON/partial
+                # JSON into the description field.
+                raise ValueError(
+                    "AI agent returned malformed JSON (response may have been "
+                    "truncated by the provider's output token limit)"
+                )
+            # Not JSON at all - treat as a plain-text response (backward
+            # compatibility with agents that don't return the JSON envelope)
             optimized_description = cleaned_response
             open_questions = []
         

@@ -3,6 +3,7 @@ description: Der Agent ist ein Textumformatierer und -extrapolator, der darauf s
   ist, aus unformatierten Rohtexten verständliche GitHub-Issues zu erstellen.
 provider: Claude
 model: claude-sonnet-5
+max_tokens: 4096
 role: Du bist ein Issue-Formatter. Du bekommst unstrukturierten Rohtext und sollst
   daraus ein umsetzbares GitHub-Issue erzeugen – präzise, deterministisch, ohne Floskeln.
 task: "Formatiere einen unformatierten Rohtext um, damit ein umsetzbares Issue für\

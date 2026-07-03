@@ -282,7 +282,51 @@ class ItemOptimizeWithOpenQuestionsTest(TestCase):
         # Verify no open questions were created
         questions = IssueOpenQuestion.objects.filter(issue=self.item)
         self.assertEqual(questions.count(), 0)
-    
+
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    def test_optimize_with_truncated_json_response_is_rejected(self, mock_build_context, mock_execute_agent):
+        """A JSON response cut off mid-generation (e.g. output token limit hit)
+        must not be written verbatim into the description field."""
+        from core.services.rag.models import RAGContext
+        mock_context = RAGContext(
+            query='Test description',
+            alpha=0.5,
+            summary='No context found',
+            items=[],
+            stats={'total_results': 0, 'deduplicated': 0}
+        )
+        mock_build_context.return_value = mock_context
+
+        # Simulate a response truncated mid-JSON (missing closing braces)
+        mock_execute_agent.return_value = (
+            '{\n  "issue": {\n    "description": "# Optimized Description\\n\\n'
+            'This is a long description that got cut off half'
+        )
+
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+
+        # Get initial description
+        initial_description = self.item.description
+
+        # Call optimization endpoint
+        url = reverse('item-optimize-description-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+
+        # Check response - should be a clear error, not a silent success
+        self.assertEqual(response.status_code, 500)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+
+        # Verify item description was NOT overwritten with broken JSON
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.description, initial_description)
+
+        # Verify no open questions were created
+        questions = IssueOpenQuestion.objects.filter(issue=self.item)
+        self.assertEqual(questions.count(), 0)
+
     @patch('core.services.agents.agent_service.AgentService.execute_agent')
     @patch('core.services.rag.service.RAGPipelineService.build_context')
     def test_duplicate_questions_not_created(self, mock_build_context, mock_execute_agent):
