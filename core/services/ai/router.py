@@ -11,6 +11,7 @@ from core.services.exceptions import ServiceNotConfigured
 from .base_provider import BaseProvider
 from .openai_provider import OpenAIProvider
 from .gemini_provider import GeminiProvider
+from .claude_provider import ClaudeProvider
 from .schemas import AIResponse
 from .pricing import calculate_cost
 
@@ -18,16 +19,16 @@ from .pricing import calculate_cost
 class AIRouter:
     """
     AI Router for managing multiple AI providers.
-    
+
     Provides a unified interface for chat/generate operations across
-    OpenAI, Gemini, and other providers with automatic logging and cost tracking.
+    OpenAI, Gemini, Claude, and other providers with automatic logging and cost tracking.
     """
-    
+
     # Provider class mapping
     PROVIDER_CLASSES = {
         'OpenAI': OpenAIProvider,
         'Gemini': GeminiProvider,
-        # Claude can be added later
+        'Claude': ClaudeProvider,
     }
     
     def __init__(self):

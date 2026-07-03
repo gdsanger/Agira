@@ -365,7 +365,7 @@ class AIRouterTestCase(TestCase):
         # Create unsupported provider
         unsupported = AIProvider.objects.create(
             name='Unsupported',
-            provider_type='Claude',  # Not implemented yet
+            provider_type='DoesNotExist',  # Not a registered provider class
             api_key='test-key',
             active=True
         )
@@ -422,3 +422,74 @@ class OpenAIProviderTestCase(TestCase):
         self.assertEqual(call_kwargs['timeout'], 1200)
         self.assertEqual(call_kwargs['api_key'], 'test-key')
         self.assertEqual(call_kwargs['organization'], 'org-123')
+
+
+class ClaudeProviderTestCase(TestCase):
+    """Test Claude provider implementation."""
+
+    @patch('core.services.ai.claude_provider.anthropic.Anthropic')
+    def test_claude_client_initialized_with_api_key(self, mock_anthropic_class):
+        """Test that the Anthropic client is initialized with the given API key."""
+        from core.services.ai.claude_provider import ClaudeProvider
+
+        ClaudeProvider(api_key='test-key')
+
+        mock_anthropic_class.assert_called_once_with(api_key='test-key')
+
+    @patch('core.services.ai.claude_provider.anthropic.Anthropic')
+    def test_chat_extracts_text_and_usage(self, mock_anthropic_class):
+        """Test that chat() extracts text and token usage from the Messages API response."""
+        from core.services.ai.claude_provider import ClaudeProvider
+
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_text_block = Mock()
+        mock_text_block.type = 'text'
+        mock_text_block.text = 'opus'
+        mock_response = Mock()
+        mock_response.content = [mock_text_block]
+        mock_response.usage = Mock(input_tokens=42, output_tokens=1)
+        mock_client.messages.create.return_value = mock_response
+
+        provider = ClaudeProvider(api_key='test-key')
+        result = provider.chat(
+            messages=[{'role': 'user', 'content': 'Classify this item.'}],
+            model_id='claude-haiku-4-5',
+        )
+
+        self.assertEqual(result.text, 'opus')
+        self.assertEqual(result.input_tokens, 42)
+        self.assertEqual(result.output_tokens, 1)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        self.assertEqual(call_kwargs['model'], 'claude-haiku-4-5')
+        self.assertEqual(call_kwargs['messages'], [{'role': 'user', 'content': 'Classify this item.'}])
+        self.assertNotIn('system', call_kwargs)
+
+    @patch('core.services.ai.claude_provider.anthropic.Anthropic')
+    def test_chat_moves_system_role_message_to_system_param(self, mock_anthropic_class):
+        """Test that 'system' role messages are extracted into the top-level system param."""
+        from core.services.ai.claude_provider import ClaudeProvider
+
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = []
+        mock_response.usage = None
+        mock_client.messages.create.return_value = mock_response
+
+        provider = ClaudeProvider(api_key='test-key')
+        provider.chat(
+            messages=[
+                {'role': 'system', 'content': 'You are a triage assistant.'},
+                {'role': 'user', 'content': 'Classify this item.'},
+            ],
+            model_id='claude-haiku-4-5',
+            max_tokens=64,
+        )
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        self.assertEqual(call_kwargs['system'], 'You are a triage assistant.')
+        self.assertEqual(call_kwargs['messages'], [{'role': 'user', 'content': 'Classify this item.'}])
+        self.assertEqual(call_kwargs['max_tokens'], 64)
