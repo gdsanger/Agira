@@ -1859,6 +1859,20 @@ class ClaudeQueueJob(models.Model):
     progress_text = models.TextField(blank=True, help_text=_('Current step, advanced by the worker — basis for the live view'))
     error_text = models.TextField(blank=True)
 
+    # Worker ownership — set atomically when a running-job is claimed, used for
+    # crash recovery: a running job whose worker process is gone is an orphan.
+    worker_host = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text=_('Hostname of the worker that claimed this job'),
+    )
+    worker_pid = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text=_('PID of the worker process that claimed this job'),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
