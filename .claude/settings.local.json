@@ -1,12 +1,21 @@
 {
+  "hasTrustDialogAccepted": true,
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(python3 -c \"import django; print\\(django.get_version\\(\\)\\)\")",
-      "Bash(python3 manage.py makemigrations core)",
-      "Bash(python3 -m py_compile agira_mcp/server.py agira_mcp/client.py agira_mcp/__init__.py core/views_api.py core/models.py core/admin.py core/migrations/0063_add_user_mcp_token.py)",
-      "Bash(.venv/bin/python -c \"import mcp, httpx; from mcp.server.fastmcp import FastMCP; print\\('mcp + httpx OK'\\)\")",
-      "Bash(agira_mcp/.venv/bin/python -)",
-      "Bash(git fetch *)"
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(*/bin/python *)",
+      "Bash(pip *)",
+      "Bash(*/bin/pip *)",
+      "Bash(pytest *)",
+      "Bash(source *)",
+      "Bash(file *)"
     ]
   }
 }
