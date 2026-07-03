@@ -1,0 +1,73 @@
+{% comment %}
+Live status block for the job detail page. Polls itself every few seconds while
+the job is active; stops once the job settles. Shows the current step while
+running, and the result (turns/cost + PR link) or error once finished.
+Expects `job` and `active_statuses` in context.
+{% endcomment %}
+<div id="cqj-live-{{ job.id }}"
+     {% if job.status in active_statuses %}
+     hx-get="{% url 'claude-queue-job-live' job.id %}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="fs-5">{% include 'partials/claude_queue_status_badge.html' %}</span>
+        {% if job.status in active_statuses %}
+        <small class="text-muted"><i class="bi bi-arrow-repeat"></i> live &middot; updates automatically</small>
+        {% endif %}
+    </div>
+
+    {% if job.status == 'failed' %}
+    <div class="alert alert-danger" role="alert">
+        <h6 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Job failed</h6>
+        {% if job.error_text %}
+        <pre class="mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ job.error_text|truncatechars:2000 }}</pre>
+        {% else %}
+        <p class="mb-0">No error detail was recorded.</p>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="mb-3">
+        <label class="text-muted small text-uppercase">Current step</label>
+        <div class="p-3 bg-light rounded border">
+            {% if job.progress_text %}
+            {{ job.progress_text }}
+            {% elif job.status == 'queued' %}
+            <span class="text-muted">Waiting in queue…</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if job.status == 'done' or job.status == 'failed' or job.status == 'cancelled' %}
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+                <div class="text-muted small text-uppercase">Draft PR</div>
+                {% if job.pr_url %}
+                <a href="{{ job.pr_url }}" target="_blank" rel="noopener">
+                    <i class="bi bi-git"></i> PR #{{ job.pr_number }}
+                </a>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+                <div class="text-muted small text-uppercase">Turns</div>
+                {% if job.num_turns is not None %}{{ job.num_turns }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+                <div class="text-muted small text-uppercase">Cost</div>
+                {% if job.total_cost_usd is not None %}${{ job.total_cost_usd|floatformat:4 }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>

@@ -30,7 +30,8 @@ from .models import (
     AIProvider, AIModel, AIProviderType, AIJobsHistory, UserOrganisation, UserRole,
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
-    GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole)
+    GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
+    ClaudeQueueJob, ClaudeQueueJobStatus)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -722,6 +723,103 @@ def changes(request):
         'selected_risk': risk_filter,
     }
     return render(request, 'changes.html', context)
+
+
+# ---------------------------------------------------------------------------
+# Claude Queue visibility
+#
+# Live insight into what Claude Code is working on, so a batch run is no longer
+# a black box. The list and detail views render normally; the status row (list)
+# and live block (detail) refresh themselves via HTMX polling. Terminal jobs are
+# rendered without polling attributes, so polling stops on its own once a job
+# reaches done/failed/cancelled.
+# ---------------------------------------------------------------------------
+
+# Statuses that are still in flight and therefore keep polling.
+_CLAUDE_QUEUE_ACTIVE_STATUSES = (
+    ClaudeQueueJobStatus.QUEUED,
+    ClaudeQueueJobStatus.RUNNING,
+)
+
+
+@login_required
+def claude_queue_jobs(request):
+    """List view of all Claude queue jobs with project/status filters."""
+    jobs = ClaudeQueueJob.objects.select_related(
+        'item', 'project'
+    ).order_by('-created_at')
+
+    project_filter = request.GET.get('project', '')
+    if project_filter:
+        try:
+            jobs = jobs.filter(project_id=int(project_filter))
+        except (ValueError, TypeError):
+            project_filter = ''
+
+    status_filter = request.GET.get('status', '')
+    if status_filter:
+        jobs = jobs.filter(status=status_filter)
+
+    context = {
+        'jobs': jobs,
+        'projects': Project.objects.all().order_by('name'),
+        'statuses': ClaudeQueueJobStatus.choices,
+        'selected_project': project_filter,
+        'selected_status': status_filter,
+    }
+    return render(request, 'claude_queue_jobs.html', context)
+
+
+@login_required
+def claude_queue_job_row(request, job_id):
+    """HTMX endpoint: the single table row for a job, used for list polling.
+
+    Returns the row partial. The partial only carries polling attributes while
+    the job is still active, so an active row keeps refreshing and a finished
+    row swaps in a static version that stops the poll.
+    """
+    try:
+        job = ClaudeQueueJob.objects.select_related('item', 'project').get(id=job_id)
+    except ClaudeQueueJob.DoesNotExist:
+        # HTMX-friendly: no error page, and 204 leaves the existing row in place.
+        return HttpResponse(status=204)
+
+    return render(request, 'partials/claude_queue_job_row.html', {
+        'job': job,
+        'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
+    })
+
+
+@login_required
+def claude_queue_job_detail(request, job_id):
+    """Detail view for a single Claude queue job."""
+    job = get_object_or_404(
+        ClaudeQueueJob.objects.select_related('item', 'project'),
+        id=job_id,
+    )
+    return render(request, 'claude_queue_job_detail.html', {
+        'job': job,
+        'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
+    })
+
+
+@login_required
+def claude_queue_job_live(request, job_id):
+    """HTMX endpoint: the live status block on the detail page.
+
+    Shows the current step (progress_text) while running, and the result
+    (turns/cost + PR link) or error once finished. Polling attributes are only
+    emitted while the job is active, so the poll stops when the job settles.
+    """
+    try:
+        job = ClaudeQueueJob.objects.select_related('item', 'project').get(id=job_id)
+    except ClaudeQueueJob.DoesNotExist:
+        return HttpResponse(status=204)
+
+    return render(request, 'partials/claude_queue_job_live.html', {
+        'job': job,
+        'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
+    })
 
 @login_required
 def item_lookup(request, item_id):
