@@ -110,9 +110,12 @@
             <a href="{% url 'user-settings' %}" class="btn btn-sm btn-outline-primary me-2">
                 <i class="bi bi-gear"></i> Settings
             </a>
-            <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-secondary">
+            <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-secondary me-2">
                 <i class="bi bi-box-arrow-right"></i> Abmelden
             </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="rightSidebarToggle" aria-label="Rechte Sidebar ein-/ausblenden" title="Rechte Sidebar ein-/ausblenden">
+                <i class="bi bi-layout-sidebar-inset-reverse"></i>
+            </button>
         </div>
         {% endif %}
     </nav>
@@ -324,12 +327,34 @@
             sidebarToggle.addEventListener('click', function() {
                 sidebar.classList.toggle('collapsed');
                 mainContent.classList.toggle('sidebar-collapsed');
-                
+
                 // Save state to localStorage
                 const isCollapsed = sidebar.classList.contains('collapsed');
                 localStorage.setItem('sidebarCollapsed', isCollapsed);
             });
-            
+
+            // Right sidebar (Recents & Pinned) toggle
+            const rightSidebar = document.getElementById('rightSidebar');
+            const rightSidebarToggle = document.getElementById('rightSidebarToggle');
+            const RIGHT_SIDEBAR_STORAGE_KEY = 'agira.sidebar.rightVisible.v1';
+
+            if (rightSidebar && rightSidebarToggle) {
+                const storedRightVisible = localStorage.getItem(RIGHT_SIDEBAR_STORAGE_KEY);
+                const rightVisible = storedRightVisible === null ? true : storedRightVisible === 'true';
+                if (!rightVisible) {
+                    rightSidebar.classList.add('right-sidebar--hidden');
+                    mainContent.classList.add('right-sidebar-hidden');
+                }
+
+                rightSidebarToggle.addEventListener('click', function() {
+                    rightSidebar.classList.toggle('right-sidebar--hidden');
+                    mainContent.classList.toggle('right-sidebar-hidden');
+
+                    const isVisible = !rightSidebar.classList.contains('right-sidebar--hidden');
+                    localStorage.setItem(RIGHT_SIDEBAR_STORAGE_KEY, isVisible);
+                });
+            }
+
             // Handle section collapse chevron rotation
             const collapseElements = document.querySelectorAll('.collapse');
             collapseElements.forEach(function(collapseEl) {

@@ -330,10 +330,18 @@ body {
     z-index: 998;
 }
 
+.right-sidebar--hidden {
+    display: none !important;
+}
+
 /* Adjust main content when right sidebar is visible */
 @media (min-width: 992px) {
     .main-content {
         margin-right: var(--right-sidebar-width);
+    }
+
+    .main-content.right-sidebar-hidden {
+        margin-right: 0;
     }
 }
 
