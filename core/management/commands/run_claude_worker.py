@@ -617,8 +617,7 @@ class Command(BaseCommand):
             '--model', model,
             '--output-format', 'stream-json',
             '--verbose',
-            '--allowedTools', ALLOWED_TOOLS,
-            '--permission-mode', 'acceptEdits',
+            '--dangerously-skip-permissions',
         ]
 
     def _build_env(self, job, pr_body_file):
