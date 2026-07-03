@@ -225,6 +225,7 @@ agents/*
 !agents/question-answering-agent.yml
 !agents/chat-summary-agent.yml
 !agents/coding-answer-agent.yml
+!agents/model-classifier-agent.yml
 *.yml.env
 db.sqlite3
 test_db.sqlite3

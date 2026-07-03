@@ -288,7 +288,18 @@
                         {% endfor %}
                     </select>
                 </div>
-                
+
+                <!-- Suggested Model (#834) -->
+                <div class="mb-3">
+                    <label for="suggested_model" class="form-label">Suggested Model</label>
+                    <select class="form-select" id="suggested_model" name="suggested_model" form="itemForm">
+                        <option value="" {% if not item %}selected{% endif %}>Auto-detect</option>
+                        <option value="sonnet" {% if item and item.suggested_model == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                        <option value="opus" {% if item and item.suggested_model == 'opus' %}selected{% endif %}>Opus</option>
+                    </select>
+                    <small class="form-text text-muted">Used by the Claude queue (#833). A suggestion, not a gate — pick "Auto-detect" to let the classifier decide.</small>
+                </div>
+
                 <!-- Organisation -->
                 <div class="mb-3">
                     <label for="organisation" class="form-label">Organisation</label>
