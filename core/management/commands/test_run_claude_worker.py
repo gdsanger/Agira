@@ -12,7 +12,9 @@ plus the timeout / error end-states and crash recovery.
 import json
 import os
 import subprocess
+import tempfile
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -501,3 +503,164 @@ class UpdatePrBodyTests(ClaudeWorkerTestBase):
         with patch('core.services.github.service.GitHubService',
                    return_value=fake_service):
             Command()._update_pr_body(job, summary='fine')  # must not raise
+
+    def test_prefers_structured_pr_body_file_over_summary(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+        pr_body_file = Path(tempfile.gettempdir()) / 'test-pr-body-structured.md'
+        structured = (
+            "## Zusammenfassung\nDid the thing.\n\n## Änderungen\n"
+            "- `a.py` — changed\n\n## Warum / Entscheidungen\n"
+            "- nicht X, weil Y\n\n## Test-Hinweise\n- ran tests"
+        )
+        pr_body_file.write_text(structured)
+        try:
+            with patch('core.services.github.service.GitHubService',
+                       return_value=fake_service):
+                Command()._update_pr_body(
+                    job, summary='Should be ignored.', pr_body_file=pr_body_file,
+                )
+        finally:
+            pr_body_file.unlink(missing_ok=True)
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertIn('## Zusammenfassung', call_kwargs['body'])
+        self.assertIn('## Warum / Entscheidungen', call_kwargs['body'])
+        self.assertNotIn('Should be ignored.', call_kwargs['body'])
+        self.assertNotIn('## Claude Summary', call_kwargs['body'])
+
+    def test_falls_back_to_summary_when_pr_body_file_missing(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+        missing_file = Path(tempfile.gettempdir()) / 'test-pr-body-does-not-exist.md'
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(
+                job, summary='Fallback summary.', pr_body_file=missing_file,
+            )
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertIn('## Claude Summary', call_kwargs['body'])
+        self.assertIn('Fallback summary.', call_kwargs['body'])
+
+    def test_falls_back_to_summary_when_pr_body_file_empty(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+        empty_file = Path(tempfile.gettempdir()) / 'test-pr-body-empty.md'
+        empty_file.write_text('   \n')
+        try:
+            with patch('core.services.github.service.GitHubService',
+                       return_value=fake_service):
+                Command()._update_pr_body(
+                    job, summary='Fallback summary.', pr_body_file=empty_file,
+                )
+        finally:
+            empty_file.unlink(missing_ok=True)
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertIn('## Claude Summary', call_kwargs['body'])
+        self.assertIn('Fallback summary.', call_kwargs['body'])
+
+
+class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
+    """The worker creates PR_BODY_FILE before the run and removes it afterwards."""
+
+    def _claimed_job(self, project, item_status=ItemStatus.WORKING):
+        item = self._item(project, status=item_status)
+        self._job(project, item=item)
+        return Command().claim_next_job()
+
+    def test_file_created_before_run_and_removed_after(self):
+        job = self._claimed_job(self.project_a)
+        captured = {}
+
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+            captured['path'] = pr_body_file
+            captured['existed_during_run'] = pr_body_file.exists()
+            return _ok_result()
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', side_effect=fake_run_cli):
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        self.assertTrue(captured['existed_during_run'])
+        self.assertFalse(captured['path'].exists())
+
+    def test_file_removed_after_a_failed_run(self):
+        job = self._claimed_job(self.project_a)
+        captured = {}
+
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+            captured['path'] = pr_body_file
+            return _ok_result(is_error=True, result_text='exploded')
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', side_effect=fake_run_cli):
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        self.assertFalse(captured['path'].exists())
+
+    def test_structured_body_file_content_flows_into_pr_body(self):
+        from unittest.mock import MagicMock
+
+        job = self._claimed_job(self.project_a)
+        job.pr_number = 42
+        job.save(update_fields=['pr_number'])
+        fake_service = MagicMock()
+
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+            pr_body_file.write_text(
+                "## Zusammenfassung\nDid it.\n\n## Änderungen\n- `a.py`\n\n"
+                "## Warum / Entscheidungen\n- nicht X, weil Y\n\n"
+                "## Test-Hinweise\n- ran tests"
+            )
+            return _ok_result()
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', side_effect=fake_run_cli), \
+                patch('core.services.github.service.GitHubService',
+                      return_value=fake_service):
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        call_kwargs = fake_service.update_pr_body.call_args[1]
+        self.assertIn('## Zusammenfassung', call_kwargs['body'])
+        self.assertIn('nicht X, weil Y', call_kwargs['body'])
+        self.assertNotIn('## Claude Summary', call_kwargs['body'])
+
+
+class BuildPromptAndEnvTests(ClaudeWorkerTestBase):
+    def test_prompt_includes_pr_body_file_instructions(self):
+        item = self._item(self.project_a)
+        prompt = Command()._build_prompt(item)
+
+        self.assertIn('$PR_BODY_FILE', prompt)
+        self.assertIn('## Zusammenfassung', prompt)
+        self.assertIn('## Änderungen', prompt)
+        self.assertIn('## Warum / Entscheidungen', prompt)
+        self.assertIn('## Test-Hinweise', prompt)
+        self.assertIn('nicht X, weil Y', prompt)
+
+    def test_build_env_sets_pr_body_file(self):
+        job = self._job(self.project_a)
+        pr_body_file = Path(tempfile.gettempdir()) / 'claude-pr-body-test.md'
+
+        env = Command()._build_env(job, pr_body_file)
+
+        self.assertEqual(env['PR_BODY_FILE'], str(pr_body_file))
+
+    def test_allowed_tools_includes_write(self):
+        from core.management.commands.run_claude_worker import ALLOWED_TOOLS
+        self.assertIn('Write', ALLOWED_TOOLS.split(','))
