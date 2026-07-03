@@ -1796,3 +1796,136 @@ class IssueBlueprint(models.Model):
     def __str__(self):
         return f"{self.title} (v{self.version})"
 
+
+class ClaudeQueueJobStatus(models.TextChoices):
+    """Lifecycle states of a Claude Code queue job.
+
+    Deliberately kept separate from ItemStatus: item transitions
+    (e.g. Working → Testing) are driven by the GitHub sync (PR merged),
+    not by this job's state machine.
+    """
+    QUEUED = 'queued', _('Queued')
+    RUNNING = 'running', _('Running')
+    DONE = 'done', _('Done')
+    FAILED = 'failed', _('Failed')
+    CANCELLED = 'cancelled', _('Cancelled')
+
+
+class ClaudeQueueJobModel(models.TextChoices):
+    """Claude models available for automated item processing.
+
+    Fable is intentionally excluded from the automatism.
+    """
+    SONNET = 'sonnet', _('Sonnet')
+    OPUS = 'opus', _('Opus')
+
+
+class ClaudeQueueJob(models.Model):
+    """A queued request to have Claude Code CLI work on an Item.
+
+    Jobs are processed serially per project (never two at once within the
+    same project). This model is the foundation: data model + state logic.
+    State transitions are logged via the ActivityService.
+    """
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='claude_queue_jobs')
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='claude_queue_jobs',
+        help_text=_('Redundant with item.project for a fast per-project concurrency filter'),
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobStatus.choices,
+        default=ClaudeQueueJobStatus.QUEUED,
+    )
+    model = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobModel.choices,
+        default=ClaudeQueueJobModel.SONNET,
+    )
+
+    # Set by the worker
+    branch_name = models.CharField(max_length=255, null=True, blank=True)
+    pr_number = models.IntegerField(null=True, blank=True)
+    pr_url = models.URLField(max_length=500, null=True, blank=True)
+
+    # From the Claude result event
+    session_id = models.CharField(max_length=255, null=True, blank=True)
+    num_turns = models.IntegerField(null=True, blank=True)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+
+    # Live progress / diagnostics
+    progress_text = models.TextField(blank=True, help_text=_('Current step, advanced by the worker — basis for the live view'))
+    error_text = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Claude Queue Job'
+        verbose_name_plural = 'Claude Queue Jobs'
+        indexes = [
+            models.Index(fields=['project', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"ClaudeQueueJob #{self.pk} ({self.status}) - {self.item}"
+
+    # Allowed state transitions for the job state machine.
+    _TRANSITIONS = {
+        ClaudeQueueJobStatus.QUEUED: {ClaudeQueueJobStatus.RUNNING, ClaudeQueueJobStatus.CANCELLED},
+        ClaudeQueueJobStatus.RUNNING: {ClaudeQueueJobStatus.DONE, ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED},
+        ClaudeQueueJobStatus.DONE: set(),
+        ClaudeQueueJobStatus.FAILED: set(),
+        ClaudeQueueJobStatus.CANCELLED: set(),
+    }
+
+    def save(self, *args, **kwargs):
+        # Keep the redundant project FK consistent with the item's project.
+        if self.item_id and not self.project_id:
+            self.project = self.item.project
+        super().save(*args, **kwargs)
+
+    def transition_to(self, new_status, actor=None):
+        """Transition the job to a new status, log it, and stamp timestamps.
+
+        Validates the transition against the state machine, updates the
+        started_at/finished_at timestamps as appropriate, persists the change,
+        and records an Activity entry. Returns the job.
+        """
+        from core.services.activity import ActivityService
+
+        new_status = ClaudeQueueJobStatus(new_status)
+        old_status = ClaudeQueueJobStatus(self.status)
+
+        if new_status == old_status:
+            return self
+
+        if new_status not in self._TRANSITIONS.get(old_status, set()):
+            raise ValidationError(
+                _('Invalid job status transition: %(old)s → %(new)s') % {
+                    'old': old_status,
+                    'new': new_status,
+                }
+            )
+
+        self.status = new_status
+        if new_status == ClaudeQueueJobStatus.RUNNING and self.started_at is None:
+            self.started_at = timezone.now()
+        if new_status in (ClaudeQueueJobStatus.DONE, ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED):
+            self.finished_at = timezone.now()
+
+        self.save()
+
+        ActivityService().log(
+            verb='claudequeuejob.status_changed',
+            target=self.item,
+            actor=actor,
+            summary=f"Claude queue job #{self.pk}: {old_status.label} → {new_status.label}",
+        )
+        return self
+
