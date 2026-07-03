@@ -1121,6 +1121,50 @@ def item_take_over_responsible(request, item_id):
 
 @login_required
 @require_http_methods(["POST"])
+def item_claude_enqueue(request, item_id):
+    """
+    "An Claude übergeben" action - enqueues the item for the Claude queue.
+
+    Force-appends the git-workflow hint to the item's description (once),
+    creates a queued ClaudeQueueJob, and moves the item to Working. If the
+    item already has an active job, no duplicate is created.
+    """
+    from core.services.claude_queue.enqueue import enqueue_item_for_claude
+
+    item = get_object_or_404(Item, id=item_id)
+
+    if item.status == ItemStatus.CLOSED:
+        return JsonResponse({
+            'success': False,
+            'error': 'Cannot enqueue a closed item for Claude.',
+        }, status=400)
+
+    try:
+        job, created = enqueue_item_for_claude(item, actor=request.user)
+
+        if not created:
+            return JsonResponse({
+                'success': True,
+                'message': f'Item already has an active Claude job (#{job.pk}).',
+                'no_change': True,
+                'job_id': job.pk,
+            })
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Enqueued for Claude Code (job #{job.pk}).',
+            'job_id': job.pk,
+        })
+    except Exception as e:
+        logger.error(f"Error enqueueing item {item_id} for Claude: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
 def item_assign_responsible(request, item_id):
     """
     Assign action - sets responsible to selected agent user.
