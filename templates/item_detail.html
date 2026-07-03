@@ -161,6 +161,12 @@
                 <i class="bi bi-person-check"></i>
                 Take over
             </button>
+            {% if item.status != 'Closed' %}
+            <button type="button" class="btn btn-outline-primary" onclick="enqueueToClaude()">
+                <i class="bi bi-robot"></i>
+                An Claude übergeben
+            </button>
+            {% endif %}
             {% endif %}
             <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignResponsibleModal">
                 <i class="bi bi-person-plus"></i>
@@ -1278,7 +1284,36 @@
             });
         }
     }
-    
+
+    // An Claude übergeben action
+    function enqueueToClaude() {
+        if (confirm('An Claude Code übergeben? Das Item wird auf "Working" gesetzt und ein Job eingereiht.')) {
+            fetch('{% url 'item-claude-enqueue' item.id %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message || 'An Claude Code übergeben.');
+                    if (!data.no_change) {
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                } else {
+                    showToast('error', data.error || 'Übergabe an Claude fehlgeschlagen.');
+                }
+            })
+            .catch(error => {
+                showToast('error', 'Ein Fehler ist beim Übergeben an Claude aufgetreten.');
+            });
+        }
+    }
+
     // Assign responsible action
     document.getElementById('assignResponsibleForm')?.addEventListener('submit', function(e) {
         e.preventDefault();
