@@ -323,9 +323,39 @@ class AgentServiceTestCase(TestCase):
         self.assertFalse(loaded_agent['cache']['enabled'])
 
 
+class AgentServiceRealAgentsDirTestCase(TestCase):
+    """
+    Regression tests against the real agents/ directory (not a temp dir).
+
+    These guard against agent YAML files that exist on disk but are missing
+    from the .gitignore allowlist (agents/* is ignored by default; each file
+    needs an explicit `!agents/<file>.yml` entry) or from the repo entirely.
+    """
+
+    def test_text_to_title_generator_agent_is_loadable(self):
+        """text-to-title-generator.yml must exist and load (regression for AGIRA-1PD)."""
+        agent_service = AgentService()
+        agent = agent_service.get_agent('text-to-title-generator.yml')
+        self.assertIsNotNone(agent, "Agent 'text-to-title-generator.yml' not found")
+        self.assertEqual(agent.get('name'), 'text-to-title-generator')
+        self.assertTrue(agent.get('role'))
+        self.assertTrue(agent.get('task'))
+
+    def test_text_to_title_generator_agent_is_tracked_by_git(self):
+        """The agent file must not be silently excluded by the agents/* gitignore rule."""
+        gitignore_path = Path(settings.BASE_DIR) / '.gitignore'
+        gitignore_content = gitignore_path.read_text(encoding='utf-8')
+        self.assertIn(
+            '!agents/text-to-title-generator.yml',
+            gitignore_content,
+            "agents/text-to-title-generator.yml is excluded by 'agents/*' and needs "
+            "an explicit allowlist entry in .gitignore or it will be missing after deployment",
+        )
+
+
 class AgentServiceCacheIntegrationTestCase(TestCase):
     """Integration tests for AgentService with cache functionality."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         # Create a temporary directory for test agents
