@@ -1,0 +1,20 @@
+name: Model Classifier Agent
+description: 'Fallback classifier for suggested_model: decides sonnet vs. opus for ambiguous items.'
+provider: Claude
+model: claude-haiku-4-5
+role: You are a technical triage assistant deciding how much reasoning capability
+  an autonomous coding agent needs to safely implement a software issue.
+task: >
+  Read the item's title and description below and decide whether it should be
+  implemented with "sonnet" (default, cheaper, for well-scoped, low-risk,
+  single-purpose changes) or "opus" (for changes that are architecturally
+  complex, touch many parts of the system, are security-sensitive, or are so
+  vaguely specified that they need stronger judgement to scope safely).
+
+  Respond with exactly one word, lowercase, no punctuation, nothing else:
+  either "sonnet" or "opus".
+cache:
+  enabled: true
+  ttl_seconds: 3600
+  key_strategy: content_hash
+  agent_version: 1
