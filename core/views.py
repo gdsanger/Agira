@@ -31,7 +31,7 @@ from .models import (
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
     GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
-    ClaudeQueueJob, ClaudeQueueJobStatus)
+    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -39,6 +39,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.storage.errors import AttachmentTooLarge
 from .services.agents import AgentService
+from .services.claude_queue.model_classifier import ModelClassifierService
 from .services.mail import check_mail_trigger, prepare_mail_preview
 from .services.change_policy_service import ChangePolicyService
 from .backends.azuread import AzureADAuth, AzureADAuthError
@@ -4136,6 +4137,21 @@ def _auto_generate_title_from_description(description, user=None):
         return ''
 
 
+def _resolve_suggested_model(item, request):
+    """
+    Resolve Item.suggested_model (#834) from an explicit UI override or
+    the hybrid classifier.
+
+    An explicit 'sonnet'/'opus' value in POST['suggested_model'] is a
+    manual override and is used as-is. Any other value (missing, or
+    empty for "Auto-detect") triggers (re-)classification.
+    """
+    override = request.POST.get('suggested_model', '').strip()
+    if override in (ClaudeQueueJobModel.SONNET, ClaudeQueueJobModel.OPUS):
+        return override
+    return ModelClassifierService().classify(item)
+
+
 def _send_responsible_notification(item, new_responsible):
     """
     Send email notification to new responsible user.
@@ -4350,7 +4366,8 @@ def item_create(request):
             type=item_type,
             status=request.POST.get('status', ItemStatus.INBOX),
         )
-        
+        item.suggested_model = _resolve_suggested_model(item, request)
+
         # Set optional fields with automatic pre-population
         # Auto-populate requester with current user if not explicitly provided
         requester_id = request.POST.get('requester')
@@ -4535,7 +4552,9 @@ def item_update(request, item_id):
         item.solution_description = request.POST.get('solution_description', item.solution_description)
         item.short_description = request.POST.get('short_description', item.short_description)
         item.status = request.POST.get('status', item.status)
-        
+        if 'suggested_model' in request.POST:
+            item.suggested_model = _resolve_suggested_model(item, request)
+
         # Update boolean fields
         item.intern = request.POST.get('intern') == 'on' or request.POST.get('intern') == 'true'
         
