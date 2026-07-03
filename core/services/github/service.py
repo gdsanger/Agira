@@ -349,6 +349,80 @@ class GitHubService(IntegrationBase):
         
         return mapping
     
+    def create_draft_pr_for_item(
+        self,
+        item: Item,
+        *,
+        branch_name: str,
+        base: str = 'main',
+        title: Optional[str] = None,
+        body: Optional[str] = None,
+        actor=None,
+        user: Optional[User] = None,
+    ) -> ExternalIssueMapping:
+        """
+        Create a draft pull request for an Agira item and record the mapping.
+
+        Used by the Claude queue worker to open the PR *before* Claude runs, so
+        the PR reference is deterministic regardless of what Claude reports. The
+        head branch must already exist on the remote (the worker pushes an empty
+        commit first). Reuses the standard ``ExternalIssueMapping`` (Kind=PR)
+        rather than a parallel tracking mechanism.
+
+        Args:
+            item: Agira item the PR belongs to
+            branch_name: Head branch (already pushed), e.g. 'fix/item-42'
+            base: Base branch to target (default: 'main')
+            title: PR title (default: item.title)
+            body: PR body (markdown)
+            actor: User performing the action (optional)
+            user: User whose GitHub PAT should be used (default: global token)
+
+        Returns:
+            Created ExternalIssueMapping (kind=PR)
+
+        Raises:
+            IntegrationDisabled: If GitHub is disabled
+            IntegrationNotConfigured: If GitHub is not configured
+            ValueError: If project doesn't have GitHub repo configured
+        """
+        client = self._get_client(user=user)
+        owner, repo = self._get_repo_info(item)
+
+        pr_title = title or item.title
+        github_pr = client.create_pull_request(
+            owner=owner,
+            repo=repo,
+            title=pr_title,
+            head=branch_name,
+            base=base,
+            body=body,
+            draft=True,
+        )
+
+        mapping = ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=github_pr['id'],
+            number=github_pr['number'],
+            kind=ExternalIssueKind.PR,
+            state=self._map_state(github_pr, 'pr'),
+            html_url=github_pr['html_url'],
+        )
+
+        self._log_activity(
+            item=item,
+            verb='github.pr_created',
+            summary=f"Created draft PR #{github_pr['number']}: {pr_title}",
+            actor=actor,
+        )
+
+        logger.info(
+            f"Created draft PR #{github_pr['number']} for item {item.id} "
+            f"(branch {branch_name})"
+        )
+
+        return mapping
+
     def sync_mapping(self, mapping: ExternalIssueMapping) -> ExternalIssueMapping:
         """
         Synchronize an ExternalIssueMapping with GitHub.

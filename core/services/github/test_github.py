@@ -253,6 +253,39 @@ class GitHubServiceItemTestCase(TestCase):
         self.assertEqual(call_args[1]['body'], 'Custom body content')
         self.assertEqual(call_args[1]['labels'], ['bug', 'priority:high'])
     
+    @patch('core.services.github.client.GitHubClient.create_pull_request')
+    def test_create_draft_pr_for_item(self, mock_create_pr):
+        """Draft PR creation records an ExternalIssueMapping (kind=PR)."""
+        mock_create_pr.return_value = {
+            'id': 98765,
+            'number': 7,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/7',
+        }
+
+        mapping = self.service.create_draft_pr_for_item(
+            self.item,
+            branch_name='fix/test-bug-1',
+            base='main',
+            body='body text',
+            actor=self.user,
+        )
+
+        # Correct API call: head branch, draft=True.
+        call_kwargs = mock_create_pr.call_args[1]
+        self.assertEqual(call_kwargs['owner'], 'testowner')
+        self.assertEqual(call_kwargs['repo'], 'testrepo')
+        self.assertEqual(call_kwargs['head'], 'fix/test-bug-1')
+        self.assertEqual(call_kwargs['base'], 'main')
+        self.assertTrue(call_kwargs['draft'])
+
+        # Mapping persisted with kind=PR.
+        self.assertEqual(mapping.kind, ExternalIssueKind.PR)
+        self.assertEqual(mapping.github_id, 98765)
+        self.assertEqual(mapping.number, 7)
+        self.assertEqual(mapping.html_url,
+                         'https://github.com/testowner/testrepo/pull/7')
+
     @patch('core.services.github.client.GitHubClient.get_issue')
     def test_sync_mapping_updates_state(self, mock_get_issue):
         """Test that sync_mapping updates state from GitHub."""
