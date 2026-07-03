@@ -9,6 +9,7 @@ Covers the two hard guarantees from the issue:
 plus the timeout / error end-states and crash recovery.
 """
 
+import json
 import os
 import subprocess
 from io import StringIO
@@ -26,6 +27,22 @@ from core.models import (
     ItemType,
     Project,
 )
+
+
+def _ok_result(**overrides):
+    """A successful Claude result dict as returned by ``_run_cli``."""
+    result = {
+        'session_id': 'sess-123',
+        'num_turns': 4,
+        'total_cost_usd': '0.1234',
+        'is_error': False,
+        'result_text': 'Done.',
+        'saw_result': True,
+        'returncode': 0,
+        'stderr': '',
+    }
+    result.update(overrides)
+    return result
 
 
 class ClaudeWorkerTestBase(TestCase):
@@ -121,67 +138,95 @@ class ClaimNextJobTests(ClaudeWorkerTestBase):
 
 
 class ProcessJobTests(ClaudeWorkerTestBase):
+    """The git/PR/Claude steps are patched here; each is unit-tested on its own.
+
+    These tests exercise the process_job orchestration: which result drives the
+    job to done vs failed, and item release on failure.
+    """
+
     def _claimed_job(self, project, item_status=ItemStatus.WORKING):
         item = self._item(project, status=item_status)
-        job = self._job(project, item=item)
+        self._job(project, item=item)
         return Command().claim_next_job()
 
-    def test_successful_run_marks_done(self):
+    def _run(self, job, run_cli=None, timeout=30):
+        """Run process_job with the side-effecting steps stubbed out."""
+        run_cli = run_cli if run_cli is not None else (lambda *a, **k: _ok_result())
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', side_effect=run_cli):
+            Command().process_job(job, timeout=timeout, idle_timeout=5)
+
+    def test_successful_run_marks_done_and_persists_result(self):
         job = self._claimed_job(self.project_a)
-        Command().process_job(job, timeout=30, cli_command='true')
+        self._run(job)
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
         self.assertIsNotNone(job.finished_at)
         self.assertEqual(job.error_text, '')
 
+    def test_is_error_result_marks_failed(self):
+        job = self._claimed_job(self.project_a)
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            is_error=True, result_text='exploded',
+        ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('exploded', job.error_text)
+        self.assertIsNotNone(job.finished_at)
+
     def test_nonzero_exit_marks_failed_and_captures_stderr(self):
         job = self._claimed_job(self.project_a)
-        Command().process_job(
-            job, timeout=30, cli_command='echo "boom" >&2; exit 3',
-        )
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            returncode=3, saw_result=False, result_text='', stderr='boom',
+        ))
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
         self.assertIn('boom', job.error_text)
-        self.assertIsNotNone(job.finished_at)
 
-    def test_nonzero_exit_releases_item_from_working(self):
+    def test_missing_result_event_marks_failed(self):
+        job = self._claimed_job(self.project_a)
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            saw_result=False, result_text='',
+        ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('result event', job.error_text)
+
+    def test_failure_releases_item_from_working(self):
         job = self._claimed_job(self.project_a, item_status=ItemStatus.WORKING)
-        Command().process_job(job, timeout=30, cli_command='exit 1')
+        self._run(job, run_cli=lambda *a, **k: _ok_result(is_error=True))
 
         job.item.refresh_from_db()
         self.assertEqual(job.item.status, ItemStatus.BACKLOG)
 
     def test_timeout_marks_failed(self):
         job = self._claimed_job(self.project_a)
-
-        with patch.object(Command, '_run_cli', side_effect=subprocess.TimeoutExpired('cmd', 1)):
-            Command().process_job(job, timeout=1, cli_command='sleep 10')
+        self._run(
+            job, timeout=1,
+            run_cli=lambda *a, **k: (_ for _ in ()).throw(
+                subprocess.TimeoutExpired('claude', 1)
+            ),
+        )
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
         self.assertIn('timeout', job.error_text.lower())
 
-    def test_launch_failure_marks_failed(self):
+    def test_setup_failure_marks_failed(self):
         job = self._claimed_job(self.project_a)
-
-        with patch.object(Command, '_run_cli', side_effect=OSError('no such binary')):
-            Command().process_job(job, timeout=30, cli_command='whatever')
+        with patch.object(Command, '_prepare_checkout',
+                          side_effect=RuntimeError('git clone failed')):
+            Command().process_job(job, timeout=30, idle_timeout=5)
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
-        self.assertIn('no such binary', job.error_text)
-
-    def test_job_id_exported_to_cli_env(self):
-        job = self._claimed_job(self.project_a)
-        # Fail only if the env var isn't set, proving it is passed through.
-        Command().process_job(
-            job, timeout=30,
-            cli_command='test "$CLAUDE_QUEUE_JOB_ID" = "%d"' % job.pk,
-        )
-        job.refresh_from_db()
-        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertIn('git clone failed', job.error_text)
 
 
 class CrashRecoveryTests(ClaudeWorkerTestBase):
@@ -262,7 +307,11 @@ class OnceModeTests(ClaudeWorkerTestBase):
         job = self._job(self.project_a, item=item)
 
         out = StringIO()
-        call_command('run_claude_worker', '--once', '--cli-command', 'true', stdout=out)
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', return_value=_ok_result()):
+            call_command('run_claude_worker', '--once', '--skip-recovery', stdout=out)
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
@@ -271,5 +320,117 @@ class OnceModeTests(ClaudeWorkerTestBase):
         from django.core.management import call_command
 
         out = StringIO()
-        call_command('run_claude_worker', '--once', stdout=out)
+        call_command('run_claude_worker', '--once', '--skip-recovery', stdout=out)
         self.assertIn('No eligible job', out.getvalue())
+
+
+class BranchNameTests(ClaudeWorkerTestBase):
+    def test_branch_name_is_slugged_and_id_suffixed(self):
+        item = self._item(self.project_a)
+        item.title = 'Fix the Login Bug!'
+        item.save(update_fields=['title'])
+
+        branch = Command()._branch_name(item)
+        self.assertEqual(branch, f'fix/fix-the-login-bug-{item.id}')
+
+    def test_branch_name_falls_back_when_title_unsluggable(self):
+        item = self._item(self.project_a)
+        item.title = '!!!'
+        item.save(update_fields=['title'])
+
+        branch = Command()._branch_name(item)
+        self.assertEqual(branch, f'fix/item-{item.id}')
+
+
+class StreamParsingTests(ClaudeWorkerTestBase):
+    """Unit tests for _consume_stream against synthetic stream-json lines."""
+
+    def _job_with_item(self):
+        item = self._item(self.project_a)
+        return self._job(self.project_a, item=item)
+
+    def test_init_event_sets_session_id(self):
+        job = self._job_with_item()
+        lines = [json.dumps({
+            'type': 'system', 'subtype': 'init',
+            'session_id': 'sess-abc', 'mcp_servers': [{'name': 'x'}],
+        })]
+        Command()._consume_stream(job, iter(lines))
+
+        job.refresh_from_db()
+        self.assertEqual(job.session_id, 'sess-abc')
+
+    def test_assistant_tool_use_advances_progress(self):
+        job = self._job_with_item()
+        lines = [json.dumps({
+            'type': 'assistant',
+            'message': {'content': [
+                {'type': 'tool_use', 'name': 'Edit',
+                 'input': {'file_path': 'core/foo.py'}},
+            ]},
+        })]
+        Command()._consume_stream(job, iter(lines))
+
+        job.refresh_from_db()
+        self.assertEqual(job.progress_text, 'Edit: core/foo.py')
+
+    def test_result_event_persists_cost_and_turns(self):
+        job = self._job_with_item()
+        lines = [json.dumps({
+            'type': 'result', 'subtype': 'success', 'is_error': False,
+            'num_turns': 7, 'total_cost_usd': 0.42,
+            'session_id': 'sess-final', 'result': 'All done.',
+        })]
+        result = Command()._consume_stream(job, iter(lines))
+
+        self.assertTrue(result['saw_result'])
+        self.assertFalse(result['is_error'])
+        job.refresh_from_db()
+        self.assertEqual(job.num_turns, 7)
+        self.assertEqual(str(job.total_cost_usd), '0.420000')
+        self.assertEqual(job.session_id, 'sess-final')
+        self.assertEqual(job.progress_text, 'All done.')
+
+    def test_error_result_is_flagged(self):
+        job = self._job_with_item()
+        lines = [json.dumps({
+            'type': 'result', 'is_error': True, 'num_turns': 1,
+            'total_cost_usd': 0.01, 'result': 'boom',
+        })]
+        result = Command()._consume_stream(job, iter(lines))
+        self.assertTrue(result['is_error'])
+
+    def test_non_json_noise_is_ignored(self):
+        job = self._job_with_item()
+        lines = [
+            'not json at all',
+            '',
+            json.dumps({'type': 'result', 'is_error': False,
+                        'num_turns': 1, 'total_cost_usd': 0.0, 'result': 'ok'}),
+        ]
+        result = Command()._consume_stream(job, iter(lines))
+        self.assertTrue(result['saw_result'])
+
+
+class DraftPrTests(ClaudeWorkerTestBase):
+    def test_open_draft_pr_writes_job_fields(self):
+        from unittest.mock import MagicMock
+        from core.models import ExternalIssueKind, ExternalIssueMapping
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item)
+
+        mapping = ExternalIssueMapping.objects.create(
+            item=item, github_id=555, number=42, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/o/r/pull/42',
+        )
+        fake_service = MagicMock()
+        fake_service.create_draft_pr_for_item.return_value = mapping
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+
+        job.refresh_from_db()
+        self.assertEqual(job.pr_number, 42)
+        self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')

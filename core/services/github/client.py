@@ -165,6 +165,47 @@ class GitHubClient:
         path = f'/repos/{owner}/{repo}/pulls/{number}'
         return self.http.get(path)
     
+    def create_pull_request(
+        self,
+        owner: str,
+        repo: str,
+        title: str,
+        head: str,
+        base: str = 'main',
+        body: Optional[str] = None,
+        draft: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Create a pull request.
+
+        The head branch must already exist on the remote (the queue worker
+        pushes it before calling this).
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            title: PR title
+            head: Name of the branch where the changes are (e.g. 'fix/item-42')
+            base: Branch to merge into (default: 'main')
+            body: PR body (markdown)
+            draft: Create as a draft PR (default: True)
+
+        Returns:
+            Created PR data as dictionary
+        """
+        path = f'/repos/{owner}/{repo}/pulls'
+        payload = {
+            'title': title,
+            'head': head,
+            'base': base,
+            'draft': draft,
+        }
+
+        if body:
+            payload['body'] = body
+
+        return self.http.post(path, json=payload)
+
     def list_prs(
         self,
         owner: str,

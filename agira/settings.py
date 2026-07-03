@@ -226,6 +226,19 @@ FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', 'D_GzCwyVvkyI1o5qUh9rle
 AGIRA_DATA_DIR = BASE_DIR / os.getenv('AGIRA_DATA_DIR', 'data')
 AGIRA_MAX_ATTACHMENT_SIZE_MB = int(os.getenv('AGIRA_MAX_ATTACHMENT_SIZE_MB', '25'))
 
+# Claude Code Queue Worker Configuration
+# ============================================================================
+# Where the worker keeps per-project repo checkouts. This is deliberately NOT
+# the app directory: the process runs from the app tree (queue DB) but Claude
+# edits inside REPO_BASE_DIR/<project.github_repo>. Keeping them separate lets
+# dev/prod diverge via config and prevents Claude from touching the app tree.
+REPO_BASE_DIR = os.getenv('REPO_BASE_DIR', str(BASE_DIR / 'repos'))
+# Executable used for the headless Claude Code invocation (overridable so the
+# worker host can point at an absolute path / wrapper).
+CLAUDE_CLI_BIN = os.getenv('CLAUDE_CLI_BIN', 'claude')
+# API key for the headless Claude run (API key, not the Pro subscription).
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+
 # Cache configuration
 # Using LocMemCache for simplicity and performance
 # In production, consider Redis or Memcached for multi-server deployments
