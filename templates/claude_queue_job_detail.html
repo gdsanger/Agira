@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Claude Queue Job #{{ job.id }} - Agira{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{% url 'claude-queue-jobs' %}">Claude Queue</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Job #{{ job.id }}</li>
+                </ol>
+            </nav>
+            <h1 class="mb-0">{{ job.item.title }}</h1>
+            <p class="text-muted mb-0">
+                <a href="{% url 'item-detail' job.item.id %}">Item #{{ job.item.id }}</a>
+                &middot; {{ job.project.name }}
+                &middot; Model: {{ job.get_model_display }}
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                {% include 'partials/claude_queue_job_live.html' %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">Details</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-5 text-muted">Branch</dt>
+                    <dd class="col-7">{{ job.branch_name|default:"—" }}</dd>
+
+                    <dt class="col-5 text-muted">Session</dt>
+                    <dd class="col-7 text-break"><small>{{ job.session_id|default:"—" }}</small></dd>
+
+                    <dt class="col-5 text-muted">Created</dt>
+                    <dd class="col-7">{{ job.created_at|date:"Y-m-d H:i" }}</dd>
+
+                    <dt class="col-5 text-muted">Started</dt>
+                    <dd class="col-7">{{ job.started_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+
+                    <dt class="col-5 text-muted">Finished</dt>
+                    <dd class="col-7">{{ job.finished_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

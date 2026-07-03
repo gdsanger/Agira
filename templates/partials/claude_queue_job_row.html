@@ -1,0 +1,47 @@
+{% comment %}
+One table row for a ClaudeQueueJob. While the job is still active it carries
+HTMX polling attributes and refreshes itself every few seconds; once it reaches
+a terminal state the swapped-in row omits those attributes and polling stops.
+Expects `job` and `active_statuses` in context.
+{% endcomment %}
+<tr id="cqj-row-{{ job.id }}"
+    style="cursor: pointer;"
+    onclick="window.location='{% url 'claude-queue-job-detail' job.id %}'"
+    {% if job.status in active_statuses %}
+    hx-get="{% url 'claude-queue-job-row' job.id %}"
+    hx-trigger="every 5s"
+    hx-swap="outerHTML"
+    {% endif %}>
+    <td class="text-muted">#{{ job.id }}</td>
+    <td>
+        <strong>{{ job.item.title }}</strong>
+        <br><small class="text-muted">Item #{{ job.item.id }}</small>
+    </td>
+    <td>{{ job.project.name }}</td>
+    <td>{% include 'partials/claude_queue_status_badge.html' %}</td>
+    <td class="cqj-progress" onclick="event.stopPropagation();">
+        {% if job.status == 'failed' and job.error_text %}
+        <span class="text-danger" title="{{ job.error_text }}">
+            <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}
+        </span>
+        {% elif job.progress_text %}
+        <span class="text-muted">{{ job.progress_text|truncatechars:80 }}</span>
+        {% else %}
+        <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if job.pr_url %}
+        <a href="{{ job.pr_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation();">
+            <i class="bi bi-git"></i> PR #{{ job.pr_number }}
+        </a>
+        {% else %}
+        <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="text-nowrap">
+        {% if job.num_turns is not None %}{{ job.num_turns }} turns{% else %}—{% endif %}
+        {% if job.total_cost_usd is not None %}<br><small class="text-muted">${{ job.total_cost_usd|floatformat:4 }}</small>{% endif %}
+    </td>
+    <td class="text-nowrap"><small class="text-muted">{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
+</tr>
