@@ -155,6 +155,10 @@ class AgentService:
         Supports Redis-based response caching if configured in agent YAML.
         Cache lookup is performed before AI request, and successful responses
         are cached with configured TTL.
+
+        An optional top-level `max_tokens` key in the agent YAML overrides the
+        provider's default output token limit (e.g. Claude defaults to 1024,
+        which can silently truncate longer structured responses like JSON).
         
         Args:
             filename: Agent YAML filename
@@ -182,6 +186,7 @@ class AgentService:
         role = agent.get('role', '')
         task = agent.get('task', '')
         agent_params = agent.get('parameters', {})
+        max_tokens = agent.get('max_tokens')
         
         # Parse cache configuration from agent YAML
         cache_config = self.cache_service.parse_cache_config(agent)
@@ -234,7 +239,8 @@ class AgentService:
                 provider_type=provider_type,
                 user=user,
                 client_ip=client_ip,
-                agent=agent_name
+                agent=agent_name,
+                max_tokens=max_tokens
             )
             
             response_text = response.text
