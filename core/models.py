@@ -607,6 +607,15 @@ class ChangePolicyRole(models.Model):
         return f"{self.policy} - {self.get_role_display()}"
 
 
+class ClaudeQueueJobModel(models.TextChoices):
+    """Claude models available for automated item processing.
+
+    Fable is intentionally excluded from the automatism.
+    """
+    SONNET = 'sonnet', _('Sonnet')
+    OPUS = 'opus', _('Opus')
+
+
 class Item(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -627,6 +636,12 @@ class Item(models.Model):
     solution_release = models.ForeignKey(Release, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
     changes = models.ManyToManyField(Change, blank=True, related_name='items')
     intern = models.BooleanField(default=False)
+    suggested_model = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobModel.choices,
+        default=ClaudeQueueJobModel.SONNET,
+        help_text=_('AI-suggested Claude model for automated processing. A suggestion, not a gate — overridable in the UI.'),
+    )
 
     class Meta:
         ordering = ['-updated_at']
@@ -1809,15 +1824,6 @@ class ClaudeQueueJobStatus(models.TextChoices):
     DONE = 'done', _('Done')
     FAILED = 'failed', _('Failed')
     CANCELLED = 'cancelled', _('Cancelled')
-
-
-class ClaudeQueueJobModel(models.TextChoices):
-    """Claude models available for automated item processing.
-
-    Fable is intentionally excluded from the automatism.
-    """
-    SONNET = 'sonnet', _('Sonnet')
-    OPUS = 'opus', _('Opus')
 
 
 class ClaudeQueueJob(models.Model):
