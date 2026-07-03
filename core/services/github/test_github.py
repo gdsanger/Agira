@@ -286,6 +286,29 @@ class GitHubServiceItemTestCase(TestCase):
         self.assertEqual(mapping.html_url,
                          'https://github.com/testowner/testrepo/pull/7')
 
+    @patch('core.services.github.client.GitHubClient.update_pr')
+    def test_update_pr_body(self, mock_update_pr):
+        """update_pr_body overwrites the PR body via the GitHub client."""
+        mock_update_pr.return_value = {
+            'id': 98765,
+            'number': 7,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/7',
+        }
+
+        self.service.update_pr_body(
+            self.item,
+            number=7,
+            body='## Claude Summary\n\nDid the thing.',
+            actor=self.user,
+        )
+
+        call_kwargs = mock_update_pr.call_args[1]
+        self.assertEqual(call_kwargs['owner'], 'testowner')
+        self.assertEqual(call_kwargs['repo'], 'testrepo')
+        self.assertEqual(call_kwargs['number'], 7)
+        self.assertEqual(call_kwargs['body'], '## Claude Summary\n\nDid the thing.')
+
     @patch('core.services.github.client.GitHubClient.get_issue')
     def test_sync_mapping_updates_state(self, mock_get_issue):
         """Test that sync_mapping updates state from GitHub."""
@@ -694,6 +717,29 @@ class GitHubClientTestCase(TestCase):
         self.assertEqual(headers['Authorization'], 'Bearer test_token_123')
         self.assertEqual(headers['Accept'], 'application/vnd.github+json')
         self.assertEqual(headers['X-GitHub-Api-Version'], '2022-11-28')
+
+    @patch('core.services.integrations.http.httpx.Client')
+    def test_update_pr_sends_patch_with_body(self, mock_client_class):
+        """update_pr PATCHes the pull request endpoint with the new body."""
+        from core.services.github.client import GitHubClient
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'id': 1, 'number': 7}
+
+        mock_client = Mock()
+        mock_client.request.return_value = mock_response
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client_class.return_value = mock_client
+
+        client = GitHubClient(token='test_token_123')
+        client.update_pr('owner', 'repo', 7, body='new body')
+
+        call_kwargs = mock_client.request.call_args[1]
+        self.assertEqual(call_kwargs['method'], 'PATCH')
+        self.assertTrue(call_kwargs['url'].endswith('/repos/owner/repo/pulls/7'))
+        self.assertEqual(call_kwargs['json'], {'body': 'new body'})
 
 
 if __name__ == '__main__':

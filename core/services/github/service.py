@@ -423,6 +423,49 @@ class GitHubService(IntegrationBase):
 
         return mapping
 
+    def update_pr_body(
+        self,
+        item: Item,
+        *,
+        number: int,
+        body: str,
+        actor=None,
+        user: Optional[User] = None,
+    ) -> None:
+        """
+        Overwrite the body of an existing pull request.
+
+        Used by the Claude queue worker to replace the bootstrap draft-PR body
+        with Claude's run summary once a job finishes, so the PR text is
+        meaningful content (also indexed into Weaviate for RAG) instead of a
+        static placeholder.
+
+        Args:
+            item: Agira item the PR belongs to
+            number: PR number to update
+            body: New PR body (markdown), replaces the existing body entirely
+            actor: User performing the action (optional)
+            user: User whose GitHub PAT should be used (default: global token)
+
+        Raises:
+            IntegrationDisabled: If GitHub is disabled
+            IntegrationNotConfigured: If GitHub is not configured
+            ValueError: If project doesn't have GitHub repo configured
+        """
+        client = self._get_client(user=user)
+        owner, repo = self._get_repo_info(item)
+
+        client.update_pr(owner=owner, repo=repo, number=number, body=body)
+
+        self._log_activity(
+            item=item,
+            verb='github.pr_body_updated',
+            summary=f"Updated GitHub PR #{number} body",
+            actor=actor,
+        )
+
+        logger.info(f"Updated PR #{number} body for item {item.id}")
+
     def sync_mapping(self, mapping: ExternalIssueMapping) -> ExternalIssueMapping:
         """
         Synchronize an ExternalIssueMapping with GitHub.
