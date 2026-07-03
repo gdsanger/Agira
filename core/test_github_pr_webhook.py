@@ -32,6 +32,7 @@ def pr_payload(*, action='closed', number=42, github_id=9001, merged=True, state
         'id': github_id,
         'number': number,
         'state': state,
+        'merged': merged,
         'html_url': f'https://github.com/testowner/testrepo/pull/{number}',
     }
     if merged:
@@ -123,15 +124,65 @@ class GitHubPRWebhookTestCase(TestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.TESTING)
 
-    def test_closed_unmerged_pr_does_not_change_item_status(self):
+    def test_closed_unmerged_pr_is_ignored(self):
         response = self._post(pr_payload(merged=False, state='closed'))
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
 
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.WORKING)
 
         self.mapping.refresh_from_db()
-        self.assertEqual(self.mapping.state, 'closed')
+        self.assertEqual(self.mapping.state, 'open')
+
+        self.job.refresh_from_db()
+        self.assertFalse(self.job.pr_state)
+
+    def test_opened_action_is_ignored(self):
+        response = self._post(pr_payload(action='opened', merged=False, state='open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
+
+        self.mapping.refresh_from_db()
+        self.assertEqual(self.mapping.state, 'open')
+
+    def test_synchronize_action_is_ignored(self):
+        response = self._post(pr_payload(action='synchronize', merged=False, state='open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
+
+        self.mapping.refresh_from_db()
+        self.assertEqual(self.mapping.state, 'open')
+
+    def test_labeled_action_is_ignored(self):
+        response = self._post(pr_payload(action='labeled', merged=False, state='open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
+
+    def test_ready_for_review_action_is_ignored(self):
+        response = self._post(pr_payload(action='ready_for_review', merged=False, state='open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
+
+    def test_unknown_action_is_ignored(self):
+        response = self._post(pr_payload(action='review_requested', merged=False, state='open'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ignored'])
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.WORKING)
 
     def test_unmatched_github_id_is_ignored(self):
         response = self._post(pr_payload(github_id=99999999))

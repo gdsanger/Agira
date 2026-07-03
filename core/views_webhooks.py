@@ -49,9 +49,21 @@ def github_pull_request_webhook(request):
     except (ValueError, TypeError):
         return HttpResponseBadRequest("Invalid JSON")
 
+    action = payload.get('action')
     pull_request_data = payload.get('pull_request')
     if not pull_request_data:
         return HttpResponseBadRequest("Missing pull_request payload")
+
+    # GitHub fires `pull_request` for many actions (opened, synchronize,
+    # labeled, ready_for_review, closed-without-merge, ...). Only a merge
+    # is business-relevant here; everything else is acked and dropped so it
+    # can't touch item status or mapping/job state.
+    if action != 'closed' or not pull_request_data.get('merged'):
+        logger.info(
+            f"Ignoring GitHub pull_request webhook: action={action!r}, "
+            f"merged={pull_request_data.get('merged')!r}"
+        )
+        return JsonResponse({'ignored': True, 'event': event, 'action': action})
 
     result = GitHubService().apply_pr_webhook_event(pull_request_data)
     return JsonResponse(result)
