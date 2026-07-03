@@ -367,6 +367,19 @@
                                 <div class="mb-3">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <strong>Description:</strong>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                id="copy-description-btn"
+                                                onclick="copyDescriptionToClipboard()"
+                                                title="Copy raw Markdown description to clipboard">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clipboard me-1" viewBox="0 0 16 16">
+                                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                                </svg>
+                                                Copy
+                                            </button>
                                         {% if user.is_authenticated and user.role == 'Agent' and item.project.name != 'Incoming' %}
                                         <div class="d-flex gap-2">
                                             {% if item.type.key == 'meeting' %}
@@ -437,6 +450,7 @@
                                             </button>
                                         </div>
                                         {% endif %}
+                                        </div>
                                     </div>
                                     <div class="mt-2">
                                         {% if item.description %}
@@ -447,11 +461,12 @@
                                             <span class="text-muted">—</span>
                                         {% endif %}
                                     </div>
+                                    {{ item.description|default:""|json_script:"item-description-raw" }}
                                     <div class="d-flex justify-content-between align-items-center m-3">
                                         <small class="text-muted"><strong>Created: </strong>{{ item.created_at|date:"Y-m-d H:i" }}</small>
                                         <small class="text-muted"><strong>Updated: </strong>{{ item.updated_at|date:"Y-m-d H:i" }}</small>
                                     </div>
-                                    
+
                                     <!-- Open Questions Warning and Section -->
                                     <div id="open-questions-container" class="mt-4"></div>
                                 </div>
@@ -1218,6 +1233,20 @@
         messageEl.textContent = message;
         const toast = new bootstrap.Toast(toastEl);
         toast.show();
+    }
+
+    function copyDescriptionToClipboard() {
+        const rawDescriptionEl = document.getElementById('item-description-raw');
+        const description = rawDescriptionEl ? JSON.parse(rawDescriptionEl.textContent) : '';
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            showToast('error', 'Clipboard API is not available in this browser');
+            return;
+        }
+        navigator.clipboard.writeText(description).then(function() {
+            showToast('success', 'Description copied to clipboard!');
+        }).catch(function(err) {
+            showToast('error', 'Failed to copy description: ' + err.message);
+        });
     }
     
     // Handle HTMX errors
