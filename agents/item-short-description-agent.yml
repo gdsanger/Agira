@@ -2,8 +2,8 @@ name: item-short-description-agent
 description: Agent zur Generierung einer ISO-konformen Short Description aus der Item
   Description. Liefert eine kurze, prägnante Beschreibung (max. 3-4 Sätze) für ISO
   Change Reports.
-provider: OpenAI
-model: gpt-5.4
+provider: Claude
+model: claude-sonnet-5
 role: Du bist ein technischer Dokumentationsexperte mit Schwerpunkt auf ISO-konforme
   Change-Dokumentation. Du erzeugst kurze, präzise Beschreibungen von technischen
   Änderungen.

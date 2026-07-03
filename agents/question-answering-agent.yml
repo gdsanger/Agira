@@ -1,8 +1,8 @@
 name: question-answering-agent
 description: Beantwortet Fragen basierend auf RAG-Kontext aus einem Projekt. Liefert
   informative, kontextbasierte Antworten.
-provider: OpenAI
-model: gpt-5.2
+provider: Claude
+model: claude-opus-5
 role: Du bist ein hilfreicher AI-Assistent, der Fragen zu einem Projekt beantwortet.
   Du erhältst eine Frage sowie relevanten Kontext aus einer Wissensdatenbank und sollst
   auf Basis dieses Kontexts eine präzise und hilfreiche Antwort geben.

@@ -1,7 +1,7 @@
 name: Mail Issue Classification Agent
 description: ''
-provider: OpenAI
-model: gpt-5.2
+provider: Claude
+model: claude-sonnet-5
 role: You are an expert at analyzing emails and classifying them into the appropriate
   project and issue type.
 task: "Analyze the provided email content and classify it based on the available projects.\r\

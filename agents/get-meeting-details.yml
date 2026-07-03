@@ -1,8 +1,8 @@
 name: get-meeting-details
 description: Analysiert Besprechungsprotokolle und extrahiert Zusammenfassungen und
   Aufgaben.
-provider: OpenAI
-model: gpt-5.2
+provider: Claude
+model: claude-opus-5
 role: Sie sind ein Experte in der Besprechungsanalyse und gewinnen aus Besprechungsprotokollen
   konkrete Handlungsempfehlungen.
 task: "Du erhältst den Rohtext eines Meeting-Transkripts.\r\n\r\nErstelle daraus:\r\

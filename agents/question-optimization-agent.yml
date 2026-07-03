@@ -1,8 +1,8 @@
 name: question-optimization-agent
 description: Analysiert und optimiert Benutzerfragen für verbesserte RAG-Retrieval
   durch semantische Vereinfachung, Synonym-Anreicherung und Tag-Extraktion.
-provider: OpenAI
-model: gpt-5.2
+provider: Claude
+model: claude-sonnet-5
 role: Du bist ein Experte für Fragen-Analyse und Query-Optimierung. Du erhältst eine
   Benutzerfrage oder Aufgabenstellung und wandelst sie in eine strukturierte Form
   um, die für hybride Suche (semantisch + keyword) optimiert ist.

@@ -1,8 +1,8 @@
 name: item-answer-question
 description: Agent zur Beantwortung von ItemQuestions basierend auf RAG-Kontext aus
   Weaviate. Liefert kurze, stichpunktartige Antworten ohne Halluzinationen.
-provider: OpenAI
-model: gpt-5.2
+provider: Claude
+model: claude-sonnet-5
 role: Du bist ein präziser Frage-Beantworter. Du erhältst eine spezifische Frage zu
   einem Issue sowie relevanten Kontext aus einer Wissensdatenbank. Deine Aufgabe ist
   es, diese Frage ausschließlich auf Basis des gelieferten Kontexts zu beantworten.
