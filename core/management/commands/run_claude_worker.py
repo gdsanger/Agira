@@ -48,6 +48,7 @@ import select
 import signal
 import socket
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -89,8 +90,24 @@ DEFAULT_INTERVAL_SECONDS = 5
 # timeout itself, so if the job is still "running" its supervisor is gone.
 STALE_BUFFER_SECONDS = 60
 
-# Tools Claude may use in the headless run: read/edit files and drive git.
-ALLOWED_TOOLS = 'Read,Edit,Bash(git*)'
+# Tools Claude may use in the headless run: read/edit files, write the
+# PR_BODY_FILE (which lives outside the checkout, so Edit's "must already
+# exist with matching content" semantics don't fit), and drive git.
+ALLOWED_TOOLS = 'Read,Edit,Write,Bash(git*)'
+
+# Fixed PR body sections Claude must write into PR_BODY_FILE. Literal headings
+# so the resulting PR bodies are uniform and cleanly chunkable for the
+# Weaviate RAG index.
+PR_BODY_FILE_INSTRUCTIONS = (
+    "Schließe deine Arbeit ab, indem du einen PR-Text in die Datei unter "
+    "`$PR_BODY_FILE` schreibst. Verwende GENAU die vorgegebene "
+    "Markdown-Struktur (Überschriften wörtlich: `## Zusammenfassung`, "
+    "`## Änderungen`, `## Warum / Entscheidungen`, `## Test-Hinweise`; keine "
+    "zusätzlichen H2). Nur inhaltlicher PR-Text — kein Prozess-Geplauder, "
+    "keine Commit-Hashes, kein „Committed as\". Nenne unter „## Warum / "
+    "Entscheidungen\" ausdrücklich auch bewusst verworfene Alternativen im "
+    "Format „nicht X, weil Y\"."
+)
 
 
 class Command(BaseCommand):
@@ -236,11 +253,24 @@ class Command(BaseCommand):
         failure (setup, timeout, non-zero exit, ``is_error`` result) drives the
         job to ``failed`` with diagnostics and releases the item so it does not
         starve in ``Working``.
+
+        Claude is asked to write the PR body text into ``PR_BODY_FILE`` — a file
+        outside the checkout (so ``reset --hard``/``clean -fd`` can't touch it
+        and Claude can't accidentally commit it). It is created empty up front
+        and removed again once the job reaches a terminal state.
         """
+        pr_body_file = self._pr_body_file_path(job)
+        self._init_pr_body_file(pr_body_file)
+        try:
+            self._process_job_inner(job, timeout, idle_timeout, pr_body_file)
+        finally:
+            self._cleanup_pr_body_file(pr_body_file)
+
+    def _process_job_inner(self, job, timeout, idle_timeout, pr_body_file):
         try:
             repo_dir = self._prepare_checkout(job)
             branch = self._create_branch_and_pr(job, repo_dir)
-            result = self._run_cli(job, repo_dir, timeout, idle_timeout)
+            result = self._run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file)
         except subprocess.TimeoutExpired:
             error = f"Job exceeded the {timeout}s timeout and was terminated."
             self._fail_job(job, error=error)
@@ -280,7 +310,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
             return
 
-        self._update_pr_body(job, summary=result.get('result_text'))
+        self._update_pr_body(
+            job, summary=result.get('result_text'), pr_body_file=pr_body_file
+        )
         job.transition_to(ClaudeQueueJobStatus.DONE)
         self.stdout.write(self.style.SUCCESS(f"Job #{job.pk} done"))
 
@@ -344,7 +376,7 @@ class Command(BaseCommand):
         payload = {
             'hasTrustDialogAccepted': True,
             'permissions': {
-                'allow': ['Read', 'Edit', 'Bash(git*)'],
+                'allow': ['Read', 'Edit', 'Write', 'Bash(git*)'],
             },
         }
         settings_file.write_text(json.dumps(payload, indent=2))
@@ -470,8 +502,8 @@ class Command(BaseCommand):
             f"Job: #{job.pk}"
         )
 
-    def _update_pr_body(self, job, *, summary=None, error=None):
-        """Replace the draft PR body with Claude's run summary (or a failure note).
+    def _update_pr_body(self, job, *, summary=None, error=None, pr_body_file=None):
+        """Replace the draft PR body with Claude's structured PR text (or a failure note).
 
         Runs through ``GitHubService`` — the same infra that opened the PR — so
         there is no parallel gh path. Idempotent: always overwrites the body
@@ -479,6 +511,10 @@ class Command(BaseCommand):
         a PR body update failure must not affect the job's own terminal status.
         The success body is what gets indexed into Weaviate as RAG context, so
         an empty/generic body here is a real loss, not just a readability nit.
+
+        On success, prefers the fixed-structure text Claude wrote to
+        ``pr_body_file``; falls back to the raw ``result_text`` summary when
+        that file is missing or empty (e.g. an older/uncooperative run).
         """
         if not job.pr_number:
             return
@@ -487,8 +523,12 @@ class Command(BaseCommand):
         if error is not None:
             body = f"{header}\n\n---\n\n**Run failed:** {error.strip()}"
         else:
-            text = (summary or '').strip() or '_No summary provided._'
-            body = f"{header}\n\n---\n\n## Claude Summary\n\n{text}"
+            structured = self._read_pr_body_file(pr_body_file) if pr_body_file else None
+            if structured:
+                body = f"{header}\n\n---\n\n{structured}"
+            else:
+                text = (summary or '').strip() or '_No summary provided._'
+                body = f"{header}\n\n---\n\n## Claude Summary\n\n{text}"
 
         try:
             from core.services.github.service import GitHubService
@@ -496,6 +536,35 @@ class Command(BaseCommand):
             GitHubService().update_pr_body(job.item, number=job.pr_number, body=body)
         except Exception as exc:  # noqa: BLE001 — best-effort, don't fail the job over this
             logger.warning("Failed to update PR #%s body for job #%s: %s", job.pr_number, job.pk, exc)
+
+    # ------------------------------------------------------------------ #
+    # PR_BODY_FILE lifecycle
+    # ------------------------------------------------------------------ #
+    def _pr_body_file_path(self, job):
+        """Path for the per-job PR body file, outside any repo checkout."""
+        return Path(tempfile.gettempdir()) / f"claude-pr-body-{job.pk}.md"
+
+    def _init_pr_body_file(self, path):
+        """Create an empty PR body file before the run so Claude can write to it."""
+        try:
+            path.write_text('')
+        except OSError as exc:
+            logger.warning("Could not create PR body file %s: %s", path, exc)
+
+    def _read_pr_body_file(self, path):
+        """Read the PR body file's stripped content, or ``None`` if missing/empty."""
+        try:
+            content = path.read_text().strip()
+        except OSError:
+            return None
+        return content or None
+
+    def _cleanup_pr_body_file(self, path):
+        """Remove the PR body file after the run; missing file is not an error."""
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
     def _push_branch(self, repo_dir, branch):
         """Push the branch after the Claude run (best-effort)."""
@@ -507,7 +576,7 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------ #
     # Claude Code invocation + stream parsing
     # ------------------------------------------------------------------ #
-    def _run_cli(self, job, repo_dir, timeout, idle_timeout):
+    def _run_cli(self, job, repo_dir, timeout, idle_timeout, pr_body_file):
         """Run Claude Code headless in ``repo_dir`` and parse its event stream.
 
         Returns a result dict with ``session_id``/``num_turns``/
@@ -516,7 +585,7 @@ class Command(BaseCommand):
         wall-clock budget is exhausted.
         """
         args = self._build_claude_args(job)
-        env = self._build_env(job)
+        env = self._build_env(job, pr_body_file)
 
         proc = subprocess.Popen(
             args,
@@ -552,8 +621,12 @@ class Command(BaseCommand):
             '--permission-mode', 'acceptEdits',
         ]
 
-    def _build_env(self, job):
-        env = dict(os.environ, CLAUDE_QUEUE_JOB_ID=str(job.pk))
+    def _build_env(self, job, pr_body_file):
+        env = dict(
+            os.environ,
+            CLAUDE_QUEUE_JOB_ID=str(job.pk),
+            PR_BODY_FILE=str(pr_body_file),
+        )
         api_key = getattr(settings, 'ANTHROPIC_API_KEY', '') or os.environ.get(
             'ANTHROPIC_API_KEY', ''
         )
@@ -572,6 +645,7 @@ class Command(BaseCommand):
             "Implement the change in this repository. Make focused edits and "
             "commit them to the current branch with git. Do not push."
         )
+        parts += ['', PR_BODY_FILE_INSTRUCTIONS]
         return '\n'.join(parts)
 
     def _iter_events(self, proc, timeout, idle_timeout):
