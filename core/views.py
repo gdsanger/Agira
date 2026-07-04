@@ -2049,14 +2049,15 @@ def _sync_answered_questions_to_description(item):
 def item_optimize_description_ai(request, item_id):
     """
     Optimize item description using AI and RAG.
-    
+
     Uses RAG to gather context and then calls the github-issue-creation-agent
     to generate an optimized, machine-readable GitHub issue description.
-    
+
     Only available to users with Agent role.
     """
     from core.services.rag import build_extended_context
-    
+    from core.services.exceptions import AIResponseFormatError
+
     # Check user role
     if not request.user.is_authenticated or request.user.role != UserRole.AGENT:
         return JsonResponse({
@@ -2161,7 +2162,7 @@ Context from similar items and related information:
                 # provider's output token limit was hit. Surface this as an
                 # error instead of silently writing the broken JSON/partial
                 # JSON into the description field.
-                raise ValueError(
+                raise AIResponseFormatError(
                     "AI agent returned malformed JSON (response may have been "
                     "truncated by the provider's output token limit)"
                 )
@@ -2169,10 +2170,10 @@ Context from similar items and related information:
             # compatibility with agents that don't return the JSON envelope)
             optimized_description = cleaned_response
             open_questions = []
-        
+
         # Validate we have a description
         if not optimized_description:
-            raise ValueError("AI agent returned empty description")
+            raise AIResponseFormatError("AI agent returned empty description")
         
         # Update item description (only the issue.description part)
         item.description = optimized_description
@@ -2218,7 +2219,34 @@ Context from similar items and related information:
         return JsonResponse({
             'status': 'ok'
         })
-        
+
+    except AIResponseFormatError as e:
+        # Expected, recoverable upstream hiccup (empty or malformed/truncated
+        # LLM output) rather than a bug in Agira - log it as a warning and
+        # give the user an actionable hint instead of a generic 500.
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"AI description optimization got an unusable response for item {item_id}: {str(e)}"
+        )
+
+        activity_service = ActivityService()
+        activity_service.log(
+            verb='item.description.ai_error',
+            target=item,
+            actor=request.user,
+            summary=f'AI description optimization got an unusable AI response: {str(e)}',
+        )
+
+        return JsonResponse({
+            'status': 'error',
+            'message': (
+                'Die KI-Antwort konnte nicht verarbeitet werden (leer oder '
+                'unvollständig). Die Beschreibung wurde nicht verändert. '
+                'Bitte versuche es erneut.'
+            )
+        }, status=422)
+
     except Exception as e:
         # Log activity - error
         activity_service = ActivityService()
@@ -2228,11 +2256,11 @@ Context from similar items and related information:
             actor=request.user,
             summary=f'AI description optimization failed: {str(e)}',
         )
-        
+
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"AI description optimization failed for item {item_id}: {str(e)}")
-        
+
         return JsonResponse({
             'status': 'error',
             'message': str(e)

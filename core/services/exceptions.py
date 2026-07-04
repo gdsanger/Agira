@@ -24,8 +24,21 @@ class ServiceNotConfigured(ServiceError):
 class ServiceDisabled(ServiceError):
     """
     Raised when attempting to use a service that is explicitly disabled.
-    
+
     Example:
         If Weaviate integration is disabled in the configuration.
+    """
+    pass
+
+
+class AIResponseFormatError(ServiceError):
+    """
+    Raised when an AI agent's response cannot be turned into usable output,
+    e.g. it is empty or the JSON is malformed/truncated.
+
+    This represents an expected, recoverable upstream hiccup (bad or
+    incomplete LLM output) rather than a bug in Agira itself, so callers
+    should surface it as a clear, actionable message instead of a generic
+    server error.
     """
     pass
