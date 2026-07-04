@@ -95,6 +95,33 @@ STALE_BUFFER_SECONDS = 60
 # exist with matching content" semantics don't fit), and drive git.
 ALLOWED_TOOLS = 'Read,Edit,Write,Bash(git*)'
 
+# Substrings (checked case-insensitively) in a run's final result text that
+# suggest Claude parked the work on a background/wait mechanism instead of
+# actually finishing — the headless equivalent of a blocked question it had
+# no channel to ask. Not a defect to suppress: a signal that a human should
+# look at the run before it is trusted as "done".
+BACKGROUND_MARKERS = (
+    'background',
+    'im hintergrund',
+    'hintergrundprozess',
+    'hintergrundtask',
+    'wakeup',
+    'wake up',
+    'aufwecken',
+    'scheduled',
+    'eingeplant',
+    "i'll wait",
+    'ich warte',
+    'i will wait',
+    'want me to',
+    'soll ich',
+    'sag mir bescheid',
+    'let me know',
+    'lass es mich wissen',
+    'should i proceed',
+    'soll ich fortfahren',
+)
+
 # Fixed PR body sections Claude must write into PR_BODY_FILE. Literal headings
 # so the resulting PR bodies are uniform and cleanly chunkable for the
 # Weaviate RAG index.
@@ -269,7 +296,7 @@ class Command(BaseCommand):
     def _process_job_inner(self, job, timeout, idle_timeout, pr_body_file):
         try:
             repo_dir = self._prepare_checkout(job)
-            branch = self._create_branch_and_pr(job, repo_dir)
+            branch, bootstrap_sha = self._create_branch_and_pr(job, repo_dir)
             result = self._run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file)
         except subprocess.TimeoutExpired:
             error = f"Job exceeded the {timeout}s timeout and was terminated."
@@ -310,11 +337,23 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
             return
 
+        uncertain_reason = self._detect_completion_uncertain(
+            repo_dir, bootstrap_sha, result.get('result_text')
+        )
+        if uncertain_reason:
+            job.completion_uncertain = True
+            job.completion_uncertain_reason = uncertain_reason
+
         self._update_pr_body(
             job, summary=result.get('result_text'), pr_body_file=pr_body_file
         )
         job.transition_to(ClaudeQueueJobStatus.DONE)
-        self.stdout.write(self.style.SUCCESS(f"Job #{job.pk} done"))
+        if uncertain_reason:
+            self.stdout.write(self.style.WARNING(
+                f"Job #{job.pk} done, but completion uncertain: {uncertain_reason}"
+            ))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Job #{job.pk} done"))
 
     # ------------------------------------------------------------------ #
     # Checkout preparation
@@ -389,7 +428,9 @@ class Command(BaseCommand):
 
         The PR is opened *before* Claude runs and its reference is written to the
         job + an ``ExternalIssueMapping`` (Kind=PR) immediately, so it stays
-        deterministic regardless of what Claude does. Returns the branch name.
+        deterministic regardless of what Claude does. Returns ``(branch,
+        bootstrap_sha)`` — the latter is the empty bootstrap commit's SHA, used
+        after the run to detect an empty PR (see ``_detect_completion_uncertain``).
         """
         item = job.item
         branch = self._branch_name(item)
@@ -400,6 +441,7 @@ class Command(BaseCommand):
              f"chore: start Claude work on item #{item.id}"],
             cwd=repo_dir,
         )
+        bootstrap_sha = self._git(['rev-parse', 'HEAD'], cwd=repo_dir).strip()
         self._git(
             ['push', '--force-with-lease', '-u', 'origin', branch],
             cwd=repo_dir,
@@ -409,7 +451,7 @@ class Command(BaseCommand):
         job.save(update_fields=['branch_name'])
 
         self._open_draft_pr(job, branch, repo_dir)
-        return branch
+        return branch, bootstrap_sha
 
     def _branch_name(self, item):
         """Deterministic, collision-free branch name for an item."""
@@ -572,6 +614,67 @@ class Command(BaseCommand):
             self._git(['push', 'origin', branch], cwd=repo_dir)
         except Exception as exc:  # noqa: BLE001 — non-fatal; Claude may have pushed
             logger.warning("Post-run push of %s failed: %s", branch, exc)
+
+    # ------------------------------------------------------------------ #
+    # Completion-uncertain detection
+    # ------------------------------------------------------------------ #
+    def _detect_completion_uncertain(self, repo_dir, bootstrap_sha, result_text):
+        """Return a short reason if a "successful" run's outcome looks doubtful.
+
+        A run that exits cleanly and emits a result event is not automatically
+        trustworthy: Claude may have hit something that needed a human call (a
+        false premise, an out-of-scope finding) and, headless, had no channel to
+        ask — so it stalled, waited, or punted to a background/wakeup mechanism
+        instead. That pause is signal, not a defect to paper over, so it must
+        stay visible instead of being flattened into a plain "Done".
+
+        Two independent checks, outcome first because it is the reliable one:
+
+        1. Outcome: is the branch's diff against the bootstrap commit empty? An
+           empty PR is a strong "nothing really landed" signal regardless of
+           what Claude's text claims.
+        2. Prose: does the final result text contain a background/wait/ask
+           marker? Catches cases the outcome check misses (partial commits plus
+           an open question).
+
+        Returns ``None`` when neither signal fires.
+        """
+        if self._is_empty_diff(repo_dir, bootstrap_sha):
+            return "Leerer PR: keine Änderungen über den Start-Commit hinaus."
+
+        marker = self._find_background_marker(result_text)
+        if marker:
+            return (
+                "Claude-Text deutet auf Warten/Hintergrund-Auslagerung/Rückfrage "
+                f"hin (Hinweis: „{marker}“)."
+            )
+
+        return None
+
+    def _is_empty_diff(self, repo_dir, bootstrap_sha):
+        """True if the checkout has no changes relative to ``bootstrap_sha``."""
+        try:
+            proc = subprocess.run(
+                ['git', 'diff', '--quiet', bootstrap_sha, 'HEAD'],
+                cwd=repo_dir, timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("Empty-diff check failed for %s: %s", repo_dir, exc)
+            return False
+        return proc.returncode == 0
+
+    def _find_background_marker(self, result_text):
+        """Return the first background/wait/ask marker found in ``result_text``."""
+        text = (result_text or '').strip()
+        if not text:
+            return None
+        lowered = text.lower()
+        for marker in BACKGROUND_MARKERS:
+            if marker in lowered:
+                return marker
+        if text.endswith('?'):
+            return 'endet mit einer Frage'
+        return None
 
     # ------------------------------------------------------------------ #
     # Claude Code invocation + stream parsing

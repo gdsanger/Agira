@@ -25,6 +25,10 @@ Expects `job` and `active_statuses` in context.
         <span class="text-danger" title="{{ job.error_text }}">
             <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}
         </span>
+        {% elif job.completion_uncertain %}
+        <span class="text-warning" title="{{ job.completion_uncertain_reason }}">
+            <i class="bi bi-exclamation-circle"></i> {{ job.completion_uncertain_reason|truncatechars:80 }}
+        </span>
         {% elif job.progress_text %}
         <span class="text-muted">{{ job.progress_text|render_markdown|striptags|truncatechars:80 }}</span>
         {% else %}
