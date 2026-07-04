@@ -837,6 +837,24 @@ class ExternalIssueMapping(models.Model):
     html_url = models.URLField()
     last_synced_at = models.DateTimeField(auto_now=True)
 
+    # Captured from the `pull_request` webhook when the PR is merged. Merge is a
+    # terminal state: the description is frozen, so we grab the canonical text
+    # for free from the payload (no GitHub API nachzug) and let it become the
+    # RAG memory chunk instead of the bootstrap placeholder. See
+    # _serialize_github_issue, which prefers pr_body over the item description.
+    pr_body = models.TextField(
+        blank=True, default='',
+        help_text="Final PR description captured at merge (indexed into Weaviate as RAG context)",
+    )
+    merge_commit_sha = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text="Merge commit SHA from the merge webhook (for Chunk -> Commit back-linking)",
+    )
+    merged_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the PR was merged (from the merge webhook payload)",
+    )
+
     class Meta:
         ordering = ['item', 'kind', 'number']
 
