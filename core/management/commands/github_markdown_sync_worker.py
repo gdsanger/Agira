@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand, CommandError
 from core.models import Project
 from core.services.github.service import GitHubService
 from core.services.github_sync.markdown_sync import MarkdownSyncService
+from core.services.integrations.errors import IntegrationRateLimited
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,11 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(self.style.WARNING('\nDRY RUN - No changes were made'))
+        elif markdown_stats.get('rate_limited'):
+            self.stdout.write(self.style.WARNING(
+                '\n⚠ GitHub markdown sync stopped early due to a GitHub rate limit. '
+                'It will resume on the next scheduled run.'
+            ))
         else:
             self.stdout.write(self.style.SUCCESS('\n✓ GitHub markdown sync completed successfully'))
     
@@ -113,6 +119,7 @@ class Command(BaseCommand):
             'total_files_updated': 0,
             'total_files_skipped': 0,
             'total_errors': 0,
+            'rate_limited': False,
         }
         
         # Get projects with GitHub repo configured
@@ -165,7 +172,30 @@ class Command(BaseCommand):
                 # Log errors if any
                 for error in project_stats['errors']:
                     self.stdout.write(self.style.ERROR(f"    ✗ {error}"))
-                    
+
+            except IntegrationRateLimited as e:
+                # GitHub rate limit hit: this is an expected, transient
+                # condition. Stop the entire worker run immediately - the next
+                # scheduled run will resume from where GitHub allows. We do NOT
+                # treat this as an error (no error log, no Sentry report), only
+                # a warning with enough context for diagnosis.
+                stats['rate_limited'] = True
+                logger.warning(
+                    "GitHub rate limit hit in github_markdown_sync_worker; "
+                    "stopping run early. project_id=%s repo=%s/%s detail=%s",
+                    project.id,
+                    project.github_owner,
+                    project.github_repo,
+                    e,
+                )
+                self.stdout.write(
+                    self.style.WARNING(
+                        "    ⚠ GitHub rate limit reached - stopping this run. "
+                        "Remaining projects will be processed on the next run."
+                    )
+                )
+                break
+
             except Exception as e:
                 stats['total_errors'] += 1
                 logger.error(
@@ -175,5 +205,5 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.ERROR(f"    ✗ Error: {e}")
                 )
-        
+
         return stats

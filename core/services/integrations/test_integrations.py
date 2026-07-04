@@ -273,6 +273,49 @@ class HTTPClientTestCase(TestCase):
         
         self.assertEqual(cm.exception.retry_after, 60)
     
+    def test_403_rate_limit_header_raises_rate_limited(self):
+        """A GitHub-style 403 rate limit is classified as IntegrationRateLimited."""
+        route = respx.get(f"{self.base_url}/test")
+        route.mock(
+            return_value=httpx.Response(
+                403,
+                headers={"x-ratelimit-remaining": "0"},
+                json={"message": "API rate limit exceeded for user ID 123"},
+            )
+        )
+
+        with self.assertRaises(IntegrationRateLimited) as cm:
+            self.client.get("/test")
+
+        self.assertIn("403", str(cm.exception))
+        # Rate limits without a Retry-After must not be retried.
+        self.assertEqual(route.call_count, 1)
+
+    def test_403_rate_limit_body_raises_rate_limited(self):
+        """A 403 whose body mentions the rate limit is classified as rate-limited."""
+        route = respx.get(f"{self.base_url}/test")
+        route.mock(
+            return_value=httpx.Response(
+                403,
+                json={"message": "API rate limit exceeded"},
+            )
+        )
+
+        with self.assertRaises(IntegrationRateLimited):
+            self.client.get("/test")
+
+        self.assertEqual(route.call_count, 1)
+
+    def test_403_without_rate_limit_marker_still_auth_error(self):
+        """A genuine 403 (no rate-limit marker) remains an auth error and is not retried."""
+        route = respx.get(f"{self.base_url}/test")
+        route.mock(return_value=httpx.Response(403, json={"error": "Forbidden"}))
+
+        with self.assertRaises(IntegrationAuthError):
+            self.client.get("/test")
+
+        self.assertEqual(route.call_count, 1)
+
     def test_500_raises_temporary_error(self):
         """Test that 500 raises IntegrationTemporaryError."""
         respx.get(f"{self.base_url}/test").mock(

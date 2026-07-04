@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from core.models import Project, Attachment, AttachmentLink, AttachmentRole
 from core.services.github.client import GitHubClient
+from core.services.integrations.errors import IntegrationRateLimited
 from core.services.storage.service import AttachmentStorageService
 from core.services.weaviate.service import upsert_instance
 
@@ -105,12 +106,17 @@ class MarkdownSyncService:
                         stats['files_updated'] += 1
                     elif result == 'skipped':
                         stats['files_skipped'] += 1
-                        
+
+                except IntegrationRateLimited:
+                    # Rate limits are expected and must abort the whole run,
+                    # not just this file. Propagate to the worker without
+                    # logging an error / reporting to Sentry.
+                    raise
                 except Exception as e:
                     error_msg = f"Error syncing {file_info['path']}: {str(e)}"
                     logger.error(error_msg, exc_info=True)
                     stats['errors'].append(error_msg)
-            
+
             logger.info(
                 f"Sync complete for project {project.id}: "
                 f"{stats['files_created']} created, "
@@ -119,11 +125,14 @@ class MarkdownSyncService:
                 f"{len(stats['errors'])} errors"
             )
             
+        except IntegrationRateLimited:
+            # Expected condition - let the worker stop the current run quietly.
+            raise
         except Exception as e:
             error_msg = f"Failed to sync markdown files for project {project.id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
             stats['errors'].append(error_msg)
-        
+
         return stats
     
     def _find_markdown_files(
@@ -177,13 +186,20 @@ class MarkdownSyncService:
                             owner, repo, item_path, ref
                         )
                         markdown_files.extend(subdir_files)
+                    except IntegrationRateLimited:
+                        # Abort the entire traversal, not just this directory.
+                        raise
                     except Exception as e:
                         logger.warning(f"Failed to search directory {item_path}: {e}")
-                        
+
+        except IntegrationRateLimited:
+            # Expected rate-limit condition - propagate silently (warning-level
+            # logging happens once at the worker level, not as an error here).
+            raise
         except Exception as e:
             logger.error(f"Failed to get repository contents at {path}: {e}")
             raise
-        
+
         return markdown_files
     
     def _sync_markdown_file(
