@@ -276,7 +276,7 @@ class ItemAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {'fields': ('project', 'title', 'status', 'type')}),
-        ('Description', {'fields': ('description', 'solution_description')}),
+        ('Description', {'fields': ('description', 'solution_description', 'pr_description')}),
         ('Relationships', {'fields': ('parent', 'nodes', 'changes')}),
         ('Assignment', {'fields': ('organisation', 'requester', 'assigned_to', 'solution_release')}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),

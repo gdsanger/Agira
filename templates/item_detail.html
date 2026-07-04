@@ -354,6 +354,20 @@
                                     Solution
                                 </button>
                             </li>
+                            {% if item.pr_description %}
+                            <li class="nav-item" role="presentation">
+                                <button
+                                    class="nav-link"
+                                    id="pr-description-content-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#pr-description-content"
+                                    type="button"
+                                    role="tab"
+                                    onclick="saveActiveDetailTab('{{ item.id }}', 'pr-description')">
+                                    PR-Description
+                                </button>
+                            </li>
+                            {% endif %}
                         </ul>
 
                         <!-- Detail Tab Content -->
@@ -557,11 +571,25 @@
                                     </div>
                                 </div>
                             </div>
+
+                            {% if item.pr_description %}
+                            <!-- PR-Description Tab -->
+                            <div class="tab-pane fade" id="pr-description-content" role="tabpanel">
+                                <div class="mb-3">
+                                    <strong>PR-Description:</strong>
+                                    <div class="mt-2">
+                                        <div class="markdown-viewer">
+                                            {{ item.pr_description|render_markdown }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <div class="col-lg-4">
                 <!-- Additional Information Card -->
                 <div class="card mb-3">
