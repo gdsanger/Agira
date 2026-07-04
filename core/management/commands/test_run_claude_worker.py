@@ -155,7 +155,7 @@ class ProcessJobTests(ClaudeWorkerTestBase):
         """Run process_job with the side-effecting steps stubbed out."""
         run_cli = run_cli if run_cli is not None else (lambda *a, **k: _ok_result())
         with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
-                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
                 patch.object(Command, '_run_cli', side_effect=run_cli):
             Command().process_job(job, timeout=timeout, idle_timeout=5)
@@ -168,6 +168,18 @@ class ProcessJobTests(ClaudeWorkerTestBase):
         self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
         self.assertIsNotNone(job.finished_at)
         self.assertEqual(job.error_text, '')
+        self.assertFalse(job.completion_uncertain)
+
+    def test_uncertain_completion_still_marks_done_but_flags_job(self):
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_detect_completion_uncertain',
+                           return_value='Leerer PR: keine Änderungen über den Start-Commit hinaus.'):
+            self._run(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertTrue(job.completion_uncertain)
+        self.assertIn('Leerer PR', job.completion_uncertain_reason)
 
     def test_is_error_result_marks_failed(self):
         job = self._claimed_job(self.project_a)
@@ -310,7 +322,7 @@ class OnceModeTests(ClaudeWorkerTestBase):
 
         out = StringIO()
         with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
-                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
                 patch.object(Command, '_run_cli', return_value=_ok_result()):
             call_command('run_claude_worker', '--once', '--skip-recovery', stdout=out)
@@ -342,6 +354,97 @@ class BranchNameTests(ClaudeWorkerTestBase):
 
         branch = Command()._branch_name(item)
         self.assertEqual(branch, f'fix/item-{item.id}')
+
+
+class CompletionUncertainTests(ClaudeWorkerTestBase):
+    """Unit tests for the post-run outcome/prose detection (issue #850)."""
+
+    def _init_repo(self, tmp_path):
+        subprocess.run(['git', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=tmp_path, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=tmp_path, check=True)
+        (Path(tmp_path) / 'README.md').write_text('hello\n')
+        subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        sha = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=tmp_path, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+        return sha
+
+    def test_is_empty_diff_true_when_no_commits_since_bootstrap(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            self.assertTrue(Command()._is_empty_diff(tmp_path, bootstrap_sha))
+
+    def test_is_empty_diff_false_after_a_real_change(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+            subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+            subprocess.run(['git', 'commit', '-m', 'add feature'], cwd=tmp_path,
+                            check=True, capture_output=True)
+
+            self.assertFalse(Command()._is_empty_diff(tmp_path, bootstrap_sha))
+
+    def test_is_empty_diff_false_on_missing_repo(self):
+        # Unreadable/missing checkout must not be mistaken for "empty" (no diff).
+        self.assertFalse(Command()._is_empty_diff('/no/such/repo', 'deadbeef'))
+
+    def test_find_background_marker_matches_english_and_german_phrases(self):
+        find = Command()._find_background_marker
+        self.assertEqual(find('I moved this to a background task.'), 'background')
+        self.assertEqual(find('Ich habe das im Hintergrund weiterlaufen lassen.'), 'im hintergrund')
+        self.assertEqual(find('Want me to proceed with the migration?'), 'want me to')
+        self.assertEqual(find('Soll ich mit dem nächsten Schritt fortfahren?'), 'soll ich')
+
+    def test_find_background_marker_matches_trailing_question(self):
+        self.assertEqual(
+            Command()._find_background_marker('Alles bereit, aber wie soll es weitergehen?'),
+            'endet mit einer Frage',
+        )
+
+    def test_find_background_marker_none_for_clean_summary(self):
+        self.assertIsNone(Command()._find_background_marker('Implemented the fix and pushed the commit.'))
+
+    def test_find_background_marker_none_for_empty_text(self):
+        self.assertIsNone(Command()._find_background_marker(''))
+        self.assertIsNone(Command()._find_background_marker(None))
+
+    def test_detect_completion_uncertain_prefers_outcome_over_prose(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            reason = Command()._detect_completion_uncertain(
+                tmp_path, bootstrap_sha, 'Implemented everything, all good.',
+            )
+            self.assertIn('Leerer PR', reason)
+
+    def test_detect_completion_uncertain_falls_back_to_prose(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+            subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+            subprocess.run(['git', 'commit', '-m', 'add feature'], cwd=tmp_path,
+                            check=True, capture_output=True)
+
+            reason = Command()._detect_completion_uncertain(
+                tmp_path, bootstrap_sha,
+                'Partially done — want me to continue with the rest?',
+            )
+            self.assertIn('Warten/Hintergrund', reason)
+
+    def test_detect_completion_uncertain_none_for_a_clean_run(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+            subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+            subprocess.run(['git', 'commit', '-m', 'add feature'], cwd=tmp_path,
+                            check=True, capture_output=True)
+
+            reason = Command()._detect_completion_uncertain(
+                tmp_path, bootstrap_sha, 'Implemented the fix and pushed the commit.',
+            )
+            self.assertIsNone(reason)
 
 
 class StreamParsingTests(ClaudeWorkerTestBase):
@@ -587,7 +690,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
             return _ok_result()
 
         with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
-                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
                 patch.object(Command, '_run_cli', side_effect=fake_run_cli):
             Command().process_job(job, timeout=30, idle_timeout=5)
@@ -604,7 +707,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
             return _ok_result(is_error=True, result_text='exploded')
 
         with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
-                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
                 patch.object(Command, '_run_cli', side_effect=fake_run_cli):
             Command().process_job(job, timeout=30, idle_timeout=5)
@@ -628,7 +731,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
             return _ok_result()
 
         with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
-                patch.object(Command, '_create_branch_and_pr', return_value='fix/x-1'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
                 patch.object(Command, '_run_cli', side_effect=fake_run_cli), \
                 patch('core.services.github.service.GitHubService',

@@ -1889,6 +1889,19 @@ class ClaudeQueueJob(models.Model):
     progress_text = models.TextField(blank=True, help_text=_('Current step, advanced by the worker — basis for the live view'))
     error_text = models.TextField(blank=True)
 
+    # Set by the worker's post-run check when a "done" job's outcome looks
+    # incomplete (empty diff, or Claude's final text points at a background/
+    # wait mechanism instead of a finished result). Not a failure — a nudge for
+    # a human to look, since the run may have paused on a legitimate question.
+    completion_uncertain = models.BooleanField(
+        default=False,
+        help_text=_('Job reached "done" but its outcome looks incomplete — needs a human look'),
+    )
+    completion_uncertain_reason = models.TextField(
+        blank=True,
+        help_text=_('Short reason the job was flagged as completion_uncertain'),
+    )
+
     # Worker ownership — set atomically when a running-job is claimed, used for
     # crash recovery: a running job whose worker process is gone is an orphan.
     worker_host = models.CharField(
