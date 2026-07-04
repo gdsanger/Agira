@@ -314,12 +314,63 @@ class ItemOptimizeWithOpenQuestionsTest(TestCase):
         url = reverse('item-optimize-description-ai', kwargs={'item_id': self.item.id})
         response = self.client.post(url)
 
-        # Check response - should be a clear error, not a silent success
-        self.assertEqual(response.status_code, 500)
+        # Check response - should be a clear, user-facing error, not a
+        # generic 500/unhandled exception
+        self.assertEqual(response.status_code, 422)
         data = response.json()
         self.assertEqual(data['status'], 'error')
+        self.assertTrue(data['message'])
 
         # Verify item description was NOT overwritten with broken JSON
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.description, initial_description)
+
+        # Verify no open questions were created
+        questions = IssueOpenQuestion.objects.filter(issue=self.item)
+        self.assertEqual(questions.count(), 0)
+
+    @patch('core.services.agents.agent_service.AgentService.execute_agent')
+    @patch('core.services.rag.service.RAGPipelineService.build_context')
+    def test_optimize_with_empty_description_response_is_rejected(self, mock_build_context, mock_execute_agent):
+        """An agent response that parses fine but carries an empty
+        description (e.g. AGIRA-1PG) must not wipe out the item's
+        description and must surface a clear, user-facing error."""
+        from core.services.rag.models import RAGContext
+        mock_context = RAGContext(
+            query='Test description',
+            alpha=0.5,
+            summary='No context found',
+            items=[],
+            stats={'total_results': 0, 'deduplicated': 0}
+        )
+        mock_build_context.return_value = mock_context
+
+        # Simulate a well-formed JSON envelope with an empty description
+        mock_execute_agent.return_value = json.dumps({
+            "issue": {
+                "description": "   "
+            },
+            "open_questions": []
+        })
+
+        # Login as agent
+        self.client.login(username='agent_user', password='testpass123')
+
+        # Get initial description
+        initial_description = self.item.description
+
+        # Call optimization endpoint
+        url = reverse('item-optimize-description-ai', kwargs={'item_id': self.item.id})
+        response = self.client.post(url)
+
+        # Check response - should be a clear, user-facing error, not a
+        # generic 500/unhandled exception
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+        self.assertTrue(data['message'])
+
+        # Verify item description was NOT wiped out
         self.item.refresh_from_db()
         self.assertEqual(self.item.description, initial_description)
 
