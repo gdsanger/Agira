@@ -142,9 +142,27 @@ class GitHubService(IntegrationBase):
         # For PRs, check if merged
         if kind == 'pr' and github_data.get('merged_at'):
             return 'merged'
-        
+
         return state
-    
+
+    @staticmethod
+    def _parse_github_timestamp(value) -> "Optional[datetime]":
+        """
+        Parse a GitHub ISO 8601 timestamp (e.g. '2026-07-03T10:00:00Z').
+
+        Returns a timezone-aware datetime, or None if the value is missing or
+        unparseable. GitHub uses a trailing 'Z'; datetime.fromisoformat wants
+        an explicit offset before Python 3.11, so we normalise it.
+        """
+        if not value or not isinstance(value, str):
+            return None
+        from datetime import datetime
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            logger.debug(f"Could not parse GitHub timestamp: {value!r}")
+            return None
+
     def _log_activity(
         self,
         item: Item,
@@ -540,6 +558,7 @@ class GitHubService(IntegrationBase):
             'old_state': None,
             'new_state': None,
             'item_transitioned': False,
+            'pr_body_indexed': False,
         }
 
         try:
@@ -558,6 +577,27 @@ class GitHubService(IntegrationBase):
         mapping.state = new_state
         mapping.html_url = pull_request_data.get('html_url') or mapping.html_url
         mapping.last_synced_at = timezone.now()
+
+        # On merge the description is frozen and shipped in the payload for free.
+        # Capture it (+ merge metadata) onto the mapping so the post_save signal
+        # re-indexes the Weaviate object's `text` from the final PR body — the
+        # bootstrap placeholder chunk becomes the real reasoning chunk. Done in
+        # this one save() so a single re-index carries all of it, and so we
+        # never race the signal's own upsert.
+        if new_state == 'merged':
+            merged_at = self._parse_github_timestamp(pull_request_data.get('merged_at'))
+            if merged_at:
+                mapping.merged_at = merged_at
+            sha = pull_request_data.get('merge_commit_sha')
+            if sha:
+                mapping.merge_commit_sha = sha
+            # A null/blank body must not blank an existing description. Worker PRs
+            # always carry a body; hand-made PRs in the same repo may not.
+            body = pull_request_data.get('body')
+            if isinstance(body, str) and body.strip():
+                mapping.pr_body = body
+                result['pr_body_indexed'] = True
+
         mapping.save()
 
         # Mirror onto the job so the PR status is visible right next to the run

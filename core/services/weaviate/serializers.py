@@ -573,6 +573,15 @@ def _serialize_github_issue(mapping, fetch_from_github: bool = False) -> Dict[st
             # Log error but continue with local data
             logger.warning(f"Failed to fetch GitHub data for {mapping.kind} #{mapping.number}: {e}")
     
+    # Prefer the final PR description captured at merge. Merge freezes the
+    # description, so mapping.pr_body is the canonical, structured reasoning
+    # (summary / changes / decisions / test notes) — far more valuable as a RAG
+    # memory chunk than the item description or the bootstrap placeholder it
+    # replaces. Falls back to the above for issues and not-yet-merged PRs.
+    pr_body = getattr(mapping, 'pr_body', '') or ''
+    if pr_body.strip():
+        text = pr_body
+
     # Add state prefix to text
     if state:
         text = f"State: {state}\n\n{text}"
