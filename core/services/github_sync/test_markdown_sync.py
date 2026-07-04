@@ -266,9 +266,40 @@ class MarkdownSyncServiceTestCase(TestCase):
         """Test handling GitHub API errors without crashing."""
         # Mock API error
         self.mock_client.get_repository_contents.side_effect = Exception("API Error")
-        
+
         stats = self.service.sync_project_markdown_files(self.project)
-        
+
         # Should capture error
         self.assertEqual(len(stats['errors']), 1)
         self.assertIn('API Error', stats['errors'][0])
+
+    def test_rate_limit_propagates_and_is_not_swallowed(self):
+        """Rate limits must propagate to the caller, not be collected as errors."""
+        from core.services.integrations.errors import IntegrationRateLimited
+
+        self.mock_client.get_repository_contents.side_effect = IntegrationRateLimited(
+            "Rate limit exceeded (HTTP 403): API rate limit exceeded"
+        )
+
+        # The rate limit must bubble up so the worker can stop the whole run,
+        # rather than being caught and appended to stats['errors'].
+        with self.assertRaises(IntegrationRateLimited):
+            self.service.sync_project_markdown_files(self.project)
+
+    def test_rate_limit_in_subdirectory_propagates(self):
+        """A rate limit while recursing into a subdirectory aborts the traversal."""
+        from core.services.integrations.errors import IntegrationRateLimited
+
+        def mock_get_contents(owner, repo, path='', ref=None):
+            if path == '':
+                return [
+                    {'type': 'dir', 'name': 'docs', 'path': 'docs', 'sha': 'def'},
+                ]
+            raise IntegrationRateLimited(
+                "Rate limit exceeded (HTTP 403): API rate limit exceeded"
+            )
+
+        self.mock_client.get_repository_contents.side_effect = mock_get_contents
+
+        with self.assertRaises(IntegrationRateLimited):
+            self.service.sync_project_markdown_files(self.project)

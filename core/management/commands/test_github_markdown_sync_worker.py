@@ -191,6 +191,122 @@ class GitHubMarkdownSyncWorkerTestCase(TestCase):
         self.assertIn('Errors: 1', output)
     
     @patch('core.management.commands.github_markdown_sync_worker.GitHubService')
+    @patch('core.management.commands.github_markdown_sync_worker.MarkdownSyncService')
+    def test_command_stops_run_on_rate_limit(self, mock_markdown_service_class, mock_github_service_class):
+        """A GitHub rate limit stops the whole run early, quietly (warning, no error/Sentry)."""
+        from core.services.integrations.errors import IntegrationRateLimited
+
+        # A second project ensures we can prove processing stops after the first.
+        Project.objects.create(
+            name='Second Project',
+            github_owner='otherowner',
+            github_repo='otherrepo',
+        )
+
+        mock_github_service = MagicMock()
+        mock_github_service.is_enabled.return_value = True
+        mock_github_service.is_configured.return_value = True
+        mock_github_service_class.return_value = mock_github_service
+
+        mock_client = MagicMock()
+        mock_github_service._get_client.return_value = mock_client
+
+        mock_markdown_service = MagicMock()
+        mock_markdown_service.sync_project_markdown_files.side_effect = IntegrationRateLimited(
+            "Rate limit exceeded (HTTP 403): API rate limit exceeded for user ID 123"
+        )
+        mock_markdown_service_class.return_value = mock_markdown_service
+
+        logger_name = 'core.management.commands.github_markdown_sync_worker'
+        out = StringIO()
+        with self.assertLogs(logger_name, level='WARNING') as log_cm:
+            call_command('github_markdown_sync_worker', stdout=out)
+
+        output = out.getvalue()
+
+        # Only the first project was attempted; the run stopped afterwards.
+        self.assertEqual(mock_markdown_service.sync_project_markdown_files.call_count, 1)
+
+        # A warning was logged (not an error), so nothing is reported to Sentry.
+        warnings = [r for r in log_cm.records if r.levelname == 'WARNING']
+        errors = [r for r in log_cm.records if r.levelname == 'ERROR']
+        self.assertTrue(any('rate limit' in r.getMessage().lower() for r in warnings))
+        self.assertEqual(errors, [])
+
+        # User-facing output shows the early stop, not an error summary.
+        self.assertIn('rate limit', output.lower())
+        self.assertIn('next', output.lower())
+        self.assertNotIn('Errors: 1', output)
+
+    @patch('core.management.commands.github_markdown_sync_worker.GitHubService')
+    @patch('core.management.commands.github_markdown_sync_worker.MarkdownSyncService')
+    def test_non_rate_limit_error_keeps_error_path(self, mock_markdown_service_class, mock_github_service_class):
+        """Non-rate-limit errors keep the existing error behaviour (error log, counted)."""
+        mock_github_service = MagicMock()
+        mock_github_service.is_enabled.return_value = True
+        mock_github_service.is_configured.return_value = True
+        mock_github_service_class.return_value = mock_github_service
+
+        mock_client = MagicMock()
+        mock_github_service._get_client.return_value = mock_client
+
+        mock_markdown_service = MagicMock()
+        mock_markdown_service.sync_project_markdown_files.side_effect = Exception("API Error")
+        mock_markdown_service_class.return_value = mock_markdown_service
+
+        logger_name = 'core.management.commands.github_markdown_sync_worker'
+        out = StringIO()
+        with self.assertLogs(logger_name, level='ERROR') as log_cm:
+            call_command('github_markdown_sync_worker', stdout=out)
+
+        output = out.getvalue()
+
+        # Still surfaced as an error (kept on the Sentry-reporting path).
+        self.assertIn('Errors: 1', output)
+        self.assertTrue(any(r.levelname == 'ERROR' for r in log_cm.records))
+
+    @patch('core.management.commands.github_markdown_sync_worker.GitHubService')
+    @patch('core.management.commands.github_markdown_sync_worker.MarkdownSyncService')
+    def test_command_reruns_normally_after_rate_limit(self, mock_markdown_service_class, mock_github_service_class):
+        """The early exit leaves no persistent lock: a later run starts normally."""
+        from core.services.integrations.errors import IntegrationRateLimited
+
+        mock_github_service = MagicMock()
+        mock_github_service.is_enabled.return_value = True
+        mock_github_service.is_configured.return_value = True
+        mock_github_service_class.return_value = mock_github_service
+
+        mock_client = MagicMock()
+        mock_github_service._get_client.return_value = mock_client
+
+        mock_markdown_service = MagicMock()
+        mock_markdown_service_class.return_value = mock_markdown_service
+
+        # First run: rate limited.
+        mock_markdown_service.sync_project_markdown_files.side_effect = IntegrationRateLimited(
+            "Rate limit exceeded (HTTP 403): API rate limit exceeded"
+        )
+        first_out = StringIO()
+        call_command('github_markdown_sync_worker', stdout=first_out)
+        self.assertIn('rate limit', first_out.getvalue().lower())
+
+        # Second (later) run: GitHub is available again, sync succeeds.
+        mock_markdown_service.sync_project_markdown_files.side_effect = None
+        mock_markdown_service.sync_project_markdown_files.return_value = {
+            'files_found': 1,
+            'files_created': 1,
+            'files_updated': 0,
+            'files_skipped': 0,
+            'errors': [],
+        }
+        second_out = StringIO()
+        call_command('github_markdown_sync_worker', stdout=second_out)
+
+        output = second_out.getvalue()
+        self.assertIn('completed successfully', output)
+        self.assertIn('Files created: 1', output)
+
+    @patch('core.management.commands.github_markdown_sync_worker.GitHubService')
     def test_command_skips_projects_without_github_repo(self, mock_github_service_class):
         """Test that command skips projects without GitHub repo configuration."""
         # Create project without GitHub repo

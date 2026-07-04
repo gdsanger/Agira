@@ -123,26 +123,21 @@ class HTTPClient:
         """
         status = response.status_code
         truncated_text = self._truncate_response(response.text)
-        
+
+        # Rate limiting - detected before generic auth handling because some
+        # APIs (notably GitHub) signal rate limits with HTTP 403, not 429.
+        if self._is_rate_limit_response(response):
+            raise IntegrationRateLimited(
+                f"Rate limit exceeded (HTTP {status}): {truncated_text}",
+                retry_after=self._parse_retry_after(response),
+            )
+
         # Authentication errors (401/403)
         if status in (401, 403):
             raise IntegrationAuthError(
                 f"Authentication failed (HTTP {status}): {truncated_text}"
             )
-        
-        # Rate limiting (429)
-        if status == 429:
-            retry_after = response.headers.get('Retry-After')
-            try:
-                retry_after = int(retry_after) if retry_after else None
-            except (ValueError, TypeError):
-                retry_after = None
-            
-            raise IntegrationRateLimited(
-                f"Rate limit exceeded: {truncated_text}",
-                retry_after=retry_after
-            )
-        
+
         # Server errors (5xx) - temporary, retryable
         if status >= 500:
             raise IntegrationTemporaryError(
@@ -154,7 +149,53 @@ class HTTPClient:
             raise IntegrationPermanentError(
                 f"Client error (HTTP {status}): {truncated_text}"
             )
-    
+
+    def _is_rate_limit_response(self, response: httpx.Response) -> bool:
+        """
+        Determine whether a response represents a rate-limit condition.
+
+        Handles both the standard HTTP 429 and GitHub's convention of
+        returning HTTP 403 with a rate-limit marker (either the
+        ``x-ratelimit-remaining: 0`` header or a body mentioning the
+        rate limit). Genuine 403 authentication/authorization failures
+        (no rate-limit marker) are intentionally not matched here.
+
+        Args:
+            response: HTTP response object
+
+        Returns:
+            True if the response indicates a rate limit, False otherwise
+        """
+        status = response.status_code
+
+        if status == 429:
+            return True
+
+        if status == 403:
+            if response.headers.get('x-ratelimit-remaining') == '0':
+                return True
+            body = (response.text or '').lower()
+            if 'rate limit exceeded' in body or 'secondary rate limit' in body:
+                return True
+
+        return False
+
+    def _parse_retry_after(self, response: httpx.Response) -> Optional[int]:
+        """
+        Parse the ``Retry-After`` header into seconds, if present and valid.
+
+        Args:
+            response: HTTP response object
+
+        Returns:
+            Seconds to wait before retrying, or None if not provided/invalid
+        """
+        retry_after = response.headers.get('Retry-After')
+        try:
+            return int(retry_after) if retry_after else None
+        except (ValueError, TypeError):
+            return None
+
     def _should_retry(self, exception: Exception, attempt: int) -> bool:
         """
         Determine if a request should be retried.
@@ -186,11 +227,14 @@ class HTTPClient:
         # Retry on temporary errors (5xx)
         if isinstance(exception, IntegrationTemporaryError):
             return True
-        
-        # Retry on rate limits (429)
+
+        # Retry on rate limits only when the server told us how long to wait.
+        # Rate limits without a Retry-After (e.g. GitHub's primary API limit,
+        # returned as 403) reset far in the future, so retrying within the same
+        # run is pointless - surface them immediately so the caller can stop.
         if isinstance(exception, IntegrationRateLimited):
-            return True
-        
+            return exception.retry_after is not None
+
         # Don't retry on other integration errors
         return False
     
