@@ -263,6 +263,24 @@ class GitHubPRWebhookTestCase(TestCase):
         self.assertNotIn('stale bootstrap description', obj['text'])
         self.assertEqual(obj['status'], 'merged')
 
+    def test_merged_pr_populates_item_pr_description(self):
+        body = '## Summary\n\nThe reasoning that becomes the PR-Description tab.'
+        response = self._post(pr_payload(merged=True, state='closed', body=body))
+        self.assertEqual(response.status_code, 200)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.pr_description, body)
+
+    def test_merged_pr_null_body_does_not_blank_existing_pr_description(self):
+        self.item.pr_description = 'existing pr description'
+        self.item.save()
+
+        response = self._post(pr_payload(merged=True, state='closed', body=None))
+        self.assertEqual(response.status_code, 200)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.pr_description, 'existing pr description')
+
     def test_item_already_in_testing_is_left_untouched_by_late_merge_event(self):
         self.item.status = ItemStatus.TESTING
         self.item.save()

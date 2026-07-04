@@ -625,6 +625,7 @@ class Item(models.Model):
     description = models.TextField(blank=True)
     user_input = models.TextField(blank=True, help_text=_('Original email text, not modified by AI'))
     solution_description = models.TextField(blank=True)
+    pr_description = models.TextField(blank=True, help_text=_('Final pull request description, captured from GitHub on merge'))
     short_description = models.TextField(blank=True, help_text=_('ISO-compliant short description (max 3-4 sentences)'))
     type = models.ForeignKey(ItemType, on_delete=models.PROTECT, related_name='items')
     nodes = models.ManyToManyField(Node, blank=True, related_name='items')

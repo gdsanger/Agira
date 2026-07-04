@@ -597,6 +597,11 @@ class GitHubService(IntegrationBase):
             if isinstance(body, str) and body.strip():
                 mapping.pr_body = body
                 result['pr_body_indexed'] = True
+                # Mirror the same final body onto the item as the "PR-Description"
+                # tab's source. Read-only copy of a terminal state, so it never
+                # goes stale even though the item itself keeps changing.
+                item.pr_description = body
+                item.save(update_fields=['pr_description'])
 
         mapping.save()
 
