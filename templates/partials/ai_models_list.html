@@ -1,3 +1,4 @@
+{% load l10n %}
 {% if error_message %}
 <!-- Error notification -->
 <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
@@ -67,7 +68,7 @@ function showPriceSaveSuccess(element) {
                            min="0"
                            class="form-control form-control-sm price-input" 
                            style="max-width: 120px;"
-                           value="{{ model.input_price_per_1m_tokens|default:'' }}"
+                           value="{% localize off %}{{ model.input_price_per_1m_tokens|default:'' }}{% endlocalize %}"
                            hx-post="{% url 'ai-model-update-field' provider.id model.id %}"
                            hx-trigger="blur changed"
                            hx-vals='{"field": "input_price_per_1m_tokens"}'
@@ -83,7 +84,7 @@ function showPriceSaveSuccess(element) {
                            min="0"
                            class="form-control form-control-sm price-input" 
                            style="max-width: 120px;"
-                           value="{{ model.output_price_per_1m_tokens|default:'' }}"
+                           value="{% localize off %}{{ model.output_price_per_1m_tokens|default:'' }}{% endlocalize %}"
                            hx-post="{% url 'ai-model-update-field' provider.id model.id %}"
                            hx-trigger="blur changed"
                            hx-vals='{"field": "output_price_per_1m_tokens"}'

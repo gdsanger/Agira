@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.conf import settings
 from decimal import Decimal, InvalidOperation
+from core.services.ai.pricing import parse_price_input
 from datetime import datetime, date, time
 import logging
 import os
@@ -6638,16 +6639,19 @@ def ai_model_create(request, provider_id):
     provider = get_object_or_404(AIProvider, id=provider_id)
     
     try:
-        # Get input values and convert empty strings to None for decimal fields
-        input_price = request.POST.get('input_price_per_1m_tokens', '').strip()
-        output_price = request.POST.get('output_price_per_1m_tokens', '').strip()
-        
+        # Parse prices (accepts both "0.01" and German "0,01"); empty -> None
+        try:
+            input_price = parse_price_input(request.POST.get('input_price_per_1m_tokens'))
+            output_price = parse_price_input(request.POST.get('output_price_per_1m_tokens'))
+        except ValueError:
+            return HttpResponse("Invalid price value", status=400)
+
         model = AIModel.objects.create(
             provider=provider,
             name=request.POST.get('name'),
             model_id=request.POST.get('model_id'),
-            input_price_per_1m_tokens=input_price if input_price else None,
-            output_price_per_1m_tokens=output_price if output_price else None,
+            input_price_per_1m_tokens=input_price,
+            output_price_per_1m_tokens=output_price,
             active=request.POST.get('active') == 'on',
             is_default=request.POST.get('is_default') == 'on'
         )
@@ -6680,11 +6684,14 @@ def ai_model_update(request, provider_id, model_id):
         model.name = request.POST.get('name', model.name)
         model.model_id = request.POST.get('model_id', model.model_id)
         
-        # Handle decimal fields - convert empty strings to None
-        input_price = request.POST.get('input_price_per_1m_tokens', '').strip()
-        output_price = request.POST.get('output_price_per_1m_tokens', '').strip()
-        model.input_price_per_1m_tokens = input_price if input_price else None
-        model.output_price_per_1m_tokens = output_price if output_price else None
+        # Parse prices (accepts both "0.01" and German "0,01"); empty -> None
+        try:
+            model.input_price_per_1m_tokens = parse_price_input(
+                request.POST.get('input_price_per_1m_tokens'))
+            model.output_price_per_1m_tokens = parse_price_input(
+                request.POST.get('output_price_per_1m_tokens'))
+        except ValueError:
+            return HttpResponse("Invalid price value", status=400)
         
         model.active = request.POST.get('active') == 'on'
         model.is_default = request.POST.get('is_default') == 'on'
@@ -6742,25 +6749,19 @@ def ai_model_update_field(request, provider_id, model_id):
         value = request.POST.get('value', '').strip()
         
         if field in ['input_price_per_1m_tokens', 'output_price_per_1m_tokens']:
-            # Validate and convert to Decimal if value is provided
-            if value:
-                try:
-                    decimal_value = Decimal(value)
-                    if decimal_value < 0:
-                        return HttpResponse("Price cannot be negative", status=400)
-                except (InvalidOperation, ValueError):
-                    return HttpResponse("Invalid price value", status=400)
-                
-                if field == 'input_price_per_1m_tokens':
-                    model.input_price_per_1m_tokens = decimal_value
-                else:
-                    model.output_price_per_1m_tokens = decimal_value
+            # Parse price (accepts both "0.01" and German "0,01"); empty -> None
+            try:
+                decimal_value = parse_price_input(value)
+            except ValueError:
+                return HttpResponse("Invalid price value", status=400)
+
+            if decimal_value is not None and decimal_value < 0:
+                return HttpResponse("Price cannot be negative", status=400)
+
+            if field == 'input_price_per_1m_tokens':
+                model.input_price_per_1m_tokens = decimal_value
             else:
-                # Empty value sets to None
-                if field == 'input_price_per_1m_tokens':
-                    model.input_price_per_1m_tokens = None
-                else:
-                    model.output_price_per_1m_tokens = None
+                model.output_price_per_1m_tokens = decimal_value
         else:
             return HttpResponse("Invalid field", status=400)
         
