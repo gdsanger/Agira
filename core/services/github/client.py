@@ -244,20 +244,23 @@ class GitHubClient:
         repo: str,
         state: str = 'all',
         since: Optional[str] = None,
+        head: Optional[str] = None,
         per_page: int = 30,
         page: int = 1,
     ) -> List[Dict[str, Any]]:
         """
         List pull requests in a repository.
-        
+
         Args:
             owner: Repository owner
             repo: Repository name
             state: Filter by state ('open', 'closed', 'all')
             since: Only PRs updated after this time (ISO 8601 timestamp)
+            head: Filter by head branch, formatted as ``owner:branch-name``
+                (GitHub only returns exact matches for this filter)
             per_page: Results per page (max 100)
             page: Page number
-            
+
         Returns:
             List of PR dictionaries
         """
@@ -267,10 +270,13 @@ class GitHubClient:
             'per_page': min(per_page, 100),
             'page': page,
         }
-        
+
+        if head:
+            params['head'] = head
+
         # Note: GitHub API for PRs doesn't support 'since' parameter directly
         # We would need to filter client-side if needed
-        
+
         return self.http.get(path, params=params)
     
     # Timeline/Events methods

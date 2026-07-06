@@ -461,34 +461,75 @@ class Command(BaseCommand):
     def _open_draft_pr(self, job, branch, repo_dir):
         """Open the draft PR and record it on the job + ExternalIssueMapping.
 
-        Uses the existing ``GitHubService`` infra. On failure, falls back to
-        ``gh pr list --head`` (e.g. the PR already exists from a re-run) so a
-        transient API hiccup does not orphan the job.
+        A retried job reuses the exact same deterministic branch name as its
+        earlier attempt (``_branch_name`` is keyed on the item, not the job),
+        so an earlier attempt may already have a PR open on it. Checking for
+        that PR up front makes retries idempotent instead of hitting GitHub's
+        422 "A pull request already exists for ..." on every re-run.
+
+        If creation still races and hits that 422 (or any other API error),
+        re-check for an existing PR before falling back to ``gh pr list
+        --head`` and finally giving up.
         """
         from core.services.github.service import GitHubService
 
-        mapping = None
+        service = GitHubService()
+
+        mapping = self._find_existing_pr(job, branch, service)
+        if mapping is not None:
+            self._apply_pr_mapping(job, mapping, reused=True)
+            return
+
         try:
-            mapping = GitHubService().create_draft_pr_for_item(
+            mapping = service.create_draft_pr_for_item(
                 job.item,
                 branch_name=branch,
                 base='main',
                 title=job.item.title,
                 body=self._pr_body(job),
             )
-        except Exception as exc:  # noqa: BLE001 — fall back to gh lookup
+        except Exception as exc:  # noqa: BLE001 — a retry may hit an already-open PR
             logger.warning(
-                "Draft PR API call failed for job #%s (%s); trying gh fallback",
-                job.pk, exc,
+                "Draft PR API call failed for job #%s (%s); looking for an "
+                "existing PR on %s",
+                job.pk, exc, branch,
             )
-            mapping = self._pr_from_gh_fallback(job, branch, repo_dir)
+            mapping = (
+                self._find_existing_pr(job, branch, service)
+                or self._pr_from_gh_fallback(job, branch, repo_dir)
+            )
             if mapping is None:
                 raise
+            self._apply_pr_mapping(job, mapping, reused=True)
+            return
 
+        self._apply_pr_mapping(job, mapping, reused=False)
+
+    def _find_existing_pr(self, job, branch, service):
+        """Best-effort lookup of an already-open PR for ``branch`` via the API.
+
+        Returns None (never raises) so a lookup hiccup still lets the normal
+        create-PR path run instead of aborting the job.
+        """
+        try:
+            return service.find_open_pr_for_branch(job.item, branch)
+        except Exception as exc:  # noqa: BLE001 — fall through to PR creation
+            logger.warning(
+                "Existing-PR lookup failed for job #%s (%s)", job.pk, exc,
+            )
+            return None
+
+    def _apply_pr_mapping(self, job, mapping, *, reused):
+        """Record the PR on the job, logging whether it was reused or created."""
         job.pr_number = mapping.number
         job.pr_url = mapping.html_url
         job.save(update_fields=['pr_number', 'pr_url'])
-        self.stdout.write(f"  Draft PR #{mapping.number}: {mapping.html_url}")
+        if reused:
+            note = f"Reusing existing PR #{mapping.number} for branch {job.branch_name}"
+            self._save_progress(job, note)
+            self.stdout.write(f"  {note}: {mapping.html_url}")
+        else:
+            self.stdout.write(f"  Draft PR #{mapping.number}: {mapping.html_url}")
 
     def _pr_from_gh_fallback(self, job, branch, repo_dir):
         """Resolve an existing PR for ``branch`` via the ``gh`` CLI.
