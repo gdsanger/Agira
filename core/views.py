@@ -9898,8 +9898,8 @@ def mail_action_mappings(request):
     
     # Get all item types and statuses for filters
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
-    item_statuses = ItemStatus.choices
-    
+    item_statuses = ItemStatus.mail_triggerable_choices()
+
     context = {
         'mappings': mappings,
         'search_query': search_query,
@@ -9929,8 +9929,8 @@ def mail_action_mapping_create(request):
     # Get all active item types and mail templates
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     mail_templates = MailTemplate.objects.filter(is_active=True).order_by('key')
-    item_statuses = ItemStatus.choices
-    
+    item_statuses = ItemStatus.mail_triggerable_choices()
+
     context = {
         'mapping': None,
         'item_types': item_types,
@@ -9948,8 +9948,8 @@ def mail_action_mapping_edit(request, id):
     # Get all active item types and mail templates
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     mail_templates = MailTemplate.objects.filter(is_active=True).order_by('key')
-    item_statuses = ItemStatus.choices
-    
+    item_statuses = ItemStatus.mail_triggerable_choices()
+
     context = {
         'mapping': mapping,
         'item_types': item_types,
@@ -9979,8 +9979,8 @@ def mail_action_mapping_update(request, id):
         if not mail_template_id:
             return JsonResponse({'success': False, 'error': 'Mail-Template ist erforderlich'}, status=400)
         
-        # Validate item_status is valid choice
-        valid_statuses = [choice[0] for choice in ItemStatus.choices]
+        # Validate item_status is valid choice (Review is excluded: no mail triggers allowed for it)
+        valid_statuses = [choice[0] for choice in ItemStatus.mail_triggerable_choices()]
         if item_status not in valid_statuses:
             return JsonResponse({'success': False, 'error': 'Ungültiger Status'}, status=400)
         

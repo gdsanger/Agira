@@ -153,7 +153,31 @@ class ItemWorkflowGuardTestCase(TestCase):
         """Test that Backlog can transition to any status including non-adjacent ones"""
         self.item.status = ItemStatus.BACKLOG
         self.item.save()
-        
+
         # Should now allow Backlog -> Ready for Release (previously not allowed)
         result = self.guard.transition(self.item, ItemStatus.READY_FOR_RELEASE, self.user)
         self.assertEqual(result.status, ItemStatus.READY_FOR_RELEASE)
+
+    def test_transition_to_review_logs_activity(self):
+        """Test that transitioning to Review is allowed and logs a normal status-change activity"""
+        from core.models import Activity
+        Activity.objects.all().delete()
+
+        result = self.guard.transition(self.item, ItemStatus.REVIEW, self.user)
+
+        self.assertEqual(result.status, ItemStatus.REVIEW)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.REVIEW)
+
+        activity = self.activity_service.latest(item=self.item).first()
+        self.assertEqual(activity.verb, 'item.status_changed')
+        self.assertIn('Inbox', activity.summary)
+        self.assertIn('Review', activity.summary)
+
+    def test_transition_from_review_to_other_status(self):
+        """Test that Review can transition to any other regular status"""
+        self.item.status = ItemStatus.REVIEW
+        self.item.save()
+
+        result = self.guard.transition(self.item, ItemStatus.WORKING, self.user)
+        self.assertEqual(result.status, ItemStatus.WORKING)

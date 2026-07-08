@@ -60,8 +60,9 @@ class KanbanViewTestCase(TestCase):
         
         # Create items with different statuses
         self.items = {}
-        for status in [ItemStatus.INBOX, ItemStatus.BACKLOG, ItemStatus.WORKING, 
-                      ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE, ItemStatus.CLOSED]:
+        for status in [ItemStatus.INBOX, ItemStatus.BACKLOG, ItemStatus.WORKING,
+                      ItemStatus.TESTING, ItemStatus.REVIEW, ItemStatus.READY_FOR_RELEASE,
+                      ItemStatus.CLOSED]:
             item = Item.objects.create(
                 project=self.project,
                 title=f'Item {status.label}',
@@ -118,8 +119,8 @@ class KanbanViewTestCase(TestCase):
         items_by_status = response.context['items_by_status']
         
         # Check that each status group contains the right item
-        for status in [ItemStatus.INBOX, ItemStatus.BACKLOG, ItemStatus.WORKING, 
-                      ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]:
+        for status in [ItemStatus.INBOX, ItemStatus.BACKLOG, ItemStatus.WORKING,
+                      ItemStatus.TESTING, ItemStatus.REVIEW, ItemStatus.READY_FOR_RELEASE]:
             status_items = items_by_status[status]
             expected_item = self.items[status]
             self.assertIn(expected_item, status_items)

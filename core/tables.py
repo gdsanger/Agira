@@ -268,6 +268,7 @@ class RelatedItemsTable(tables.Table):
             'Backlog': 'bg-secondary',
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
+            'Review': 'bg-light text-dark',
             'ReadyForRelease': 'bg-success',
             'Closed': 'bg-dark',
         }
@@ -391,6 +392,7 @@ class EmbedItemTable(tables.Table):
             'Backlog': 'bg-secondary',
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
+            'Review': 'bg-light text-dark',
             'ReadyForRelease': 'bg-success',
             'Closed': 'bg-dark',
         }
@@ -540,6 +542,7 @@ class ReleaseItemsTable(tables.Table):
             'Backlog': 'bg-secondary',
             'Working': 'bg-warning',
             'Testing': 'bg-primary',
+            'Review': 'bg-light text-dark',
             'ReadyForRelease': 'bg-success',
             'Closed': 'bg-dark',
         }
