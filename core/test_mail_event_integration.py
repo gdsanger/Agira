@@ -462,6 +462,40 @@ class ItemStatusMailTriggerIntegrationTestCase(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, ItemStatus.BACKLOG)
 
+    def test_item_change_status_to_review_no_mail_trigger(self):
+        """Review is not eligible for mail triggers, even for a type with a Working mapping."""
+        from core.models import Activity
+
+        item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            description='Test description',
+            type=self.item_type,
+            status=ItemStatus.INBOX,
+            requester=self.user
+        )
+
+        activity_count_before = Activity.objects.count()
+
+        response = self.client.post(
+            reverse('item-change-status', args=[item.id]),
+            {'status': ItemStatus.REVIEW}
+        )
+
+        # Should return HTML (status badge), never a mail preview
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.REVIEW)
+
+        # A normal status-change activity entry is still recorded
+        activity_count_after = Activity.objects.count()
+        self.assertEqual(activity_count_after, activity_count_before + 1)
+        latest_activity = Activity.objects.latest('created_at')
+        self.assertEqual(latest_activity.verb, 'item.status_changed')
+        self.assertIn('Review', latest_activity.summary)
+
 
 class ItemSendStatusUpdateTestCase(TestCase):
     """Tests for the manual send-status-update endpoint."""

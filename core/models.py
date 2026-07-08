@@ -82,8 +82,19 @@ class ItemStatus(models.TextChoices):
     BACKLOG = 'Backlog', _('📋 Backlog')
     WORKING = 'Working', _('🚧 Working')
     TESTING = 'Testing', _('🧪 Testing')
+    REVIEW = 'Review', _('👀 Review')
     READY_FOR_RELEASE = 'ReadyForRelease', _('✅ Ready for Release')
     CLOSED = 'Closed', _('✔ Closed')
+
+    @classmethod
+    def mail_triggerable_choices(cls):
+        """
+        Status choices eligible for MailActionMapping configuration.
+
+        Review is excluded: it only marks an item for coordination/questions
+        and must never be wired to a mail trigger.
+        """
+        return [choice for choice in cls.choices if choice[0] != cls.REVIEW]
 
 
 class RelationType(models.TextChoices):
@@ -1341,8 +1352,8 @@ class MailActionMapping(models.Model):
     )
     item_status = models.CharField(
         max_length=20,
-        choices=ItemStatus.choices,
-        help_text="Issue status for which this mapping applies"
+        choices=ItemStatus.mail_triggerable_choices(),
+        help_text="Issue status for which this mapping applies (Review is not eligible for mail triggers)"
     )
     item_type = models.ForeignKey(
         ItemType,

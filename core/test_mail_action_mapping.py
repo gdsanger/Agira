@@ -418,7 +418,24 @@ class MailActionMappingViewsTestCase(TestCase):
         data = response.json()
         self.assertFalse(data['success'])
         self.assertIn('existiert bereits', data['error'])
-    
+
+    def test_create_mapping_with_review_status_fails(self):
+        """Review must never be configurable as a mail trigger."""
+        self.client.login(username='testuser', password='testpass123')
+
+        response = self.client.post(reverse('mail-action-mapping-update', args=[0]), {
+            'item_status': ItemStatus.REVIEW,
+            'item_type': self.type2.id,
+            'mail_template': self.template2.id,
+            'is_active': 'on',
+            'action': 'save'
+        })
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertEqual(MailActionMapping.objects.filter(item_status=ItemStatus.REVIEW).count(), 0)
+
     def test_create_mapping_with_unique_status_type_succeeds(self):
         """Test that creating a mapping with unique status+type combination succeeds"""
         self.client.login(username='testuser', password='testpass123')
@@ -611,7 +628,16 @@ class MailActionMappingViewsTestCase(TestCase):
         self.assertContains(response, 'Item Status')
         self.assertContains(response, 'Item Type')
         self.assertContains(response, 'Mail Template')
-    
+
+    def test_create_view_excludes_review_status(self):
+        """Review must not be offered as a mail-trigger status option."""
+        self.client.login(username='testuser', password='testpass123')
+
+        response = self.client.get(reverse('mail-action-mapping-create'))
+        self.assertEqual(response.status_code, 200)
+        status_values = [value for value, _ in response.context['item_statuses']]
+        self.assertNotIn(ItemStatus.REVIEW, status_values)
+
     def test_edit_view_displays_form_with_data(self):
         """Test that edit view displays the form with existing data"""
         self.client.login(username='testuser', password='testpass123')
