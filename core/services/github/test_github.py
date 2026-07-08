@@ -286,6 +286,56 @@ class GitHubServiceItemTestCase(TestCase):
         self.assertEqual(mapping.html_url,
                          'https://github.com/testowner/testrepo/pull/7')
 
+    @patch('core.services.github.client.GitHubClient.list_prs')
+    def test_find_open_pr_for_branch_returns_mapping(self, mock_list_prs):
+        """An open PR on the branch is found and recorded as an ExternalIssueMapping."""
+        mock_list_prs.return_value = [{
+            'id': 98765,
+            'number': 7,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/7',
+        }]
+
+        mapping = self.service.find_open_pr_for_branch(self.item, 'fix/test-bug-1')
+
+        call_kwargs = mock_list_prs.call_args[1]
+        self.assertEqual(call_kwargs['state'], 'open')
+        self.assertEqual(call_kwargs['head'], 'testowner:fix/test-bug-1')
+
+        self.assertIsNotNone(mapping)
+        self.assertEqual(mapping.kind, ExternalIssueKind.PR)
+        self.assertEqual(mapping.number, 7)
+        self.assertEqual(mapping.github_id, 98765)
+        self.assertEqual(mapping.html_url,
+                         'https://github.com/testowner/testrepo/pull/7')
+
+    @patch('core.services.github.client.GitHubClient.list_prs')
+    def test_find_open_pr_for_branch_returns_none_when_no_match(self, mock_list_prs):
+        mock_list_prs.return_value = []
+
+        mapping = self.service.find_open_pr_for_branch(self.item, 'fix/test-bug-1')
+
+        self.assertIsNone(mapping)
+
+    @patch('core.services.github.client.GitHubClient.list_prs')
+    def test_find_open_pr_for_branch_updates_existing_mapping(self, mock_list_prs):
+        """A second lookup for the same PR updates rather than duplicates the mapping."""
+        existing = ExternalIssueMapping.objects.create(
+            item=self.item, github_id=98765, number=7, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/testowner/testrepo/pull/7',
+        )
+        mock_list_prs.return_value = [{
+            'id': 98765,
+            'number': 7,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/7',
+        }]
+
+        mapping = self.service.find_open_pr_for_branch(self.item, 'fix/test-bug-1')
+
+        self.assertEqual(mapping.pk, existing.pk)
+        self.assertEqual(ExternalIssueMapping.objects.filter(item=self.item).count(), 1)
+
     @patch('core.services.github.client.GitHubClient.update_pr')
     def test_update_pr_body(self, mock_update_pr):
         """update_pr_body overwrites the PR body via the GitHub client."""

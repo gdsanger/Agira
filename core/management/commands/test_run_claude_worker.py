@@ -530,6 +530,7 @@ class DraftPrTests(ClaudeWorkerTestBase):
             state='open', html_url='https://github.com/o/r/pull/42',
         )
         fake_service = MagicMock()
+        fake_service.find_open_pr_for_branch.return_value = None
         fake_service.create_draft_pr_for_item.return_value = mapping
 
         with patch('core.services.github.service.GitHubService',
@@ -539,6 +540,105 @@ class DraftPrTests(ClaudeWorkerTestBase):
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
         self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
+        fake_service.create_draft_pr_for_item.assert_called_once()
+
+    def test_open_draft_pr_reuses_existing_open_pr_without_creating(self):
+        """A retry hits the same deterministic branch — reuse its open PR."""
+        from unittest.mock import MagicMock
+        from core.models import ExternalIssueKind, ExternalIssueMapping
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item, branch_name='fix/x-1')
+
+        mapping = ExternalIssueMapping.objects.create(
+            item=item, github_id=555, number=42, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/o/r/pull/42',
+        )
+        fake_service = MagicMock()
+        fake_service.find_open_pr_for_branch.return_value = mapping
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+
+        job.refresh_from_db()
+        self.assertEqual(job.pr_number, 42)
+        self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
+        self.assertIn('Reusing existing PR #42', job.progress_text)
+        fake_service.create_draft_pr_for_item.assert_not_called()
+
+    def test_open_draft_pr_falls_back_to_existing_pr_after_422(self):
+        """create_draft_pr_for_item 422s (already exists) -> re-check finds it."""
+        from unittest.mock import MagicMock
+        from core.models import ExternalIssueKind, ExternalIssueMapping
+        from core.services.integrations.errors import IntegrationPermanentError
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item, branch_name='fix/x-1')
+
+        mapping = ExternalIssueMapping.objects.create(
+            item=item, github_id=555, number=42, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/o/r/pull/42',
+        )
+        fake_service = MagicMock()
+        fake_service.find_open_pr_for_branch.side_effect = [None, mapping]
+        fake_service.create_draft_pr_for_item.side_effect = IntegrationPermanentError(
+            "Client error (HTTP 422): {\"message\":\"Validation Failed\","
+            "\"errors\":[{\"message\":\"A pull request already exists for "
+            "o:fix/x-1.\"}]}"
+        )
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+
+        job.refresh_from_db()
+        self.assertEqual(job.pr_number, 42)
+        self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
+        self.assertIn('Reusing existing PR #42', job.progress_text)
+
+    def test_open_draft_pr_lookup_failure_still_allows_creation(self):
+        """A broken existing-PR lookup must not block the normal create path."""
+        from unittest.mock import MagicMock
+        from core.models import ExternalIssueKind, ExternalIssueMapping
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item)
+
+        mapping = ExternalIssueMapping.objects.create(
+            item=item, github_id=555, number=42, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/o/r/pull/42',
+        )
+        fake_service = MagicMock()
+        fake_service.find_open_pr_for_branch.side_effect = RuntimeError('boom')
+        fake_service.create_draft_pr_for_item.return_value = mapping
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+
+        job.refresh_from_db()
+        self.assertEqual(job.pr_number, 42)
+        fake_service.create_draft_pr_for_item.assert_called_once()
+
+    def test_open_draft_pr_raises_when_no_pr_found_anywhere(self):
+        """No existing PR and creation fails -> propagate (real job failure)."""
+        from unittest.mock import MagicMock
+
+        item = self._item(self.project_a)
+        job = self._job(self.project_a, item=item)
+
+        fake_service = MagicMock()
+        fake_service.find_open_pr_for_branch.return_value = None
+        fake_service.create_draft_pr_for_item.side_effect = RuntimeError(
+            'network is down'
+        )
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service), \
+             patch.object(Command, '_pr_from_gh_fallback', return_value=None):
+            with self.assertRaises(RuntimeError):
+                Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
 
 
 class UpdatePrBodyTests(ClaudeWorkerTestBase):

@@ -442,6 +442,52 @@ class GitHubService(IntegrationBase):
 
         return mapping
 
+    def find_open_pr_for_branch(
+        self,
+        item: Item,
+        branch_name: str,
+        user: Optional[User] = None,
+    ) -> Optional[ExternalIssueMapping]:
+        """
+        Look up an already-open pull request for ``branch_name`` via the API.
+
+        Makes draft-PR creation idempotent: a retried Claude queue job reuses
+        the same deterministic branch name as its earlier attempt (see
+        ``run_claude_worker._branch_name``), so by the time a retry gets here a
+        PR from that earlier attempt may already be open. Checking first (and
+        re-checking if creation still races and 422s) lets the worker reuse
+        that PR instead of failing on GitHub's "pull request already exists"
+        validation error.
+
+        Args:
+            item: Agira item the PR would belong to
+            branch_name: Head branch to look up, e.g. 'fix/item-42'
+            user: User whose GitHub PAT should be used (default: global token)
+
+        Returns:
+            The matching ExternalIssueMapping (kind=PR), or None if no open PR
+            targets that branch.
+        """
+        client = self._get_client(user=user)
+        owner, repo = self._get_repo_info(item)
+
+        prs = client.list_prs(owner, repo, state='open', head=f'{owner}:{branch_name}')
+        if not prs:
+            return None
+
+        github_pr = prs[0]
+        mapping, _ = ExternalIssueMapping.objects.update_or_create(
+            item=item,
+            kind=ExternalIssueKind.PR,
+            number=github_pr['number'],
+            defaults={
+                'github_id': github_pr['id'],
+                'state': self._map_state(github_pr, 'pr'),
+                'html_url': github_pr['html_url'],
+            },
+        )
+        return mapping
+
     def update_pr_body(
         self,
         item: Item,
