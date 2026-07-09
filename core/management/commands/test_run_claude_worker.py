@@ -20,7 +20,10 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
-from core.management.commands.run_claude_worker import Command
+from core.management.commands.run_claude_worker import (
+    Command,
+    DEFAULT_TIMEOUT_SECONDS,
+)
 from core.models import (
     ClaudeQueueJob,
     ClaudeQueueJobStatus,
@@ -218,6 +221,9 @@ class ProcessJobTests(ClaudeWorkerTestBase):
 
         job.item.refresh_from_db()
         self.assertEqual(job.item.status, ItemStatus.BACKLOG)
+
+    def test_default_timeout_is_sixty_minutes(self):
+        self.assertEqual(DEFAULT_TIMEOUT_SECONDS, 3600)
 
     def test_timeout_marks_failed(self):
         job = self._claimed_job(self.project_a)

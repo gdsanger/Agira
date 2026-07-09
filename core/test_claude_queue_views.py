@@ -7,10 +7,12 @@ from decimal import Decimal
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.db.models import Max
+from django.utils import timezone
 
 from core.models import (
     Item, Project, ItemStatus, ItemType, User,
     ClaudeQueueJob, ClaudeQueueJobStatus,
+    CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS,
 )
 
 
@@ -204,3 +206,53 @@ class ClaudeQueueViewsTestCase(TestCase):
         max_id = ClaudeQueueJob.objects.aggregate(Max('id'))['id__max'] or 0
         response = self.client.get(reverse('claude-queue-job-live', args=[max_id + 1]))
         self.assertEqual(response.status_code, 204)
+
+    # ---- long-running warning ------------------------------------------
+
+    def _job_started(self, seconds_ago, status=ClaudeQueueJobStatus.RUNNING):
+        return ClaudeQueueJob.objects.create(
+            item=self.item,
+            project=self.project,
+            status=status,
+            started_at=timezone.now() - timezone.timedelta(seconds=seconds_ago),
+        )
+
+    def test_is_long_running_false_below_threshold(self):
+        job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS - 60)
+        self.assertFalse(job.is_long_running)
+
+    def test_is_long_running_true_above_threshold(self):
+        job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 60)
+        self.assertTrue(job.is_long_running)
+
+    def test_is_long_running_false_when_not_running(self):
+        for status in (ClaudeQueueJobStatus.DONE, ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED):
+            job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 60, status=status)
+            self.assertFalse(job.is_long_running)
+
+    def test_row_no_warning_below_threshold(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS - 60)
+        response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
+        self.assertNotContains(response, 'Dauert länger als gewöhnlich')
+
+    def test_row_shows_warning_above_threshold(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 60)
+        response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
+        self.assertContains(response, 'Dauert länger als gewöhnlich')
+
+    def test_done_job_never_shows_long_running_warning(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._job_started(
+            CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 3600,
+            status=ClaudeQueueJobStatus.DONE,
+        )
+        response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
+        self.assertNotContains(response, 'Dauert länger als gewöhnlich')
+
+    def test_detail_shows_long_running_warning(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 60)
+        response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
+        self.assertContains(response, 'Dauert länger als gewöhnlich')

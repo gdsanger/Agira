@@ -19,6 +19,12 @@ Expects `job` and `active_statuses` in context.
         {% endif %}
     </div>
 
+    {% if job.is_long_running %}
+    <div class="alert alert-warning" role="alert">
+        <i class="bi bi-hourglass-split"></i> Dauert länger als gewöhnlich
+    </div>
+    {% endif %}
+
     {% if job.status == 'failed' %}
     <div class="alert alert-danger" role="alert">
         <h6 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Job failed</h6>

@@ -1856,6 +1856,13 @@ class ClaudeQueueJobStatus(models.TextChoices):
     CANCELLED = 'cancelled', _('Cancelled')
 
 
+# Runtime after which a still-running job is flagged in the UI as taking
+# longer than usual. Well below the worker's hard kill timeout (60 minutes,
+# see run_claude_worker.DEFAULT_TIMEOUT_SECONDS) — this is an early warning,
+# not a failure state.
+CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS = 15 * 60
+
+
 class ClaudeQueueJob(models.Model):
     """A queued request to have Claude Code CLI work on an Item.
 
@@ -1942,6 +1949,18 @@ class ClaudeQueueJob(models.Model):
 
     def __str__(self):
         return f"ClaudeQueueJob #{self.pk} ({self.status}) - {self.item}"
+
+    @property
+    def is_long_running(self):
+        """True if a RUNNING job has been going for longer than usual.
+
+        Derived from status + started_at + now on every access — no
+        persisted state, so it can't go stale.
+        """
+        if self.status != ClaudeQueueJobStatus.RUNNING or self.started_at is None:
+            return False
+        elapsed = (timezone.now() - self.started_at).total_seconds()
+        return elapsed >= CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS
 
     # Allowed state transitions for the job state machine.
     _TRANSITIONS = {
