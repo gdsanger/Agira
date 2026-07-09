@@ -744,6 +744,91 @@ _CLAUDE_QUEUE_ACTIVE_STATUSES = (
 )
 
 
+def _format_duration_seconds(seconds):
+    """Render a duration in seconds as 'Hh Mm', 'Mm Ss' or 'Ss'."""
+    if seconds is None:
+        return None
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f'{hours}h {minutes}m'
+    if minutes:
+        return f'{minutes}m {secs}s'
+    return f'{secs}s'
+
+
+def _claude_queue_dashboard_context():
+    """Aggregated KPIs + 7-day chart data, always over ALL queue jobs.
+
+    Kept separate from the filtered list query below: the dashboard reflects
+    overall queue health regardless of the project/status filter applied to
+    the table beneath it.
+    """
+    from datetime import timedelta
+
+    all_jobs = ClaudeQueueJob.objects.all()
+    total_jobs = all_jobs.count()
+
+    # Duration has no persisted field or existing helper anywhere in the
+    # project (checked models.py/admin.py/templates) — derived here from
+    # started_at/finished_at, the same pair is_long_running already uses.
+    duration_avg = all_jobs.filter(
+        started_at__isnull=False, finished_at__isnull=False,
+    ).annotate(
+        duration=models.ExpressionWrapper(
+            models.F('finished_at') - models.F('started_at'),
+            output_field=models.DurationField(),
+        )
+    ).aggregate(avg=models.Avg('duration'))['avg']
+    avg_duration_seconds = duration_avg.total_seconds() if duration_avg else None
+
+    avg_cost = all_jobs.filter(total_cost_usd__isnull=False).aggregate(
+        avg=models.Avg('total_cost_usd')
+    )['avg']
+    avg_turns = all_jobs.filter(num_turns__isnull=False).aggregate(
+        avg=models.Avg('num_turns')
+    )['avg']
+
+    # 7 calendar days incl. today, grouped on created_at using the project's
+    # established local-date convention (see ai_job_statistics()).
+    from django.db.models.functions import TruncDate
+
+    today = timezone.localdate()
+    start_of_7d = today - timedelta(days=6)
+    start_of_7d_dt = timezone.make_aware(datetime.combine(start_of_7d, time.min))
+
+    by_day_qs = (
+        all_jobs.filter(created_at__gte=start_of_7d_dt)
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(count=models.Count('id'), total_cost=models.Sum('total_cost_usd'))
+    )
+    by_day = {item['day']: item for item in by_day_qs}
+
+    date_labels = []
+    jobs_series = []
+    cost_series = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        date_labels.append(day.strftime('%d.%m.'))
+        entry = by_day.get(day)
+        jobs_series.append(entry['count'] if entry else 0)
+        cost_series.append(float(entry['total_cost']) if entry and entry['total_cost'] is not None else 0)
+
+    return {
+        'queue_total_jobs': total_jobs,
+        'queue_avg_duration_display': _format_duration_seconds(avg_duration_seconds),
+        'queue_avg_cost': avg_cost,
+        'queue_avg_turns': avg_turns,
+        'queue_chart_json': json.dumps({
+            'labels': date_labels,
+            'jobs': jobs_series,
+            'costs': cost_series,
+        }),
+    }
+
+
 @login_required
 def claude_queue_jobs(request):
     """List view of all Claude queue jobs with project/status filters."""
@@ -762,13 +847,18 @@ def claude_queue_jobs(request):
     if status_filter:
         jobs = jobs.filter(status=status_filter)
 
+    paginator = Paginator(jobs, 20)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
     context = {
-        'jobs': jobs,
+        'jobs': page_obj,
+        'page_obj': page_obj,
         'projects': Project.objects.all().order_by('name'),
         'statuses': ClaudeQueueJobStatus.choices,
         'selected_project': project_filter,
         'selected_status': status_filter,
     }
+    context.update(_claude_queue_dashboard_context())
     return render(request, 'claude_queue_jobs.html', context)
 
 

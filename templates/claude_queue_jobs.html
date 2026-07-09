@@ -2,12 +2,67 @@
 
 {% block title %}Claude Queue - Agira{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-center">
         <div>
             <h1>Claude Queue</h1>
             <p class="text-muted">Live view of what Claude Code is working on</p>
+        </div>
+    </div>
+</div>
+
+<!-- Mini Dashboard -->
+<div class="row g-3 mb-4">
+    <div class="col-md-2 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-list-check"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ queue_total_jobs }}</div>
+                <div class="kpi-label">Jobs</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-stopwatch"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ queue_avg_duration_display|default:"–" }}</div>
+                <div class="kpi-label">Ø Dauer</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">
+                    {% if queue_avg_cost is not None %}US${{ queue_avg_cost|floatformat:4 }}{% else %}–{% endif %}
+                </div>
+                <div class="kpi-label">Ø Kosten</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-arrow-repeat"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">
+                    {% if queue_avg_turns is not None %}{{ queue_avg_turns|floatformat:1 }}{% else %}–{% endif %}
+                </div>
+                <div class="kpi-label">Ø Turns</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body py-2">
+                <canvas id="queueChart" style="max-height: 90px;"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -72,6 +127,83 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- Pagination Controls -->
+        {% if page_obj.has_other_pages %}
+        <nav aria-label="Page navigation" class="mt-3 pb-3 px-3">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Previous</a>
+                </li>
+                {% endif %}
+
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Last</a>
+                </li>
+                {% endif %}
+            </ul>
+            <div class="text-center text-muted">
+                <small>Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} jobs</small>
+            </div>
+        </nav>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('queueChart');
+    if (ctx) {
+        const chartData = {{ queue_chart_json|safe }};
+        new Chart(ctx, {
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Jobs',
+                        data: chartData.jobs,
+                        backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'line',
+                        label: 'Costs (US$)',
+                        data: chartData.costs,
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        tension: 0.3,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { display: true, position: 'bottom', labels: { boxHeight: 6 } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } },
+                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

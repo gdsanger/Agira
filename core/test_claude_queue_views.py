@@ -2,6 +2,8 @@
 Tests for the Claude Queue visibility views (list, detail, and HTMX polling
 partials).
 """
+import json
+import re
 from decimal import Decimal
 
 from django.test import TestCase, Client
@@ -256,3 +258,134 @@ class ClaudeQueueViewsTestCase(TestCase):
         job = self._job_started(CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS + 60)
         response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
         self.assertContains(response, 'Dauert länger als gewöhnlich')
+
+    # ---- mini dashboard --------------------------------------------------
+
+    def _job_with_data(self, cost=None, turns=None, duration_seconds=None, created_at=None):
+        started = timezone.now() - timezone.timedelta(seconds=duration_seconds) if duration_seconds is not None else None
+        finished = timezone.now() if duration_seconds is not None else None
+        job = ClaudeQueueJob.objects.create(
+            item=self.item,
+            project=self.project,
+            status=ClaudeQueueJobStatus.DONE,
+            total_cost_usd=cost,
+            num_turns=turns,
+            started_at=started,
+            finished_at=finished,
+        )
+        if created_at is not None:
+            ClaudeQueueJob.objects.filter(pk=job.pk).update(created_at=created_at)
+        return job
+
+    def test_dashboard_empty_queue_renders_without_errors(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['queue_total_jobs'], 0)
+        self.assertIsNone(response.context['queue_avg_cost'])
+        self.assertIsNone(response.context['queue_avg_turns'])
+        self.assertIsNone(response.context['queue_avg_duration_display'])
+        self.assertContains(response, 'No queue jobs found.')
+
+    def test_dashboard_kpis_with_complete_data(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
+        self._job_with_data(cost=Decimal('3.00'), turns=20, duration_seconds=120)
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        # Assert on context values, not rendered HTML — the KPI numbers go
+        # through the locale-aware floatformat filter (LANGUAGE_CODE=de-DE
+        # renders a comma decimal separator), so string-matching the
+        # rendered markup would be locale-fragile.
+        self.assertEqual(response.context['queue_total_jobs'], 2)
+        self.assertEqual(round(response.context['queue_avg_cost'], 4), Decimal('2.0000'))
+        self.assertEqual(response.context['queue_avg_turns'], 15.0)
+        self.assertEqual(response.context['queue_avg_duration_display'], '1m 30s')
+
+    def test_dashboard_kpis_ignore_missing_values(self):
+        self.client.login(username='testuser', password='testpass123')
+        # One job with all values, one job missing cost/turns/duration entirely.
+        self._job_with_data(cost=Decimal('4.00'), turns=8, duration_seconds=60)
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project, status=ClaudeQueueJobStatus.RUNNING,
+        )
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        # Averages should be based on the single job with data, not diluted by the empty one.
+        self.assertEqual(response.context['queue_total_jobs'], 2)
+        self.assertEqual(round(response.context['queue_avg_cost'], 4), Decimal('4.0000'))
+        self.assertEqual(response.context['queue_avg_turns'], 8.0)
+        self.assertEqual(response.context['queue_avg_duration_display'], '1m 0s')
+
+    def test_dashboard_chart_has_exactly_seven_days_using_created_at(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._job_with_data(cost=Decimal('2.50'), created_at=timezone.now())
+        old_job = self._job_with_data(cost=Decimal('99.00'))
+        ClaudeQueueJob.objects.filter(pk=old_job.pk).update(
+            created_at=timezone.now() - timezone.timedelta(days=30)
+        )
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        match = re.search(r'\{"labels".*?\]\}', response.content.decode(), re.DOTALL)
+        self.assertIsNotNone(match)
+        chart_data = json.loads(match.group(0))
+        self.assertEqual(len(chart_data['labels']), 7)
+        self.assertEqual(len(chart_data['jobs']), 7)
+        self.assertEqual(len(chart_data['costs']), 7)
+        # Old job (30 days ago) must not be counted in the 7-day window.
+        self.assertEqual(sum(chart_data['jobs']), 1)
+        self.assertEqual(sum(chart_data['costs']), 2.5)
+        # Today (last entry) should carry the one recent job.
+        self.assertEqual(chart_data['jobs'][-1], 1)
+
+    def test_dashboard_days_without_jobs_are_zero(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        match = re.search(r'\{"labels".*?\]\}', response.content.decode(), re.DOTALL)
+        chart_data = json.loads(match.group(0))
+        self.assertEqual(chart_data['jobs'], [0, 0, 0, 0, 0, 0, 0])
+        self.assertEqual(chart_data['costs'], [0, 0, 0, 0, 0, 0, 0])
+
+    # ---- pagination ------------------------------------------------------
+
+    def test_pagination_up_to_20_jobs_is_a_single_page(self):
+        self.client.login(username='testuser', password='testpass123')
+        for _ in range(20):
+            self._running_job()
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['page_obj'].object_list), 20)
+        self.assertFalse(response.context['page_obj'].has_other_pages())
+
+    def test_pagination_more_than_20_jobs_spans_pages(self):
+        self.client.login(username='testuser', password='testpass123')
+        for _ in range(25):
+            self._running_job()
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        page_obj = response.context['page_obj']
+        self.assertEqual(len(page_obj.object_list), 20)
+        self.assertEqual(page_obj.paginator.num_pages, 2)
+
+        response_page_2 = self.client.get(reverse('claude-queue-jobs'), {'page': 2})
+        self.assertEqual(response_page_2.status_code, 200)
+        self.assertEqual(len(response_page_2.context['page_obj'].object_list), 5)
+
+    def test_pagination_zero_jobs_renders_without_errors(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['page_obj'].object_list), [])
+
+    def test_pagination_compatible_with_status_filter(self):
+        self.client.login(username='testuser', password='testpass123')
+        for _ in range(22):
+            self._running_job()
+        self._done_job()
+        response = self.client.get(
+            reverse('claude-queue-jobs'), {'status': ClaudeQueueJobStatus.DONE}
+        )
+        page_obj = response.context['page_obj']
+        self.assertEqual(page_obj.paginator.count, 1)
+        self.assertContains(response, 'PR #42')
