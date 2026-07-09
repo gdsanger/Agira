@@ -9,6 +9,7 @@ from decimal import Decimal
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.db.models import Max
+from django.template.defaultfilters import floatformat
 from django.utils import timezone
 
 from core.models import (
@@ -346,6 +347,53 @@ class ClaudeQueueViewsTestCase(TestCase):
         chart_data = json.loads(match.group(0))
         self.assertEqual(chart_data['jobs'], [0, 0, 0, 0, 0, 0, 0])
         self.assertEqual(chart_data['costs'], [0, 0, 0, 0, 0, 0, 0])
+
+    def test_dashboard_cost_kpi_rendered_with_two_decimals(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
+        self._job_with_data(cost=Decimal('2.2345'), turns=20, duration_seconds=120)
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        expected_cost = floatformat(response.context['queue_avg_cost'], 2)
+        self.assertContains(response, f'US${expected_cost}')
+        # Guard against a regression back to more decimal places.
+        self.assertNotContains(response, f'US${floatformat(response.context["queue_avg_cost"], 4)}')
+
+    def test_dashboard_turns_kpi_rendered_without_decimals(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._job_with_data(cost=Decimal('1.00'), turns=9, duration_seconds=60)
+        self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['queue_avg_turns'], 9.5)
+        expected_turns = floatformat(response.context['queue_avg_turns'], 0)
+        self.assertContains(response, expected_turns)
+        self.assertNotIn(',', expected_turns)
+        self.assertNotIn('.', expected_turns)
+
+    def test_dashboard_kpis_render_without_errors_when_all_values_missing(self):
+        self.client.login(username='testuser', password='testpass123')
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project, status=ClaudeQueueJobStatus.RUNNING,
+        )
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '–')  # the "–" placeholder for empty KPIs
+
+    def test_dashboard_chart_canvas_is_placed_below_kpi_cards(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        kpi_row_index = content.index('Ø Turns')
+        chart_index = content.index('id="queueChart"')
+        self.assertGreater(chart_index, kpi_row_index)
+
+    def test_dashboard_chart_container_has_increased_height(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'height: 320px;')
 
     # ---- pagination ------------------------------------------------------
 
