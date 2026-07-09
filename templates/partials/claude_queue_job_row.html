@@ -19,7 +19,14 @@ Expects `job` and `active_statuses` in context.
         <br><small class="text-muted">Item #{{ job.item.id }}</small>
     </td>
     <td>{{ job.project.name }}</td>
-    <td>{% include 'partials/claude_queue_status_badge.html' %}</td>
+    <td>
+        {% include 'partials/claude_queue_status_badge.html' %}
+        {% if job.is_long_running %}
+        <span class="badge bg-warning text-dark" title="Läuft seit {{ job.started_at|date:'Y-m-d H:i' }}">
+            <i class="bi bi-hourglass-split"></i> Dauert länger als gewöhnlich
+        </span>
+        {% endif %}
+    </td>
     <td class="cqj-progress" onclick="event.stopPropagation();">
         {% if job.status == 'failed' and job.error_text %}
         <span class="text-danger" title="{{ job.error_text }}">

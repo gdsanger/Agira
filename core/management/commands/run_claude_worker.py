@@ -68,9 +68,9 @@ from core.models import (
 
 logger = logging.getLogger(__name__)
 
-# Default wall-clock budget for a single Claude invocation (30 minutes). A hung
+# Default wall-clock budget for a single Claude invocation (60 minutes). A hung
 # job must not block its project lane forever.
-DEFAULT_TIMEOUT_SECONDS = 30 * 60
+DEFAULT_TIMEOUT_SECONDS = 60 * 60
 
 # Watchdog: if no stream event arrives for this long, SIGINT the Claude process.
 # A known stdout-buffering bug means the stream can fall silent while Claude is
