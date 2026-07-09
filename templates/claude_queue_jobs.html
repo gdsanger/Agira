@@ -17,8 +17,8 @@
 </div>
 
 <!-- Mini Dashboard -->
-<div class="row g-3 mb-4">
-    <div class="col-md-2 col-6">
+<div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
         <div class="kpi-card">
             <div class="kpi-icon"><i class="bi bi-list-check"></i></div>
             <div class="kpi-content">
@@ -27,7 +27,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-6">
         <div class="kpi-card">
             <div class="kpi-icon"><i class="bi bi-stopwatch"></i></div>
             <div class="kpi-content">
@@ -36,32 +36,37 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-6">
         <div class="kpi-card">
             <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
             <div class="kpi-content">
                 <div class="kpi-value">
-                    {% if queue_avg_cost is not None %}US${{ queue_avg_cost|floatformat:4 }}{% else %}–{% endif %}
+                    {% if queue_avg_cost is not None %}US${{ queue_avg_cost|floatformat:2 }}{% else %}–{% endif %}
                 </div>
                 <div class="kpi-label">Ø Kosten</div>
             </div>
         </div>
     </div>
-    <div class="col-md-2 col-6">
+    <div class="col-md-3 col-6">
         <div class="kpi-card">
             <div class="kpi-icon"><i class="bi bi-arrow-repeat"></i></div>
             <div class="kpi-content">
                 <div class="kpi-value">
-                    {% if queue_avg_turns is not None %}{{ queue_avg_turns|floatformat:1 }}{% else %}–{% endif %}
+                    {% if queue_avg_turns is not None %}{{ queue_avg_turns|floatformat:0 }}{% else %}–{% endif %}
                 </div>
                 <div class="kpi-label">Ø Turns</div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-body py-2">
-                <canvas id="queueChart" style="max-height: 90px;"></canvas>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div style="height: 320px;">
+                    <canvas id="queueChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -195,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 plugins: { legend: { display: true, position: 'bottom', labels: { boxHeight: 6 } } },
                 scales: {
                     y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } },
