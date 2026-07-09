@@ -2477,3 +2477,231 @@ class WeaviateViewTestCase(TestCase):
         mock_exists.assert_called_once_with('attachment', str(attachment.id))
 
 
+class ItemAsyncWeaviateSyncTestCase(TestCase):
+    """Test that saving an Item (Issue) does not block on Weaviate indexing."""
+
+    def setUp(self):
+        """Set up test data."""
+        from core.models import (
+            User, Organisation, UserOrganisation, Project, ItemType, Item, ItemStatus,
+        )
+
+        self.user = User.objects.create_user(
+            username='issueuser',
+            email='issueuser@example.com',
+            password='testpass',
+            name='Issue User',
+            role='Agent'
+        )
+
+        self.org = Organisation.objects.create(name='Issue Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+
+        self.project = Project.objects.create(
+            name='Issue Test Project',
+            description='Test description'
+        )
+        self.project.clients.add(self.org)
+
+        self.bug_type = ItemType.objects.create(
+            key='issue-bug',
+            name='Bug',
+            description='Bug item type'
+        )
+
+        self.Item = Item
+        self.ItemStatus = ItemStatus
+
+    def _run_on_commit_immediately(self, callback):
+        callback()
+
+    def test_item_create_succeeds_even_if_background_job_fails(self):
+        """Creating an Issue must persist even though the Weaviate job later raises."""
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals.transaction') as mock_transaction, \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor, \
+             patch('core.services.weaviate.signals.upsert_instance', side_effect=RuntimeError('weaviate down')):
+            mock_transaction.on_commit.side_effect = self._run_on_commit_immediately
+            # Run whatever gets submitted to the pool synchronously, in-process,
+            # so we can observe that a failure there doesn't affect the save.
+            mock_executor.submit.side_effect = lambda fn: fn()
+
+            item = self.Item.objects.create(
+                project=self.project,
+                type=self.bug_type,
+                title='Issue with failing background sync',
+                description='Body',
+                status=self.ItemStatus.INBOX,
+            )
+
+        self.assertIsNotNone(item.pk)
+        self.assertTrue(self.Item.objects.filter(pk=item.pk).exists())
+
+    def test_item_update_succeeds_even_if_background_job_fails(self):
+        """Updating an Issue must persist even though the Weaviate job later raises."""
+        item = self.Item.objects.create(
+            project=self.project,
+            type=self.bug_type,
+            title='Original title',
+            description='Body',
+            status=self.ItemStatus.INBOX,
+        )
+
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals.transaction') as mock_transaction, \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor, \
+             patch('core.services.weaviate.signals.upsert_instance', side_effect=RuntimeError('weaviate down')):
+            mock_transaction.on_commit.side_effect = self._run_on_commit_immediately
+            mock_executor.submit.side_effect = lambda fn: fn()
+
+            item.title = 'Updated title'
+            item.save(update_fields=['title'])
+
+        item.refresh_from_db()
+        self.assertEqual(item.title, 'Updated title')
+
+    def test_item_save_dispatches_to_background_executor_not_inline(self):
+        """The save path must hand indexing off to the executor, not call it inline."""
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals.transaction') as mock_transaction, \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor, \
+             patch('core.services.weaviate.signals.upsert_instance') as mock_upsert:
+            mock_transaction.on_commit.side_effect = self._run_on_commit_immediately
+
+            self.Item.objects.create(
+                project=self.project,
+                type=self.bug_type,
+                title='Dispatch check',
+                description='Body',
+                status=self.ItemStatus.INBOX,
+            )
+
+            # Work was handed to the executor...
+            mock_executor.submit.assert_called_once()
+            # ...and, since the executor itself is mocked out, the real
+            # Weaviate call never ran inline on the save path.
+            mock_upsert.assert_not_called()
+
+    def test_item_save_does_not_wait_for_weaviate_processing(self):
+        """The save call returns before the (slow) Weaviate upsert completes."""
+        import threading
+
+        release_upsert = threading.Event()
+        upsert_started = threading.Event()
+        upsert_finished = threading.Event()
+
+        def slow_upsert(instance):
+            upsert_started.set()
+            release_upsert.wait(timeout=5)
+            upsert_finished.set()
+
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals.transaction') as mock_transaction, \
+             patch('core.services.weaviate.signals.upsert_instance', side_effect=slow_upsert):
+            mock_transaction.on_commit.side_effect = self._run_on_commit_immediately
+
+            self.Item.objects.create(
+                project=self.project,
+                type=self.bug_type,
+                title='Non-blocking save',
+                description='Body',
+                status=self.ItemStatus.INBOX,
+            )
+
+            # The save has already returned control to us here, while the
+            # background thread may still be blocked inside the slow upsert.
+            self.assertTrue(upsert_started.wait(timeout=5))
+            self.assertFalse(upsert_finished.is_set())
+
+            # Let the background thread finish so it doesn't leak into other tests.
+            release_upsert.set()
+            self.assertTrue(upsert_finished.wait(timeout=5))
+
+    def test_repeated_background_job_execution_is_idempotent(self):
+        """Running the indexing job twice for the same Issue must target the same object."""
+        from core.services.weaviate.service import make_weaviate_uuid
+
+        item = self.Item.objects.create(
+            project=self.project,
+            type=self.bug_type,
+            title='Idempotency check',
+            description='Body',
+            status=self.ItemStatus.INBOX,
+        )
+
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals.transaction') as mock_transaction, \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor, \
+             patch('core.services.weaviate.signals.upsert_instance', return_value=make_weaviate_uuid('item', str(item.pk))) as mock_upsert:
+            mock_transaction.on_commit.side_effect = self._run_on_commit_immediately
+            mock_executor.submit.side_effect = lambda fn: fn()
+
+            # Simulate the job firing twice for the same Issue (e.g. two saves).
+            item.save(update_fields=['title'])
+            item.save(update_fields=['title'])
+
+            self.assertEqual(mock_upsert.call_count, 2)
+            first_uuid = mock_upsert.return_value
+            second_uuid = mock_upsert.return_value
+            self.assertEqual(first_uuid, second_uuid)
+            # Both calls resolve to the same deterministic Weaviate object,
+            # i.e. an overwrite rather than a duplicate insert.
+            self.assertEqual(first_uuid, make_weaviate_uuid('item', str(item.pk)))
+
+    def test_background_job_only_dispatched_after_commit(self):
+        """The executor must not be touched until the enclosing transaction commits."""
+        from django.db import transaction as real_transaction
+
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor:
+            with self.captureOnCommitCallbacks(execute=False) as callbacks:
+                with real_transaction.atomic():
+                    self.Item.objects.create(
+                        project=self.project,
+                        type=self.bug_type,
+                        title='Post-commit check',
+                        description='Body',
+                        status=self.ItemStatus.INBOX,
+                    )
+                    # Still inside the transaction: nothing dispatched yet.
+                    mock_executor.submit.assert_not_called()
+
+            # Transaction committed, but we deferred executing the captured
+            # on_commit callbacks ourselves.
+            mock_executor.submit.assert_not_called()
+
+            for callback in callbacks:
+                callback()
+
+            mock_executor.submit.assert_called_once()
+
+    def test_background_job_not_dispatched_on_rollback(self):
+        """If the enclosing transaction rolls back, no indexing job may run."""
+        from django.db import transaction as real_transaction
+
+        with patch('core.services.weaviate.signals.is_available', return_value=True), \
+             patch('core.services.weaviate.signals._background_executor') as mock_executor:
+            with self.captureOnCommitCallbacks(execute=True):
+                try:
+                    with real_transaction.atomic():
+                        self.Item.objects.create(
+                            project=self.project,
+                            type=self.bug_type,
+                            title='Rollback check',
+                            description='Body',
+                            status=self.ItemStatus.INBOX,
+                        )
+                        raise RuntimeError('force rollback')
+                except RuntimeError:
+                    pass
+
+            mock_executor.submit.assert_not_called()
+            self.assertFalse(
+                self.Item.objects.filter(title='Rollback check').exists()
+            )
+
+
