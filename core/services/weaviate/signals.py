@@ -6,31 +6,43 @@ to Weaviate when they are saved or deleted.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
+
 from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 from core.services.weaviate.client import is_available
 from core.services.weaviate.service import (
-    upsert_instance, 
-    delete_object, 
+    upsert_instance,
+    delete_object,
     is_meeting_transcript_attachment
 )
 from core.services.weaviate.serializers import _get_model_type
 
 logger = logging.getLogger(__name__)
 
+# Dedicated pool for Weaviate indexing that must not block the request/save path
+# (e.g. Item/Issue saves). Kept small since indexing is I/O-bound, not CPU-bound.
+_background_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="weaviate-index")
 
-def _safe_upsert(instance):
+
+def _safe_upsert(instance, *, background=False):
     """
     Safely upsert an instance to Weaviate.
-    
+
     Catches all exceptions to prevent signal from breaking save operations.
     Uses transaction.on_commit() to ensure DB transaction completes first.
+
+    Args:
+        instance: Django model instance to upsert.
+        background: If True, run the upsert on a worker thread after commit
+            instead of inline, so the caller (e.g. the Issue save request)
+            doesn't wait for Weaviate indexing to finish.
     """
     if not is_available():
         return
-    
+
     # Skip meeting transcript attachments - they are too large and cause timeouts
     from core.models import Attachment
     if isinstance(instance, Attachment) and is_meeting_transcript_attachment(instance):
@@ -39,7 +51,7 @@ def _safe_upsert(instance):
             f"(file: {instance.original_name})"
         )
         return
-    
+
     def sync_to_weaviate():
         try:
             upsert_instance(instance)
@@ -49,10 +61,17 @@ def _safe_upsert(instance):
                 f"Failed to sync {instance.__class__.__name__} (pk={instance.pk}) to Weaviate: {e}",
                 exc_info=True
             )
-    
-    # Only sync after DB transaction commits successfully
+
+    def dispatch():
+        if background:
+            _background_executor.submit(sync_to_weaviate)
+        else:
+            sync_to_weaviate()
+
+    # Only sync after DB transaction commits successfully, so the background
+    # job never races the transaction and only ever sees committed data.
     try:
-        transaction.on_commit(sync_to_weaviate)
+        transaction.on_commit(dispatch)
     except Exception as e:
         # If not in a transaction or other error, log and continue
         logger.warning(
@@ -87,8 +106,8 @@ def _safe_delete(sender, instance):
 # Register signal handlers for supported models
 @receiver(post_save, sender='core.Item')
 def sync_item_to_weaviate(sender, instance, created, **kwargs):
-    """Sync Item to Weaviate on save."""
-    _safe_upsert(instance)
+    """Sync Item (Issue) to Weaviate on save, in the background so saving isn't slowed down."""
+    _safe_upsert(instance, background=True)
 
 
 @receiver(post_delete, sender='core.Item')
