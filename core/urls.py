@@ -129,6 +129,7 @@ urlpatterns = [
     path('claude-queue/<int:job_id>/', views.claude_queue_job_detail, name='claude-queue-job-detail'),
     path('claude-queue/<int:job_id>/row/', views.claude_queue_job_row, name='claude-queue-job-row'),
     path('claude-queue/<int:job_id>/live/', views.claude_queue_job_live, name='claude-queue-job-live'),
+    path('claude-queue/<int:job_id>/delete/', views.claude_queue_job_delete, name='claude-queue-job-delete'),
     path('changes/new/', views.change_create, name='change-create'),
     path('changes/<int:id>/', views.change_detail, name='change-detail'),
     path('changes/<int:id>/edit/', views.change_edit, name='change-edit'),

@@ -59,4 +59,16 @@ Expects `job` and `active_statuses` in context.
         {% if job.total_cost_usd is not None %}<br><small class="text-muted">${{ job.total_cost_usd|floatformat:4 }}</small>{% endif %}
     </td>
     <td class="text-nowrap"><small class="text-muted">{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
+    <td class="text-nowrap" onclick="event.stopPropagation();">
+        {% if job.is_deletable %}
+        <button type="button" class="btn btn-outline-danger btn-sm"
+                hx-post="{% url 'claude-queue-job-delete' job.id %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML swap:1s"
+                hx-confirm="Job #{{ job.id }} endgültig löschen?"
+                hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+            <i class="bi bi-trash"></i>
+        </button>
+        {% endif %}
+    </td>
 </tr>

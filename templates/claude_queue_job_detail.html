@@ -19,6 +19,14 @@
                 &middot; Model: {{ job.get_model_display }}
             </p>
         </div>
+        {% if job.is_deletable %}
+        <button type="button" class="btn btn-outline-danger"
+                hx-post="{% url 'claude-queue-job-delete' job.id %}?redirect=1"
+                hx-confirm="Job #{{ job.id }} endgültig löschen?"
+                hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+            <i class="bi bi-trash"></i> Job löschen
+        </button>
+        {% endif %}
     </div>
 </div>
 

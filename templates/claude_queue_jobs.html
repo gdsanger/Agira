@@ -119,6 +119,7 @@
                         <th>PR</th>
                         <th>Turns / Cost</th>
                         <th>Created</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -126,7 +127,7 @@
                     {% include 'partials/claude_queue_job_row.html' %}
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">No queue jobs found.</td>
+                        <td colspan="9" class="text-center text-muted py-4">No queue jobs found.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
