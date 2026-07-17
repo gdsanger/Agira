@@ -913,6 +913,42 @@ def claude_queue_job_live(request, job_id):
         'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
     })
 
+
+@login_required
+@require_http_methods(["POST"])
+def claude_queue_job_delete(request, job_id):
+    """Delete a single Claude queue job.
+
+    Only terminal jobs (done/failed/cancelled) are deletable — a running or
+    queued job is still owned by the worker, so deleting it here would race
+    with claiming/processing. Used both from the list row (in-place HTMX
+    removal) and the detail page (redirect back to the list, requested via
+    the `redirect` query param, using the project's HX-Redirect convention).
+    """
+    job = get_object_or_404(ClaudeQueueJob, id=job_id)
+
+    if not job.is_deletable:
+        return HttpResponse(
+            f"Job #{job.id} has status '{job.get_status_display()}' and cannot be deleted.",
+            status=400,
+        )
+
+    item, status_label = job.item, job.get_status_display()
+    job.delete()
+
+    ActivityService().log(
+        verb='claudequeuejob.deleted',
+        target=item,
+        actor=request.user if request.user.is_authenticated else None,
+        summary=f"Claude queue job #{job_id} ({status_label}) deleted",
+    )
+
+    response = HttpResponse()
+    if request.GET.get('redirect'):
+        response['HX-Redirect'] = reverse('claude-queue-jobs')
+    return response
+
+
 @login_required
 def item_lookup(request, item_id):
     """

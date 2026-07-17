@@ -89,6 +89,20 @@ class ClaudeQueueViewsTestCase(TestCase):
             error_text='boom: something went wrong',
         )
 
+    def _cancelled_job(self):
+        return ClaudeQueueJob.objects.create(
+            item=self.item,
+            project=self.project,
+            status=ClaudeQueueJobStatus.CANCELLED,
+        )
+
+    def _queued_job(self):
+        return ClaudeQueueJob.objects.create(
+            item=self.item,
+            project=self.project,
+            status=ClaudeQueueJobStatus.QUEUED,
+        )
+
     # ---- auth ----------------------------------------------------------
 
     def test_list_requires_authentication(self):
@@ -437,3 +451,119 @@ class ClaudeQueueViewsTestCase(TestCase):
         page_obj = response.context['page_obj']
         self.assertEqual(page_obj.paginator.count, 1)
         self.assertContains(response, 'PR #42')
+
+    # ---- is_deletable ------------------------------------------------------
+
+    def test_is_deletable_true_for_terminal_statuses(self):
+        for job in (self._done_job(), self._failed_job(), self._cancelled_job()):
+            self.assertTrue(job.is_deletable)
+
+    def test_is_deletable_false_for_active_statuses(self):
+        for job in (self._queued_job(), self._running_job()):
+            self.assertFalse(job.is_deletable)
+
+    # ---- delete --------------------------------------------------------
+
+    def test_delete_requires_authentication(self):
+        job = self._done_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+        self.assertTrue(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_requires_post(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.get(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_failed_job_succeeds(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._failed_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_done_job_succeeds(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_cancelled_job_succeeds(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._cancelled_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_deleted_job_no_longer_appears_in_list(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertNotContains(response, 'PR #42')
+
+    def test_delete_running_job_is_rejected(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_queued_job_is_rejected(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._queued_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(ClaudeQueueJob.objects.filter(id=job.id).exists())
+
+    def test_delete_nonexistent_job_returns_404(self):
+        self.client.login(username='testuser', password='testpass123')
+        max_id = ClaudeQueueJob.objects.aggregate(Max('id'))['id__max'] or 0
+        response = self.client.post(reverse('claude-queue-job-delete', args=[max_id + 1]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_with_redirect_param_sets_hx_redirect_header(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.post(
+            reverse('claude-queue-job-delete', args=[job.id]) + '?redirect=1',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['HX-Redirect'], reverse('claude-queue-jobs'))
+
+    def test_delete_without_redirect_param_has_no_hx_redirect_header(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('HX-Redirect', response)
+
+    # ---- delete button rendering ----------------------------------------
+
+    def test_row_shows_delete_button_for_deletable_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
+        self.assertContains(response, reverse('claude-queue-job-delete', args=[job.id]))
+
+    def test_row_hides_delete_button_for_running_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
+        self.assertNotContains(response, reverse('claude-queue-job-delete', args=[job.id]))
+
+    def test_detail_shows_delete_button_for_deletable_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
+        self.assertContains(response, reverse('claude-queue-job-delete', args=[job.id]))
+
+    def test_detail_hides_delete_button_for_running_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
+        self.assertNotContains(response, reverse('claude-queue-job-delete', args=[job.id]))

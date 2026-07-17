@@ -1962,6 +1962,20 @@ class ClaudeQueueJob(models.Model):
         elapsed = (timezone.now() - self.started_at).total_seconds()
         return elapsed >= CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS
 
+    # Statuses a job may be manually deleted from — terminal states only, so a
+    # job the worker (or a queued claim) still owns can never be removed out
+    # from under it.
+    _DELETABLE_STATUSES = frozenset({
+        ClaudeQueueJobStatus.DONE,
+        ClaudeQueueJobStatus.FAILED,
+        ClaudeQueueJobStatus.CANCELLED,
+    })
+
+    @property
+    def is_deletable(self):
+        """True if this job is in a terminal state and safe to delete."""
+        return self.status in self._DELETABLE_STATUSES
+
     # Allowed state transitions for the job state machine.
     _TRANSITIONS = {
         ClaudeQueueJobStatus.QUEUED: {ClaudeQueueJobStatus.RUNNING, ClaudeQueueJobStatus.CANCELLED},
