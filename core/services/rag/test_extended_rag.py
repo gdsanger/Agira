@@ -184,30 +184,32 @@ class SearchTestCase(TestCase):
             'url': '/items/123/',
             'source_system': 'agira',
             'updated_at': '2024-01-01',
+            'status': 'Working',
         }
         mock_obj.metadata.score = 0.85
-        
+
         mock_response = Mock()
         mock_response.objects = [mock_obj]
-        
+
         mock_collection = Mock()
         mock_collection.query.hybrid.return_value = mock_response
-        
+
         mock_client = Mock()
         mock_client.collections.get.return_value = mock_collection
         mock_get_client.return_value = mock_client
-        
+
         results = ExtendedRAGPipelineService._perform_search(
             query_text="test",
             alpha=0.6,
             limit=10
         )
-        
+
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]['object_id'], '123')
         self.assertEqual(results[0]['object_type'], 'item')
         self.assertEqual(results[0]['title'], 'Test Item')
         self.assertEqual(results[0]['score'], 0.85)
+        self.assertEqual(results[0]['status'], 'Working')
     
     @patch('core.services.rag.extended_service.get_client')
     @patch('core.services.rag.extended_service.is_available')
@@ -441,13 +443,28 @@ class LayerSeparationTestCase(TestCase):
         ]
         
         layer_a, layer_b, layer_c = ExtendedRAGPipelineService._separate_into_layers(results)
-        
+
         # Layer A: up to 3
         self.assertLessEqual(len(layer_a), 3)
         # Layer B: up to 3
         self.assertLessEqual(len(layer_b), 3)
         # Layer C: up to 2
         self.assertLessEqual(len(layer_c), 2)
+
+    def test_layers_propagate_status(self):
+        """Each RAGContextObject built by layer separation should carry its status."""
+        results = [
+            {'object_id': '1', 'object_type': 'item', 'content': 'Item 1', 'title': 'I1',
+             'score': 0.9, 'status': 'Working'},
+            {'object_id': '2', 'object_type': 'item', 'content': 'Item 2', 'title': 'I2',
+             'score': 0.8, 'status': 'Closed'},
+        ]
+
+        _, layer_b, _ = ExtendedRAGPipelineService._separate_into_layers(results)
+
+        by_id = {item.object_id: item.status for item in layer_b}
+        self.assertEqual(by_id['1'], 'Working')
+        self.assertEqual(by_id['2'], 'Closed')
 
 
 class ContextTextFormattingTestCase(TestCase):
@@ -667,14 +684,15 @@ class JSONSerializationTestCase(TestCase):
             source='agira',
             relevance_score=0.85,
             link='http://example.com/item/123',
-            updated_at='2024-01-01 12:00:00'
+            updated_at='2024-01-01 12:00:00',
+            status='Working'
         )
-        
+
         result = obj.to_dict()
-        
+
         # Should be a dict
         self.assertIsInstance(result, dict)
-        
+
         # Should have all fields
         self.assertEqual(result['object_type'], 'item')
         self.assertEqual(result['object_id'], '123')
@@ -684,10 +702,28 @@ class JSONSerializationTestCase(TestCase):
         self.assertEqual(result['relevance_score'], 0.85)
         self.assertEqual(result['link'], 'http://example.com/item/123')
         self.assertEqual(result['updated_at'], '2024-01-01 12:00:00')
-        
+        self.assertEqual(result['status'], 'Working')
+
         # Should be JSON serializable
         json_str = json.dumps(result)
         self.assertIsInstance(json_str, str)
+
+    def test_rag_context_object_to_dict_status_defaults_to_none(self):
+        """RAGContextObject.to_dict() should default status to None when not applicable."""
+        obj = RAGContextObject(
+            object_type='attachment',
+            object_id='456',
+            title='Test Attachment',
+            content='Test content',
+            source='agira',
+            relevance_score=0.5,
+            link=None,
+            updated_at=None,
+        )
+
+        result = obj.to_dict()
+
+        self.assertIsNone(result['status'])
     
     def test_optimized_query_to_dict(self):
         """OptimizedQuery.to_dict() should produce JSON-serializable dict."""

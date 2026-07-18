@@ -121,7 +121,13 @@ def get_project(project_id: int) -> dict:
 
 @mcp.tool()
 def list_open_items(project_id: int | None = None) -> list:
-    """List open items (status != Closed). Optionally scoped to one project."""
+    """
+    List open items (status != Closed). Optionally scoped to one project.
+
+    Each returned item includes ``id`` and ``status`` (the canonical
+    ItemStatus value, e.g. "Working", "Review") as top-level fields, so the
+    id-to-status mapping never requires a separate lookup.
+    """
     client = _client()
     if project_id is not None:
         return client.get_project_open_items(project_id)
@@ -130,13 +136,25 @@ def list_open_items(project_id: int | None = None) -> list:
 
 @mcp.tool()
 def get_item(item_id: int) -> dict:
-    """Get a single Agira item by its numeric id."""
+    """
+    Get a single Agira item by its numeric id.
+
+    The response includes ``id`` and ``status`` (the canonical ItemStatus
+    value) as top-level fields.
+    """
     return _client().get_item(item_id)
 
 
 @mcp.tool()
 def get_item_context(item_id: int) -> dict:
-    """Get RAG context (related knowledge) for an item, useful for answering."""
+    """
+    Get RAG context (related knowledge) for an item, useful for answering.
+
+    Each context object (``layer_a``/``layer_b``/``layer_c``/``all_items``)
+    includes ``object_id`` (the id of the underlying item/object) and
+    ``status`` (its canonical status, when the object type has one, e.g.
+    Agira items) as top-level fields.
+    """
     return _client().get_item_context(item_id)
 
 

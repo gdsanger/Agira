@@ -16,6 +16,7 @@ FIELD_MAPPING = {
     "item_id": "parent_object_id",  # parent_object_id may contain item_id for comments
     "updated_at": "updated_at",
     "source": "source_system",
+    "status": "status",
 }
 
 # Default values
