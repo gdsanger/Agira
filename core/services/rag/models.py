@@ -20,6 +20,7 @@ class RAGContextObject:
         relevance_score: Relevance score from search (0-1, higher is better)
         link: URL/link to the object
         updated_at: Last update timestamp as string
+        status: Canonical status of the object (e.g. item.status), if applicable
     """
     object_type: str
     object_id: str
@@ -29,11 +30,12 @@ class RAGContextObject:
     relevance_score: Optional[float]
     link: Optional[str]
     updated_at: Optional[str]
-    
+    status: Optional[str] = None
+
     def to_dict(self) -> dict:
         """
         Convert to JSON-serializable dictionary.
-        
+
         Returns:
             Dictionary with all fields as primitive types
         """
@@ -46,6 +48,7 @@ class RAGContextObject:
             'relevance_score': self.relevance_score,
             'link': self.link,
             'updated_at': self.updated_at,
+            'status': self.status,
         }
 
 

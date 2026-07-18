@@ -10,6 +10,7 @@ This module tests the API endpoints for CustomGPT Actions including:
 """
 import json
 import os
+from unittest.mock import patch
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 
@@ -17,6 +18,8 @@ from core.models import (
     Organisation, UserOrganisation, Project, ProjectStatus,
     ItemType, Item, ItemStatus, UserRole
 )
+from core.services.rag.models import RAGContextObject
+from core.services.rag.extended_service import ExtendedRAGContext
 
 User = get_user_model()
 
@@ -251,6 +254,7 @@ class CustomGPTItemsAPITest(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data['id'], self.open_item.id)
         self.assertEqual(data['title'], 'Open Item')
+        self.assertEqual(data['status'], ItemStatus.WORKING)
     
     def test_get_item_not_found(self):
         """Test GET /api/customgpt/items/{id} with invalid ID."""
@@ -352,6 +356,7 @@ class CustomGPTItemsAPITest(TestCase):
         # Should only return open item, not closed
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['id'], self.open_item.id)
+        self.assertEqual(data[0]['status'], ItemStatus.WORKING)
 
 
 class CustomGPTItemContextAPITest(TestCase):
@@ -417,6 +422,44 @@ class CustomGPTItemContextAPITest(TestCase):
         # Items should be a list (may be empty if Weaviate not configured)
         self.assertIsInstance(data['items'], list)
     
+    def test_get_item_context_includes_status_per_item(self):
+        """Related items in the RAG context must expose their status directly."""
+        related_item = RAGContextObject(
+            object_type='item',
+            object_id='42',
+            title='Related Item',
+            content='Related content',
+            source='agira',
+            relevance_score=0.9,
+            link='/items/42/',
+            updated_at='2024-01-01',
+            status=ItemStatus.REVIEW,
+        )
+        stub_context = ExtendedRAGContext(
+            query='Test Item',
+            optimized_query=None,
+            layer_a=[],
+            layer_b=[related_item],
+            layer_c=[],
+            all_items=[related_item],
+            summary='Found 1 item',
+            stats={'total': 1},
+        )
+
+        with patch('core.views_api.build_extended_context', return_value=stub_context):
+            response = self.client.get(
+                f'/api/customgpt/items/{self.item.id}/context',
+                **self.headers
+            )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(len(data['items']), 1)
+        self.assertEqual(data['items'][0]['object_id'], '42')
+        self.assertEqual(data['items'][0]['status'], ItemStatus.REVIEW)
+        # Same data must be reachable via the richer layer_b field too
+        self.assertEqual(data['layer_b'][0]['status'], ItemStatus.REVIEW)
+
     def test_get_item_context_not_found(self):
         """Test GET /api/customgpt/items/{id}/context with invalid item ID."""
         response = self.client.get(

@@ -772,6 +772,7 @@ class ExtendedRAGPipelineService:
                         'link': props.get(FIELD_MAPPING['link']),
                         'source': props.get(FIELD_MAPPING['source']),
                         'updated_at': props.get(FIELD_MAPPING['updated_at']),
+                        'status': props.get(FIELD_MAPPING['status']),
                         'score': getattr(obj.metadata, 'score', None),
                         'search_type': 'semantic' if alpha >= 0.5 else 'keyword'
                     }
@@ -1105,6 +1106,7 @@ class ExtendedRAGPipelineService:
                 relevance_score=result.get('final_score') or result.get('score'),
                 link=result.get('link'),
                 updated_at=str(result.get('updated_at')) if result.get('updated_at') else None,
+                status=result.get('status'),
             )
             
             # Classify into layers (Issue #407: Documentation-centric)
