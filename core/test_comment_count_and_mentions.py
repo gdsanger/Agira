@@ -204,16 +204,20 @@ class CommentMentionNotificationTestCase(TestCase):
     @patch('core.services.graph.mail_service.send_email')
     def test_self_mention_sends_no_email(self, mock_send_email):
         body = f'Note to self @[Author](user:{self.author.id})'
-        self._post_comment(body)
+        with self.assertLogs('core.views', level='INFO') as log_ctx:
+            self._post_comment(body)
 
         mock_send_email.assert_not_called()
+        self.assertTrue(any('mentioned themselves' in message for message in log_ctx.output))
 
     @patch('core.services.graph.mail_service.send_email')
     def test_inactive_mentioned_user_sends_no_email(self, mock_send_email):
         body = f'@[Inactive User](user:{self.inactive_user.id}) fyi'
-        self._post_comment(body)
+        with self.assertLogs('core.views', level='INFO') as log_ctx:
+            self._post_comment(body)
 
         mock_send_email.assert_not_called()
+        self.assertTrue(any('is inactive' in message for message in log_ctx.output))
 
     @patch('core.services.graph.mail_service.send_email')
     def test_editing_comment_does_not_resend_notification(self, mock_send_email):
