@@ -115,6 +115,15 @@ class ItemListViewTestCase(TestCase):
             organisation=self.org,
         )
         
+        self.review_item = Item.objects.create(
+            title="Review Item",
+            description="This is a review item",
+            project=self.project2,
+            type=self.feature_type,
+            status=ItemStatus.REVIEW,
+            organisation=self.org,
+        )
+
         self.ready_item = Item.objects.create(
             title="Ready Item",
             description="This is a ready item",
@@ -175,13 +184,23 @@ class ItemListViewTestCase(TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].status, ItemStatus.TESTING)
     
+    def test_review_view_status_scope(self):
+        """Test review view only shows review items"""
+        response = self.client.get(reverse('items-review'))
+        self.assertEqual(response.status_code, 200)
+
+        items = list(response.context['table'].data)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].status, ItemStatus.REVIEW)
+
     def test_ready_view_status_scope(self):
         """Test ready view only shows ready items"""
         response = self.client.get(reverse('items-ready'))
         self.assertEqual(response.status_code, 200)
-        
+
         items = list(response.context['table'].data)
-        
+
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].status, ItemStatus.READY_FOR_RELEASE)
     
@@ -292,6 +311,7 @@ class ItemListViewTestCase(TestCase):
             'items-backlog',
             'items-working',
             'items-testing',
+            'items-review',
             'items-ready',
         ]
         

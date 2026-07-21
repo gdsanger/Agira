@@ -54,6 +54,7 @@ urlpatterns = [
     path('items/backlog/', views_items.ItemsBacklogView.as_view(), name='items-backlog'),
     path('items/working/', views_items.ItemsWorkingView.as_view(), name='items-working'),
     path('items/testing/', views_items.ItemsTestingView.as_view(), name='items-testing'),
+    path('items/review/', views_items.ItemsReviewView.as_view(), name='items-review'),
     path('items/ready/', views_items.ItemsReadyView.as_view(), name='items-ready'),
     path('items/assigned/', views_items.ItemsAssignedToMeView.as_view(), name='items-assigned'),
     path('items/responsible/', views_items.ItemsResponsibleForView.as_view(), name='items-responsible'),
