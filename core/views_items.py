@@ -155,6 +155,13 @@ class ItemsTestingView(StatusItemListView):
     page_description = "Items being tested"
 
 
+class ItemsReviewView(StatusItemListView):
+    """Items Review - items marked for coordination or open questions."""
+    item_status = ItemStatus.REVIEW
+    page_title = "Items - Review"
+    page_description = "Items marked for review/coordination"
+
+
 class ItemsReadyView(StatusItemListView):
     """Items Ready for Release - items ready to be released."""
     item_status = ItemStatus.READY_FOR_RELEASE
@@ -380,6 +387,7 @@ def item_list_delete(request, item_id):
             ItemStatus.BACKLOG: ItemsBacklogView,
             ItemStatus.WORKING: ItemsWorkingView,
             ItemStatus.TESTING: ItemsTestingView,
+            ItemStatus.REVIEW: ItemsReviewView,
             ItemStatus.READY_FOR_RELEASE: ItemsReadyView,
         }
         view_class = view_class_map.get(item_status)
