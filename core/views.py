@@ -42,6 +42,7 @@ from .services.storage.errors import AttachmentTooLarge
 from .services.agents import AgentService
 from .services.claude_queue.model_classifier import ModelClassifierService
 from .services.mail import check_mail_trigger, prepare_mail_preview
+from .services.comments.mentions import extract_mentioned_user_ids
 from .services.change_policy_service import ChangePolicyService
 from .backends.azuread import AzureADAuth, AzureADAuthError
 
@@ -3622,23 +3623,67 @@ def item_change_status(request, item_id):
 
 
 @login_required
+def user_search(request):
+    """
+    JSON endpoint for the comment @mention picker (and similar user pickers).
+
+    GET /users/search/?q=<query> returns active users whose name, username or
+    email contains the query, for use as autocomplete suggestions.
+    """
+    query = request.GET.get('q', '').strip()
+    users = User.objects.filter(active=True)
+    if query:
+        users = users.filter(
+            Q(name__icontains=query) | Q(username__icontains=query) | Q(email__icontains=query)
+        )
+    users = users.order_by('name')[:20]
+
+    return JsonResponse({
+        'results': [
+            {
+                'id': user.id,
+                'name': user.name or user.username,
+                'username': user.username,
+                'email': user.email,
+            }
+            for user in users
+        ]
+    })
+
+
+@login_required
 
 @require_POST
 def item_add_comment(request, item_id):
     """HTMX endpoint to add a comment to an item."""
     item = get_object_or_404(Item, id=item_id)
     body = request.POST.get('body', '').strip()
-    
+
     if not body:
         return HttpResponse("Comment body cannot be empty", status=400)
-    
+
     # Create comment
     comment = ItemComment.objects.create(
         item=item,
         author=request.user if request.user.is_authenticated else None,
         body=body,
     )
-    
+
+    # Resolve structured @mentions and notify each mentioned user exactly
+    # once. Mentions are only processed on creation - editing a comment
+    # updates the stored mentions (see item_update_comment) but never
+    # re-sends notifications, since "one email per saved comment" is
+    # anchored to the comment's creation, not to every subsequent edit.
+    mentioned_ids = extract_mentioned_user_ids(body)
+    if mentioned_ids:
+        mentioned_users = list(User.objects.filter(id__in=mentioned_ids))
+        comment.mentioned_users.set(mentioned_users)
+        author = comment.author
+        for mentioned_user in mentioned_users:
+            if not mentioned_user.active or mentioned_user.id == getattr(author, 'id', None):
+                continue
+            _send_mention_notification(item, comment, mentioned_user)
+
     # Log activity
     activity_service = ActivityService()
     activity_service.log(
@@ -3647,7 +3692,7 @@ def item_add_comment(request, item_id):
         actor=request.user if request.user.is_authenticated else None,
         summary=f"Added comment",
     )
-    
+
     # Return updated comments list
     comments = item.comments.select_related('author').order_by('created_at')
     context = {
@@ -3676,7 +3721,13 @@ def item_update_comment(request, comment_id):
         
         comment.body = new_body
         comment.save()
-        
+
+        # Keep mentioned_users in sync with the edited body. No notification
+        # emails are (re-)sent here - "one email per saved comment" is tied
+        # to the comment's creation, not to every subsequent edit.
+        mentioned_ids = extract_mentioned_user_ids(new_body)
+        comment.mentioned_users.set(User.objects.filter(id__in=mentioned_ids) if mentioned_ids else [])
+
         # Log activity
         activity_service = ActivityService()
         activity_service.log(
@@ -4419,6 +4470,62 @@ def _send_responsible_notification(item, new_responsible):
         logger.info(f"Sent responsible notification to {new_responsible.email} for item {item.id}")
     except Exception as e:
         logger.error(f"Failed to send responsible notification: {e}")
+
+
+def _send_mention_notification(item, comment, mentioned_user):
+    """
+    Send email notification to a user mentioned in a comment.
+    Uses mail template with key 'comment-mention'.
+
+    Failures are logged and swallowed so that a mail problem never rolls
+    back or blocks the comment save that already succeeded.
+
+    Args:
+        item: Item instance the comment belongs to
+        comment: ItemComment instance that was just created
+        mentioned_user: User instance who was mentioned
+    """
+    try:
+        from .services.graph.mail_service import send_email
+
+        template = MailTemplate.objects.filter(key='comment-mention', is_active=True).first()
+        if not template:
+            logger.warning("Mail template 'comment-mention' not found or inactive")
+            return
+
+        settings = GlobalSettings.get_instance()
+        base_url = settings.base_url if settings and settings.base_url else 'http://localhost:8000'
+        item_link = f"{base_url.rstrip('/')}/items/{item.id}/"
+
+        context = {
+            'issue': {
+                'title': item.title,
+                'project': item.project.name if item.project else '—',
+                'link': item_link,
+            },
+            'comment': {
+                'body': comment.body,
+                'author': comment.author.name if comment.author else 'Unknown',
+            },
+            'recipient_name': mentioned_user.name or mentioned_user.username,
+        }
+
+        from django.template import Context, Template
+        subject = Template(template.subject).render(Context(context))
+        message = Template(template.message).render(Context(context))
+
+        send_email(
+            subject=subject,
+            body=message,
+            to=[mentioned_user.email],
+            body_is_html=True,
+        )
+
+        logger.info(
+            f"Sent mention notification to {mentioned_user.email} for comment {comment.id} on item {item.id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send mention notification to {mentioned_user.email}: {e}")
 
 
 def _update_item_followers(item, follower_ids):

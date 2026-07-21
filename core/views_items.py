@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.generic import ListView
 from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponse
+from django.db.models import Count
 from django_tables2 import SingleTableMixin
 from django_tables2.config import RequestConfig
 from django_filters.views import FilterView
@@ -51,10 +52,12 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
             raise NotImplementedError("Subclasses must set item_status")
         
         # Base queryset with status scope (fixed, not UI-removable)
+        # comment_count is annotated here (single aggregate query) so the table
+        # can display it without triggering a per-row query.
         queryset = Item.objects.filter(status=self.item_status).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to'
-        )
-        
+        ).annotate(comment_count=Count('comments'))
+
         return queryset
     
     def get_context_data(self, **kwargs):
@@ -210,7 +213,7 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
             status=ItemStatus.CLOSED
         ).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to'
-        )
+        ).annotate(comment_count=Count('comments'))
 
         return queryset
 
@@ -314,8 +317,8 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
         """
         queryset = Item.objects.exclude(status=ItemStatus.CLOSED).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to', 'solution_release'
-        ).prefetch_related('external_mappings')
-        
+        ).prefetch_related('external_mappings').annotate(comment_count=Count('comments'))
+
         return queryset
     
     def get_context_data(self, **kwargs):

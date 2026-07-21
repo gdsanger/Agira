@@ -110,6 +110,12 @@
                     </div>
                     {% endif %}
                     {% endwith %}
+                    {% if item.comment_count %}
+                    <div class="kanban-card-meta-row">
+                        <i class="bi bi-chat-left-text"></i>
+                        <span>{{ item.comment_count }}</span>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="kanban-card-actions">
                     <a href="{% url 'item-detail' item.id %}" class="btn btn-sm btn-outline-primary">

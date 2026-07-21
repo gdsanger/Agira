@@ -9,12 +9,12 @@
             {% csrf_token %}
             <div class="mb-3">
                 <label for="comment-body" class="form-label">Add Comment</label>
-                <textarea 
-                    class="form-control" 
-                    id="comment-body" 
-                    name="body" 
-                    rows="4" 
-                    placeholder="Enter your comment here..."
+                <textarea
+                    class="form-control mention-textarea"
+                    id="comment-body"
+                    name="body"
+                    rows="4"
+                    placeholder="Enter your comment here... (type @ to mention a user)"
                     required></textarea>
             </div>
             <button type="submit" class="btn btn-primary">
@@ -90,7 +90,7 @@
                             {% endif %}
                             
                             <!-- Body is hidden by default if there's a subject, shown when expanded -->
-                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap; {% if comment.subject %}display: none;{% endif %}">{{ comment.body }}</div>
+                            <div id="comment-body-{{ comment.id }}" class="comment-body-text" style="white-space: pre-wrap; {% if comment.subject %}display: none;{% endif %}">{{ comment.body|render_mentions }}</div>
                             
                             <!-- Show expand button if there's a subject (indicating email/content to expand) -->
                             {% if comment.subject %}
@@ -107,7 +107,7 @@
                             {% endif %}
                         </div>
                         <div id="comment-edit-{{ comment.id }}" style="display: none;">
-                            <textarea class="form-control mb-2" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
+                            <textarea class="form-control mb-2 mention-textarea" id="comment-edit-text-{{ comment.id }}" rows="4">{{ comment.body }}</textarea>
                             <button type="button" class="btn btn-sm btn-primary" onclick="saveComment({{ comment.id }})">Save</button>
                             <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEditComment({{ comment.id }})">Cancel</button>
                         </div>
@@ -163,6 +163,44 @@
 .comment-expand-toggle {
     margin-top: 0.5rem;
 }
+
+.mention {
+    background-color: rgba(13, 110, 253, 0.12);
+    color: #0d6efd;
+    border-radius: 3px;
+    padding: 0 0.2rem;
+    font-weight: 600;
+}
+
+.mention-suggest-box {
+    position: absolute;
+    z-index: 1060;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
+    max-height: 220px;
+    overflow-y: auto;
+    min-width: 220px;
+    display: none;
+}
+
+.mention-suggest-item {
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.mention-suggest-item.active,
+.mention-suggest-item:hover {
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+.mention-suggest-item .mention-suggest-email {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted, #6c757d);
+}
 </style>
 
 <script>
@@ -198,5 +236,152 @@ function toggleCommentExpand(commentId) {
         collapseText.style.display = 'none';
         toggleBtn.setAttribute('aria-expanded', 'false');
     }
+}
+</script>
+
+<script>
+// @mention picker for comment textareas (add-comment box and inline edit boxes).
+// Registered once via event delegation so it keeps working after HTMX swaps
+// this partial back in (e.g. after adding a comment).
+if (!window.agiraMentionPickerRegistered) {
+    window.agiraMentionPickerRegistered = true;
+
+    const mentionState = {
+        textarea: null,
+        mentionStart: -1,
+        items: [],
+        activeIndex: -1,
+        requestId: 0,
+    };
+
+    const mentionBox = document.createElement('div');
+    mentionBox.className = 'mention-suggest-box';
+    document.body.appendChild(mentionBox);
+
+    function hideMentionBox() {
+        mentionBox.style.display = 'none';
+        mentionState.textarea = null;
+        mentionState.mentionStart = -1;
+        mentionState.items = [];
+        mentionState.activeIndex = -1;
+    }
+
+    function positionMentionBox(textarea) {
+        const rect = textarea.getBoundingClientRect();
+        mentionBox.style.left = (rect.left + window.scrollX) + 'px';
+        mentionBox.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    }
+
+    function renderMentionItems() {
+        mentionBox.innerHTML = '';
+        mentionState.items.forEach((user, index) => {
+            const item = document.createElement('div');
+            item.className = 'mention-suggest-item' + (index === mentionState.activeIndex ? ' active' : '');
+            item.dataset.index = String(index);
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = user.name || user.username;
+            const emailSpan = document.createElement('span');
+            emailSpan.className = 'mention-suggest-email';
+            emailSpan.textContent = user.email;
+            item.appendChild(nameSpan);
+            item.appendChild(emailSpan);
+            // mousedown (not click) fires before the textarea blur handler, so
+            // the selection can insert the mention before the box is hidden.
+            item.addEventListener('mousedown', function (event) {
+                event.preventDefault();
+                selectMentionUser(user);
+            });
+            mentionBox.appendChild(item);
+        });
+        mentionBox.style.display = mentionState.items.length ? 'block' : 'none';
+    }
+
+    function selectMentionUser(user) {
+        const textarea = mentionState.textarea;
+        if (!textarea) return;
+
+        const cursorPos = textarea.selectionStart;
+        const value = textarea.value;
+        const safeName = (user.name || user.username).replace(/[\[\]()]/g, '');
+        const token = '@[' + safeName + '](user:' + user.id + ') ';
+
+        textarea.value = value.slice(0, mentionState.mentionStart) + token + value.slice(cursorPos);
+        const newCursorPos = mentionState.mentionStart + token.length;
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+
+        hideMentionBox();
+    }
+
+    function fetchMentionSuggestions(textarea, query) {
+        const requestId = ++mentionState.requestId;
+        fetch('/users/search/?q=' + encodeURIComponent(query))
+            .then(response => response.json())
+            .then(data => {
+                // Ignore stale responses from an outdated keystroke.
+                if (requestId !== mentionState.requestId || mentionState.textarea !== textarea) {
+                    return;
+                }
+                mentionState.items = data.results || [];
+                mentionState.activeIndex = mentionState.items.length ? 0 : -1;
+                positionMentionBox(textarea);
+                renderMentionItems();
+            })
+            .catch(() => hideMentionBox());
+    }
+
+    let debounceTimer = null;
+
+    document.body.addEventListener('input', function (event) {
+        const textarea = event.target;
+        if (!textarea.matches || !textarea.matches('.mention-textarea')) {
+            return;
+        }
+
+        const cursorPos = textarea.selectionStart;
+        const textBeforeCursor = textarea.value.slice(0, cursorPos);
+        const match = /(?:^|\s)@([^\s@]{0,50})$/.exec(textBeforeCursor);
+
+        if (!match) {
+            hideMentionBox();
+            return;
+        }
+
+        mentionState.textarea = textarea;
+        mentionState.mentionStart = cursorPos - match[1].length - 1;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchMentionSuggestions(textarea, match[1]), 200);
+    });
+
+    document.body.addEventListener('keydown', function (event) {
+        const textarea = event.target;
+        if (mentionState.textarea !== textarea || mentionBox.style.display !== 'block') {
+            return;
+        }
+
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const delta = event.key === 'ArrowDown' ? 1 : -1;
+            const count = mentionState.items.length;
+            mentionState.activeIndex = (mentionState.activeIndex + delta + count) % count;
+            renderMentionItems();
+        } else if (event.key === 'Enter' || event.key === 'Tab') {
+            if (mentionState.activeIndex >= 0) {
+                event.preventDefault();
+                selectMentionUser(mentionState.items[mentionState.activeIndex]);
+            }
+        } else if (event.key === 'Escape') {
+            hideMentionBox();
+        }
+    });
+
+    document.body.addEventListener('focusout', function (event) {
+        if (event.target.matches && event.target.matches('.mention-textarea')) {
+            // Delay so a mousedown-driven selection can run first.
+            setTimeout(hideMentionBox, 150);
+        }
+    });
 }
 </script>
