@@ -171,6 +171,7 @@ def create_item(
     solution_description: str = "",
     status: str | None = None,
     intern: bool = False,
+    parent_id: int | None = None,
 ) -> dict:
     """
     Create a new item (issue) in a project.
@@ -178,6 +179,10 @@ def create_item(
     The connecting user is recorded as the item's ``responsible`` (the user
     must have the Agira "Agent" role). ``title`` and ``type_id`` are required.
     Use ``list_projects`` / project details to find valid ``type_id`` values.
+
+    ``parent_id`` optionally sets the parent item (e.g. an Epic) the new item
+    belongs to. Leave it unset to create the item without a parent. The
+    parent must exist and must not itself be Closed.
     """
     payload: dict = {
         "title": title,
@@ -189,6 +194,8 @@ def create_item(
     }
     if status is not None:
         payload["status"] = status
+    if parent_id is not None:
+        payload["parent_id"] = parent_id
     return _client().create_item(project_id, payload, user_token=_user_token())
 
 
@@ -200,8 +207,18 @@ def update_item(
     solution_description: str | None = None,
     status: str | None = None,
     intern: bool | None = None,
+    parent_id: int | None = None,
+    clear_parent: bool = False,
 ) -> dict:
-    """Update fields of an existing item (partial update). Only set what changes."""
+    """
+    Update fields of an existing item (partial update). Only set what changes.
+
+    ``parent_id`` sets or changes the item's parent (e.g. an Epic). Leave it
+    unset to leave the current parent unchanged. To remove an existing parent
+    relationship, pass ``clear_parent=True`` (``parent_id`` is ignored in that
+    case). The parent must exist, must not be Closed, and cannot be the item
+    itself.
+    """
     payload = {
         k: v
         for k, v in {
@@ -213,6 +230,10 @@ def update_item(
         }.items()
         if v is not None
     }
+    if clear_parent:
+        payload["parent_id"] = None
+    elif parent_id is not None:
+        payload["parent_id"] = parent_id
     return _client().update_item(item_id, payload, user_token=_user_token())
 
 

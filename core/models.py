@@ -662,8 +662,12 @@ class Item(models.Model):
         super().clean()
         errors = {}
 
+        # An item cannot be its own parent
+        if self.parent_id is not None and self.parent_id == self.id:
+            errors['parent'] = _('Cannot set item as its own parent.')
+
         # Parent status must not be closed
-        if self.parent and self.parent.status == ItemStatus.CLOSED:
+        elif self.parent and self.parent.status == ItemStatus.CLOSED:
             errors['parent'] = _('Cannot set a closed item as parent.')
 
         # Solution release must be in same project
