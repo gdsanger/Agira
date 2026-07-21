@@ -3680,7 +3680,17 @@ def item_add_comment(request, item_id):
         comment.mentioned_users.set(mentioned_users)
         author = comment.author
         for mentioned_user in mentioned_users:
-            if not mentioned_user.active or mentioned_user.id == getattr(author, 'id', None):
+            if mentioned_user.id == getattr(author, 'id', None):
+                logger.info(
+                    f"Skipping mention notification for comment {comment.id}: "
+                    f"user {mentioned_user.id} mentioned themselves"
+                )
+                continue
+            if not mentioned_user.active:
+                logger.info(
+                    f"Skipping mention notification for comment {comment.id}: "
+                    f"user {mentioned_user.id} is inactive"
+                )
                 continue
             _send_mention_notification(item, comment, mentioned_user)
 
@@ -4525,7 +4535,10 @@ def _send_mention_notification(item, comment, mentioned_user):
             f"Sent mention notification to {mentioned_user.email} for comment {comment.id} on item {item.id}"
         )
     except Exception as e:
-        logger.error(f"Failed to send mention notification to {mentioned_user.email}: {e}")
+        logger.error(
+            f"Failed to send mention notification to {mentioned_user.email}: {e}",
+            exc_info=True,
+        )
 
 
 def _update_item_followers(item, follower_ids):
