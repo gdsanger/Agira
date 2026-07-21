@@ -1,9 +1,12 @@
 """Custom template filters for Agira."""
 from django import template
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 from core.utils.html_sanitization import (
     convert_markdown_to_html,
     sanitize_html,
 )
+from core.services.comments.mentions import MENTION_PATTERN
 
 register = template.Library()
 
@@ -46,6 +49,38 @@ def render_markdown(text):
         Safe HTML string
     """
     return convert_markdown_to_html(text)
+
+
+@register.filter
+def render_mentions(text):
+    """
+    Escape plain-text comment body and render structured @mention tokens
+    (@[Display Name](user:<id>)) as highlighted, non-editable mention spans.
+
+    Args:
+        text: Plain-text comment body, possibly containing mention tokens
+
+    Returns:
+        Safe HTML string with mentions rendered as <span class="mention"> tags
+        and all other content HTML-escaped.
+    """
+    if not text:
+        return ""
+
+    def replace(match):
+        # match.group("name") is already HTML-escaped (matched against the
+        # pre-escaped text below) - escaping it again would double-encode
+        # entities such as "&#x27;" into "&amp;#x27;".
+        return (
+            f'<span class="mention" data-user-id="{match.group("id")}">'
+            f'@{match.group("name")}</span>'
+        )
+
+    escaped = escape(text)
+    # Re-run the mention pattern against the escaped text: escape() does not
+    # alter '@[', ']', '(', ')', ':' or digits, so token boundaries survive.
+    rendered = MENTION_PATTERN.sub(replace, escaped)
+    return mark_safe(rendered)
 
 
 @register.filter

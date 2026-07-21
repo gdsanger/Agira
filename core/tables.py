@@ -69,7 +69,16 @@ class ItemTable(tables.Table):
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
-    
+
+    # Comments column (annotated comment_count, no per-row query)
+    comments = tables.Column(
+        verbose_name='Comments',
+        orderable=True,
+        accessor='comment_count',
+        empty_values=(),
+        attrs={'td': {'class': 'text-center', 'style': 'width: 60px;'}}
+    )
+
     # Actions column (delete button with HTMX)
     actions = tables.Column(
         verbose_name='Actions',
@@ -81,7 +90,7 @@ class ItemTable(tables.Table):
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('updated_at', 'title', 'type', 'project', 'organisation', 'requester', 'assigned_to', 'actions')
+        fields = ('updated_at', 'title', 'type', 'project', 'organisation', 'requester', 'assigned_to', 'comments', 'actions')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -145,7 +154,24 @@ class ItemTable(tables.Table):
         if record.assigned_to:
             return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
-    
+
+    def render_comments(self, record):
+        """
+        Render comment count badge. Relies on the comment_count annotation
+        added in the view queryset - renders nothing for 0 comments so an
+        item without comments never shows a false-positive indicator.
+        """
+        count = getattr(record, 'comment_count', 0) or 0
+        if not count:
+            return ''
+        return format_html(
+            '<span class="badge bg-light text-dark border" title="{} comment{}">'
+            '<i class="bi bi-chat-left-text"></i> {}</span>',
+            count,
+            '' if count == 1 else 's',
+            count
+        )
+
     def render_actions(self, record):
         """
         Render actions column with delete button using HTMX.

@@ -891,6 +891,10 @@ class ItemComment(models.Model):
     in_reply_to = models.CharField(max_length=255, blank=True)
     delivery_status = models.CharField(max_length=20, choices=EmailDeliveryStatus.choices, default=EmailDeliveryStatus.DRAFT)
     sent_at = models.DateTimeField(null=True, blank=True)
+    mentioned_users = models.ManyToManyField(
+        User, blank=True, related_name='comment_mentions',
+        help_text="Users mentioned via @mention in this comment's body",
+    )
 
     class Meta:
         ordering = ['created_at']
