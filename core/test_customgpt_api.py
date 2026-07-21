@@ -351,12 +351,179 @@ class CustomGPTItemsAPITest(TestCase):
             **self.headers
         )
         self.assertEqual(response.status_code, 200)
-        
+
         data = json.loads(response.content)
         # Should only return open item, not closed
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['id'], self.open_item.id)
         self.assertEqual(data[0]['status'], ItemStatus.WORKING)
+
+    def test_create_item_with_parent_id(self):
+        """Test POST .../items sets the parent when parent_id is given."""
+        create_data = {
+            'title': 'Child Item',
+            'type_id': self.item_type.id,
+            'parent_id': self.open_item.id,
+        }
+        response = self.client.post(
+            f'/api/customgpt/projects/{self.project.id}/items',
+            data=json.dumps(create_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 201)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['parent_id'], self.open_item.id)
+
+        item = Item.objects.get(id=data['id'])
+        self.assertEqual(item.parent_id, self.open_item.id)
+
+    def test_create_item_without_parent_id(self):
+        """Test POST .../items leaves parent unset when parent_id is omitted."""
+        create_data = {
+            'title': 'No Parent Item',
+            'type_id': self.item_type.id,
+        }
+        response = self.client.post(
+            f'/api/customgpt/projects/{self.project.id}/items',
+            data=json.dumps(create_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 201)
+
+        data = json.loads(response.content)
+        self.assertIsNone(data['parent_id'])
+
+    def test_create_item_with_null_parent_id(self):
+        """Test POST .../items with parent_id explicitly null creates without a parent."""
+        create_data = {
+            'title': 'Null Parent Item',
+            'type_id': self.item_type.id,
+            'parent_id': None,
+        }
+        response = self.client.post(
+            f'/api/customgpt/projects/{self.project.id}/items',
+            data=json.dumps(create_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 201)
+
+        data = json.loads(response.content)
+        self.assertIsNone(data['parent_id'])
+
+    def test_create_item_with_invalid_parent_id(self):
+        """Test POST .../items rejects a non-existent parent_id."""
+        create_data = {
+            'title': 'Bad Parent Item',
+            'type_id': self.item_type.id,
+            'parent_id': 999999,
+        }
+        response = self.client.post(
+            f'/api/customgpt/projects/{self.project.id}/items',
+            data=json.dumps(create_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_item_sets_parent(self):
+        """Test PATCH .../items/{id} sets the parent when parent_id is given."""
+        update_data = {'parent_id': self.open_item.id}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.closed_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['parent_id'], self.open_item.id)
+
+    def test_update_item_changes_parent(self):
+        """Test PATCH .../items/{id} changes an existing parent to a new one."""
+        other_item = Item.objects.create(
+            project=self.project,
+            type=self.item_type,
+            title='Other Item',
+            status=ItemStatus.WORKING,
+        )
+        self.closed_item.parent = self.open_item
+        self.closed_item.save()
+
+        update_data = {'parent_id': other_item.id}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.closed_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['parent_id'], other_item.id)
+
+    def test_update_item_removes_parent_with_null(self):
+        """Test PATCH .../items/{id} removes the parent when parent_id is null."""
+        self.closed_item.parent = self.open_item
+        self.closed_item.save()
+
+        update_data = {'parent_id': None}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.closed_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertIsNone(data['parent_id'])
+
+    def test_update_item_without_parent_id_leaves_parent_unchanged(self):
+        """Test PATCH .../items/{id} without parent_id does not touch the parent."""
+        self.closed_item.parent = self.open_item
+        self.closed_item.save()
+
+        update_data = {'title': 'Renamed, parent untouched'}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.closed_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['parent_id'], self.open_item.id)
+
+    def test_update_item_with_invalid_parent_id(self):
+        """Test PATCH .../items/{id} rejects a non-existent parent_id."""
+        update_data = {'parent_id': 999999}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_item_rejects_self_reference(self):
+        """Test PATCH .../items/{id} rejects an item as its own parent."""
+        update_data = {'parent_id': self.open_item.id}
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps(update_data),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 400)
+
+        self.open_item.refresh_from_db()
+        self.assertIsNone(self.open_item.parent)
 
 
 class CustomGPTItemContextAPITest(TestCase):

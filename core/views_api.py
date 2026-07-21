@@ -392,7 +392,16 @@ def api_item_update_put(request, item_id):
                 item.assigned_to = None
             # For simplicity, we don't validate user existence here
             # The model's clean() method will handle validation
-        
+
+        if 'parent_id' in data:
+            if data['parent_id']:
+                try:
+                    item.parent = Item.objects.get(id=data['parent_id'])
+                except Item.DoesNotExist:
+                    return JsonResponse({'error': 'Invalid parent_id'}, status=400)
+            else:
+                item.parent = None
+
         # Validate and save
         try:
             item.full_clean()
@@ -471,6 +480,14 @@ def api_project_create_item(request, project_id):
         except ItemType.DoesNotExist:
             return JsonResponse({'error': 'Invalid type_id'}, status=400)
 
+        # Resolve the parent item, if given
+        parent = None
+        if data.get('parent_id'):
+            try:
+                parent = Item.objects.get(id=data['parent_id'])
+            except Item.DoesNotExist:
+                return JsonResponse({'error': 'Invalid parent_id'}, status=400)
+
         # Resolve the acting MCP user and use them as `responsible`.
         # `responsible` requires the Agent role (see Item.clean); we guard
         # explicitly here so the caller gets a clear message instead of a
@@ -494,6 +511,7 @@ def api_project_create_item(request, project_id):
             status=data.get('status', ItemStatus.INBOX),
             intern=data.get('intern', False),
             responsible=responsible,
+            parent=parent,
         )
         
         # Validate and save
