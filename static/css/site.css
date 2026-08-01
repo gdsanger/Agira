@@ -40,7 +40,17 @@
     
     /* Utility Colors */
     --color-white: #ffffff;
-    
+
+    /* Chrome Surfaces - unified background for topbar, left nav and right sidebar (#991) */
+    --chrome-bg: var(--text-primary);
+    --chrome-fg: var(--bg-primary);
+    --chrome-fg-secondary: color-mix(in srgb, var(--chrome-fg) 80%, var(--chrome-bg));
+    --chrome-fg-muted: color-mix(in srgb, var(--chrome-fg) 60%, var(--chrome-bg));
+    --chrome-border: color-mix(in srgb, var(--chrome-fg) 15%, var(--chrome-bg));
+    --chrome-hover-bg: color-mix(in srgb, var(--chrome-fg) 8%, var(--chrome-bg));
+    --chrome-accent: color-mix(in srgb, var(--accent-primary) 65%, var(--chrome-fg));
+    --chrome-accent-hover: color-mix(in srgb, var(--accent-secondary) 65%, var(--chrome-fg));
+
     /* Layout Constants */
     --topbar-height: 52px;
     --sidebar-width: 260px;
@@ -100,8 +110,8 @@ h6, .h6 { font-size: var(--font-size-h6); }
     left: 0;
     right: 0;
     height: var(--topbar-height);
-    background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
+    background-color: var(--chrome-bg);
+    border-bottom: 1px solid var(--chrome-border);
     display: flex;
     align-items: center;
     padding: 0 var(--space-4);
@@ -109,10 +119,26 @@ h6, .h6 { font-size: var(--font-size-h6); }
     gap: var(--space-3);
 }
 
+.topbar .btn-outline-primary {
+    --bs-btn-color: var(--chrome-fg);
+    --bs-btn-border-color: var(--chrome-border);
+    --bs-btn-hover-color: var(--chrome-fg);
+    --bs-btn-hover-bg: var(--chrome-hover-bg);
+    --bs-btn-hover-border-color: var(--chrome-border);
+}
+
+.topbar .btn-outline-secondary {
+    --bs-btn-color: var(--chrome-fg-secondary);
+    --bs-btn-border-color: var(--chrome-border);
+    --bs-btn-hover-color: var(--chrome-fg);
+    --bs-btn-hover-bg: var(--chrome-hover-bg);
+    --bs-btn-hover-border-color: var(--chrome-border);
+}
+
 .sidebar-toggle {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--chrome-fg);
     font-size: 1.25rem;
     cursor: pointer;
     padding: var(--space-2);
@@ -126,19 +152,19 @@ h6, .h6 { font-size: var(--font-size-h6); }
 }
 
 .sidebar-toggle:hover {
-    background-color: var(--bg-tertiary);
+    background-color: var(--chrome-hover-bg);
     color: var(--accent-primary);
 }
 
 .topbar-brand a {
-    color: var(--accent-primary);
+    color: var(--chrome-accent);
     font-weight: 600;
     font-size: var(--font-size-h4);
     text-decoration: none;
 }
 
 .topbar-brand a:hover {
-    color: var(--accent-secondary);
+    color: var(--chrome-accent-hover);
 }
 
 .topbar-user {
@@ -170,8 +196,8 @@ h6, .h6 { font-size: var(--font-size-h6); }
 }
 
 .topbar-search .btn-outline-secondary {
-    border-color: var(--border-color);
-    color: var(--text-secondary);
+    border-color: var(--chrome-border);
+    color: var(--chrome-fg-secondary);
 }
 
 .topbar-search .btn-outline-secondary:hover {
@@ -182,7 +208,7 @@ h6, .h6 { font-size: var(--font-size-h6); }
 
 /* Topbar GitHub Issues Status */
 .topbar-github-issues {
-    color: var(--text-secondary);
+    color: var(--chrome-fg-secondary);
     padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
     transition: all 0.2s ease;
@@ -190,8 +216,8 @@ h6, .h6 { font-size: var(--font-size-h6); }
 }
 
 .topbar-github-issues:hover {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
+    background-color: var(--chrome-hover-bg);
+    color: var(--chrome-fg);
 }
 
 .topbar-github-issues .badge {
@@ -213,8 +239,8 @@ h6, .h6 { font-size: var(--font-size-h6); }
     top: var(--topbar-height);
     width: var(--sidebar-width);
     height: calc(100vh - var(--topbar-height));
-    background-color: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
+    background-color: var(--chrome-bg);
+    border-right: 1px solid var(--chrome-border);
     overflow-x: hidden;
     overflow-y: auto;
     padding: var(--space-2) 0;
@@ -261,7 +287,7 @@ h6, .h6 { font-size: var(--font-size-h6); }
     display: flex;
     align-items: center;
     padding: var(--space-2) var(--space-4);
-    color: var(--text-secondary);
+    color: var(--chrome-fg-secondary);
     text-decoration: none;
     transition: all 0.2s ease;
     position: relative;
@@ -269,14 +295,14 @@ h6, .h6 { font-size: var(--font-size-h6); }
 }
 
 .sidebar-link:hover {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
+    background-color: var(--chrome-hover-bg);
+    color: var(--chrome-fg);
     border-left-color: var(--accent-primary);
 }
 
 .sidebar-link.active {
     background-color: rgba(99, 102, 241, 0.12);
-    color: var(--accent-primary);
+    color: var(--chrome-accent);
     border-left-color: var(--accent-primary);
     font-weight: 500;
 }
@@ -319,12 +345,12 @@ h6, .h6 { font-size: var(--font-size-h6); }
 }
 
 .sidebar-section-header:hover {
-    background-color: var(--bg-tertiary);
+    background-color: var(--chrome-hover-bg);
 }
 
 .sidebar-section-chevron {
     font-size: var(--font-size-sm);
-    color: var(--text-muted);
+    color: var(--chrome-fg-muted);
     margin-right: var(--space-2);
     transition: transform 0.2s ease, opacity 0.3s ease;
 }
@@ -333,7 +359,7 @@ h6, .h6 { font-size: var(--font-size-h6); }
     font-size: var(--font-size-xs);
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--chrome-fg-muted);
     letter-spacing: 0.05em;
     white-space: nowrap;
     transition: opacity 0.2s ease, width 0.2s ease;
@@ -359,8 +385,8 @@ h6, .h6 { font-size: var(--font-size-h6); }
     top: var(--topbar-height);
     width: var(--right-sidebar-width);
     height: calc(100vh - var(--topbar-height));
-    background-color: var(--bg-secondary);
-    border-left: 1px solid var(--border-color);
+    background-color: var(--chrome-bg);
+    border-left: 1px solid var(--chrome-border);
     overflow-y: auto;
     padding: var(--space-2) 0;
     z-index: 998;
@@ -1244,7 +1270,7 @@ a:hover {
 }
 
 .recents-section + .recents-section {
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--chrome-border);
     padding-top: var(--space-3);
 }
 
@@ -1260,15 +1286,15 @@ a:hover {
     font-size: var(--font-size-xs);
     font-weight: 700;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--chrome-fg-muted);
     letter-spacing: 0.08em;
 }
 
 .recents-section-count {
     font-size: 0.7rem;
     font-weight: 600;
-    color: var(--text-muted);
-    background-color: var(--bg-tertiary);
+    color: var(--chrome-fg-muted);
+    background-color: var(--chrome-hover-bg);
     padding: 0.15rem 0.5rem;
     border-radius: 0.75rem;
 }
@@ -1284,7 +1310,7 @@ a:hover {
     align-items: center;
     justify-content: space-between;
     padding: var(--space-2) var(--space-4);
-    color: var(--text-secondary);
+    color: var(--chrome-fg-secondary);
     text-decoration: none;
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
@@ -1295,15 +1321,15 @@ a:hover {
 }
 
 .recents-entry:hover {
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
+    background-color: var(--chrome-hover-bg);
+    color: var(--chrome-fg);
     border-left-color: var(--accent-primary);
     text-decoration: none;
 }
 
 .recents-entry.active {
     background-color: rgba(99, 102, 241, 0.15);
-    color: var(--accent-primary);
+    color: var(--chrome-accent);
     border-left-color: var(--accent-primary);
     font-weight: 500;
 }
@@ -1349,12 +1375,12 @@ a:hover {
 }
 
 .recents-entry-type {
-    color: var(--text-muted);
+    color: var(--chrome-fg-muted);
     font-weight: 500;
 }
 
 .recents-entry-status {
-    color: var(--accent-primary);
+    color: var(--chrome-accent);
     font-weight: 500;
     opacity: 0.8;
     min-width: 80px;
@@ -1391,7 +1417,7 @@ a:hover {
 
 .recents-action:hover {
     text-decoration: none;
-    background-color: var(--bg-tertiary);
+    background-color: var(--chrome-hover-bg);
     transform: scale(1.1);
 }
 
@@ -1408,13 +1434,13 @@ a:hover {
 }
 
 .recents-entry:hover .recents-action.text-muted:hover {
-    color: var(--text-secondary);
+    color: var(--chrome-fg-secondary);
 }
 
 .recents-clear {
     padding: var(--space-3) var(--space-4);
     text-align: center;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--chrome-border);
     margin-top: var(--space-2);
 }
 
@@ -1434,10 +1460,17 @@ a:hover {
 .recents-empty {
     padding: var(--space-5) var(--space-4);
     text-align: center;
-    color: var(--text-muted);
+    color: var(--chrome-fg-muted);
     font-size: var(--font-size-sm);
     font-style: italic;
     opacity: 0.7;
+}
+
+/* Scoped .text-muted override so text stays legible on the chrome surfaces above */
+.topbar .text-muted,
+.sidebar .text-muted,
+.right-sidebar .text-muted {
+    color: var(--chrome-fg-muted) !important;
 }
 
 /* Footer */
