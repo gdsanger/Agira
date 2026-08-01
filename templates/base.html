@@ -184,6 +184,10 @@
                     <i class="bi bi-robot sidebar-icon"></i>
                     <span class="sidebar-text">Claude Queue</span>
                 </a>
+                <a href="{% url 'system-analytics' %}" class="sidebar-link {% if request.resolver_match.url_name == 'system-analytics' %}active{% endif %}">
+                    <i class="bi bi-graph-up-arrow sidebar-icon"></i>
+                    <span class="sidebar-text">System Analytics</span>
+                </a>
                 <a href="{% url 'organisations' %}" class="sidebar-link {% if request.resolver_match.url_name == 'organisations' %}active{% endif %}">
                     <i class="bi bi-building sidebar-icon"></i>
                     <span class="sidebar-text">Organisations</span>

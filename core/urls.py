@@ -200,7 +200,10 @@ urlpatterns = [
     # AI Jobs History URLs
     path('ai-jobs-history/', views.ai_jobs_history, name='ai-jobs-history'),
     path('ai-job-statistics/', views.ai_job_statistics, name='ai-job-statistics'),
-    
+
+    # System Analytics ("Agira über Agira") URL
+    path('system-analytics/', views.system_analytics, name='system-analytics'),
+
     # Mail Template URLs
     path('mail-templates/', views.mail_templates, name='mail-templates'),
     path('mail-templates/new/', views.mail_template_create, name='mail-template-create'),
