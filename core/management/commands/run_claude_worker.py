@@ -312,8 +312,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed: {exc}"))
             return
 
-        # Push whatever Claude committed onto the branch. Best-effort: Claude may
-        # have pushed already, or produced no commit — neither is fatal here.
+        # Claude is told to commit its own work but may stop short of it (ran
+        # out of turns, misjudged its own completion, ...). Rescue anything
+        # left in the working tree before the next job's checkout reset would
+        # discard it, then push whatever ended up on the branch. Best-effort:
+        # Claude may already have committed and pushed, or produced nothing.
+        self._commit_uncommitted_work(repo_dir, job)
         self._push_branch(repo_dir, branch)
 
         if result.get('is_error') or result.get('returncode', 0) != 0:
@@ -335,6 +339,25 @@ class Command(BaseCommand):
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
+            return
+
+        if self._is_empty_diff(repo_dir, bootstrap_sha):
+            # Still no diff even after the rescue-commit attempt above: this is
+            # a genuine empty run, not a bookkeeping accident. It must not look
+            # like a clean "done" — that is exactly the failure mode (an
+            # empty PR merged on the strength of an unrelated success body)
+            # this check exists to prevent.
+            error = "Kein Code committet – Claude hat keine Änderungen geliefert."
+            job.completion_uncertain = True
+            job.completion_uncertain_reason = (
+                "Leerer PR: keine Änderungen über den Start-Commit hinaus "
+                "(auch nach automatischem Rettungscommit-Versuch)."
+            )
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
+            self.stdout.write(self.style.ERROR(
+                f"Job #{job.pk} failed: no code committed (empty diff)"
+            ))
             return
 
         uncertain_reason = self._detect_completion_uncertain(
@@ -655,6 +678,45 @@ class Command(BaseCommand):
             self._git(['push', 'origin', branch], cwd=repo_dir)
         except Exception as exc:  # noqa: BLE001 — non-fatal; Claude may have pushed
             logger.warning("Post-run push of %s failed: %s", branch, exc)
+
+    def _commit_uncommitted_work(self, repo_dir, job):
+        """Auto-commit any working-tree changes Claude left uncommitted.
+
+        The prompt asks Claude to commit its own changes, but a run can edit
+        files and stop short of ``git commit`` — that work would otherwise be
+        silently discarded by the next job's ``reset --hard``/``clean -fd``.
+        Deliberately unconditional (not gated on "no commit exists yet"): a
+        run that made a partial commit and then left further edits
+        uncommitted must not lose that tail either.
+
+        ``.claude/settings.local.json`` is the worker's own trust-settings
+        file (written by ``_write_trust_settings``), never Claude's work, so
+        it is staged and then explicitly unstaged before checking whether
+        anything worth committing remains.
+
+        Best-effort: any git failure here (e.g. a bad ``repo_dir`` in tests)
+        is swallowed and treated as "nothing to rescue" rather than failing
+        the job. Returns True if a rescue commit was made.
+        """
+        try:
+            self._git(['add', '-A'], cwd=repo_dir)
+            self._git(['reset', '--', '.claude/settings.local.json'], cwd=repo_dir)
+            proc = subprocess.run(
+                ['git', 'diff', '--cached', '--quiet'], cwd=repo_dir, timeout=60,
+            )
+            if proc.returncode == 0:
+                self._git(['reset'], cwd=repo_dir)
+                return False
+
+            self._git(
+                ['commit', '-m',
+                 f"chore(#{job.item_id}): auto-commit uncommitted work from Claude run"],
+                cwd=repo_dir,
+            )
+            return True
+        except Exception as exc:  # noqa: BLE001 — best-effort rescue, must not fail the job
+            logger.warning("Auto-commit rescue failed for %s: %s", repo_dir, exc)
+            return False
 
     # ------------------------------------------------------------------ #
     # Completion-uncertain detection

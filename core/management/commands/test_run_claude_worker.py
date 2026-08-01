@@ -453,6 +453,195 @@ class CompletionUncertainTests(ClaudeWorkerTestBase):
             self.assertIsNone(reason)
 
 
+class CommitUncommittedWorkTests(ClaudeWorkerTestBase):
+    """Unit tests for _commit_uncommitted_work: rescue a Claude run's uncommitted edits."""
+
+    def _init_repo(self, tmp_path):
+        subprocess.run(['git', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=tmp_path, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=tmp_path, check=True)
+        (Path(tmp_path) / 'README.md').write_text('hello\n')
+        subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '--allow-empty', '-m', 'bootstrap'],
+                        cwd=tmp_path, check=True, capture_output=True)
+        return subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=tmp_path, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+    def test_commits_uncommitted_changes(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+            job = self._job(self.project_a)
+
+            rescued = Command()._commit_uncommitted_work(tmp_path, job)
+
+            self.assertTrue(rescued)
+            self.assertFalse(Command()._is_empty_diff(tmp_path, bootstrap_sha))
+            subject = subprocess.run(
+                ['git', 'log', '-1', '--format=%s'], cwd=tmp_path,
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            self.assertIn('auto-commit uncommitted work', subject)
+            self.assertIn(f'#{job.item_id}', subject)
+
+    def test_ignores_claude_settings_local_json(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            claude_dir = Path(tmp_path) / '.claude'
+            claude_dir.mkdir()
+            (claude_dir / 'settings.local.json').write_text('{"a": 1}\n')
+            job = self._job(self.project_a)
+
+            rescued = Command()._commit_uncommitted_work(tmp_path, job)
+
+            self.assertFalse(rescued)
+            self.assertTrue(Command()._is_empty_diff(tmp_path, bootstrap_sha))
+            status = subprocess.run(
+                ['git', 'status', '--porcelain'], cwd=tmp_path,
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertIn('.claude', status)
+
+    def test_commits_real_change_while_excluding_settings_file(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            self._init_repo(tmp_path)
+            claude_dir = Path(tmp_path) / '.claude'
+            claude_dir.mkdir()
+            (claude_dir / 'settings.local.json').write_text('{"a": 1}\n')
+            (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+            job = self._job(self.project_a)
+
+            rescued = Command()._commit_uncommitted_work(tmp_path, job)
+
+            self.assertTrue(rescued)
+            changed = subprocess.run(
+                ['git', 'show', '--stat', '--format=', 'HEAD'], cwd=tmp_path,
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertIn('feature.py', changed)
+            self.assertNotIn('settings.local.json', changed)
+
+    def test_no_op_on_clean_tree(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            self._init_repo(tmp_path)
+            job = self._job(self.project_a)
+
+            self.assertFalse(Command()._commit_uncommitted_work(tmp_path, job))
+
+    def test_swallows_git_errors_on_bad_repo_dir(self):
+        job = self._job(self.project_a)
+        self.assertFalse(Command()._commit_uncommitted_work('/no/such/repo', job))
+
+
+class EmptyRunHandlingTests(ClaudeWorkerTestBase):
+    """Process-level tests: a run with no committed changes must not look like success."""
+
+    def _init_repo(self, tmp_path):
+        subprocess.run(['git', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=tmp_path, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=tmp_path, check=True)
+        (Path(tmp_path) / 'README.md').write_text('hello\n')
+        subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '--allow-empty', '-m', 'bootstrap'],
+                        cwd=tmp_path, check=True, capture_output=True)
+        return subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=tmp_path, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+    def _claimed_job(self, project, item_status=ItemStatus.WORKING):
+        item = self._item(project, status=item_status)
+        self._job(project, item=item)
+        return Command().claim_next_job()
+
+    def _run(self, job, tmp_path, bootstrap_sha, run_cli):
+        with patch.object(Command, '_prepare_checkout', return_value=tmp_path), \
+                patch.object(Command, '_create_branch_and_pr',
+                             return_value=('fix/x-1', bootstrap_sha)), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', side_effect=run_cli):
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+    def test_true_empty_run_is_marked_failed_not_done(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            job = self._claimed_job(self.project_a)
+
+            self._run(job, tmp_path, bootstrap_sha, run_cli=lambda *a, **k: _ok_result(
+                result_text='Implemented everything, all good.',
+            ))
+
+            job.refresh_from_db()
+            self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+            self.assertIn('Kein Code committet', job.error_text)
+            self.assertTrue(job.completion_uncertain)
+            self.assertIn('Leerer PR', job.completion_uncertain_reason)
+            job.item.refresh_from_db()
+            self.assertEqual(job.item.status, ItemStatus.BACKLOG)
+
+    def test_true_empty_run_pr_body_does_not_show_success_summary(self):
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            job = self._claimed_job(self.project_a)
+            job.pr_number = 42
+            job.save(update_fields=['pr_number'])
+            fake_service = MagicMock()
+
+            with patch('core.services.github.service.GitHubService',
+                       return_value=fake_service):
+                self._run(job, tmp_path, bootstrap_sha, run_cli=lambda *a, **k: _ok_result(
+                    result_text='Implemented everything, all good.',
+                ))
+
+            call_kwargs = fake_service.update_pr_body.call_args[1]
+            self.assertIn('Kein Code committet', call_kwargs['body'])
+            self.assertNotIn('## Claude Summary', call_kwargs['body'])
+            self.assertNotIn('Implemented everything', call_kwargs['body'])
+
+    def test_uncommitted_changes_are_rescued_and_run_still_marked_done(self):
+        def leave_uncommitted(job, repo_dir, timeout, idle_timeout, pr_body_file):
+            (Path(repo_dir) / 'feature.py').write_text('print("hi")\n')
+            return _ok_result(result_text='Implemented the fix.')
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            job = self._claimed_job(self.project_a)
+
+            self._run(job, tmp_path, bootstrap_sha, run_cli=leave_uncommitted)
+
+            job.refresh_from_db()
+            self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+            self.assertFalse(job.completion_uncertain)
+            log = subprocess.run(
+                ['git', 'log', '--format=%s'], cwd=tmp_path,
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertIn('auto-commit uncommitted work', log)
+
+    def test_settings_local_json_only_is_still_a_true_empty_run(self):
+        def leave_only_settings(job, repo_dir, timeout, idle_timeout, pr_body_file):
+            claude_dir = Path(repo_dir) / '.claude'
+            claude_dir.mkdir(parents=True, exist_ok=True)
+            (claude_dir / 'settings.local.json').write_text('{"a": 1}\n')
+            return _ok_result(result_text='Nothing to change here.')
+
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._init_repo(tmp_path)
+            job = self._claimed_job(self.project_a)
+
+            self._run(job, tmp_path, bootstrap_sha, run_cli=leave_only_settings)
+
+            job.refresh_from_db()
+            self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+            self.assertIn('Kein Code committet', job.error_text)
+
+
 class StreamParsingTests(ClaudeWorkerTestBase):
     """Unit tests for _consume_stream against synthetic stream-json lines."""
 
