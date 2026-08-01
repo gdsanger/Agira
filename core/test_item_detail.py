@@ -5,11 +5,13 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
+from decimal import Decimal
+
 from core.models import (
-    Organisation, UserOrganisation, Project, ItemType, Item, 
-    ItemStatus, Release, ItemComment, ExternalIssueMapping, 
+    Organisation, UserOrganisation, Project, ItemType, Item,
+    ItemStatus, Release, ItemComment, ExternalIssueMapping,
     ExternalIssueKind, AttachmentRole, Attachment, AttachmentLink,
-    CommentKind, ReleaseStatus
+    CommentKind, ReleaseStatus, ClaudeQueueJob, ClaudeQueueJobModel
 )
 from core.services.activity import ActivityService
 
@@ -1034,3 +1036,107 @@ class SolutionReleaseFilteringTest(TestCase):
         # Verify releases list is empty
         releases = response.context['releases']
         self.assertEqual(len(releases), 0)
+
+
+class ItemDetailClaudeCostAggregationTest(TestCase):
+    """Test the aggregated Claude Queue cost shown on the item detail page."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass',
+            name='Test User',
+            role='Agent'
+        )
+
+        self.org = Organisation.objects.create(name='Test Org')
+        UserOrganisation.objects.create(
+            user=self.user,
+            organisation=self.org,
+            is_primary=True
+        )
+
+        self.project = Project.objects.create(name='Test Project')
+        self.project.clients.add(self.org)
+
+        self.item_type = ItemType.objects.create(key='bug', name='Bug', is_active=True)
+
+        self.item = Item.objects.create(
+            project=self.project,
+            title='Test Item',
+            type=self.item_type,
+            organisation=self.org,
+            status=ItemStatus.WORKING
+        )
+
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass')
+
+    def test_no_jobs_shows_dash(self):
+        """An item without any Claude Queue jobs shows a dash, not an error."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['claude_total_cost'])
+        self.assertContains(response, 'Claude-Kosten')
+
+    def test_multiple_jobs_are_summed(self):
+        """Costs of multiple jobs/PRs for the same item are summed, not overwritten."""
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.SONNET,
+            total_cost_usd=Decimal('1.234567'), num_turns=5,
+        )
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.OPUS,
+            total_cost_usd=Decimal('2.500000'), num_turns=10,
+        )
+
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['claude_total_cost'], Decimal('3.734567'))
+        self.assertContains(response, '7346')  # cost digits (locale-independent)
+
+    def test_jobs_without_cost_do_not_break_the_sum(self):
+        """A still-running job with no cost yet is treated as contributing 0."""
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.SONNET,
+            total_cost_usd=Decimal('1.500000'), num_turns=3,
+        )
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.SONNET,
+            total_cost_usd=None, num_turns=None,
+        )
+
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['claude_total_cost'], Decimal('1.500000'))
+
+    def test_costs_from_other_items_are_not_included(self):
+        """Aggregation is scoped to this item — no cross-item leakage."""
+        other_item = Item.objects.create(
+            project=self.project,
+            title='Other Item',
+            type=self.item_type,
+            status=ItemStatus.WORKING
+        )
+        ClaudeQueueJob.objects.create(
+            item=other_item, project=self.project,
+            model=ClaudeQueueJobModel.SONNET,
+            total_cost_usd=Decimal('9.999999'), num_turns=1,
+        )
+
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['claude_total_cost'])

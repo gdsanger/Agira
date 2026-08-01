@@ -1055,7 +1055,14 @@ def item_detail(request, item_id):
     
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
-    
+
+    # Sum of Claude Code's own cost estimate across all queue jobs/PRs run
+    # for this item — a single DB aggregate, not a per-row Python sum.
+    claude_queue_jobs = item.claude_queue_jobs.order_by('-created_at')
+    claude_total_cost = claude_queue_jobs.aggregate(
+        total=models.Sum('total_cost_usd')
+    )['total']
+
     context = {
         'item': item,
         'followers': followers,
@@ -1068,6 +1075,8 @@ def item_detail(request, item_id):
         'organisations': organisations,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
+        'claude_queue_jobs': claude_queue_jobs,
+        'claude_total_cost': claude_total_cost,
     }
     return render(request, 'item_detail.html', context)
 

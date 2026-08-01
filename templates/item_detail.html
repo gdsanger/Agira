@@ -812,10 +812,58 @@
                                 Gespeichert
                             </small>
                         </div>
-                                   
+                        <div class="mb-3">
+                            <strong>Claude-Kosten:</strong>
+                            <div>
+                                {% if claude_total_cost is not None %}
+                                    <span title="Summe der Claude-Code-Kostenschätzung (API-Listenpreis) über alle Claude-Queue-Läufe/PRs dieses Items — keine abgerechnete Zahl.">
+                                        ${{ claude_total_cost|floatformat:4 }}
+                                    </span>
+                                    <span class="text-muted small">(geschätzt, API-Listenpreis)</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                                {% if claude_queue_jobs %}
+                                    <button type="button" class="btn btn-sm btn-link p-0 ms-1" data-bs-toggle="collapse" data-bs-target="#claude-cost-breakdown">
+                                        Details
+                                    </button>
+                                {% endif %}
+                            </div>
+                            {% if claude_queue_jobs %}
+                            <div class="collapse mt-2" id="claude-cost-breakdown">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Run</th>
+                                            <th>Modell</th>
+                                            <th>Turns</th>
+                                            <th>Kosten</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for job in claude_queue_jobs %}
+                                        <tr>
+                                            <td>
+                                                {% if job.pr_url %}
+                                                <a href="{{ job.pr_url }}" target="_blank" rel="noopener">PR #{{ job.pr_number }}</a>
+                                                {% else %}
+                                                Job #{{ job.id }}
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ job.get_model_display }}</td>
+                                            <td>{{ job.num_turns|default:"—" }}</td>
+                                            <td>{% if job.total_cost_usd is not None %}${{ job.total_cost_usd|floatformat:4 }}{% else %}—{% endif %}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% endif %}
+                        </div>
+
                     </div>
                 </div>
-                
+
                 <!-- Help Card -->
                 <div class="card">
                     <div class="card-header">
