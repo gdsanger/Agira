@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}System Analytics - Agira{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-graph-up-arrow me-2"></i>Agira über Agira</h1>
+    <p class="text-muted">System-Analytics &amp; Retrospektive &mdash; dauerhafte Kennzahlen statt Einmal-Report</p>
+</div>
+
+<!-- Milestone banner -->
+<div class="dashboard-section mb-4" style="border-color: var(--accent-primary);">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="dashboard-section-title mb-1">
+                <i class="bi bi-flag-fill me-2"></i>
+                {% if milestone_reached %}
+                    🎉 Meilenstein erreicht: Item #{{ milestone_target }}
+                {% else %}
+                    Auf dem Weg zu Item #{{ milestone_target }}
+                {% endif %}
+            </h2>
+            {% if first_item %}
+            <p class="text-muted mb-0">
+                Seit dem ersten Item ({{ first_item.created_at|date:"d.m.Y" }}): {{ days_since_start }} Tage,
+                {{ total_items }} Items (Ø {{ avg_items_per_day|floatformat:1 }}/Tag),
+                {{ completion_rate|floatformat:0 }}% abgeschlossen ({{ closed_items_count }}/{{ total_items }}).
+            </p>
+            {% endif %}
+        </div>
+        <div class="text-end" style="min-width: 180px;">
+            <div class="progress" style="height: 0.5rem; background-color: var(--bg-tertiary);">
+                <div class="progress-bar" role="progressbar" style="width: {{ milestone_progress_pct|floatformat:0 }}%; background-color: var(--accent-primary);"></div>
+            </div>
+            <small class="text-muted">Item-Nr. {{ highest_item_number }} / {{ milestone_target }}</small>
+        </div>
+    </div>
+    {% if milestone_item %}
+    <div class="mt-2">
+        <a href="{% url 'item-detail' milestone_item.id %}" class="text-decoration-none">
+            <i class="bi bi-bookmark-star me-1"></i>Zum Jubiläums-Item: {{ milestone_item.title }}
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- KPI Tiles -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-hourglass-split"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ avg_cycle_days|floatformat:1|default:"–" }}</div>
+                <div class="kpi-label">Ø Cycle-Time (Tage), n={{ cycle_time_sample_size }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card kpi-card-primary">
+            <div class="kpi-icon"><i class="bi bi-rocket-takeoff"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ avg_lead_days|floatformat:1|default:"–" }}</div>
+                <div class="kpi-label">Kigil-Lead-Time Idee → Deployment (Tage)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">US${{ total_cost_all_time|floatformat:2 }}</div>
+                <div class="kpi-label">Kosten gesamt (geschätzt)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-card kpi-card-success">
+            <div class="kpi-icon"><i class="bi bi-robot"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ autonomy_rate|floatformat:0 }}%</div>
+                <div class="kpi-label">Items via Claude-Queue bearbeitet</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Throughput -->
+<div class="row g-3 mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="bi bi-bar-chart-steps me-1"></i>Durchsatz über die Zeit (wöchentlich seit Start)</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="throughputChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cycle/Lead time detail -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-hourglass-split me-1"></i>Cycle-Time (Erstellung → Closed)</strong>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><td>Durchschnitt</td><td class="text-end">{{ avg_cycle_days|floatformat:1|default:"–" }} Tage</td></tr>
+                        <tr><td>Median</td><td class="text-end">{{ median_cycle_days|floatformat:1|default:"–" }} Tage</td></tr>
+                        <tr><td>Basis</td><td class="text-end">{{ cycle_time_sample_size }} geschlossene Items</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-rocket-takeoff me-1"></i>Kigil-Lead-Time (Idee → Deployment)</strong>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><td>Durchschnitt</td><td class="text-end">{{ avg_lead_days|floatformat:1|default:"–" }} Tage</td></tr>
+                        <tr><td>Median</td><td class="text-end">{{ median_lead_days|floatformat:1|default:"–" }} Tage</td></tr>
+                        <tr><td>Abdeckung</td><td class="text-end">{{ lead_time_sample_size }} Items ({{ lead_time_coverage_pct|floatformat:0 }}% aller Items)</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-muted small mb-0">Deployment = frühestes von: erster gemergter PR oder Abschluss des zugeordneten Release. Nur Items mit bekannter Deployment-Spur fließen ein.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cost over time + model mix -->
+<div class="row g-3 mb-4">
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-graph-up me-1"></i>Kosten über die Zeit (je Monat, geschätzt)</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="costChart" style="max-height: 280px;"></canvas>
+                <p class="text-muted small mt-2 mb-0">Basiert auf <code>total_cost_usd</code> je Claude-Queue-Job (Claudes eigene Schätzung) &mdash; keine Neuberechnung.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-cpu me-1"></i>Modell-Mix</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Modell</th>
+                                <th class="text-end">Jobs</th>
+                                <th class="text-end">Kosten (US$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in model_mix %}
+                            <tr>
+                                <td>{{ row.model|default:"–" }}</td>
+                                <td class="text-end">{{ row.count }}</td>
+                                <td class="text-end">{{ row.total_cost|floatformat:2|default:"–" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">Keine Daten</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td><strong>Ø je bearbeitetes Item</strong></td>
+                                <td class="text-end"></td>
+                                <td class="text-end"><strong>{{ avg_cost_per_item|floatformat:2|default:"–" }}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Autonomy & quality -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-robot me-1"></i>Autonomie &amp; Erfolgsquote</strong>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><td>Items mit Claude-Queue-Job</td><td class="text-end">{{ items_with_jobs_count }} / {{ total_items }} ({{ autonomy_rate|floatformat:0 }}%)</td></tr>
+                        <tr><td>Jobs gesamt</td><td class="text-end">{{ total_jobs }}</td></tr>
+                        <tr><td>Erfolgreich (done, eindeutig)</td><td class="text-end">{{ jobs_done_ok }} ({{ success_rate|floatformat:0 }}%)</td></tr>
+                        <tr><td>Done, aber unsicher (#998)</td><td class="text-end">{{ jobs_done_uncertain }}</td></tr>
+                        <tr><td>Fehlgeschlagen</td><td class="text-end">{{ jobs_failed }}</td></tr>
+                        <tr><td>Abgebrochen</td><td class="text-end">{{ jobs_cancelled }}</td></tr>
+                        <tr><td>In Bearbeitung / Warteschlange</td><td class="text-end">{{ jobs_in_flight }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-arrow-left-right me-1"></i>Verteilung <code>num_turns</code> (Kostentreiber)</strong>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">Ø {{ avg_turns|floatformat:1|default:"–" }} &middot; Median {{ median_turns|floatformat:0|default:"–" }}</p>
+                <canvas id="turnsChart" style="max-height: 220px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top lists -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-currency-dollar me-1"></i>Teuerste Items</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light"><tr><th>Item</th><th class="text-end">US$</th></tr></thead>
+                        <tbody>
+                            {% for item in top_cost_items %}
+                            <tr>
+                                <td><a href="{% url 'item-detail' item.id %}">#{{ item.id }} {{ item.title|truncatechars:40 }}</a></td>
+                                <td class="text-end">{{ item.total_job_cost|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center text-muted py-3">Keine Daten</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-hourglass-split me-1"></i>Längste Cycle-Time</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light"><tr><th>Item</th><th class="text-end">Tage</th></tr></thead>
+                        <tbody>
+                            {% for row in top_cycle_time_items %}
+                            <tr>
+                                <td><a href="{% url 'item-detail' row.item.id %}">#{{ row.item.id }} {{ row.item.title|truncatechars:40 }}</a></td>
+                                <td class="text-end">{{ row.cycle_days|floatformat:1 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center text-muted py-3">Keine Daten</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><i class="bi bi-arrow-repeat me-1"></i>Meiste PRs / Turns</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light"><tr><th>Item</th><th class="text-end">PRs</th><th class="text-end">Turns</th></tr></thead>
+                        <tbody>
+                            {% for item in top_turns_items %}
+                            <tr>
+                                <td><a href="{% url 'item-detail' item.id %}">#{{ item.id }} {{ item.title|truncatechars:30 }}</a></td>
+                                <td class="text-end">{{ item.pr_count }}</td>
+                                <td class="text-end">{{ item.total_turns }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">Keine Daten</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hall of Fame -->
+<div class="dashboard-section mb-4">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title"><i class="bi bi-trophy me-2"></i>Hall of Fame</h2>
+    </div>
+    <div class="row g-3">
+        {% if first_item %}
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-flag"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Der Anfang</div>
+                    <a href="{% url 'item-detail' first_item.id %}">#{{ first_item.id }} {{ first_item.title|truncatechars:30 }}</a>
+                    <div class="text-muted small">{{ first_item.created_at|date:"d.m.Y" }}</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if oldest_open_item %}
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-hourglass"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Ältestes offenes Item</div>
+                    <a href="{% url 'item-detail' oldest_open_item.id %}">#{{ oldest_open_item.id }} {{ oldest_open_item.title|truncatechars:30 }}</a>
+                    <div class="text-muted small">seit {{ oldest_open_item.created_at|date:"d.m.Y" }}</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if most_discussed_item %}
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-chat-dots"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Meistdiskutiert</div>
+                    <a href="{% url 'item-detail' most_discussed_item.id %}">#{{ most_discussed_item.id }} {{ most_discussed_item.title|truncatechars:30 }}</a>
+                    <div class="text-muted small">{{ most_discussed_item.comment_count }} Kommentare</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if fastest_lead_time_item and fastest_lead_time_item.item %}
+        <div class="col-md-3">
+            <div class="kpi-card kpi-card-success">
+                <div class="kpi-icon"><i class="bi bi-lightning-charge"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Schnellste Idee → Deployment</div>
+                    <a href="{% url 'item-detail' fastest_lead_time_item.item.id %}">#{{ fastest_lead_time_item.item.id }} {{ fastest_lead_time_item.item.title|truncatechars:30 }}</a>
+                    <div class="text-muted small">{{ fastest_lead_time_item.lead_days|floatformat:1 }} Tage</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const throughputCtx = document.getElementById('throughputChart');
+    if (throughputCtx) {
+        const data = {{ throughput_chart_json|safe }};
+        new Chart(throughputCtx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: 'Erstellt',
+                        data: data.created,
+                        backgroundColor: 'rgba(99, 102, 241, 0.6)',
+                        order: 2,
+                    },
+                    {
+                        label: 'Geschlossen',
+                        data: data.closed,
+                        backgroundColor: 'rgba(34, 197, 94, 0.6)',
+                        order: 2,
+                    },
+                    {
+                        type: 'line',
+                        label: 'Offen (kumuliert)',
+                        data: data.open,
+                        borderColor: 'rgba(220, 53, 69, 0.9)',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        order: 1,
+                    },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Items / Woche' } },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'Offen (kumuliert)' },
+                    },
+                }
+            }
+        });
+    }
+
+    const costCtx = document.getElementById('costChart');
+    if (costCtx) {
+        const data = {{ cost_chart_json|safe }};
+        new Chart(costCtx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Kosten (US$)',
+                    data: data.data,
+                    backgroundColor: 'rgba(13, 202, 240, 0.6)',
+                    borderColor: 'rgba(13, 202, 240, 1)',
+                    borderWidth: 1,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    const turnsCtx = document.getElementById('turnsChart');
+    if (turnsCtx) {
+        const histogram = {{ turns_histogram_json|safe }};
+        new Chart(turnsCtx, {
+            type: 'bar',
+            data: {
+                labels: histogram.map(b => b.label),
+                datasets: [{
+                    label: 'Jobs',
+                    data: histogram.map(b => b.count),
+                    backgroundColor: 'rgba(255, 193, 7, 0.6)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    borderWidth: 1,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

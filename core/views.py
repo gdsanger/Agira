@@ -7646,6 +7646,311 @@ def ai_job_statistics(request):
     return render(request, 'ai_job_statistics.html', context)
 
 
+@login_required
+def system_analytics(request):
+    """"Agira über Agira": dauerhafte System-Analytics-/Retrospektive-Ansicht.
+
+    Wertet die eigenen Daten (Item, ClaudeQueueJob, Release, Activity) aus:
+    Durchsatz, Cycle-/Kigil-Lead-Time, Kosten, Autonomie/Qualität, Top-Listen
+    und ein leichtgewichtiger Meilenstein-Marker. Alles DB-seitig aggregiert
+    (Sum/Count/Avg/Max/Min + Zeit-Buckets), keine Queries pro Item.
+    """
+    import statistics
+    from collections import defaultdict
+    from datetime import timedelta
+    from django.db.models import Sum
+    from django.db.models.functions import TruncWeek, TruncMonth
+
+    MILESTONE_TARGET = 1000
+
+    today = timezone.localdate()
+
+    # ------------------------------------------------------------------
+    # Meilenstein-Kopfzeile
+    # ------------------------------------------------------------------
+    total_items = Item.objects.count()
+    first_item = Item.objects.select_related('project').order_by('created_at').first()
+    closed_items_count = Item.objects.filter(status=ItemStatus.CLOSED).count()
+    open_items_count = total_items - closed_items_count
+    completion_rate = (closed_items_count / total_items * 100) if total_items else 0
+
+    days_since_start = 0
+    avg_items_per_day = 0
+    if first_item:
+        days_since_start = max((today - first_item.created_at.date()).days + 1, 1)
+        avg_items_per_day = total_items / days_since_start
+
+    highest_item_number = Item.objects.aggregate(m=models.Max('id'))['m'] or 0
+    milestone_reached = highest_item_number >= MILESTONE_TARGET
+    milestone_item = Item.objects.select_related('project').filter(pk=MILESTONE_TARGET).first()
+    milestone_progress_pct = min(highest_item_number / MILESTONE_TARGET * 100, 100) if MILESTONE_TARGET else 0
+
+    # ------------------------------------------------------------------
+    # Closed-Zeitpunkt je Item: jüngste "-> Closed"-Aktivität, sonst
+    # updated_at als Fallback (z.B. Statusänderung ohne Activity-Log-Eintrag).
+    # Zwei Aggregat-Queries, keine Pro-Item-Lookups.
+    # ------------------------------------------------------------------
+    closed_activity_qs = (
+        Activity.objects.filter(verb='item.status_changed', summary__endswith=f'→ {ItemStatus.CLOSED}')
+        .values('target_object_id')
+        .annotate(closed_at=models.Max('created_at'))
+    )
+    closed_at_by_item_id = {int(r['target_object_id']): r['closed_at'] for r in closed_activity_qs}
+
+    closed_items_rows = list(
+        Item.objects.filter(status=ItemStatus.CLOSED).values('id', 'created_at', 'updated_at')
+    )
+    item_closed_dates = []  # (item_id, created_at, closed_at)
+    for row in closed_items_rows:
+        closed_at = closed_at_by_item_id.get(row['id'], row['updated_at'])
+        if closed_at and closed_at >= row['created_at']:
+            item_closed_dates.append((row['id'], row['created_at'], closed_at))
+
+    # ------------------------------------------------------------------
+    # Durchsatz über die Zeit: erstellt vs. geschlossen je Woche + offene-Kurve
+    # ------------------------------------------------------------------
+    created_by_week_qs = (
+        Item.objects.annotate(week=TruncWeek('created_at'))
+        .values('week').annotate(count=Count('id')).order_by('week')
+    )
+    created_by_week = {row['week'].date(): row['count'] for row in created_by_week_qs}
+
+    closed_by_week = defaultdict(int)
+    for _id, _created_at, closed_at in item_closed_dates:
+        week_start = closed_at.date() - timedelta(days=closed_at.weekday())
+        closed_by_week[week_start] += 1
+
+    week_labels, created_series, closed_series, open_series = [], [], [], []
+    if first_item:
+        week_cursor = first_item.created_at.date() - timedelta(days=first_item.created_at.weekday())
+        current_week_start = today - timedelta(days=today.weekday())
+        cumulative_open = 0
+        while week_cursor <= current_week_start:
+            created_n = created_by_week.get(week_cursor, 0)
+            closed_n = closed_by_week.get(week_cursor, 0)
+            cumulative_open += created_n - closed_n
+            week_labels.append(week_cursor.strftime('%d.%m.'))
+            created_series.append(created_n)
+            closed_series.append(closed_n)
+            open_series.append(cumulative_open)
+            week_cursor += timedelta(days=7)
+
+    # ------------------------------------------------------------------
+    # Cycle-Time (erstellt -> geschlossen) für aktuell geschlossene Items
+    # ------------------------------------------------------------------
+    cycle_days = [
+        (closed_at - created_at).total_seconds() / 86400
+        for _id, created_at, closed_at in item_closed_dates
+    ]
+    avg_cycle_days = statistics.mean(cycle_days) if cycle_days else None
+    median_cycle_days = statistics.median(cycle_days) if cycle_days else None
+
+    # ------------------------------------------------------------------
+    # Kigil-Lead-Time: Idee (created_at) -> Deployment.
+    # Deployment = früheres von (erster gemergter PR) / (Release closed_at).
+    # Nicht jedes Item hat bereits eine Deployment-Spur - lead_time_coverage_pct
+    # macht das im UI sichtbar, statt stillschweigend nur einen Teil zu zeigen.
+    # ------------------------------------------------------------------
+    pr_deploy_qs = (
+        ExternalIssueMapping.objects.filter(kind=ExternalIssueKind.PR, merged_at__isnull=False)
+        .values('item_id').annotate(first_merge=models.Min('merged_at'))
+    )
+    pr_deploy_by_item = {r['item_id']: r['first_merge'] for r in pr_deploy_qs}
+
+    release_deploy_by_item = {
+        r['id']: r['solution_release__closed_at']
+        for r in Item.objects.filter(solution_release__closed_at__isnull=False)
+        .values('id', 'solution_release__closed_at')
+    }
+
+    lead_time_rows = []  # (item_id, created_at, deploy_at, lead_days)
+    for item_id, created_at in Item.objects.values_list('id', 'created_at'):
+        candidates = [d for d in (pr_deploy_by_item.get(item_id), release_deploy_by_item.get(item_id)) if d]
+        if not candidates:
+            continue
+        deploy_at = min(candidates)
+        if deploy_at < created_at:
+            continue
+        lead_time_rows.append((item_id, created_at, deploy_at, (deploy_at - created_at).total_seconds() / 86400))
+
+    lead_days = [row[3] for row in lead_time_rows]
+    avg_lead_days = statistics.mean(lead_days) if lead_days else None
+    median_lead_days = statistics.median(lead_days) if lead_days else None
+    lead_time_coverage_pct = (len(lead_days) / total_items * 100) if total_items else 0
+
+    # ------------------------------------------------------------------
+    # Kosten über die Zeit + Modell-Mix (basiert auf ClaudeQueueJob.total_cost_usd,
+    # Claudes eigener Schätzwert - keine Neuberechnung, siehe #997)
+    # ------------------------------------------------------------------
+    total_cost_all_time = ClaudeQueueJob.objects.aggregate(total=Sum('total_cost_usd'))['total'] or Decimal('0')
+
+    cost_by_month_qs = (
+        ClaudeQueueJob.objects.annotate(month=TruncMonth('created_at'))
+        .values('month').annotate(total=Sum('total_cost_usd')).order_by('month')
+    )
+    month_labels = [row['month'].strftime('%m/%Y') for row in cost_by_month_qs]
+    month_cost_series = [float(row['total'] or 0) for row in cost_by_month_qs]
+
+    model_mix = list(
+        ClaudeQueueJob.objects.values('model')
+        .annotate(total_cost=Sum('total_cost_usd'), count=Count('id'))
+        .order_by('-total_cost')
+    )
+
+    items_with_jobs_count = Item.objects.filter(claude_queue_jobs__isnull=False).distinct().count()
+    avg_cost_per_item = (total_cost_all_time / items_with_jobs_count) if items_with_jobs_count else None
+
+    # ------------------------------------------------------------------
+    # Autonomie & Qualität
+    # ------------------------------------------------------------------
+    total_jobs = ClaudeQueueJob.objects.count()
+    autonomy_rate = (items_with_jobs_count / total_items * 100) if total_items else 0
+
+    done_jobs = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.DONE)
+    jobs_done_ok = done_jobs.filter(completion_uncertain=False).count()
+    jobs_done_uncertain = done_jobs.filter(completion_uncertain=True).count()
+    jobs_failed = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.FAILED).count()
+    jobs_cancelled = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.CANCELLED).count()
+    jobs_in_flight = ClaudeQueueJob.objects.filter(
+        status__in=[ClaudeQueueJobStatus.QUEUED, ClaudeQueueJobStatus.RUNNING]
+    ).count()
+    success_rate = (jobs_done_ok / total_jobs * 100) if total_jobs else 0
+
+    turns_list = sorted(
+        ClaudeQueueJob.objects.filter(num_turns__isnull=False).values_list('num_turns', flat=True)
+    )
+    avg_turns = statistics.mean(turns_list) if turns_list else None
+    median_turns = statistics.median(turns_list) if turns_list else None
+
+    turns_buckets = [('1-10', 0, 10), ('11-25', 11, 25), ('26-50', 26, 50), ('51-100', 51, 100), ('100+', 101, None)]
+    turns_histogram = []
+    for label, low, high in turns_buckets:
+        if high is None:
+            count = sum(1 for t in turns_list if t >= low)
+        else:
+            count = sum(1 for t in turns_list if low <= t <= high)
+        turns_histogram.append({'label': label, 'count': count})
+
+    # ------------------------------------------------------------------
+    # Top-Listen
+    # ------------------------------------------------------------------
+    top_cost_items = list(
+        Item.objects.select_related('project')
+        .annotate(total_job_cost=Sum('claude_queue_jobs__total_cost_usd'))
+        .filter(total_job_cost__isnull=False, total_job_cost__gt=0)
+        .order_by('-total_job_cost')[:10]
+    )
+
+    top_turns_items = list(
+        Item.objects.select_related('project')
+        .annotate(
+            total_turns=Sum('claude_queue_jobs__num_turns'),
+            pr_count=Count(
+                'external_mappings',
+                filter=Q(external_mappings__kind=ExternalIssueKind.PR),
+                distinct=True,
+            ),
+        )
+        .filter(total_turns__isnull=False)
+        .order_by('-total_turns')[:10]
+    )
+
+    top_cycle_time_rows = sorted(item_closed_dates, key=lambda row: row[2] - row[1], reverse=True)[:10]
+    top_cycle_time_items = []
+    if top_cycle_time_rows:
+        items_by_id = {
+            it.id: it for it in
+            Item.objects.select_related('project').filter(id__in=[row[0] for row in top_cycle_time_rows])
+        }
+        for item_id, created_at, closed_at in top_cycle_time_rows:
+            item = items_by_id.get(item_id)
+            if item:
+                top_cycle_time_items.append({
+                    'item': item,
+                    'cycle_days': (closed_at - created_at).total_seconds() / 86400,
+                })
+
+    # ------------------------------------------------------------------
+    # Hall of Fame (leichtgewichtig)
+    # ------------------------------------------------------------------
+    oldest_open_item = (
+        Item.objects.select_related('project')
+        .exclude(status=ItemStatus.CLOSED).order_by('created_at').first()
+    )
+    most_discussed_item = (
+        Item.objects.select_related('project').annotate(comment_count=Count('comments'))
+        .filter(comment_count__gt=0).order_by('-comment_count').first()
+    )
+    fastest_lead_time_item = None
+    if lead_time_rows:
+        fastest_row = min(lead_time_rows, key=lambda row: row[3])
+        fastest_lead_time_item = {
+            'item': Item.objects.select_related('project').filter(pk=fastest_row[0]).first(),
+            'lead_days': fastest_row[3],
+        }
+
+    context = {
+        'milestone_target': MILESTONE_TARGET,
+        'milestone_reached': milestone_reached,
+        'milestone_item': milestone_item,
+        'milestone_progress_pct': milestone_progress_pct,
+        'highest_item_number': highest_item_number,
+        'total_items': total_items,
+        'first_item': first_item,
+        'closed_items_count': closed_items_count,
+        'open_items_count': open_items_count,
+        'completion_rate': completion_rate,
+        'days_since_start': days_since_start,
+        'avg_items_per_day': avg_items_per_day,
+
+        'throughput_chart_json': json.dumps({
+            'labels': week_labels,
+            'created': created_series,
+            'closed': closed_series,
+            'open': open_series,
+        }),
+
+        'avg_cycle_days': avg_cycle_days,
+        'median_cycle_days': median_cycle_days,
+        'cycle_time_sample_size': len(cycle_days),
+
+        'avg_lead_days': avg_lead_days,
+        'median_lead_days': median_lead_days,
+        'lead_time_sample_size': len(lead_days),
+        'lead_time_coverage_pct': lead_time_coverage_pct,
+
+        'total_cost_all_time': total_cost_all_time,
+        'avg_cost_per_item': avg_cost_per_item,
+        'items_with_jobs_count': items_with_jobs_count,
+        'model_mix': model_mix,
+        'cost_chart_json': json.dumps({
+            'labels': month_labels,
+            'data': month_cost_series,
+        }),
+
+        'total_jobs': total_jobs,
+        'autonomy_rate': autonomy_rate,
+        'success_rate': success_rate,
+        'jobs_done_ok': jobs_done_ok,
+        'jobs_done_uncertain': jobs_done_uncertain,
+        'jobs_failed': jobs_failed,
+        'jobs_cancelled': jobs_cancelled,
+        'jobs_in_flight': jobs_in_flight,
+        'avg_turns': avg_turns,
+        'median_turns': median_turns,
+        'turns_histogram_json': json.dumps(turns_histogram),
+
+        'top_cost_items': top_cost_items,
+        'top_turns_items': top_turns_items,
+        'top_cycle_time_items': top_cycle_time_items,
+
+        'oldest_open_item': oldest_open_item,
+        'most_discussed_item': most_discussed_item,
+        'fastest_lead_time_item': fastest_lead_time_item,
+    }
+    return render(request, 'system_analytics.html', context)
+
+
 # ============================================================================
 # Weaviate Sync Views
 # ============================================================================
