@@ -120,86 +120,112 @@
      data-recent-status="{{ item.status }}" 
      data-recent-url="{% url 'item-detail' item.id %}"></div>
 
-<div class="page-header d-flex justify-content-between align-items-start">
-    
-        <div>
-            <h3>{{ item.title }}</h3>
-            <p class="text-muted">
-                <a href="{% url 'project-detail' item.project.id %}" class="text-decoration-none">{{ item.project.name }}</a> • {{ item.type.name }}
-            </p>
-        </div>
-   
-        <div class="btn-group" role="group" aria-label="Item Actions">
-            <a href="{% url 'project-detail' item.project.id %}" class="btn btn-outline-primary">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16">
-                                <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
-                            </svg>
-                            Back to Project
-                        </a>
-                         <a href="{% url 'item-edit' item.id %}" class="btn btn-outline-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil" viewBox="0 0 16 16">
-                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
-                </svg>
-                Edit
-            </a>
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#moveItemModal">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left-right" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-3.147 3.146a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 1 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"/>
-                </svg>
-                Move
-            </button>
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#applyBlueprintModal">
-                <i class="bi bi-file-earmark-text"></i>
-                Apply Blueprint
-            </button>
-            <a href="{% url 'item-create-blueprint' item.id %}" class="btn btn-outline-primary">
-                <i class="bi bi-clipboard-plus"></i>
-                Create Blueprint
-            </a>
-            {% if user.role == 'Agent' %}
-            <button type="button" class="btn btn-outline-success" onclick="takeOverResponsible()">
-                <i class="bi bi-person-check"></i>
-                Take over
-            </button>
-            {% if item.status != 'Closed' %}
-            <button type="button" class="btn btn-outline-primary" onclick="enqueueToClaude()">
-                <i class="bi bi-robot"></i>
-                An Claude übergeben
-            </button>
-            {% endif %}
-            {% endif %}
-            <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignResponsibleModal">
-                <i class="bi bi-person-plus"></i>
-                Assign
-            </button>
-            <button type="button" class="btn btn-outline-secondary" onclick="sendStatusUpdate({{ item.id }})">
-                <i class="bi bi-send"></i>
-                Send status update
-            </button>
-              <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
-                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                </svg>
-                Delete
-            </button>         
-        </div>
- 
-</div>
+<!-- Hidden CSRF token for delete/other JS-driven operations -->
+{% csrf_token %}
+
 <!-- Breadcrumb -->
-<nav aria-label="breadcrumb" class="mb-3">
-    <ol class="breadcrumb">
-        {% if item %}
+<nav aria-label="breadcrumb" class="item-detail-breadcrumb">
+    <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="{% url 'project-detail' item.project.id %}">{{ item.project.name }}</a></li>
-        <li class="breadcrumb-item"><a href="{% url 'item-detail' item.id %}">{{ item.title }}</a></li>
-        <li class="breadcrumb-item active">Edit</li>
-        {% else %}
-        <li class="breadcrumb-item active">New Item</li>
-        {% endif %}
+        <li class="breadcrumb-item active" aria-current="page">Item #{{ item.id }}</li>
     </ol>
 </nav>
-<!-- Hidden CSRF token for delete operation -->
-{% csrf_token %}
+
+<div class="page-header item-detail-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div class="item-detail-title-block">
+        <h3 class="item-detail-title" title="{{ item.title }}">{{ item.title }}</h3>
+        <div class="item-detail-meta d-flex align-items-center flex-wrap gap-2">
+            <span class="badge bg-secondary">{{ item.get_status_display }}</span>
+            <span class="text-muted small">{{ item.type.name }}</span>
+        </div>
+    </div>
+
+    <div class="item-detail-actions d-flex align-items-center gap-2">
+        <!-- Primary actions: visible on desktop only, reachable via the Aktionen menu on mobile -->
+        <a href="{% url 'item-edit' item.id %}" class="btn btn-primary btn-sm d-none d-md-inline-flex align-items-center gap-1">
+            <i class="bi bi-pencil"></i> Edit
+        </a>
+        <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-flex align-items-center gap-1" onclick="sendStatusUpdate({{ item.id }})">
+            <i class="bi bi-send"></i> Send status update
+        </button>
+
+        <!-- Overflow menu: everything else, grouped. Also the only control shown on mobile. -->
+        <div class="dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle d-flex align-items-center gap-1" id="itemActionsMenuBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-three-dots"></i>
+                Aktionen
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end item-actions-menu" aria-labelledby="itemActionsMenuBtn">
+                <!-- Mobile-only: primary actions, since no separate buttons are shown there -->
+                <li class="d-md-none">
+                    <a class="dropdown-item" href="{% url 'item-edit' item.id %}">
+                        <i class="bi bi-pencil me-2"></i>Edit
+                    </a>
+                </li>
+                <li class="d-md-none">
+                    <button type="button" class="dropdown-item" onclick="sendStatusUpdate({{ item.id }})">
+                        <i class="bi bi-send me-2"></i>Send status update
+                    </button>
+                </li>
+                <li class="d-md-none"><hr class="dropdown-divider"></li>
+
+                <li><h6 class="dropdown-header">Navigation</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'project-detail' item.project.id %}">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Project
+                    </a>
+                </li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Workflow</h6></li>
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#moveItemModal">
+                        <i class="bi bi-arrow-left-right me-2"></i>Move
+                    </button>
+                </li>
+                {% if user.role == 'Agent' %}
+                <li>
+                    <button type="button" class="dropdown-item" onclick="takeOverResponsible()">
+                        <i class="bi bi-person-check me-2"></i>Take over
+                    </button>
+                </li>
+                {% if item.status != 'Closed' %}
+                <li>
+                    <button type="button" class="dropdown-item" onclick="enqueueToClaude()">
+                        <i class="bi bi-robot me-2"></i>An Claude übergeben
+                    </button>
+                </li>
+                {% endif %}
+                {% endif %}
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#assignResponsibleModal">
+                        <i class="bi bi-person-plus me-2"></i>Assign
+                    </button>
+                </li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Blueprint</h6></li>
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#applyBlueprintModal">
+                        <i class="bi bi-file-earmark-text me-2"></i>Apply Blueprint
+                    </button>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'item-create-blueprint' item.id %}">
+                        <i class="bi bi-clipboard-plus me-2"></i>Create Blueprint
+                    </a>
+                </li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button type="button" class="dropdown-item text-danger" onclick="confirmDelete()">
+                        <i class="bi bi-trash me-2"></i>Delete
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
 
 <!-- Incoming Project Warning Banner -->
 {% if item.project.name == 'Incoming' %}
