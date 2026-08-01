@@ -42,8 +42,8 @@
     --color-white: #ffffff;
 
     /* Chrome Surfaces - unified background for topbar, left nav and right sidebar (#991) */
-    --chrome-bg: var(--text-primary);
-    --chrome-fg: var(--bg-primary);
+    --chrome-bg: var(--bg-primary);
+    --chrome-fg: var(--text-primary);
     --chrome-fg-secondary: color-mix(in srgb, var(--chrome-fg) 80%, var(--chrome-bg));
     --chrome-fg-muted: color-mix(in srgb, var(--chrome-fg) 60%, var(--chrome-bg));
     --chrome-border: color-mix(in srgb, var(--chrome-fg) 15%, var(--chrome-bg));
