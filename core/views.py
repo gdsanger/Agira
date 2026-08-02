@@ -1050,9 +1050,12 @@ def item_detail(request, item_id):
         except UserOrganisation.DoesNotExist:
             requester_org_short = None
     
-    # Get all organisations for quick-create user modal
+    # Get all organisations for quick-create user modal / inline organisation edit
     organisations = Organisation.objects.all().order_by('name')
-    
+
+    # Get active item types for inline type edit
+    item_types = ItemType.objects.filter(is_active=True).order_by('name')
+
     # Get initial tab from query parameter (default: overview)
     active_tab = request.GET.get('tab', 'overview')
 
@@ -1073,6 +1076,7 @@ def item_detail(request, item_id):
         'parent_items': parent_items,
         'requester_org_short': requester_org_short,
         'organisations': organisations,
+        'item_types': item_types,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
         'claude_queue_jobs': claude_queue_jobs,
@@ -1083,120 +1087,53 @@ def item_detail(request, item_id):
 
 @login_required
 @require_http_methods(["POST"])
-def item_update_release(request, item_id):
-    """HTMX endpoint to update item release field."""
+def item_update_field(request, item_id):
+    """Generic HTMX endpoint to inline-save a single whitelisted item field (#996).
+
+    Consolidates the former per-field endpoints (intern/parent/release) and powers
+    inline editing of organisation, requester, assigned_to, responsible, type and title.
+
+    Contract: POST ``field`` (whitelisted name) + ``value``. Returns a small feedback
+    fragment (``partials/item_field_feedback.html``) rendered into the field's feedback
+    container. Success -> 200; validation/permission/whitelist error -> 400 (the fragment
+    is still swapped in via the scoped ``htmx:beforeSwap`` handler in the template).
+
+    ``status`` and ``description`` are intentionally not whitelisted (status is
+    workflow-driven, description has an explicit editor).
+    """
+    from core.services.item_field_update import (
+        apply_field_update,
+        FieldUpdateError,
+    )
+
     item = get_object_or_404(Item, id=item_id)
-    
-    # Track old value for activity log
-    old_release = item.solution_release
-    old_value = old_release.version if old_release else 'None'
-    
-    release_id = request.POST.get('solution_release')
-    
-    try:
-        if release_id:
-            release = get_object_or_404(Release, id=release_id)
-            item.solution_release = release
-            new_value = release.version
-        else:
-            item.solution_release = None
-            new_value = 'None'
-        
-        item.save()
-        
-        # Log activity
-        activity_service = ActivityService()
-        activity_service.log(
-            verb='item.field_changed',
-            target=item,
-            actor=request.user,
-            summary=f'Changed solution_release from {old_value} to {new_value}'
+    field_name = (request.POST.get('field') or '').strip()
+    raw_value = request.POST.get('value', '')
+
+    def _feedback(message=None, *, error=False, status=200, result=None):
+        return render(
+            request,
+            'partials/item_field_feedback.html',
+            {'error': error, 'message': message, 'field': field_name, 'result': result},
+            status=status,
         )
-        
-        return HttpResponse(status=200)
-    except Exception as e:
-        return HttpResponse(status=400)
 
-
-@login_required
-@require_http_methods(["POST"])
-def item_update_parent(request, item_id):
-    """HTMX endpoint to update item parent field."""
-    item = get_object_or_404(Item, id=item_id)
-    
-    # Track old value for activity log
-    old_parent = item.parent
-    old_value = old_parent.title if old_parent else 'None'
-    
-    parent_id = request.POST.get('parent_item')
-    
     try:
-        if parent_id:
-            parent_item = get_object_or_404(Item, id=parent_id)
-            
-            # Validate parent item criteria
-            # 1. Status must not be closed
-            if parent_item.status == ItemStatus.CLOSED:
-                return HttpResponse('Cannot set a closed item as parent.', status=400)
-            
-            # 2. Cannot be the item itself
-            if parent_item.id == item.id:
-                return HttpResponse('Cannot set item as its own parent.', status=400)
-            
-            item.parent = parent_item
-            new_value = parent_item.title
-        else:
-            item.parent = None
-            new_value = 'None'
-        
-        item.save()
-        
-        # Log activity
-        activity_service = ActivityService()
-        activity_service.log(
-            verb='item.field_changed',
-            target=item,
-            actor=request.user,
-            summary=f'Changed parent_item from {old_value} to {new_value}'
-        )
-        
-        return HttpResponse(status=200)
-    except Exception as e:
-        logger.error(f"Error updating item parent: {str(e)}", exc_info=True)
-        return HttpResponse('An error occurred while updating the parent item.', status=400)
+        result = apply_field_update(item, field_name, raw_value, actor=request.user)
+    except FieldUpdateError as exc:
+        return _feedback(str(exc), error=True, status=400)
+    except Exception as exc:  # pragma: no cover - unexpected server error
+        logger.error(f"Inline field update failed for item {item_id} field '{field_name}': {exc}",
+                     exc_info=True)
+        return _feedback('Speichern fehlgeschlagen. Bitte erneut versuchen.',
+                         error=True, status=400)
 
+    # View-layer side effect: notify a newly assigned responsible (mirrors the dedicated
+    # assign/take-over endpoints). Only fire when the value actually changed to a user.
+    if field_name == 'responsible' and result.changed and result.new_value is not None:
+        _send_responsible_notification(item, result.new_value)
 
-@login_required
-@require_http_methods(["POST"])
-def item_update_intern(request, item_id):
-    """HTMX endpoint to update item intern field."""
-    item = get_object_or_404(Item, id=item_id)
-    
-    # Track old value for activity log
-    old_value = item.intern
-    
-    # Get the new value from POST data
-    intern_value = request.POST.get('intern')
-    
-    try:
-        # Convert to boolean (checkbox sends 'on' when checked, nothing when unchecked)
-        item.intern = intern_value == 'on' or intern_value == 'true'
-        new_value = item.intern
-        
-        item.save()
-        
-        # Log activity
-        activity_service = ActivityService()
-        activity_service.log(
-            verb='item.field_changed',
-            target=item,
-            actor=request.user,
-            summary=f'Changed intern from {old_value} to {new_value}'
-        )
-        
-        return HttpResponse(status=200)
-    except Exception as e:
-        return HttpResponse(status=400)
+    return _feedback(result=result)
 
 
 @login_required

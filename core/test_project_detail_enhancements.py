@@ -91,17 +91,17 @@ class ProjectItemsSolutionReleaseTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         
         content = response.content.decode('utf-8')
-        # Check for dropdown with HTMX attributes
+        # Check for dropdown wired to the generic field endpoint (#996)
         self.assertIn('hx-post=', content)
-        self.assertIn('item-update-release', content)
+        self.assertIn('"field": "solution_release"', content)
         self.assertIn(self.release1.version, content)
         self.assertIn(self.release2.version, content)
-    
+
     def test_solution_release_update_endpoint(self):
-        """Test that solution release can be updated via HTMX"""
+        """Test that solution release can be updated via the generic field endpoint (#996)"""
         response = self.client.post(
-            reverse('item-update-release', args=[self.item2.id]),
-            {'solution_release': self.release2.id}
+            reverse('item-update-field', args=[self.item2.id]),
+            {'field': 'solution_release', 'value': self.release2.id}
         )
         self.assertEqual(response.status_code, 200)
         

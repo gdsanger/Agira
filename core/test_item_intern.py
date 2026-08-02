@@ -78,7 +78,7 @@ class ItemInternFieldTest(TestCase):
         self.assertTrue(item.intern)
     
     def test_item_update_intern_endpoint(self):
-        """Test HTMX endpoint for updating intern field."""
+        """Test the generic HTMX field endpoint for updating the intern field (#996)."""
         # Create item with intern=False
         item = Item.objects.create(
             project=self.project,
@@ -86,22 +86,22 @@ class ItemInternFieldTest(TestCase):
             type=self.item_type,
             intern=False
         )
-        
-        # Update to True
-        url = reverse('item-update-intern', kwargs={'item_id': item.id})
-        response = self.client.post(url, {'intern': 'on'})
-        
+
+        # Update to True via generic field endpoint
+        url = reverse('item-update-field', kwargs={'item_id': item.id})
+        response = self.client.post(url, {'field': 'intern', 'value': 'true'})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Verify in database
         item.refresh_from_db()
         self.assertTrue(item.intern)
-        
-        # Update back to False (checkbox not checked sends no value)
-        response = self.client.post(url, {})
-        
+
+        # Update back to False
+        response = self.client.post(url, {'field': 'intern', 'value': 'false'})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Verify in database
         item.refresh_from_db()
         self.assertFalse(item.intern)

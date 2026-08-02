@@ -91,11 +91,12 @@
                     {% endif %}
                 </td>
                 <td onclick="event.stopPropagation();">
-                    <select class="form-select form-select-sm" 
-                            hx-post="{% url 'item-update-release' item.id %}"
+                    <select class="form-select form-select-sm"
+                            hx-post="{% url 'item-update-field' item.id %}"
+                            hx-vals='{"field": "solution_release"}'
                             hx-trigger="change"
                             hx-swap="none"
-                            name="solution_release">
+                            name="value">
                         <option value="">— No Release —</option>
                         {% for release in project_releases %}
                         <option value="{{ release.id }}" {% if item.solution_release and item.solution_release.id == release.id %}selected{% endif %}>
