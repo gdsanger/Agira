@@ -1,0 +1,14 @@
+{% comment %}
+Inline-save feedback fragment for the generic item field-update endpoint (#996).
+Rendered into a field's `#field-feedback-<name>` container. Dezentes Feedback:
+green "Gespeichert" on success (auto-fades), red message on error.
+{% endcomment %}
+{% if error %}
+<span class="item-field-feedback item-field-feedback-error text-danger small" role="alert">
+    <i class="bi bi-exclamation-circle me-1"></i>{{ message|default:"Speichern fehlgeschlagen." }}
+</span>
+{% else %}
+<span class="item-field-feedback item-field-feedback-ok text-success small" role="status">
+    <i class="bi bi-check-circle me-1"></i>Gespeichert
+</span>
+{% endif %}

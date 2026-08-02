@@ -272,36 +272,36 @@ def example():
         self.assertContains(response, 'id="solution-content"')
     
     def test_item_update_release_endpoint(self):
-        """Test that the update release endpoint works correctly."""
+        """Test that the release field saves via the generic field endpoint (#996)."""
         # Create another release
         new_release = Release.objects.create(
             project=self.project,
             name='Release 2.0',
             version='2.0.0'
         )
-        
-        url = reverse('item-update-release', args=[self.item.id])
-        response = self.client.post(url, {'solution_release': new_release.id})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'solution_release', 'value': new_release.id})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item was updated
         self.item.refresh_from_db()
         self.assertEqual(self.item.solution_release, new_release)
-    
+
     def test_item_update_release_can_clear_release(self):
-        """Test that release can be cleared to None."""
-        url = reverse('item-update-release', args=[self.item.id])
-        response = self.client.post(url, {'solution_release': ''})
-        
+        """Test that release can be cleared to None via the generic field endpoint."""
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'solution_release', 'value': ''})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item release was cleared
         self.item.refresh_from_db()
         self.assertIsNone(self.item.solution_release)
-    
+
     def test_item_update_parent_endpoint(self):
-        """Test that the update parent endpoint works correctly."""
+        """Test that the parent field saves via the generic field endpoint (#996)."""
         # Create a parent item (no parent, same project, not closed)
         parent_item = Item.objects.create(
             project=self.project,
@@ -310,16 +310,16 @@ def example():
             type=self.item_type,
             status=ItemStatus.WORKING
         )
-        
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': parent_item.id})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': parent_item.id})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item was updated
         self.item.refresh_from_db()
         self.assertEqual(self.item.parent, parent_item)
-    
+
     def test_item_update_parent_can_clear_parent(self):
         """Test that parent can be cleared to None."""
         # First set a parent
@@ -332,16 +332,16 @@ def example():
         )
         self.item.parent = parent_item
         self.item.save()
-        
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': ''})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': ''})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item parent was cleared
         self.item.refresh_from_db()
         self.assertIsNone(self.item.parent)
-    
+
     def test_item_update_parent_rejects_closed_parent(self):
         """Test that parent with status=closed is rejected."""
         # Create a closed parent item
@@ -352,16 +352,16 @@ def example():
             type=self.item_type,
             status=ItemStatus.CLOSED
         )
-        
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': closed_parent.id})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': closed_parent.id})
+
         self.assertEqual(response.status_code, 400)
-        
+
         # Check that item parent was not updated
         self.item.refresh_from_db()
         self.assertIsNone(self.item.parent)
-    
+
     def test_item_update_parent_allows_different_project(self):
         """Test that parent from different project is now allowed (as per issue #352)."""
         # Create another project
@@ -369,7 +369,7 @@ def example():
             name='Other Project',
             description='Other description'
         )
-        
+
         # Create item in other project
         other_item = Item.objects.create(
             project=other_project,
@@ -378,16 +378,16 @@ def example():
             type=self.item_type,
             status=ItemStatus.WORKING
         )
-        
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': other_item.id})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': other_item.id})
+
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item parent was updated
         self.item.refresh_from_db()
         self.assertEqual(self.item.parent, other_item)
-    
+
     def test_item_update_parent_allows_item_with_parent(self):
         """Test that item with parent (nested parent) is now allowed (as per issue #306)."""
         # Create grandparent and parent
@@ -398,7 +398,7 @@ def example():
             type=self.item_type,
             status=ItemStatus.WORKING
         )
-        
+
         parent_with_parent = Item.objects.create(
             project=self.project,
             title='Parent with Parent',
@@ -407,24 +407,24 @@ def example():
             status=ItemStatus.WORKING,
             parent=grandparent
         )
-        
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': parent_with_parent.id})
-        
+
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': parent_with_parent.id})
+
         # Should succeed with new simplified validation
         self.assertEqual(response.status_code, 200)
-        
+
         # Check that item parent was updated
         self.item.refresh_from_db()
         self.assertEqual(self.item.parent, parent_with_parent)
-    
+
     def test_item_update_parent_rejects_self(self):
         """Test that item cannot be its own parent."""
-        url = reverse('item-update-parent', args=[self.item.id])
-        response = self.client.post(url, {'parent_item': self.item.id})
-        
+        url = reverse('item-update-field', args=[self.item.id])
+        response = self.client.post(url, {'field': 'parent', 'value': self.item.id})
+
         self.assertEqual(response.status_code, 400)
-        
+
         # Check that item parent was not updated
         self.item.refresh_from_db()
         self.assertIsNone(self.item.parent)
