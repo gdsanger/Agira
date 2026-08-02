@@ -1,0 +1,79 @@
+{% load agira_filters %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Claude-Queue-Kosten je Monat</h5>
+    </div>
+    <div class="card-body">
+        {% if cost_by_month %}
+        <div class="mb-4">
+            <canvas id="projectCostChart" style="max-height: 280px;"></canvas>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Monat/Jahr</th>
+                        <th class="text-end">Jobs</th>
+                        <th class="text-end">Summe (US$)</th>
+                        <th class="text-end">Ø je Job (US$)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in cost_by_month %}
+                    <tr>
+                        <td>{{ row.label }}</td>
+                        <td class="text-end">{{ row.count }}</td>
+                        <td class="text-end">${{ row.total|floatformat:4 }}</td>
+                        <td class="text-end">{% if row.avg is not None %}${{ row.avg|floatformat:4 }}{% else %}&mdash;{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td><strong>Gesamt</strong></td>
+                        <td class="text-end"><strong>{{ total_jobs }}</strong></td>
+                        <td class="text-end"><strong>${{ total_cost|floatformat:4 }}</strong></td>
+                        <td class="text-end"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <p class="text-muted small mt-2 mb-0">
+            Basiert auf <code>total_cost_usd</code> je Claude-Queue-Job (Claudes eigene Kostenschätzung, API-Listenpreis)
+            &mdash; keine Neuberechnung. Gruppierung nach Erstellungsdatum (<code>created_at</code>) des Jobs.
+        </p>
+
+        <script>
+        (function() {
+            const ctx = document.getElementById('projectCostChart');
+            if (!ctx) return;
+            const data = {{ cost_chart_json|safe }};
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Kosten (US$, geschätzt)',
+                        data: data.data,
+                        backgroundColor: 'rgba(13, 202, 240, 0.6)',
+                        borderColor: 'rgba(13, 202, 240, 1)',
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        })();
+        </script>
+        {% else %}
+        <div class="alert alert-info mb-0">
+            Für dieses Projekt liegen noch keine Claude-Queue-Kosten vor.
+        </div>
+        {% endif %}
+    </div>
+</div>

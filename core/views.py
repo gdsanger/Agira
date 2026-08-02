@@ -5852,7 +5852,54 @@ def project_attachments_tab(request, id):
 
 
 @login_required
+def project_costs_tab(request, id):
+    """Return the project costs tab: Claude-Queue-Kosten je Monat/Jahr (#1003).
 
+    Summiert total_cost_usd (Claudes eigene Schätzung, siehe #997) aller
+    ClaudeQueueJobs der Items dieses Projekts, gruppiert nach Monat der
+    Job-Erstellung (created_at - das einzige durchgängig verlässliche Datum).
+    DB-seitig aggregiert, keine Pro-Job-Berechnung in Python.
+    """
+    from django.db.models.functions import TruncMonth
+
+    project = get_object_or_404(Project, id=id)
+
+    cost_by_month_qs = (
+        ClaudeQueueJob.objects.filter(item__project=project)
+        .annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(total=models.Sum('total_cost_usd'), n=Count('id'))
+        .order_by('month')
+    )
+    cost_by_month = [
+        {
+            'label': row['month'].strftime('%m/%Y'),
+            'total': row['total'] or Decimal('0'),
+            'count': row['n'],
+            'avg': (row['total'] / row['n']) if row['total'] and row['n'] else None,
+        }
+        for row in cost_by_month_qs
+    ]
+
+    total_cost = sum((row['total'] for row in cost_by_month), Decimal('0'))
+    total_jobs = sum(row['count'] for row in cost_by_month)
+
+    cost_chart_json = json.dumps({
+        'labels': [row['label'] for row in cost_by_month],
+        'data': [float(row['total']) for row in cost_by_month],
+    })
+
+    context = {
+        'project': project,
+        'cost_by_month': cost_by_month,
+        'total_cost': total_cost,
+        'total_jobs': total_jobs,
+        'cost_chart_json': cost_chart_json,
+    }
+    return render(request, 'partials/project_costs_tab.html', context)
+
+
+@login_required
 @require_POST
 def project_upload_attachment(request, id):
     """Upload an attachment to a project."""

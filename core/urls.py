@@ -44,6 +44,7 @@ urlpatterns = [
     path('releases/<int:release_id>/create-change/', views.release_create_change, name='release-create-change'),
     path('projects/<int:id>/items/tab/', views.project_items_tab, name='project-items-tab'),
     path('projects/<int:id>/attachments/tab/', views.project_attachments_tab, name='project-attachments-tab'),
+    path('projects/<int:id>/costs/tab/', views.project_costs_tab, name='project-costs-tab'),
     path('projects/<int:id>/upload-attachment/', views.project_upload_attachment, name='project-upload-attachment'),
     path('projects/attachments/<int:attachment_id>/delete/', views.project_delete_attachment, name='project-delete-attachment'),
     path('projects/attachments/<int:attachment_id>/view/', views.project_view_attachment, name='project-view-attachment'),

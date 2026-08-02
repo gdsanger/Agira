@@ -4,6 +4,7 @@
 {% block title %}{{ project.name }} - Agira{% endblock %}
 
 {% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <!-- Markdown Viewer Styles -->
 <style>
 .markdown-viewer {
@@ -193,6 +194,11 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#project-attachments" type="button" role="tab" aria-controls="project-attachments">
                     Attachments <span class="badge bg-secondary">{{ attachments_count }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="costs-tab" data-bs-toggle="tab" data-bs-target="#project-costs" type="button" role="tab" aria-controls="project-costs">
+                    Kosten
                 </button>
             </li>
         </ul>
@@ -405,6 +411,19 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Costs Tab -->
+            <div class="tab-pane fade" id="project-costs" role="tabpanel" aria-labelledby="costs-tab"
+                 hx-get="{% url 'project-costs-tab' project.id %}"
+                 hx-trigger="load once"
+                 hx-swap="innerHTML">
+                <!-- Content will be loaded via HTMX -->
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -576,7 +595,7 @@ function applyItemsFiltersFromStorage(event) {
     const storageKey = 'projectDetail.activeTab.{{ project.id|escapejs }}';
     
     // List of valid tab IDs for this view
-    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'attachments-tab'];
+    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'attachments-tab', 'costs-tab'];
     
     // Restore active tab on page load
     function restoreActiveTab() {
