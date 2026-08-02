@@ -113,6 +113,31 @@ class SystemAnalyticsViewTestCase(TestCase):
         self.assertTrue(response.context['milestone_reached'])
         self.assertEqual(response.context['milestone_item'], milestone_item)
 
+    def test_discarded_items_count_reflects_gap_between_highest_id_and_total(self):
+        self.client.login(username='testuser', password='testpass123')
+        baseline = self.client.get(reverse('system-analytics'))
+        baseline_highest = baseline.context['highest_item_number']
+        baseline_total = baseline.context['total_items']
+
+        # Backfill an item far above the current highest id, leaving a gap of
+        # never-created ids below it - those represent issues that were
+        # assigned a number but deliberately discarded, not "open" work.
+        new_id = baseline_highest + 500
+        Item.objects.create(
+            id=new_id,
+            title='Item after a gap of discarded issue numbers',
+            description='desc',
+            project=self.project,
+            type=self.item_type,
+            status=ItemStatus.CLOSED,
+        )
+
+        response = self.client.get(reverse('system-analytics'))
+
+        self.assertEqual(response.context['highest_item_number'], new_id)
+        self.assertEqual(response.context['total_items'], baseline_total + 1)
+        self.assertEqual(response.context['discarded_items_count'], new_id - (baseline_total + 1))
+
     def test_top_cost_items_excludes_items_without_cost(self):
         self.client.login(username='testuser', password='testpass123')
         response = self.client.get(reverse('system-analytics'))

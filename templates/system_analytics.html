@@ -31,6 +31,12 @@
                 {{ completion_rate|floatformat:0 }}% abgeschlossen ({{ closed_items_count }}/{{ total_items }}).
             </p>
             {% endif %}
+            <p class="text-muted mb-0 mt-1">
+                <strong>{{ total_items }}</strong> umgesetzt &middot;
+                <strong>{{ discarded_items_count }}</strong> bewusst verworfen &middot;
+                <strong>{{ highest_item_number }}</strong> Nummern vergeben
+                <i class="bi bi-info-circle ms-1" title="&quot;Verworfen&quot; = Item-Nummern, die vergeben, aber nie umgesetzt wurden (bewusst gelöscht/verworfen) - kein offener Bestand." data-bs-toggle="tooltip"></i>
+            </p>
         </div>
         <div class="text-end" style="min-width: 180px;">
             <div class="progress" style="height: 0.5rem; background-color: var(--bg-tertiary);">
@@ -81,8 +87,11 @@
         <div class="kpi-card kpi-card-success">
             <div class="kpi-icon"><i class="bi bi-robot"></i></div>
             <div class="kpi-content">
-                <div class="kpi-value">{{ autonomy_rate|floatformat:0 }}%</div>
-                <div class="kpi-label">Items via Claude-Queue bearbeitet</div>
+                <div class="kpi-value">{{ claude_queue_share_pct|floatformat:0 }}%</div>
+                <div class="kpi-label">
+                    über die (zählbare) Claude-Queue
+                    <i class="bi bi-info-circle ms-1" title="Kein Autonomiegrad, sondern nur der messbare Anteil: vor Juli 2026 lief die autonome Umsetzung über GitHub Copilot (eigene Anbindung, nicht in dieser Queue erfasst)." data-bs-toggle="tooltip"></i>
+                </div>
             </div>
         </div>
     </div>
@@ -197,12 +206,12 @@
     <div class="col-md-6">
         <div class="card h-100">
             <div class="card-header">
-                <strong><i class="bi bi-robot me-1"></i>Autonomie &amp; Erfolgsquote</strong>
+                <strong><i class="bi bi-robot me-1"></i>Claude-Queue-Anteil &amp; Erfolgsquote</strong>
             </div>
             <div class="card-body">
                 <table class="table table-sm mb-0">
                     <tbody>
-                        <tr><td>Items mit Claude-Queue-Job</td><td class="text-end">{{ items_with_jobs_count }} / {{ total_items }} ({{ autonomy_rate|floatformat:0 }}%)</td></tr>
+                        <tr><td>Items mit Claude-Queue-Job (zählbar)</td><td class="text-end">{{ items_with_jobs_count }} / {{ total_items }} ({{ claude_queue_share_pct|floatformat:0 }}%)</td></tr>
                         <tr><td>Jobs gesamt</td><td class="text-end">{{ total_jobs }}</td></tr>
                         <tr><td>Erfolgreich (done, eindeutig)</td><td class="text-end">{{ jobs_done_ok }} ({{ success_rate|floatformat:0 }}%)</td></tr>
                         <tr><td>Done, aber unsicher (#998)</td><td class="text-end">{{ jobs_done_uncertain }}</td></tr>
@@ -211,6 +220,7 @@
                         <tr><td>In Bearbeitung / Warteschlange</td><td class="text-end">{{ jobs_in_flight }}</td></tr>
                     </tbody>
                 </table>
+                <p class="text-muted small mb-0">Misst nur den zählbaren Claude-Queue-Anteil, nicht den Autonomiegrad: vor Juli 2026 lief die autonome Umsetzung über GitHub Copilot (eigene Anbindung, hier nicht erfasst); seither fast ausschließlich über Claude Code.</p>
             </div>
         </div>
     </div>
@@ -368,6 +378,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const throughputCtx = document.getElementById('throughputChart');
     if (throughputCtx) {
         const data = {{ throughput_chart_json|safe }};
+        // Zeigt den Werkzeugwechsel autonomer Umsetzung sichtbar: vor Juli 2026
+        // GitHub Copilot (nicht in dieser Queue erfasst), danach Claude Code (#1002).
+        const claudeQueueMarkerPlugin = {
+            id: 'claudeQueueMarker',
+            afterDraw(chart) {
+                const idx = data.claude_queue_marker_index;
+                if (idx === null || idx === undefined) return;
+                const xScale = chart.scales.x;
+                const { ctx, chartArea } = chart;
+                const xPos = xScale.getPixelForValue(idx);
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([6, 4]);
+                ctx.strokeStyle = 'rgba(255, 193, 7, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.moveTo(xPos, chartArea.top);
+                ctx.lineTo(xPos, chartArea.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(255, 193, 7, 0.9)';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText('ab Juli: Claude Code', xPos + 4, chartArea.top + 12);
+                ctx.restore();
+            }
+        };
         new Chart(throughputCtx, {
             type: 'bar',
             data: {
@@ -397,6 +433,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                 ]
             },
+            plugins: [claudeQueueMarkerPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: true,

@@ -7657,11 +7657,14 @@ def system_analytics(request):
     """
     import statistics
     from collections import defaultdict
-    from datetime import timedelta
+    from datetime import date, timedelta
     from django.db.models import Sum
     from django.db.models.functions import TruncWeek, TruncMonth
 
     MILESTONE_TARGET = 1000
+    # Seit Anfang Juli 2026 läuft die autonome Umsetzung über die (zählbare)
+    # Claude-Queue statt über GitHub Copilot (nicht zählbar) - siehe #1002.
+    CLAUDE_QUEUE_CUTOVER_DATE = date(2026, 7, 1)
 
     today = timezone.localdate()
 
@@ -7684,6 +7687,9 @@ def system_analytics(request):
     milestone_reached = highest_item_number >= MILESTONE_TARGET
     milestone_item = Item.objects.select_related('project').filter(pk=MILESTONE_TARGET).first()
     milestone_progress_pct = min(highest_item_number / MILESTONE_TARGET * 100, 100) if MILESTONE_TARGET else 0
+    # Lücke zwischen höchster vergebener Item-Nr. und tatsächlich existierenden
+    # Items = bewusst verworfene/gelöschte Issues, nicht "offen" (#1002).
+    discarded_items_count = max(highest_item_number - total_items, 0)
 
     # ------------------------------------------------------------------
     # Closed-Zeitpunkt je Item: jüngste "-> Closed"-Aktivität, sonst
@@ -7721,6 +7727,7 @@ def system_analytics(request):
         closed_by_week[week_start] += 1
 
     week_labels, created_series, closed_series, open_series = [], [], [], []
+    claude_queue_marker_index = None
     if first_item:
         week_cursor = first_item.created_at.date() - timedelta(days=first_item.created_at.weekday())
         current_week_start = today - timedelta(days=today.weekday())
@@ -7733,6 +7740,8 @@ def system_analytics(request):
             created_series.append(created_n)
             closed_series.append(closed_n)
             open_series.append(cumulative_open)
+            if claude_queue_marker_index is None and week_cursor >= CLAUDE_QUEUE_CUTOVER_DATE:
+                claude_queue_marker_index = len(week_labels) - 1
             week_cursor += timedelta(days=7)
 
     # ------------------------------------------------------------------
@@ -7801,10 +7810,12 @@ def system_analytics(request):
     avg_cost_per_item = (total_cost_all_time / items_with_jobs_count) if items_with_jobs_count else None
 
     # ------------------------------------------------------------------
-    # Autonomie & Qualität
+    # Claude-Queue-Anteil & Qualität. Das ist der messbare Anteil, KEIN
+    # Autonomiegrad: bis Anfang Juli 2026 lief die autonome Umsetzung über
+    # GitHub Copilot (eigene Anbindung, nicht in dieser Queue erfasst) - siehe #1002.
     # ------------------------------------------------------------------
     total_jobs = ClaudeQueueJob.objects.count()
-    autonomy_rate = (items_with_jobs_count / total_items * 100) if total_items else 0
+    claude_queue_share_pct = (items_with_jobs_count / total_items * 100) if total_items else 0
 
     done_jobs = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.DONE)
     jobs_done_ok = done_jobs.filter(completion_uncertain=False).count()
@@ -7895,6 +7906,7 @@ def system_analytics(request):
         'milestone_item': milestone_item,
         'milestone_progress_pct': milestone_progress_pct,
         'highest_item_number': highest_item_number,
+        'discarded_items_count': discarded_items_count,
         'total_items': total_items,
         'first_item': first_item,
         'closed_items_count': closed_items_count,
@@ -7908,6 +7920,7 @@ def system_analytics(request):
             'created': created_series,
             'closed': closed_series,
             'open': open_series,
+            'claude_queue_marker_index': claude_queue_marker_index,
         }),
 
         'avg_cycle_days': avg_cycle_days,
@@ -7929,7 +7942,7 @@ def system_analytics(request):
         }),
 
         'total_jobs': total_jobs,
-        'autonomy_rate': autonomy_rate,
+        'claude_queue_share_pct': claude_queue_share_pct,
         'success_rate': success_rate,
         'jobs_done_ok': jobs_done_ok,
         'jobs_done_uncertain': jobs_done_uncertain,
