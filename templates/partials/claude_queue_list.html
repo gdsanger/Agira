@@ -1,0 +1,10 @@
+{% comment %}
+Combined HTMX poll response for the /claude-queue/ list page: the KPI tiles
+(the in-band swap target) plus the jobs table (an out-of-band swap into its
+own slot further down the page). Returned by claude_queue_jobs() on an
+HX-Request so a single poll refreshes both without duplicating markup.
+Not used for the initial full-page render — claude_queue_jobs.html includes
+the two partials directly at their respective positions in the layout.
+{% endcomment %}
+{% include 'partials/claude_queue_kpis.html' %}
+{% include 'partials/claude_queue_table.html' %}

@@ -1,0 +1,74 @@
+{% comment %}
+Jobs table + pagination for the /claude-queue/ list page. Carries no polling
+attributes of its own — it is swapped in-place as an out-of-band update
+whenever claude_queue_kpis.html polls, so new/finished/deleted jobs and page
+counts stay in sync with the KPI tiles from a single request.
+Expects `jobs`/`page_obj`, `selected_project`, `selected_status` and
+`active_statuses` in context.
+{% endcomment %}
+<div id="claude-queue-table" hx-swap-oob="true">
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Project</th>
+                            <th>Status</th>
+                            <th>Current step</th>
+                            <th>PR</th>
+                            <th>Turns / Cost</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in jobs %}
+                        {% include 'partials/claude_queue_job_row.html' with disable_row_polling=True %}
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">No queue jobs found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Controls -->
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="Page navigation" class="mt-3 pb-3 px-3">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">First</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Previous</a>
+                    </li>
+                    {% endif %}
+
+                    <li class="page-item active">
+                        <span class="page-link">
+                            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                        </span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Next</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Last</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <div class="text-center text-muted">
+                    <small>Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} jobs</small>
+                </div>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
