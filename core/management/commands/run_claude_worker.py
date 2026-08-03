@@ -16,21 +16,27 @@ rows and runs them end-to-end:
    to persist ``session_id`` / ``num_turns`` / ``total_cost_usd`` from the final
    ``result`` event.
 
-The #831 frame — claiming, one-running-job-per-project concurrency, timeout and
+The #831 frame — claiming, one-running-job-per-repo concurrency, timeout and
 crash recovery — is unchanged; this command fills the seam that used to run a
 placeholder ``--cli-command``.
 
 Concurrency rules enforced here:
 
-* At most **one running job per project** at any time. The row lock alone does
-  not guarantee this — two queued jobs of the same project are both unlocked,
-  so ``skip_locked`` would happily hand them to two workers. The selection
-  predicate therefore (a) excludes projects that already have a running job and
-  (b) considers only the *oldest* queued job of each project as a candidate, so
-  a second worker finds no eligible row for a project whose head-of-line job is
+* At most **one running job per repo** (identified by the project's
+  ``github_owner``/``github_repo``, not its ``project_id``) at any time. Two
+  projects that happen to point at the same GitHub repo share a checkout
+  directory, so they must never run concurrently either — keying the lock on
+  repo identity rather than project makes that safe automatically, with no
+  extra pipeline model. The row lock alone does not guarantee the one-per-repo
+  rule — two queued jobs of the same repo are both unlocked, so
+  ``skip_locked`` would happily hand them to two workers. The selection
+  predicate therefore (a) excludes repos that already have a running job and
+  (b) considers only the *oldest* queued job of each repo as a candidate, so a
+  second worker finds no eligible row for a repo whose head-of-line job is
   already locked.
-* Jobs of *different* projects may run in parallel (across multiple worker
-  processes / hosts).
+* Jobs of *different* repos (in practice, different projects) may run in
+  parallel (across multiple worker processes / hosts) — each project is
+  effectively its own pipeline.
 
 Run modes::
 
@@ -140,7 +146,8 @@ PR_BODY_FILE_INSTRUCTIONS = (
 class Command(BaseCommand):
     help = (
         'Claim and run queued Claude Code jobs. Enforces at-most-one running '
-        'job per project. Runnable as a cron (--once) or a loop daemon.'
+        'job per repo (github_owner/github_repo). Runnable as a cron (--once) '
+        'or a loop daemon.'
     )
 
     def add_arguments(self, parser):
@@ -214,22 +221,30 @@ class Command(BaseCommand):
     def claim_next_job(self):
         """Atomically claim the next eligible job and mark it ``running``.
 
-        Eligible = the oldest ``queued`` job of a project that currently has no
-        ``running`` job. Returns the claimed job (already committed as running)
-        or ``None`` if nothing is claimable.
+        Eligible = the oldest ``queued`` job of a repo (the project's
+        ``github_owner``/``github_repo``) that currently has no ``running``
+        job. Returns the claimed job (already committed as running) or
+        ``None`` if nothing is claimable.
         """
         with transaction.atomic():
-            # Projects that already have a running job are off-limits.
-            busy_projects = ClaudeQueueJob.objects.filter(
+            # Repos that already have a running job are off-limits. Keyed on
+            # repo identity, not project_id: two projects configured with the
+            # same github_owner/github_repo must not run at once either, since
+            # they would share the same checkout directory (see
+            # _prepare_checkout).
+            busy_repos = ClaudeQueueJob.objects.filter(
                 status=ClaudeQueueJobStatus.RUNNING,
-            ).values_list('project_id', flat=True)
+                project__github_owner=OuterRef('project__github_owner'),
+                project__github_repo=OuterRef('project__github_repo'),
+            )
 
             # Restrict candidates to the head-of-line (oldest) queued job of each
-            # project. Without this, skip_locked could hand a second worker the
-            # *second*-oldest queued job of a project whose oldest is locked,
-            # breaking the one-per-project rule.
+            # repo. Without this, skip_locked could hand a second worker the
+            # *second*-oldest queued job of a repo whose oldest is locked,
+            # breaking the one-per-repo rule.
             older = ClaudeQueueJob.objects.filter(
-                project_id=OuterRef('project_id'),
+                project__github_owner=OuterRef('project__github_owner'),
+                project__github_repo=OuterRef('project__github_repo'),
                 status=ClaudeQueueJobStatus.QUEUED,
             ).filter(
                 Q(created_at__lt=OuterRef('created_at'))
@@ -239,7 +254,8 @@ class Command(BaseCommand):
             candidates = (
                 ClaudeQueueJob.objects
                 .filter(status=ClaudeQueueJobStatus.QUEUED)
-                .exclude(project_id__in=busy_projects)
+                .annotate(_is_busy=Exists(busy_repos))
+                .filter(_is_busy=False)
                 .annotate(_has_older=Exists(older))
                 .filter(_has_older=False)
                 .order_by('created_at', 'pk')

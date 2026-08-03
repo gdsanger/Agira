@@ -3,8 +3,9 @@ Tests for the Claude queue worker command (run_claude_worker).
 
 Covers the two hard guarantees from the issue:
 
-* Two queued jobs of the *same* project never run in parallel.
-* Jobs of *different* projects may run in parallel.
+* Two queued jobs of the *same* project (repo) never run in parallel — and
+  neither do two different projects that share a repo.
+* Jobs of *different* projects/repos may run in parallel.
 
 plus the timeout / error end-states and crash recovery.
 """
@@ -53,8 +54,12 @@ def _ok_result(**overrides):
 class ClaudeWorkerTestBase(TestCase):
     def setUp(self):
         self.item_type = ItemType.objects.create(key='bug', name='Bug')
-        self.project_a = Project.objects.create(name='Project A')
-        self.project_b = Project.objects.create(name='Project B')
+        self.project_a = Project.objects.create(
+            name='Project A', github_owner='acme', github_repo='repo-a',
+        )
+        self.project_b = Project.objects.create(
+            name='Project B', github_owner='acme', github_repo='repo-b',
+        )
 
     def _item(self, project, status=ItemStatus.BACKLOG):
         return Item.objects.create(
@@ -107,13 +112,14 @@ class ClaimNextJobTests(ClaudeWorkerTestBase):
 
     def test_only_head_of_line_job_per_project_is_a_candidate(self):
         # The head-of-line predicate must expose exactly one candidate per
-        # project, so a second worker can't grab the 2nd-oldest queued job.
+        # repo, so a second worker can't grab the 2nd-oldest queued job.
         head = self._job(self.project_a)
         self._job(self.project_a)  # newer, must not be a candidate
         self._job(self.project_a)  # newer, must not be a candidate
 
         older = ClaudeQueueJob.objects.filter(
-            project_id=head.project_id,
+            project__github_owner=head.project.github_owner,
+            project__github_repo=head.project.github_repo,
             status=ClaudeQueueJobStatus.QUEUED,
             created_at__lt=head.created_at,
         )
@@ -140,6 +146,23 @@ class ClaimNextJobTests(ClaudeWorkerTestBase):
         for job in (job_a, job_b):
             job.refresh_from_db()
             self.assertEqual(job.status, ClaudeQueueJobStatus.RUNNING)
+
+    def test_projects_sharing_a_repo_are_locked_together(self):
+        # Two projects that (accidentally) point at the same github_owner/
+        # github_repo must not run at once — they would share a checkout.
+        shared = Project.objects.create(
+            name='Project A2', github_owner='acme', github_repo='repo-a',
+        )
+        self._job(self.project_a, status=ClaudeQueueJobStatus.RUNNING)
+        queued_shared = self._job(shared)
+        queued_b = self._job(self.project_b)
+
+        claimed = Command().claim_next_job()
+
+        # Only project B (a different repo) is eligible.
+        self.assertEqual(claimed.pk, queued_b.pk)
+        queued_shared.refresh_from_db()
+        self.assertEqual(queued_shared.status, ClaudeQueueJobStatus.QUEUED)
 
 
 class ProcessJobTests(ClaudeWorkerTestBase):
