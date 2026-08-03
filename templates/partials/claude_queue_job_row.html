@@ -3,12 +3,14 @@
 One table row for a ClaudeQueueJob. While the job is still active it carries
 HTMX polling attributes and refreshes itself every few seconds; once it reaches
 a terminal state the swapped-in row omits those attributes and polling stops.
-Expects `job` and `active_statuses` in context.
+Expects `job` and `active_statuses` in context. Pass `disable_row_polling=True`
+when the row is embedded in a container that already polls itself (the
+/claude-queue/ list) to avoid polling the same data twice.
 {% endcomment %}
 <tr id="cqj-row-{{ job.id }}"
     style="cursor: pointer;"
     onclick="window.location='{% url 'claude-queue-job-detail' job.id %}'"
-    {% if job.status in active_statuses %}
+    {% if job.status in active_statuses and not disable_row_polling %}
     hx-get="{% url 'claude-queue-job-row' job.id %}"
     hx-trigger="every 5s"
     hx-swap="outerHTML"

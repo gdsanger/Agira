@@ -159,6 +159,51 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Fix the auth bug')
 
+    # ---- list auto-refresh (container-level polling) --------------------
+
+    def test_list_kpis_carry_polling_attributes(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(response, 'id="claude-queue-kpis"')
+        self.assertContains(response, 'hx-trigger="every 5s"')
+
+    def test_list_table_carries_oob_attribute_not_its_own_poll(self):
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(response, 'id="claude-queue-table"')
+        self.assertContains(response, 'hx-swap-oob="true"')
+
+    def test_list_rows_do_not_carry_their_own_polling(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.get(reverse('claude-queue-jobs'))
+        # The container already polls every 5s; a per-row hx-get would poll
+        # the same data a second time.
+        self.assertNotContains(response, reverse('claude-queue-job-row', args=[job.id]))
+
+    def test_list_htmx_request_returns_kpis_and_table_fragment_only(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._running_job()
+        response = self.client.get(reverse('claude-queue-jobs'), HTTP_HX_REQUEST='true')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="claude-queue-kpis"')
+        self.assertContains(response, 'id="claude-queue-table"')
+        self.assertContains(response, 'Fix the auth bug')
+        # No full page chrome on a poll response.
+        self.assertNotContains(response, '<h1>Claude Queue</h1>')
+        self.assertNotContains(response, 'id="queueChart"')
+
+    def test_list_poll_url_preserves_active_filters(self):
+        self.client.login(username='testuser', password='testpass123')
+        self._running_job()
+        response = self.client.get(
+            reverse('claude-queue-jobs'),
+            {'project': self.project.id, 'status': ClaudeQueueJobStatus.RUNNING},
+        )
+        content = response.content.decode()
+        self.assertIn(f'project={self.project.id}', content)
+        self.assertIn(f'status={ClaudeQueueJobStatus.RUNNING}', content)
+
     # ---- row partial (list polling) -----------------------------------
 
     def test_row_active_job_has_polling_attributes(self):

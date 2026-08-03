@@ -1,0 +1,54 @@
+{% comment %}
+Mini dashboard KPI tiles for the /claude-queue/ list page. This is the element
+that actually polls: it fetches claude-queue-jobs on an interval and swaps
+itself, while the accompanying table partial (claude_queue_table.html) rides
+along as an out-of-band swap in the same response — one poll updates both,
+so the KPIs and the job list never fall out of sync with each other.
+Expects the queue_* dashboard vars in context, see _claude_queue_dashboard_context().
+{% endcomment %}
+<div id="claude-queue-kpis"
+     class="row g-3 mb-3"
+     hx-get="{% url 'claude-queue-jobs' %}?{{ request.GET.urlencode }}"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+    <div class="col-md-3 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-list-check"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ queue_total_jobs }}</div>
+                <div class="kpi-label">Jobs</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-stopwatch"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">{{ queue_avg_duration_display|default:"–" }}</div>
+                <div class="kpi-label">Ø Dauer</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-currency-dollar"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">
+                    {% if queue_avg_cost is not None %}US${{ queue_avg_cost|floatformat:2 }}{% else %}–{% endif %}
+                </div>
+                <div class="kpi-label">Ø Kosten</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="kpi-card">
+            <div class="kpi-icon"><i class="bi bi-arrow-repeat"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-value">
+                    {% if queue_avg_turns is not None %}{{ queue_avg_turns|floatformat:0 }}{% else %}–{% endif %}
+                </div>
+                <div class="kpi-label">Ø Turns</div>
+            </div>
+        </div>
+    </div>
+</div>

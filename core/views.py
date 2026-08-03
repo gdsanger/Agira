@@ -832,7 +832,13 @@ def _claude_queue_dashboard_context():
 
 @login_required
 def claude_queue_jobs(request):
-    """List view of all Claude queue jobs with project/status filters."""
+    """List view of all Claude queue jobs with project/status filters.
+
+    The dashboard tiles and job table are wrapped in a self-polling HTMX
+    fragment (partials/claude_queue_list.html) so new/finished jobs and the
+    KPI counters stay current without a manual reload. On an HTMX poll only
+    that fragment is re-rendered instead of the full page.
+    """
     jobs = ClaudeQueueJob.objects.select_related(
         'item', 'project'
     ).order_by('-created_at')
@@ -860,6 +866,8 @@ def claude_queue_jobs(request):
         'selected_status': status_filter,
     }
     context.update(_claude_queue_dashboard_context())
+    if request.headers.get('HX-Request'):
+        return render(request, 'partials/claude_queue_list.html', context)
     return render(request, 'claude_queue_jobs.html', context)
 
 
