@@ -1807,14 +1807,9 @@ def item_create_github_issue(request, item_id):
                 status=400
             )
 
-        # Check if item has valid status
-        if not github_service.can_create_issue_for_item(item):
-            return HttpResponse(
-                f"Cannot create GitHub issue for item with status '{item.status}'. "
-                f"Item must have status 'Backlog', 'Working', or 'Testing'.",
-                status=400
-            )
-        
+        # Note: GitHub issue creation is intentionally status-independent.
+        # The action must always be available regardless of the item's status.
+
         # Check if this is a follow-up issue (item already has issues)
         existing_issues = item.external_mappings.filter(kind='Issue').exists()
         

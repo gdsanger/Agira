@@ -241,6 +241,16 @@
                 </li>
                 {% endif %}
                 {% endif %}
+                {# Status-independent: always available, same flow as the "Create GitHub Issue" button in the GitHub tab #}
+                <li>
+                    <button type="button" class="dropdown-item"
+                            hx-post="{% url 'item-create-github-issue' item.id %}"
+                            hx-target="#github"
+                            hx-swap="none"
+                            hx-on::after-request="handleGitHubIssueCreation(event)">
+                        <i class="bi bi-github me-2"></i>An GitHub übergeben
+                    </button>
+                </li>
                 <li>
                     <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#assignResponsibleModal">
                         <i class="bi bi-person-plus me-2"></i>Assign
@@ -1550,6 +1560,97 @@
                 showToast('error', 'Ein Fehler ist beim Übergeben an Claude aufgetreten.');
             });
         }
+    }
+
+    // GitHub issue creation handler.
+    // Shared single source of truth for the "Create GitHub Issue" button in the
+    // GitHub tab (partials/item_github_tab.html) and the "An GitHub übergeben"
+    // action-menu entry. Defined here (always loaded) so it is available even when
+    // the GitHub tab has not been lazily loaded yet.
+    function handleGitHubIssueCreation(event) {
+        const xhr = event.detail.xhr;
+
+        // Check if request was successful
+        if (event.detail.successful) {
+            try {
+                // Try to parse response as JSON
+                const response = JSON.parse(xhr.responseText);
+
+                // Check if this is a JSON response with mail_preview
+                if (response.success && response.mail_preview) {
+                    // Close the followup modal if it's open
+                    const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
+                    if (followupModal) {
+                        followupModal.hide();
+                        document.getElementById('followupIssueForm').reset();
+                    }
+
+                    // Update the GitHub tab with the new HTML
+                    if (response.github_tab_html) {
+                        document.getElementById('github').innerHTML = response.github_tab_html;
+                    }
+
+                    // Ensure modal backdrop is removed
+                    removeModalBackdrop();
+
+                    // Show mail confirmation modal (reuse existing mail modal from item_form.html)
+                    if (typeof showMailConfirmationModal === 'function') {
+                        showMailConfirmationModal(response.mail_preview, response.item_id);
+                    } else {
+                        console.error('showMailConfirmationModal function not found');
+                        // Fallback: show a toast notification
+                        showToast('success', 'GitHub issue created successfully. Mail preview not available.');
+                    }
+                    return;
+                }
+            } catch (e) {
+                // Not JSON, might be HTML response - handle as regular HTMX response
+            }
+
+            // Handle regular HTML response (no mail preview)
+            // Close the followup modal if it's open
+            const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
+            if (followupModal) {
+                followupModal.hide();
+                document.getElementById('followupIssueForm').reset();
+            }
+
+            // Update the GitHub tab with the response
+            document.getElementById('github').innerHTML = xhr.responseText;
+
+            // Ensure modal backdrop is removed
+            removeModalBackdrop();
+
+            // Show success toast
+            if (typeof showToast === 'function') {
+                showToast('success', 'GitHub issue created successfully');
+            }
+        } else {
+            // Handle errors
+            if (typeof showToast === 'function') {
+                const errorMsg = xhr.responseText || 'Failed to create GitHub issue';
+                showToast('error', errorMsg);
+            }
+        }
+    }
+
+    // Helper function to remove modal backdrop
+    function removeModalBackdrop() {
+        // Remove any lingering modal backdrops
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => backdrop.remove());
+
+        // Remove modal-open class from body
+        document.body.classList.remove('modal-open');
+
+        // Reset body padding/overflow that Bootstrap may have set
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    }
+
+    // Keep the old function for compatibility (redirect to new handler)
+    function handleFollowupIssueResponse(event) {
+        handleGitHubIssueCreation(event);
     }
 
     // Assign responsible action
