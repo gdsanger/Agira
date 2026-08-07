@@ -17,5 +17,6 @@ urlpatterns = [
     path('items', views_api.api_items_list, name='api-items-list'),
     path('items/<int:item_id>', views_api.api_item_detail_handler, name='api-item-detail'),
     path('items/<int:item_id>/context', views_api.api_item_context, name='api-item-context'),
+    path('items/<int:item_id>/github-pr', views_api.api_item_link_github_pr, name='api-item-link-github-pr'),
     path('projects/<int:project_id>/items', views_api.api_project_create_item, name='api-project-create-item'),
 ]

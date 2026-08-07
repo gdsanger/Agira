@@ -16,8 +16,10 @@ from django.contrib.auth import get_user_model
 
 from core.models import (
     Organisation, UserOrganisation, Project, ProjectStatus,
-    ItemType, Item, ItemStatus, UserRole
+    ItemType, Item, ItemStatus, UserRole,
+    ExternalIssueMapping, ExternalIssueKind, GitHubConfiguration,
 )
+from core.services.integrations.errors import IntegrationPermanentError
 from core.services.rag.models import RAGContextObject
 from core.services.rag.extended_service import ExtendedRAGContext
 
@@ -284,6 +286,50 @@ class CustomGPTItemsAPITest(TestCase):
         self.assertEqual(data['title'], 'Updated Item')
         self.assertEqual(data['status'], ItemStatus.TESTING)
     
+    def test_update_item_sets_solution_description(self):
+        """Test PATCH .../items/{id} writes the 'Solution' field."""
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps({'solution_description': 'Restarted the worker.'}),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['solution_description'], 'Restarted the worker.')
+
+        self.open_item.refresh_from_db()
+        self.assertEqual(self.open_item.solution_description, 'Restarted the worker.')
+
+    def test_update_item_sets_pr_description(self):
+        """Test PATCH .../items/{id} writes the 'PR-Description' field."""
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps({'pr_description': '## Summary\n\nFixed the bug.'}),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['pr_description'], '## Summary\n\nFixed the bug.')
+
+        self.open_item.refresh_from_db()
+        self.assertEqual(self.open_item.pr_description, '## Summary\n\nFixed the bug.')
+
+    def test_update_item_not_found(self):
+        """Test PATCH .../items/{id} with an invalid item id fails cleanly."""
+        response = self.client.patch(
+            '/api/customgpt/items/99999',
+            data=json.dumps({'solution_description': 'x'}),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 404)
+        data = json.loads(response.content)
+        self.assertIn('error', data)
+
     def test_update_item_patch(self):
         """Test PATCH /api/customgpt/items/{id}."""
         update_data = {
@@ -700,3 +746,169 @@ class MCPResponsibleTests(TestCase):
         self.assertEqual(response.status_code, 201)
         data = json.loads(response.content)
         self.assertIsNone(data['responsible_id'])
+
+
+class CustomGPTItemLinkGitHubPRAPITest(TestCase):
+    """Test POST /api/customgpt/items/{id}/github-pr (PR -> ExternalIssueMapping linking)."""
+
+    def setUp(self):
+        os.environ['CUSTOMGPT_API_SECRET'] = 'test-secret-123'
+        self.client = Client()
+        self.headers = {'HTTP_X_API_SECRET': 'test-secret-123'}
+
+        self.config = GitHubConfiguration.load()
+        self.config.enable_github = True
+        self.config.github_token = 'test_token_123'
+        self.config.github_api_base_url = 'https://api.github.com'
+        self.config.save()
+
+        self.project = Project.objects.create(
+            name='Test Project',
+            github_owner='testowner',
+            github_repo='testrepo',
+        )
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+        self.item = Item.objects.create(
+            project=self.project,
+            type=self.item_type,
+            title='Item with a PR',
+            status=ItemStatus.WORKING,
+        )
+
+    def tearDown(self):
+        if 'CUSTOMGPT_API_SECRET' in os.environ:
+            del os.environ['CUSTOMGPT_API_SECRET']
+
+    def _link(self, item_id, pr_number):
+        return self.client.post(
+            f'/api/customgpt/items/{item_id}/github-pr',
+            data=json.dumps({'pr_number': pr_number}),
+            content_type='application/json',
+            **self.headers,
+        )
+
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_link_creates_new_mapping(self, mock_get_pr):
+        mock_get_pr.return_value = {
+            'id': 55501,
+            'number': 42,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/42',
+        }
+
+        response = self._link(self.item.id, 42)
+        self.assertEqual(response.status_code, 201)
+
+        data = json.loads(response.content)
+        self.assertEqual(data['item_id'], self.item.id)
+        self.assertTrue(data['created'])
+        self.assertEqual(data['mapping']['number'], 42)
+        self.assertEqual(data['mapping']['github_id'], 55501)
+        self.assertEqual(data['mapping']['kind'], ExternalIssueKind.PR)
+        self.assertEqual(data['mapping']['state'], 'open')
+
+        self.assertEqual(ExternalIssueMapping.objects.count(), 1)
+        mapping = ExternalIssueMapping.objects.get()
+        self.assertEqual(mapping.item_id, self.item.id)
+        self.assertEqual(mapping.github_id, 55501)
+
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_link_same_pr_twice_is_idempotent(self, mock_get_pr):
+        mock_get_pr.return_value = {
+            'id': 55502,
+            'number': 43,
+            'state': 'open',
+            'html_url': 'https://github.com/testowner/testrepo/pull/43',
+        }
+
+        first = self._link(self.item.id, 43)
+        second = self._link(self.item.id, 43)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(json.loads(second.content)['created'])
+
+        # No duplicate rows for the same item/PR.
+        self.assertEqual(ExternalIssueMapping.objects.count(), 1)
+        self.assertEqual(
+            json.loads(first.content)['mapping']['id'],
+            json.loads(second.content)['mapping']['id'],
+        )
+
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_link_updates_existing_mapping_deterministically(self, mock_get_pr):
+        existing = ExternalIssueMapping.objects.create(
+            item=self.item,
+            github_id=55503,
+            number=44,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/pull/44',
+        )
+
+        mock_get_pr.return_value = {
+            'id': 55503,
+            'number': 44,
+            'state': 'closed',
+            'merged_at': '2026-08-01T10:00:00Z',
+            'html_url': 'https://github.com/testowner/testrepo/pull/44',
+        }
+
+        response = self._link(self.item.id, 44)
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.content)
+        self.assertFalse(data['created'])
+        self.assertEqual(data['mapping']['id'], existing.id)
+        self.assertEqual(data['mapping']['state'], 'merged')
+
+        # The same row was updated in place, not a second one created.
+        self.assertEqual(ExternalIssueMapping.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.state, 'merged')
+
+    def test_link_item_not_found(self):
+        response = self._link(999999, 1)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('error', json.loads(response.content))
+
+    def test_link_missing_pr_number(self):
+        response = self.client.post(
+            f'/api/customgpt/items/{self.item.id}/github-pr',
+            data=json.dumps({}),
+            content_type='application/json',
+            **self.headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', json.loads(response.content))
+        self.assertEqual(ExternalIssueMapping.objects.count(), 0)
+
+    def test_link_invalid_pr_number(self):
+        response = self._link(self.item.id, 'not-a-number')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', json.loads(response.content))
+
+    @patch('core.services.github.client.GitHubClient.get_pr')
+    def test_link_unresolvable_pr_returns_clean_error(self, mock_get_pr):
+        mock_get_pr.side_effect = IntegrationPermanentError(
+            "Client error (HTTP 404): Not Found"
+        )
+
+        response = self._link(self.item.id, 9999)
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertIn('error', data)
+        self.assertIn('9999', data['error'])
+        self.assertEqual(ExternalIssueMapping.objects.count(), 0)
+
+    def test_link_project_without_github_repo_configured(self):
+        project = Project.objects.create(name='No GitHub Project')
+        item = Item.objects.create(
+            project=project,
+            type=self.item_type,
+            title='Unconfigured item',
+        )
+
+        response = self._link(item.id, 1)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', json.loads(response.content))

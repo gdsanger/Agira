@@ -810,7 +810,12 @@ class GitHubService(IntegrationBase):
             f"{action.capitalize()} mapping for item {item.id}: "
             f"{kind} #{number} (GitHub ID {github_id})"
         )
-        
+
+        # Transient (non-model) attribute so callers that need to distinguish
+        # create vs. update — without changing this method's long-established
+        # return type — can read it off the returned instance.
+        mapping.was_created = (action == 'created')
+
         return mapping
     
     def import_closed_issues_for_project(

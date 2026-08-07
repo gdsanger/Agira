@@ -75,6 +75,7 @@ def serialize_item(item):
         'description': item.description,
         'user_input': item.user_input,
         'solution_description': item.solution_description,
+        'pr_description': item.pr_description,
         'status': item.status,
         'project_id': item.project_id,
         'type_id': item.type_id,
@@ -375,6 +376,8 @@ def api_item_update_put(request, item_id):
             item.user_input = data['user_input']
         if 'solution_description' in data:
             item.solution_description = data['solution_description']
+        if 'pr_description' in data:
+            item.pr_description = data['pr_description']
         if 'status' in data:
             item.status = data['status']
         if 'intern' in data:
@@ -438,6 +441,100 @@ def api_item_update_patch(request, item_id):
     """
     # For now, PATCH and PUT behave the same way (partial update)
     return api_item_update_put(request, item_id)
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def api_item_link_github_pr(request, item_id):
+    """
+    POST /api/customgpt/items/{item_id}/github-pr
+
+    Link a GitHub pull request to an item via ``ExternalIssueMapping``.
+
+    Only the PR number has to be supplied — owner/repo are resolved from the
+    item's project (``GitHubService._get_repo_info``) and the rest of the PR
+    reference (GitHub id, state, html_url) is resolved from the GitHub API,
+    exactly like the existing "Link GitHub Issue/PR" UI action. Reuses
+    ``GitHubService.upsert_mapping_from_github`` so the same
+    create-or-update-in-place semantics (matched by GitHub id, then by
+    item+kind+number) apply here — repeated calls for the same PR are
+    idempotent and update the existing mapping instead of duplicating it.
+
+    Request Body:
+        {"pr_number": <int>}   # required, the GitHub PR number (not the Agira id)
+
+    Returns:
+        200: Existing mapping was updated.
+             {"item_id", "mapping": {...}, "created": false}
+        201: A new mapping was created.
+             {"item_id", "mapping": {...}, "created": true}
+        400: Missing/invalid pr_number, GitHub not configured/disabled for the
+             item's project, or the PR could not be resolved on GitHub.
+        404: Item not found.
+    """
+    from core.services.github.service import GitHubService
+    from core.services.integrations.base import (
+        IntegrationDisabled,
+        IntegrationError,
+        IntegrationNotConfigured,
+    )
+
+    try:
+        item = Item.objects.get(id=item_id)
+    except Item.DoesNotExist:
+        return JsonResponse({'error': 'Item not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+    pr_number = data.get('pr_number')
+    if pr_number is None or (isinstance(pr_number, str) and not pr_number.strip()):
+        return JsonResponse({'error': 'pr_number is required'}, status=400)
+    try:
+        pr_number = int(pr_number)
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'pr_number must be a valid integer'}, status=400)
+
+    try:
+        mapping = GitHubService().upsert_mapping_from_github(
+            item=item,
+            number=pr_number,
+            kind='pr',
+        )
+    except ValueError as e:
+        # e.g. the item's project has no github_owner/github_repo configured
+        return JsonResponse({'error': str(e)}, status=400)
+    except (IntegrationDisabled, IntegrationNotConfigured) as e:
+        return JsonResponse({'error': str(e) or 'GitHub integration is not available'}, status=400)
+    except IntegrationError as e:
+        # Covers "PR not found on GitHub" (permanent 4xx) as well as auth/
+        # rate-limit/temporary upstream failures — all are the caller's problem
+        # to fix or retry, not a 500 on our side.
+        return JsonResponse(
+            {'error': f'Could not resolve GitHub PR #{pr_number}: {e}'}, status=400
+        )
+    except Exception as e:
+        logger.error(f"Error linking GitHub PR #{pr_number} to item {item_id}: {e}", exc_info=True)
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+
+    created = getattr(mapping, 'was_created', False)
+    return JsonResponse(
+        {
+            'item_id': item.id,
+            'mapping': {
+                'id': mapping.id,
+                'kind': mapping.kind,
+                'number': mapping.number,
+                'github_id': mapping.github_id,
+                'state': mapping.state,
+                'html_url': mapping.html_url,
+            },
+            'created': created,
+        },
+        status=201 if created else 200,
+    )
 
 
 @csrf_exempt

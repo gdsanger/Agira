@@ -85,3 +85,7 @@ class AgiraClient:
     def update_item(self, item_id: int, payload: dict, *, user_token: str | None) -> dict:
         return self._request("PATCH", f"items/{item_id}",
                              json=payload, user_token=user_token)
+
+    def link_github_pr(self, item_id: int, payload: dict, *, user_token: str | None) -> dict:
+        return self._request("POST", f"items/{item_id}/github-pr",
+                             json=payload, user_token=user_token)

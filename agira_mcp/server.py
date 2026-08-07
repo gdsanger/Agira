@@ -205,6 +205,7 @@ def update_item(
     title: str | None = None,
     description: str | None = None,
     solution_description: str | None = None,
+    pr_description: str | None = None,
     status: str | None = None,
     intern: bool | None = None,
     parent_id: int | None = None,
@@ -212,6 +213,13 @@ def update_item(
 ) -> dict:
     """
     Update fields of an existing item (partial update). Only set what changes.
+    Fails with a clear error if ``item_id`` does not refer to an existing item.
+
+    ``solution_description`` sets the item's "Solution" field.
+
+    ``pr_description`` sets the item's "PR-Description" field (normally the
+    final GitHub pull request body, captured automatically on merge — set it
+    explicitly here to record or correct it directly).
 
     ``parent_id`` sets or changes the item's parent (e.g. an Epic). Leave it
     unset to leave the current parent unchanged. To remove an existing parent
@@ -225,6 +233,7 @@ def update_item(
             "title": title,
             "description": description,
             "solution_description": solution_description,
+            "pr_description": pr_description,
             "status": status,
             "intern": intern,
         }.items()
@@ -235,6 +244,37 @@ def update_item(
     elif parent_id is not None:
         payload["parent_id"] = parent_id
     return _client().update_item(item_id, payload, user_token=_user_token())
+
+
+@mcp.tool()
+def link_github_pr(item_id: int, pr_number: int) -> dict:
+    """
+    Link a GitHub pull request to an Agira item via an ExternalIssueMapping
+    (kind="PR"). This is the write path used to record which PR resolves an
+    item; use it once a PR has been opened for the item's work.
+
+    Only ``pr_number`` (the GitHub PR number, e.g. 42 for ".../pull/42") is
+    needed — the owner/repo come from the item's project configuration, and
+    the rest of the PR reference (GitHub id, state, html_url) is resolved
+    from the GitHub API automatically, same as the existing "Link GitHub
+    Issue/PR" UI action.
+
+    Idempotent: calling this again for the same item/PR updates the existing
+    mapping in place (matched by GitHub id, then by item+PR number) instead
+    of creating a duplicate.
+
+    Returns a dict with:
+      - ``item_id``: the affected item
+      - ``created``: True if a new mapping was created, False if an existing
+        one was updated
+      - ``mapping``: the resolved mapping — ``id``, ``kind``, ``number``,
+        ``github_id``, ``state``, ``html_url``
+
+    Fails with a clear error if ``item_id`` does not exist, ``pr_number`` is
+    missing/invalid, the item's project has no GitHub repo configured, or the
+    PR number cannot be resolved on GitHub.
+    """
+    return _client().link_github_pr(item_id, {"pr_number": pr_number}, user_token=_user_token())
 
 
 # --------------------------------------------------------------------------
