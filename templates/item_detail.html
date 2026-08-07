@@ -830,6 +830,21 @@
                             <div id="field-feedback-type" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
+                            <strong>Suggested Model:</strong>
+                            <select class="form-select form-select-sm mt-1"
+                                    name="value"
+                                    hx-post="{% url 'item-update-field' item.id %}"
+                                    hx-vals='{"field": "suggested_model"}'
+                                    hx-trigger="change"
+                                    hx-target="#field-feedback-suggested_model"
+                                    hx-swap="innerHTML">
+                                {% for value, display in suggested_model_choices %}
+                                <option value="{{ value }}" {% if item.suggested_model == value %}selected{% endif %}>{{ display }}</option>
+                                {% endfor %}
+                            </select>
+                            <div id="field-feedback-suggested_model" class="mt-1"></div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Parent Item:</strong>
                             <div class="mt-2 d-flex gap-2" id="parent-field-container">
                                 <select 
