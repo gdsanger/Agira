@@ -29,6 +29,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import Model
 
 from core.models import (
+    ClaudeQueueJobModel,
     Item,
     ItemStatus,
     ItemType,
@@ -153,6 +154,25 @@ def _resolve_release(_item: Item, raw: str) -> Optional[Release]:
     return _resolve_fk(Release, raw, nullable=True, label="Release")
 
 
+def _resolve_suggested_model(_item: Item, raw: str) -> str:
+    """Resolve the manually overridable Claude-queue model suggestion (#1072).
+
+    Only the existing field choices (sonnet/opus) are accepted; there is no
+    inline "Auto-detect", so no classifier logic runs on this path.
+    """
+    value = (raw or "").strip()
+    if value not in ClaudeQueueJobModel.values:
+        raise FieldUpdateError("Ungültiges Modell.")
+    return value
+
+
+_SUGGESTED_MODEL_LABELS = dict(ClaudeQueueJobModel.choices)
+
+
+def _suggested_model_display(value: Any) -> str:
+    return _SUGGESTED_MODEL_LABELS.get(value, value) if value else "None"
+
+
 def _user_display(user: Optional[User]) -> str:
     return user.name if user else "None"
 
@@ -193,6 +213,10 @@ FIELD_SPECS: dict[str, FieldSpec] = {
     "solution_release": FieldSpec(
         "solution_release", "fk", _resolve_release,
         display=lambda v: v.version if v else "None", label="Release",
+    ),
+    "suggested_model": FieldSpec(
+        "suggested_model", "text", _resolve_suggested_model,
+        display=_suggested_model_display, label="Suggested Model",
     ),
 }
 

@@ -166,6 +166,33 @@ class RequesterOrganisationSideEffectTest(GenericFieldUpdateTestBase):
         self.assertEqual(self.item.organisation, self.org_b)
 
 
+class SuggestedModelFieldTest(GenericFieldUpdateTestBase):
+    """Inline HTMX editing of the manually overridable suggested_model (#1072)."""
+
+    def test_suggested_model_updates_to_opus(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.suggested_model, 'opus')
+
+    def test_response_fragment_reports_success(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Gespeichert')
+
+    def test_invalid_value_rejected(self):
+        self.item.suggested_model = 'sonnet'
+        self.item.save()
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'fable'})
+        self.assertEqual(response.status_code, 400)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.suggested_model, 'sonnet')
+
+    def test_empty_value_rejected(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': ''})
+        self.assertEqual(response.status_code, 400)
+
+
 class ActivityLoggingTest(GenericFieldUpdateTestBase):
     def test_change_creates_activity(self):
         before = Activity.objects.count()
@@ -186,5 +213,6 @@ class FieldSpecRegistryTest(TestCase):
 
     def test_expected_fields_present(self):
         for name in ['title', 'short_description', 'intern', 'type', 'organisation',
-                     'requester', 'assigned_to', 'responsible', 'parent', 'solution_release']:
+                     'requester', 'assigned_to', 'responsible', 'parent', 'solution_release',
+                     'suggested_model']:
             self.assertIn(name, FIELD_SPECS)

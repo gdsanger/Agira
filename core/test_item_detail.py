@@ -222,6 +222,17 @@ def example():
         self.assertIn('releases', response.context)
         self.assertIn(self.release, response.context['releases'])
     
+    def test_item_detail_shows_suggested_model_inline_edit(self):
+        """suggested_model is visible in the normal detail view and inline-editable (#1072)."""
+        url = reverse('item-detail', args=[self.item.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('suggested_model_choices', response.context)
+        self.assertContains(response, 'Suggested Model:')
+        self.assertContains(response, '"field": "suggested_model"')
+        self.assertContains(response, 'field-feedback-suggested_model')
+
     def test_item_detail_shows_incoming_warning_for_incoming_project(self):
         """Test that incoming warning is shown for items in Incoming project."""
         # Create Incoming project

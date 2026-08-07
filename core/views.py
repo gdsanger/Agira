@@ -1087,6 +1087,7 @@ def item_detail(request, item_id):
         'item_types': item_types,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
+        'suggested_model_choices': ClaudeQueueJobModel.choices,
         'claude_queue_jobs': claude_queue_jobs,
         'claude_total_cost': claude_total_cost,
     }
