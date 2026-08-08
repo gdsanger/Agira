@@ -1,0 +1,24 @@
+{# Compact, first-level overview of the GitHub artefacts linked to an item. #}
+{# Fed by the same `external_mappings` queryset the GitHub tab uses (see #}
+{# core.views.item_detail) – no parallel data preparation. Rendered outside the #}
+{# GitHub tab so the references are visible without opening the tab. #}
+{% if external_mappings %}
+<div class="card mb-3" id="github-overview">
+    <div class="card-body py-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="text-muted me-1 d-inline-flex align-items-center">
+                <i class="bi bi-github me-1"></i>GitHub:
+            </span>
+            {% for mapping in external_mappings %}
+            <a href="{{ mapping.html_url }}" target="_blank" rel="noopener noreferrer"
+               class="badge rounded-pill text-decoration-none d-inline-flex align-items-center gap-1
+                      {% if mapping.state == 'open' %}bg-success{% elif mapping.state == 'merged' %}bg-primary{% else %}bg-secondary{% endif %}"
+               title="{{ mapping.get_kind_display }} #{{ mapping.number }} – {{ mapping.state }}">
+                <span>{% if mapping.kind == 'PR' %}PR{% else %}Issue{% endif %} #{{ mapping.number }}</span>
+                <span class="opacity-75">· {{ mapping.state }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}

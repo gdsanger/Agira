@@ -1151,3 +1151,86 @@ class ItemDetailClaudeCostAggregationTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context['claude_total_cost'])
+
+
+class ItemGithubOverviewTest(TestCase):
+    """First-level GitHub overview and the 'Create Follow-up Issue' action menu entry."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='ghuser', email='gh@example.com', password='testpass',
+            name='GH User', role='Agent',
+        )
+        self.project = Project.objects.create(
+            name='GH Project', github_owner='owner', github_repo='repo',
+        )
+        self.item_type = ItemType.objects.create(key='bug', name='Bug', is_active=True)
+        self.item = Item.objects.create(
+            project=self.project, title='GH Item', type=self.item_type,
+            status=ItemStatus.WORKING,
+        )
+        self.client = Client()
+        self.client.login(username='ghuser', password='testpass')
+
+    def _url(self):
+        return reverse('item-detail', args=[self.item.id])
+
+    def test_no_overview_when_no_mappings(self):
+        """Without linked artefacts the compact overview renders no card."""
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="github-overview"')
+        self.assertEqual(list(response.context['external_mappings']), [])
+        # No mappings -> follow-up action disabled
+        self.assertFalse(response.context['has_closed_github_issue'])
+
+    def test_overview_shows_issue_and_pr_with_link_and_state(self):
+        """Overview lists both issues and PRs with number, link and state marker."""
+        ExternalIssueMapping.objects.create(
+            item=self.item, github_id=1, number=11, kind=ExternalIssueKind.ISSUE,
+            state='open', html_url='https://github.com/owner/repo/issues/11',
+        )
+        ExternalIssueMapping.objects.create(
+            item=self.item, github_id=2, number=22, kind=ExternalIssueKind.PR,
+            state='merged', html_url='https://github.com/owner/repo/pull/22',
+        )
+        response = self.client.get(self._url())
+        content = response.content.decode()
+        self.assertIn('id="github-overview"', content)
+        self.assertIn('https://github.com/owner/repo/issues/11', content)
+        self.assertIn('https://github.com/owner/repo/pull/22', content)
+        self.assertIn('Issue #11', content)
+        self.assertIn('PR #22', content)
+        self.assertIn('open', content)
+        self.assertIn('merged', content)
+
+    def test_followup_disabled_when_only_open_issue(self):
+        """Open issue only -> follow-up action disabled."""
+        ExternalIssueMapping.objects.create(
+            item=self.item, github_id=1, number=11, kind=ExternalIssueKind.ISSUE,
+            state='open', html_url='https://github.com/owner/repo/issues/11',
+        )
+        response = self.client.get(self._url())
+        self.assertFalse(response.context['has_closed_github_issue'])
+
+    def test_followup_disabled_when_only_pr(self):
+        """A PR alone never activates the follow-up action, even if closed/merged."""
+        ExternalIssueMapping.objects.create(
+            item=self.item, github_id=2, number=22, kind=ExternalIssueKind.PR,
+            state='merged', html_url='https://github.com/owner/repo/pull/22',
+        )
+        response = self.client.get(self._url())
+        self.assertFalse(response.context['has_closed_github_issue'])
+
+    def test_followup_enabled_when_closed_issue_exists(self):
+        """At least one closed issue -> follow-up action active; modal available globally."""
+        ExternalIssueMapping.objects.create(
+            item=self.item, github_id=1, number=11, kind=ExternalIssueKind.ISSUE,
+            state='closed', html_url='https://github.com/owner/repo/issues/11',
+        )
+        response = self.client.get(self._url())
+        content = response.content.decode()
+        self.assertTrue(response.context['has_closed_github_issue'])
+        # Follow-up modal is present on the detail page even without opening the GitHub tab
+        self.assertIn('id="followupIssueModal"', content)
+        self.assertIn('Create Follow-up Issue', content)

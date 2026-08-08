@@ -1074,8 +1074,20 @@ def item_detail(request, item_id):
         total=models.Sum('total_cost_usd')
     )['total']
 
+    # GitHub artefacts surfaced on the first level of the detail (outside the
+    # GitHub tab). Same queryset/ordering the GitHub tab uses – single source of
+    # truth, no parallel data preparation. `has_closed_github_issue` gates the
+    # "Create Follow-up Issue" action: active only when at least one linked
+    # GitHub *Issue* is closed (PRs alone never activate it).
+    external_mappings = item.external_mappings.all().order_by('-last_synced_at')
+    has_closed_github_issue = item.external_mappings.filter(
+        kind=ExternalIssueKind.ISSUE, state='closed'
+    ).exists()
+
     context = {
         'item': item,
+        'external_mappings': external_mappings,
+        'has_closed_github_issue': has_closed_github_issue,
         'followers': followers,
         'users': users,
         'agents': agents,
