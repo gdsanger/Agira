@@ -3,6 +3,8 @@
 <span class="badge bg-secondary"><i class="bi bi-hourglass-split"></i> {{ job.get_status_display }}</span>
 {% elif job.status == 'running' %}
 <span class="badge bg-primary"><span class="spinner-border spinner-border-sm" role="status" style="width:0.7rem;height:0.7rem;"></span> {{ job.get_status_display }}</span>
+{% elif job.status == 'waiting_limit' %}
+<span class="badge bg-info text-dark" title="{% if job.limit_reset_at %}Wartet auf Abo-Kontingent bis {{ job.limit_reset_at }}{% else %}Wartet auf Abo-Kontingent{% endif %}"><i class="bi bi-hourglass-split"></i> {{ job.get_status_display }}</span>
 {% elif job.status == 'done' and job.completion_uncertain %}
 <span class="badge bg-warning text-dark" title="{{ job.completion_uncertain_reason }}"><i class="bi bi-exclamation-circle"></i> Ggf. unvollständig</span>
 {% elif job.status == 'done' %}

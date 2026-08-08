@@ -627,6 +627,19 @@ class ClaudeQueueJobModel(models.TextChoices):
     OPUS = 'opus', _('Opus')
 
 
+class ClaudeQueueJobAuthMode(models.TextChoices):
+    """How a Claude Code run authenticates.
+
+    ``oauth`` runs the CLI against a Claude Max/Pro subscription (no
+    ``ANTHROPIC_API_KEY`` in the child environment); ``api_key`` runs it
+    against the pay-per-use Anthropic API key. The choice is made per
+    subprocess — the CLI prefers an API key whenever it sees one, so the
+    worker must actively withhold the key for an OAuth run.
+    """
+    OAUTH = 'oauth', _('Max/Pro subscription (OAuth)')
+    API_KEY = 'api_key', _('Anthropic API key')
+
+
 class Item(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1859,6 +1872,11 @@ class ClaudeQueueJobStatus(models.TextChoices):
     """
     QUEUED = 'queued', _('Queued')
     RUNNING = 'running', _('Running')
+    # Reached the Max/Pro subscription usage limit and is parked until the quota
+    # rolls over. A non-terminal, re-claimable state: the worker picks the job
+    # up again once ``limit_reset_at`` has passed. Kept distinct from FAILED so
+    # a waiting run is never mistaken for a broken one.
+    WAITING_LIMIT = 'waiting_limit', _('Waiting for quota')
     DONE = 'done', _('Done')
     FAILED = 'failed', _('Failed')
     CANCELLED = 'cancelled', _('Cancelled')
@@ -1894,6 +1912,30 @@ class ClaudeQueueJob(models.Model):
         max_length=20,
         choices=ClaudeQueueJobModel.choices,
         default=ClaudeQueueJobModel.SONNET,
+    )
+
+    # Authentication for the run. ``auth_mode`` records how the *latest* attempt
+    # authenticated (it flips to ``api_key`` when a fallback run happens), so a
+    # glance at the job tells you whether it cost pay-per-use API credit.
+    auth_mode = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobAuthMode.choices,
+        default=ClaudeQueueJobAuthMode.OAUTH,
+        help_text=_('How the latest run authenticated (subscription OAuth vs. API key)'),
+    )
+    # Static job property (set at enqueue time, independent of current usage):
+    # if the subscription limit is hit, may this job re-run on the paid API key
+    # instead of waiting for the quota rollover? Default off = wait.
+    allow_api_key_fallback = models.BooleanField(
+        default=False,
+        help_text=_('If the subscription limit is hit, finish this job on the API key instead of waiting'),
+    )
+    # When a WAITING_LIMIT job may be re-claimed: the quota reset time reported
+    # by the CLI (or a default backoff when none was given). Null unless waiting.
+    limit_reset_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_('When the subscription quota is expected to reset; a waiting job is re-claimed after this time'),
     )
 
     # Set by the worker
@@ -1987,7 +2029,18 @@ class ClaudeQueueJob(models.Model):
     # Allowed state transitions for the job state machine.
     _TRANSITIONS = {
         ClaudeQueueJobStatus.QUEUED: {ClaudeQueueJobStatus.RUNNING, ClaudeQueueJobStatus.CANCELLED},
-        ClaudeQueueJobStatus.RUNNING: {ClaudeQueueJobStatus.DONE, ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED},
+        ClaudeQueueJobStatus.RUNNING: {
+            ClaudeQueueJobStatus.DONE,
+            ClaudeQueueJobStatus.FAILED,
+            ClaudeQueueJobStatus.CANCELLED,
+            ClaudeQueueJobStatus.WAITING_LIMIT,
+        },
+        # A parked run can be resumed (re-claimed), abandoned, or cancelled.
+        ClaudeQueueJobStatus.WAITING_LIMIT: {
+            ClaudeQueueJobStatus.RUNNING,
+            ClaudeQueueJobStatus.FAILED,
+            ClaudeQueueJobStatus.CANCELLED,
+        },
         ClaudeQueueJobStatus.DONE: set(),
         ClaudeQueueJobStatus.FAILED: set(),
         ClaudeQueueJobStatus.CANCELLED: set(),
@@ -2023,7 +2076,12 @@ class ClaudeQueueJob(models.Model):
             )
 
         self.status = new_status
-        if new_status == ClaudeQueueJobStatus.RUNNING and self.started_at is None:
+        if new_status == ClaudeQueueJobStatus.RUNNING:
+            # Stamp (or re-stamp) the start on every claim. A job re-claimed out
+            # of WAITING_LIMIT may have "started" hours ago; refreshing the mark
+            # keeps crash recovery's age check measuring the *current* run rather
+            # than the accumulated wait, so a legitimately resumed run is not
+            # mistaken for an orphan that blew its timeout.
             self.started_at = timezone.now()
         if new_status in (ClaudeQueueJobStatus.DONE, ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED):
             self.finished_at = timezone.now()

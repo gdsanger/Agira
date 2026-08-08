@@ -236,8 +236,18 @@ REPO_BASE_DIR = os.getenv('REPO_BASE_DIR', str(BASE_DIR / 'repos'))
 # Executable used for the headless Claude Code invocation (overridable so the
 # worker host can point at an absolute path / wrapper).
 CLAUDE_CLI_BIN = os.getenv('CLAUDE_CLI_BIN', 'claude')
-# API key for the headless Claude run (API key, not the Pro subscription).
+# API key for the headless Claude run (pay-per-use). Used for API-key runs and
+# for the per-job "fallback on subscription limit" path.
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+# Default authentication for Claude Code runs: 'oauth' drives the Claude Max/Pro
+# subscription (no API key in the child env), 'api_key' uses ANTHROPIC_API_KEY.
+# Default 'oauth' so runs draw on the already-paid subscription, not pay-per-use.
+CLAUDE_AUTH_MODE = os.getenv('CLAUDE_AUTH_MODE', 'oauth').strip().lower()
+# OAuth token for headless subscription runs (from `claude setup-token`). Set in
+# the child env as CLAUDE_CODE_OAUTH_TOKEN for an OAuth run. Optional: if empty,
+# the CLI falls back to an interactive `claude login` credential stored on the
+# host (~/.claude). Never log this value.
+CLAUDE_CODE_OAUTH_TOKEN = os.getenv('CLAUDE_CODE_OAUTH_TOKEN', '')
 
 # Cache configuration
 # Using LocMemCache for simplicity and performance

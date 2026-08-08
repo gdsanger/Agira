@@ -113,6 +113,16 @@ class EnqueueItemForClaudeTestCase(TestCase):
         self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
         self.assertEqual(job.project, self.project)
 
+    def test_api_key_fallback_flag_defaults_off(self):
+        job, _ = enqueue_item_for_claude(self.item, actor=self.user)
+        self.assertFalse(job.allow_api_key_fallback)
+
+    def test_api_key_fallback_flag_can_be_set(self):
+        job, _ = enqueue_item_for_claude(
+            self.item, actor=self.user, allow_api_key_fallback=True,
+        )
+        self.assertTrue(job.allow_api_key_fallback)
+
     def test_appends_hint_exactly_once(self):
         enqueue_item_for_claude(self.item, actor=self.user)
 

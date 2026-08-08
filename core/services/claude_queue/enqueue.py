@@ -34,8 +34,16 @@ def _resolve_model(item) -> str:
     return getattr(item, 'suggested_model', None) or DEFAULT_CLAUDE_MODEL
 
 
-def enqueue_item_for_claude(item: Item, *, actor=None) -> tuple[ClaudeQueueJob, bool]:
+def enqueue_item_for_claude(
+    item: Item, *, actor=None, allow_api_key_fallback: bool = False,
+) -> tuple[ClaudeQueueJob, bool]:
     """Hand ``item`` off to the Claude queue.
+
+    Runs use the default auth mode (``settings.CLAUDE_AUTH_MODE``, normally the
+    subscription/OAuth). ``allow_api_key_fallback`` is a static per-job property:
+    when set, a run that hits the subscription limit is re-run on the paid API
+    key instead of waiting for the quota rollover. It does not change the regular
+    auth and is independent of current usage; default off = wait.
 
     Returns ``(job, created)``. ``created`` is False when the item already
     had a queued/running job — that job is returned unchanged instead of
@@ -62,6 +70,7 @@ def enqueue_item_for_claude(item: Item, *, actor=None) -> tuple[ClaudeQueueJob, 
             project=locked_item.project,
             status=ClaudeQueueJobStatus.QUEUED,
             model=model,
+            allow_api_key_fallback=allow_api_key_fallback,
         )
 
     ActivityService().log(
