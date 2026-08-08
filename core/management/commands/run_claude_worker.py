@@ -50,12 +50,14 @@ Run modes::
 import json
 import logging
 import os
+import re
 import select
 import signal
 import socket
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from pathlib import Path
 
 from django.conf import settings
@@ -68,6 +70,7 @@ from django.utils.text import slugify
 
 from core.models import (
     ClaudeQueueJob,
+    ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
     ItemStatus,
 )
@@ -94,7 +97,59 @@ DEFAULT_INTERVAL_SECONDS = 5
 # A running job whose start is older than ``timeout + STALE_BUFFER`` is treated
 # as orphaned during crash recovery: a live worker would have enforced the
 # timeout itself, so if the job is still "running" its supervisor is gone.
+# WAITING_LIMIT jobs are excluded from recovery (they are not "running").
 STALE_BUFFER_SECONDS = 60
+
+# How long to park a subscription-limited job when the CLI does not tell us when
+# the quota resets. The job is re-claimed after this backoff and simply retries;
+# if the limit still holds it parks again. Kept modest so a rollover that
+# happened in the meantime is picked up promptly rather than slept through.
+DEFAULT_LIMIT_BACKOFF_SECONDS = 15 * 60
+
+# Substrings (checked case-insensitively across the CLI's result text + stderr)
+# that mark a Max/Pro *subscription usage limit* — the reactive signal the
+# worker parks on. Distinct from a plain API error: a limit means "wait for the
+# rollover / fall back to the API key", not "this run is broken".
+LIMIT_MARKERS = (
+    'usage limit reached',
+    'usage limit',
+    'rate limit',
+    'rate_limit',
+    'ratelimit',
+    'too many requests',
+    '"status":429',
+    'status code 429',
+    ' 429 ',
+    'quota',
+    '5-hour limit',
+    '5 hour limit',
+    'weekly limit',
+    'limit reached',
+    'limit exceeded',
+    'nutzungslimit',
+    'kontingent',
+)
+
+# Substrings that mark a broken/expired credential rather than a usage limit.
+# These must fail the job with a clear message (not park it, not silently
+# retry): a bad token never fixes itself by waiting.
+AUTH_ERROR_MARKERS = (
+    'oauth token has expired',
+    'oauth token expired',
+    'token has expired',
+    'invalid api key',
+    'invalid_api_key',
+    'invalid bearer token',
+    'authentication_error',
+    'authentication error',
+    'unauthorized',
+    '401',
+    'please run /login',
+    'please run `claude login`',
+    'run claude login',
+    'no credentials found',
+    'not logged in',
+)
 
 # Tools Claude may use in the headless run: read/edit files, write the
 # PR_BODY_FILE (which lives outside the checkout, so Edit's "must already
@@ -141,6 +196,20 @@ PR_BODY_FILE_INSTRUCTIONS = (
     "Entscheidungen\" ausdrücklich auch bewusst verworfene Alternativen im "
     "Format „nicht X, weil Y\"."
 )
+
+
+class _SubscriptionLimitWait(Exception):
+    """Raised internally when a run hit the subscription limit and must wait.
+
+    Carries the (optional) quota reset time and a short human detail so the
+    caller can park the job in ``WAITING_LIMIT`` with a meaningful note instead
+    of failing it. Never propagates out of ``process_job``.
+    """
+
+    def __init__(self, reset_at=None, detail=''):
+        super().__init__(detail or 'subscription usage limit reached')
+        self.reset_at = reset_at
+        self.detail = detail
 
 
 class Command(BaseCommand):
@@ -221,12 +290,24 @@ class Command(BaseCommand):
     def claim_next_job(self):
         """Atomically claim the next eligible job and mark it ``running``.
 
-        Eligible = the oldest ``queued`` job of a repo (the project's
-        ``github_owner``/``github_repo``) that currently has no ``running``
-        job. Returns the claimed job (already committed as running) or
-        ``None`` if nothing is claimable.
+        Eligible = the oldest *pending* job of a repo (the project's
+        ``github_owner``/``github_repo``) that currently has no ``running`` job.
+        "Pending" means a ``queued`` job, or a ``waiting_limit`` job whose quota
+        reset time has passed (or is unknown) — the latter is how a run parked on
+        a subscription limit is resumed automatically. Returns the claimed job
+        (already committed as running) or ``None`` if nothing is claimable.
         """
         with transaction.atomic():
+            now = timezone.now()
+            # A job is claimable if it is freshly queued, or a waiting-for-quota
+            # job whose reset time has arrived (unknown reset ⇒ due now, guarded
+            # by the default backoff written at park time).
+            pending = (
+                Q(status=ClaudeQueueJobStatus.QUEUED)
+                | Q(status=ClaudeQueueJobStatus.WAITING_LIMIT, limit_reset_at__isnull=True)
+                | Q(status=ClaudeQueueJobStatus.WAITING_LIMIT, limit_reset_at__lte=now)
+            )
+
             # Repos that already have a running job are off-limits. Keyed on
             # repo identity, not project_id: two projects configured with the
             # same github_owner/github_repo must not run at once either, since
@@ -238,14 +319,14 @@ class Command(BaseCommand):
                 project__github_repo=OuterRef('project__github_repo'),
             )
 
-            # Restrict candidates to the head-of-line (oldest) queued job of each
+            # Restrict candidates to the head-of-line (oldest) pending job of each
             # repo. Without this, skip_locked could hand a second worker the
-            # *second*-oldest queued job of a repo whose oldest is locked,
+            # *second*-oldest pending job of a repo whose oldest is locked,
             # breaking the one-per-repo rule.
             older = ClaudeQueueJob.objects.filter(
+                pending,
                 project__github_owner=OuterRef('project__github_owner'),
                 project__github_repo=OuterRef('project__github_repo'),
-                status=ClaudeQueueJobStatus.QUEUED,
             ).filter(
                 Q(created_at__lt=OuterRef('created_at'))
                 | Q(created_at=OuterRef('created_at'), pk__lt=OuterRef('pk'))
@@ -253,7 +334,7 @@ class Command(BaseCommand):
 
             candidates = (
                 ClaudeQueueJob.objects
-                .filter(status=ClaudeQueueJobStatus.QUEUED)
+                .filter(pending)
                 .annotate(_is_busy=Exists(busy_repos))
                 .filter(_is_busy=False)
                 .annotate(_has_older=Exists(older))
@@ -275,9 +356,11 @@ class Command(BaseCommand):
                 return None
 
             # Take ownership *before* the long-running part, and commit it with
-            # this transaction so the row is visibly ``running`` to peers.
+            # this transaction so the row is visibly ``running`` to peers. Clear
+            # any waiting-quota marker: this is a fresh attempt from now on.
             job.worker_host = socket.gethostname()
             job.worker_pid = os.getpid()
+            job.limit_reset_at = None
             job.transition_to(ClaudeQueueJobStatus.RUNNING)
 
         self.stdout.write(self.style.SUCCESS(
@@ -313,7 +396,13 @@ class Command(BaseCommand):
         try:
             repo_dir = self._prepare_checkout(job)
             branch, bootstrap_sha = self._create_branch_and_pr(job, repo_dir)
-            result = self._run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file)
+            result = self._run_cli_with_auth(job, repo_dir, timeout, idle_timeout, pr_body_file)
+        except _SubscriptionLimitWait as wait:
+            # Not a failure: the subscription quota is exhausted. Park the job
+            # until the rollover — it will be re-claimed automatically — and
+            # leave the item in ``Working`` (it is still being worked on).
+            self._park_for_limit(job, wait)
+            return
         except subprocess.TimeoutExpired:
             error = f"Job exceeded the {timeout}s timeout and was terminated."
             self._fail_job(job, error=error)
@@ -335,6 +424,17 @@ class Command(BaseCommand):
         # Claude may already have committed and pushed, or produced nothing.
         self._commit_uncommitted_work(repo_dir, job)
         self._push_branch(repo_dir, branch)
+
+        if self._is_auth_error(result):
+            # A broken/expired credential never fixes itself by waiting — fail
+            # the job with an actionable message instead of parking it.
+            error = self._auth_error_message(result)
+            self._fail_job(job, error=error)
+            self._update_pr_body(job, error=error)
+            self.stdout.write(self.style.ERROR(
+                f"Job #{job.pk} failed: authentication problem"
+            ))
+            return
 
         if result.get('is_error') or result.get('returncode', 0) != 0:
             detail = (
@@ -798,8 +898,13 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------ #
     # Claude Code invocation + stream parsing
     # ------------------------------------------------------------------ #
-    def _run_cli(self, job, repo_dir, timeout, idle_timeout, pr_body_file):
+    def _run_cli(self, job, repo_dir, timeout, idle_timeout, pr_body_file,
+                 *, auth_mode=ClaudeQueueJobAuthMode.OAUTH):
         """Run Claude Code headless in ``repo_dir`` and parse its event stream.
+
+        ``auth_mode`` selects the child-process credentials (subscription OAuth
+        vs. API key); it is prepared per subprocess so a globally exported
+        ``ANTHROPIC_API_KEY`` can never silently override an OAuth run.
 
         Returns a result dict with ``session_id``/``num_turns``/
         ``total_cost_usd``/``is_error``/``result_text``/``saw_result``/
@@ -807,7 +912,7 @@ class Command(BaseCommand):
         wall-clock budget is exhausted.
         """
         args = self._build_claude_args(job)
-        env = self._build_env(job, pr_body_file)
+        env = self._build_env(job, pr_body_file, auth_mode=auth_mode)
 
         proc = subprocess.Popen(
             args,
@@ -842,18 +947,184 @@ class Command(BaseCommand):
             '--dangerously-skip-permissions',
         ]
 
-    def _build_env(self, job, pr_body_file):
+    def _build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.OAUTH):
+        """Build the child environment for one Claude run, per ``auth_mode``.
+
+        The CLI's credential precedence is *process-local*: inside a single
+        process it prefers ``ANTHROPIC_API_KEY`` whenever it sees one. So both
+        auth-carrying variables are stripped from the inherited environment
+        first, and exactly the one matching ``auth_mode`` is set. This is what
+        guarantees an OAuth run never silently spends the API key even when the
+        key is exported globally on the host.
+        """
         env = dict(
             os.environ,
             CLAUDE_QUEUE_JOB_ID=str(job.pk),
             PR_BODY_FILE=str(pr_body_file),
         )
-        api_key = getattr(settings, 'ANTHROPIC_API_KEY', '') or os.environ.get(
-            'ANTHROPIC_API_KEY', ''
-        )
-        if api_key:
+        # Start from a clean slate so nothing inherited decides the auth for us.
+        env.pop('ANTHROPIC_API_KEY', None)
+        env.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
+
+        if auth_mode == ClaudeQueueJobAuthMode.API_KEY:
+            api_key = getattr(settings, 'ANTHROPIC_API_KEY', '') or os.environ.get(
+                'ANTHROPIC_API_KEY', ''
+            )
+            if not api_key:
+                raise RuntimeError(
+                    'API-key run requested but no ANTHROPIC_API_KEY is configured.'
+                )
             env['ANTHROPIC_API_KEY'] = api_key
+        else:
+            # Subscription run: hand the CLI the OAuth token if we have one,
+            # otherwise rely on the `claude login` credential stored on the host.
+            token = getattr(settings, 'CLAUDE_CODE_OAUTH_TOKEN', '') or os.environ.get(
+                'CLAUDE_CODE_OAUTH_TOKEN', ''
+            )
+            if token:
+                env['CLAUDE_CODE_OAUTH_TOKEN'] = token
         return env
+
+    # ------------------------------------------------------------------ #
+    # Auth mode + reactive limit handling
+    # ------------------------------------------------------------------ #
+    def _run_cli_with_auth(self, job, repo_dir, timeout, idle_timeout, pr_body_file):
+        """Run Claude under the configured auth, reacting to a subscription limit.
+
+        Default path is the subscription (OAuth). If that run reports a usage
+        limit, either fall back to the API key (only when the job is flagged for
+        it and a key is configured) or raise ``_SubscriptionLimitWait`` so the
+        caller parks the job until the quota rolls over. Any other outcome —
+        including a credential failure — is returned as-is for the normal
+        success/failure handling.
+        """
+        auth_mode = self._resolve_auth_mode(job)
+        self._set_auth_mode(job, auth_mode)
+        result = self._run_cli(
+            job, repo_dir, timeout, idle_timeout, pr_body_file, auth_mode=auth_mode,
+        )
+
+        # A bad credential is not a limit — let the caller fail it clearly.
+        if self._is_auth_error(result):
+            return result
+
+        if auth_mode == ClaudeQueueJobAuthMode.OAUTH and self._is_limit_error(result):
+            if job.allow_api_key_fallback and self._api_key_available():
+                self._save_progress(
+                    job, 'Abo-Limit erreicht – Fallback auf API-Key (Job-Flag gesetzt).'
+                )
+                self.stdout.write(self.style.WARNING(
+                    f"Job #{job.pk} hit the subscription limit; falling back to the API key"
+                ))
+                self._set_auth_mode(job, ClaudeQueueJobAuthMode.API_KEY)
+                return self._run_cli(
+                    job, repo_dir, timeout, idle_timeout, pr_body_file,
+                    auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+                )
+            raise _SubscriptionLimitWait(
+                reset_at=self._parse_limit_reset(result),
+                detail=self._limit_detail(result),
+            )
+
+        return result
+
+    def _resolve_auth_mode(self, job):
+        """Map the configured default (``settings.CLAUDE_AUTH_MODE``) to an enum."""
+        configured = (getattr(settings, 'CLAUDE_AUTH_MODE', 'oauth') or 'oauth').strip().lower()
+        if configured == ClaudeQueueJobAuthMode.API_KEY:
+            return ClaudeQueueJobAuthMode.API_KEY
+        return ClaudeQueueJobAuthMode.OAUTH
+
+    def _set_auth_mode(self, job, auth_mode):
+        """Persist the auth mode used for the current attempt on the job."""
+        job.auth_mode = auth_mode
+        job.save(update_fields=['auth_mode'])
+
+    def _api_key_available(self):
+        return bool(
+            getattr(settings, 'ANTHROPIC_API_KEY', '')
+            or os.environ.get('ANTHROPIC_API_KEY', '')
+        )
+
+    def _park_for_limit(self, job, wait):
+        """Move a limit-hit job to ``WAITING_LIMIT`` until the quota rolls over.
+
+        Records the (best-effort) reset time so the claim query re-picks it then,
+        and writes a visible "waiting" note. Deliberately does **not** touch
+        ``error_text`` or release the item: waiting is not a failure.
+        """
+        reset_at = wait.reset_at or (
+            timezone.now() + timedelta(seconds=DEFAULT_LIMIT_BACKOFF_SECONDS)
+        )
+        when = timezone.localtime(reset_at).strftime('%Y-%m-%d %H:%M')
+        note = f"Abo-Kontingent erreicht – wartet auf Rollover (frühestens {when})."
+        job.limit_reset_at = reset_at
+        job.progress_text = note[:2000]
+        job.transition_to(ClaudeQueueJobStatus.WAITING_LIMIT)
+        self.stdout.write(self.style.WARNING(
+            f"Job #{job.pk} waiting for subscription quota until {when}"
+        ))
+
+    def _match_markers(self, result, markers):
+        """True if any marker appears in the run's result text or stderr."""
+        haystack = (
+            f"{result.get('result_text', '')}\n{result.get('stderr', '')}"
+        ).lower()
+        return any(marker in haystack for marker in markers)
+
+    def _is_limit_error(self, result):
+        """True if an *errored* run looks like a subscription usage-limit hit.
+
+        Gated on the run actually erroring (``is_error`` or a non-zero exit) so a
+        successful run that merely mentions "quota" in its summary is not
+        misread as a limit.
+        """
+        errored = result.get('is_error') or result.get('returncode', 0) != 0
+        return bool(errored) and self._match_markers(result, LIMIT_MARKERS)
+
+    def _is_auth_error(self, result):
+        """True if an errored run looks like a broken/expired credential."""
+        errored = result.get('is_error') or result.get('returncode', 0) != 0
+        return bool(errored) and self._match_markers(result, AUTH_ERROR_MARKERS)
+
+    def _limit_detail(self, result):
+        """A short, log-safe detail string for a limit hit."""
+        detail = (result.get('result_text') or result.get('stderr') or '').strip()
+        return detail[:500]
+
+    def _auth_error_message(self, result):
+        """An actionable failure message for a credential problem."""
+        detail = (result.get('result_text') or result.get('stderr') or '').strip()
+        base = (
+            "Claude-Authentifizierung fehlgeschlagen (Token/Key abgelaufen oder "
+            "ungültig). OAuth-Token per `claude setup-token` erneuern bzw. "
+            "CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY prüfen."
+        )
+        return f"{base}\n\n{detail}".strip() if detail else base
+
+    def _parse_limit_reset(self, result):
+        """Best-effort parse of a quota reset time from the CLI output.
+
+        Recognises the ``…limit reached|<unix_epoch>`` form the CLI emits, plus
+        a looser ``reset/retry … <epoch>`` fallback. Returns an aware datetime
+        or ``None`` when nothing parseable is present (the caller then applies a
+        default backoff).
+        """
+        text = f"{result.get('result_text', '')}\n{result.get('stderr', '')}"
+        match = re.search(r'\|\s*(\d{10,13})\b', text)
+        if not match:
+            match = re.search(
+                r'(?:reset|retry|available)[^0-9]{0,24}(\d{10,13})\b', text, re.I,
+            )
+        if not match:
+            return None
+        ts = int(match.group(1))
+        if ts > 10_000_000_000:  # value is in milliseconds
+            ts //= 1000
+        try:
+            return datetime.fromtimestamp(ts, tz=datetime_timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
 
     def _build_prompt(self, item):
         """Build the task prompt Claude works from."""

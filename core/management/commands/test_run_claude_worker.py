@@ -14,19 +14,22 @@ import json
 import os
 import subprocess
 import tempfile
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.management.commands.run_claude_worker import (
     Command,
+    DEFAULT_LIMIT_BACKOFF_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
 )
 from core.models import (
     ClaudeQueueJob,
+    ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
     Item,
     ItemStatus,
@@ -317,7 +320,7 @@ class CrashRecoveryTests(ClaudeWorkerTestBase):
         job = self._job(
             self.project_a,
             status=ClaudeQueueJobStatus.RUNNING,
-            started_at=timezone.now() - timezone.timedelta(seconds=4000),
+            started_at=timezone.now() - timedelta(seconds=4000),
         )
 
         cmd = Command()
@@ -628,7 +631,7 @@ class EmptyRunHandlingTests(ClaudeWorkerTestBase):
             self.assertNotIn('Implemented everything', call_kwargs['body'])
 
     def test_uncommitted_changes_are_rescued_and_run_still_marked_done(self):
-        def leave_uncommitted(job, repo_dir, timeout, idle_timeout, pr_body_file):
+        def leave_uncommitted(job, repo_dir, timeout, idle_timeout, pr_body_file, **kwargs):
             (Path(repo_dir) / 'feature.py').write_text('print("hi")\n')
             return _ok_result(result_text='Implemented the fix.')
 
@@ -648,7 +651,7 @@ class EmptyRunHandlingTests(ClaudeWorkerTestBase):
             self.assertIn('auto-commit uncommitted work', log)
 
     def test_settings_local_json_only_is_still_a_true_empty_run(self):
-        def leave_only_settings(job, repo_dir, timeout, idle_timeout, pr_body_file):
+        def leave_only_settings(job, repo_dir, timeout, idle_timeout, pr_body_file, **kwargs):
             claude_dir = Path(repo_dir) / '.claude'
             claude_dir.mkdir(parents=True, exist_ok=True)
             (claude_dir / 'settings.local.json').write_text('{"a": 1}\n')
@@ -1002,7 +1005,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
         job = self._claimed_job(self.project_a)
         captured = {}
 
-        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file, **kwargs):
             captured['path'] = pr_body_file
             captured['existed_during_run'] = pr_body_file.exists()
             return _ok_result()
@@ -1020,7 +1023,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
         job = self._claimed_job(self.project_a)
         captured = {}
 
-        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file, **kwargs):
             captured['path'] = pr_body_file
             return _ok_result(is_error=True, result_text='exploded')
 
@@ -1040,7 +1043,7 @@ class PrBodyFileLifecycleTests(ClaudeWorkerTestBase):
         job.save(update_fields=['pr_number'])
         fake_service = MagicMock()
 
-        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file):
+        def fake_run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file, **kwargs):
             pr_body_file.write_text(
                 "## Zusammenfassung\nDid it.\n\n## Änderungen\n- `a.py`\n\n"
                 "## Warum / Entscheidungen\n- nicht X, weil Y\n\n"
@@ -1085,3 +1088,203 @@ class BuildPromptAndEnvTests(ClaudeWorkerTestBase):
     def test_allowed_tools_includes_write(self):
         from core.management.commands.run_claude_worker import ALLOWED_TOOLS
         self.assertIn('Write', ALLOWED_TOOLS.split(','))
+
+
+class AuthModeEnvTests(ClaudeWorkerTestBase):
+    """The child environment must pick auth per-process, never inherit it."""
+
+    def _env(self, auth_mode, **settings_over):
+        job = self._job(self.project_a)
+        pr_body_file = Path(tempfile.gettempdir()) / 'claude-pr-body-test.md'
+        with override_settings(**settings_over):
+            return Command()._build_env(job, pr_body_file, auth_mode=auth_mode)
+
+    def test_oauth_run_strips_global_api_key(self):
+        # Even with a globally exported key, an OAuth run must not carry it —
+        # otherwise the CLI silently spends pay-per-use credit.
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'sk-global'}):
+            env = self._env(
+                ClaudeQueueJobAuthMode.OAUTH,
+                ANTHROPIC_API_KEY='sk-global',
+                CLAUDE_CODE_OAUTH_TOKEN='oauth-tok',
+            )
+        self.assertNotIn('ANTHROPIC_API_KEY', env)
+        self.assertEqual(env['CLAUDE_CODE_OAUTH_TOKEN'], 'oauth-tok')
+
+    def test_oauth_run_without_token_relies_on_host_login(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
+            env = self._env(
+                ClaudeQueueJobAuthMode.OAUTH,
+                ANTHROPIC_API_KEY='',
+                CLAUDE_CODE_OAUTH_TOKEN='',
+            )
+        self.assertNotIn('ANTHROPIC_API_KEY', env)
+        self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', env)
+
+    def test_api_key_run_sets_key_and_strips_oauth_token(self):
+        with patch.dict(os.environ, {'CLAUDE_CODE_OAUTH_TOKEN': 'oauth-tok'}):
+            env = self._env(
+                ClaudeQueueJobAuthMode.API_KEY,
+                ANTHROPIC_API_KEY='sk-abc',
+                CLAUDE_CODE_OAUTH_TOKEN='oauth-tok',
+            )
+        self.assertEqual(env['ANTHROPIC_API_KEY'], 'sk-abc')
+        self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', env)
+
+    def test_api_key_run_without_key_raises(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('ANTHROPIC_API_KEY', None)
+            with self.assertRaises(RuntimeError):
+                self._env(ClaudeQueueJobAuthMode.API_KEY, ANTHROPIC_API_KEY='')
+
+
+class LimitDetectionTests(ClaudeWorkerTestBase):
+    def test_rate_limit_on_errored_run_is_a_limit(self):
+        result = _ok_result(is_error=True, result_text='Claude usage limit reached')
+        self.assertTrue(Command()._is_limit_error(result))
+        self.assertFalse(Command()._is_auth_error(result))
+
+    def test_limit_wording_in_successful_run_is_not_a_limit(self):
+        # Gated on the run erroring: a healthy run mentioning "quota" is fine.
+        result = _ok_result(result_text='I reviewed the quota logic, all good.')
+        self.assertFalse(Command()._is_limit_error(result))
+
+    def test_expired_token_is_an_auth_error_not_a_limit(self):
+        result = _ok_result(
+            is_error=True, returncode=1,
+            stderr='OAuth token has expired. Please run /login.',
+        )
+        self.assertTrue(Command()._is_auth_error(result))
+        self.assertFalse(Command()._is_limit_error(result))
+
+    def test_parse_limit_reset_from_pipe_epoch(self):
+        reset = int((timezone.now() + timedelta(hours=2)).timestamp())
+        result = _ok_result(
+            is_error=True, result_text=f'Claude AI usage limit reached|{reset}',
+        )
+        parsed = Command()._parse_limit_reset(result)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(int(parsed.timestamp()), reset)
+
+    def test_parse_limit_reset_absent_returns_none(self):
+        result = _ok_result(is_error=True, result_text='rate limit, try later')
+        self.assertIsNone(Command()._parse_limit_reset(result))
+
+
+class LimitHandlingProcessTests(ClaudeWorkerTestBase):
+    """process_job's reactive behaviour when a run hits the subscription limit."""
+
+    def _claimed_job(self, item_status=ItemStatus.WORKING, **job_kwargs):
+        item = self._item(self.project_a, status=item_status)
+        self._job(self.project_a, item=item, **job_kwargs)
+        return Command().claim_next_job()
+
+    def _run(self, job, run_cli, timeout=30):
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'sha')), \
+                patch.object(Command, '_commit_uncommitted_work'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_update_pr_body'), \
+                patch.object(Command, '_run_cli', side_effect=run_cli):
+            Command().process_job(job, timeout=timeout, idle_timeout=5)
+
+    def test_limit_without_flag_parks_in_waiting_limit(self):
+        reset = int((timezone.now() + timedelta(hours=1)).timestamp())
+        job = self._claimed_job()
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            is_error=True, result_text=f'usage limit reached|{reset}',
+        ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.WAITING_LIMIT)
+        self.assertEqual(int(job.limit_reset_at.timestamp()), reset)
+        self.assertEqual(job.error_text, '')  # waiting is not a failure
+        self.assertIn('Kontingent', job.progress_text)
+        # Item is still being worked on — not released to Backlog.
+        job.item.refresh_from_db()
+        self.assertEqual(job.item.status, ItemStatus.WORKING)
+
+    def test_limit_without_reset_uses_default_backoff(self):
+        job = self._claimed_job()
+        before = timezone.now()
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            is_error=True, result_text='rate limit hit, no timestamp',
+        ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.WAITING_LIMIT)
+        delta = (job.limit_reset_at - before).total_seconds()
+        self.assertGreater(delta, DEFAULT_LIMIT_BACKOFF_SECONDS - 60)
+
+    @override_settings(ANTHROPIC_API_KEY='sk-fallback')
+    def test_limit_with_flag_falls_back_to_api_key_and_completes(self):
+        job = self._claimed_job(allow_api_key_fallback=True)
+        calls = []
+
+        def run_cli(job, repo_dir, timeout, idle_timeout, pr_body_file, *, auth_mode):
+            calls.append(auth_mode)
+            if auth_mode == ClaudeQueueJobAuthMode.OAUTH:
+                return _ok_result(is_error=True, result_text='usage limit reached')
+            return _ok_result(result_text='Done on API key.')
+
+        with patch.object(Command, '_is_empty_diff', return_value=False), \
+                patch.object(Command, '_detect_completion_uncertain', return_value=None):
+            self._run(job, run_cli=run_cli)
+
+        self.assertEqual(
+            calls, [ClaudeQueueJobAuthMode.OAUTH, ClaudeQueueJobAuthMode.API_KEY]
+        )
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(job.auth_mode, ClaudeQueueJobAuthMode.API_KEY)
+
+    def test_auth_error_fails_with_actionable_message(self):
+        job = self._claimed_job()
+        self._run(job, run_cli=lambda *a, **k: _ok_result(
+            is_error=True, returncode=1,
+            stderr='OAuth token has expired. Please run /login.',
+        ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('setup-token', job.error_text)
+
+
+class WaitingLimitClaimTests(ClaudeWorkerTestBase):
+    def test_due_waiting_limit_job_is_reclaimed(self):
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        job = self._job(
+            self.project_a, item=item,
+            status=ClaudeQueueJobStatus.WAITING_LIMIT,
+            limit_reset_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        claimed = Command().claim_next_job()
+
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, job.pk)
+        self.assertEqual(claimed.status, ClaudeQueueJobStatus.RUNNING)
+        self.assertIsNone(claimed.limit_reset_at)
+
+    def test_not_yet_due_waiting_limit_job_is_skipped(self):
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        self._job(
+            self.project_a, item=item,
+            status=ClaudeQueueJobStatus.WAITING_LIMIT,
+            limit_reset_at=timezone.now() + timedelta(hours=1),
+        )
+
+        self.assertIsNone(Command().claim_next_job())
+
+    def test_waiting_limit_job_with_null_reset_is_due(self):
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        job = self._job(
+            self.project_a, item=item,
+            status=ClaudeQueueJobStatus.WAITING_LIMIT,
+            limit_reset_at=None,
+        )
+
+        claimed = Command().claim_next_job()
+
+        self.assertEqual(claimed.pk, job.pk)
