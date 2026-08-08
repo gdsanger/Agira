@@ -15,17 +15,12 @@
                 <p class="mb-3">
                     <small class="text-muted">
                         Create a new GitHub issue for this item.
-                        {% if can_create_issue %}
-                            <span class="text-success">✓ Status is valid ({{ item.status }})</span>
-                        {% else %}
-                            <span class="text-danger">✗ Status must be Backlog, Working, or Testing (current: {{ item.status }})</span>
-                        {% endif %}
                         {% if not user_has_github_pat %}
                             <br><span class="text-danger">✗ GitHub Personal Access Token not configured</span>
                         {% endif %}
                     </small>
                 </p>
-                {% if can_create_issue and user_has_github_pat %}
+                {% if user_has_github_pat %}
                     {% if has_existing_issue %}
                         <!-- Follow-up issue creation - requires notes -->
                         <div class="alert alert-info mb-3">
@@ -61,12 +56,8 @@
                 {% else %}
                     <div class="alert alert-warning mb-0">
                         <small>
-                            {% if not can_create_issue %}
-                                Cannot create GitHub issue. Item status must be Backlog, Working, or Testing.
-                            {% elif not user_has_github_pat %}
-                                Cannot create GitHub issue. You need to configure your GitHub Personal Access Token in
-                                <a href="{% url 'user-settings' %}" class="alert-link">User Settings</a>.
-                            {% endif %}
+                            Cannot create GitHub issue. You need to configure your GitHub Personal Access Token in
+                            <a href="{% url 'user-settings' %}" class="alert-link">User Settings</a>.
                         </small>
                     </div>
                 {% endif %}
@@ -244,90 +235,6 @@
     </div>
 </div>
 
-<script>
-function handleGitHubIssueCreation(event) {
-    const xhr = event.detail.xhr;
-    
-    // Check if request was successful
-    if (event.detail.successful) {
-        try {
-            // Try to parse response as JSON
-            const response = JSON.parse(xhr.responseText);
-            
-            // Check if this is a JSON response with mail_preview
-            if (response.success && response.mail_preview) {
-                // Close the followup modal if it's open
-                const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
-                if (followupModal) {
-                    followupModal.hide();
-                    document.getElementById('followupIssueForm').reset();
-                }
-                
-                // Update the GitHub tab with the new HTML
-                if (response.github_tab_html) {
-                    document.getElementById('github').innerHTML = response.github_tab_html;
-                }
-                
-                // Ensure modal backdrop is removed
-                removeModalBackdrop();
-                
-                // Show mail confirmation modal (reuse existing mail modal from item_form.html)
-                if (typeof showMailConfirmationModal === 'function') {
-                    showMailConfirmationModal(response.mail_preview, response.item_id);
-                } else {
-                    console.error('showMailConfirmationModal function not found');
-                    // Fallback: show a toast notification
-                    showToast('success', 'GitHub issue created successfully. Mail preview not available.');
-                }
-                return;
-            }
-        } catch (e) {
-            // Not JSON, might be HTML response - handle as regular HTMX response
-        }
-        
-        // Handle regular HTML response (no mail preview)
-        // Close the followup modal if it's open
-        const followupModal = bootstrap.Modal.getInstance(document.getElementById('followupIssueModal'));
-        if (followupModal) {
-            followupModal.hide();
-            document.getElementById('followupIssueForm').reset();
-        }
-        
-        // Update the GitHub tab with the response
-        document.getElementById('github').innerHTML = xhr.responseText;
-        
-        // Ensure modal backdrop is removed
-        removeModalBackdrop();
-        
-        // Show success toast
-        if (typeof showToast === 'function') {
-            showToast('success', 'GitHub issue created successfully');
-        }
-    } else {
-        // Handle errors
-        if (typeof showToast === 'function') {
-            const errorMsg = xhr.responseText || 'Failed to create GitHub issue';
-            showToast('error', errorMsg);
-        }
-    }
-}
-
-// Helper function to remove modal backdrop
-function removeModalBackdrop() {
-    // Remove any lingering modal backdrops
-    const backdrops = document.querySelectorAll('.modal-backdrop');
-    backdrops.forEach(backdrop => backdrop.remove());
-    
-    // Remove modal-open class from body
-    document.body.classList.remove('modal-open');
-    
-    // Reset body padding/overflow that Bootstrap may have set
-    document.body.style.overflow = '';
-    document.body.style.paddingRight = '';
-}
-
-// Keep the old function for compatibility (redirect to new handler)
-function handleFollowupIssueResponse(event) {
-    handleGitHubIssueCreation(event);
-}
-</script>
+{# GitHub issue creation JS handlers (handleGitHubIssueCreation, removeModalBackdrop) #}
+{# live in item_detail.html so they are available regardless of whether this tab #}
+{# has been lazily loaded – e.g. when triggered from the item action menu. #}
