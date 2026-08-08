@@ -310,17 +310,23 @@ class FollowupGitHubIssueTestCase(TestCase):
             state='closed',
             html_url='https://github.com/testowner/testrepo/issues/1',
         )
-        
+
+        # The follow-up button in the tab is gated behind a per-user PAT.
+        self.user.github_pat = 'test_pat_123'
+        self.user.save()
+
         # Load GitHub tab
         url = reverse('item-github-tab', args=[item.id])
         response = self.client.get(url)
-        
+
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        
-        # Should show follow-up button instead of regular create button
+
+        # Should show follow-up button instead of regular create button. The button
+        # opens the #followupIssueModal, which now lives on the item detail page
+        # (item_detail.html) so the action menu can reuse it without opening the tab.
         self.assertIn('Create Follow-up GitHub Issue', content)
-        self.assertIn('followupIssueModal', content)
+        self.assertIn('data-bs-target="#followupIssueModal"', content)
     
     def test_github_tab_shows_regular_button_when_no_issue_exists(self):
         """Test that GitHub tab shows regular button when item has no issues."""
