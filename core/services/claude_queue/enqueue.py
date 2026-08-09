@@ -10,6 +10,7 @@ double-click can't spawn duplicate jobs for the same item.
 from django.db import transaction
 
 from core.models import (
+    CLAUDE_CLI_MODEL_IDS,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobModel,
@@ -28,13 +29,32 @@ from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
 DEFAULT_CLAUDE_MODEL = ClaudeQueueJobModel.SONNET
 
 
+class InvalidClaudeModel(ValueError):
+    """The item's resolved Claude model has no known CLI translation (#1090).
+
+    Raised before the job — and the item's transition to Working — is
+    created, so a stale or unmapped model slug is rejected at the button
+    instead of reaching the CLI and failing minutes into a run (see #1090:
+    ``opus-5``/``opus-4-8`` reaching the CLI unmapped burned two jobs on
+    Item #1085). The message is user-facing.
+    """
+
+
 def _resolve_model(item) -> str:
     """Return the Claude model to run this item with.
 
     The item's `suggested_model` wins; DEFAULT_CLAUDE_MODEL is the fallback for
-    items that carry no suggestion at all.
+    items that carry no suggestion at all. The result is guaranteed to have a
+    known ``claude --model`` translation (see ``CLAUDE_CLI_MODEL_IDS``) —
+    anything else is rejected here rather than passed through.
     """
-    return getattr(item, 'suggested_model', None) or DEFAULT_CLAUDE_MODEL
+    model = getattr(item, 'suggested_model', None) or DEFAULT_CLAUDE_MODEL
+    if model not in CLAUDE_CLI_MODEL_IDS:
+        raise InvalidClaudeModel(
+            f'Ungültiges Claude-Modell „{model}“ – kein bekannter '
+            f'CLI-Modellbezeichner hinterlegt. Bitte ein gültiges Modell wählen.'
+        )
+    return model
 
 
 def _resolve_auth_mode(item) -> str:
@@ -62,8 +82,9 @@ def enqueue_item_for_claude(
     independent of current usage; default off = wait.
 
     Raises :class:`~core.services.claude_queue.credentials.MissingClaudeCredential`
-    when the chosen mode has no usable credential — rejecting at the button is
-    clearer than a job that fails minutes later, and the item stays untouched.
+    when the chosen mode has no usable credential, and :class:`InvalidClaudeModel`
+    when the resolved model has no known CLI translation — both rejected at the
+    button, before the item is moved, rather than a job that fails minutes later.
 
     Returns ``(job, created)``. ``created`` is False when the item already
     had a queued/running job — that job is returned unchanged instead of
@@ -83,13 +104,14 @@ def enqueue_item_for_claude(
         auth_user = resolve_credential_user(locked_item, actor=actor)
         # Raises when the mode cannot be served — before the item is moved.
         resolve_claude_credential(auth_user, auth_mode)
+        # Raises when the model has no known CLI translation — same reasoning.
+        model = _resolve_model(locked_item)
 
         if ensure_git_workflow_hint(locked_item):
             locked_item.save()
 
         ItemWorkflowGuard().transition(locked_item, ItemStatus.WORKING, actor=actor)
 
-        model = _resolve_model(locked_item)
         job = ClaudeQueueJob.objects.create(
             item=locked_item,
             project=locked_item.project,
