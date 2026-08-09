@@ -201,6 +201,60 @@
     </div>
 </div>
 
+<!-- Kosten je Benutzer: tatsächlich (API) vs. theoretisch (Abo) -->
+<div class="row g-3 mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="bi bi-people me-1"></i>Kosten je Benutzer &mdash; tatsächlich (API) vs. theoretisch (Abo)</strong>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Benutzer</th>
+                                <th class="text-end">API-Jobs</th>
+                                <th class="text-end">Tatsächliche Kosten (US$)</th>
+                                <th class="text-end">Abo-Jobs</th>
+                                <th class="text-end">Theoretische Kosten (US$)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in cost_by_auth_user %}
+                            <tr>
+                                <td>{{ row.auth_user__name|default:"– (kein Benutzer zugeordnet)" }}</td>
+                                <td class="text-end">{{ row.api_jobs }}</td>
+                                <td class="text-end">{{ row.api_cost|floatformat:2|default:"0.00" }}</td>
+                                <td class="text-end">{{ row.abo_jobs }}</td>
+                                <td class="text-end text-muted">{{ row.abo_cost|floatformat:2|default:"0.00" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">Keine Daten</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td><strong>Gesamt</strong></td>
+                                <td class="text-end"></td>
+                                <td class="text-end"><strong>{{ total_cost_api|floatformat:2 }}</strong></td>
+                                <td class="text-end"></td>
+                                <td class="text-end text-muted"><strong>{{ total_cost_subscription|floatformat:2 }}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <p class="text-muted small p-3 mb-0">
+                    Zuordnung über <code>ClaudeQueueJob.auth_user</code> (das Credential, mit dem der Job lief) und den
+                    Modus des letzten Versuchs. <strong>Tatsächlich</strong> = pay-per-use über den API-Key wirklich abgerechnet.
+                    <strong>Theoretisch</strong> = über das bereits bezahlte Abo gelaufen, also das, was pay-per-use gekostet
+                    hätte &mdash; das Eingesparte. Beide Werte sind Claudes eigene Schätzung je Job, keine Rechnungsdaten.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Autonomy & quality -->
 <div class="row g-3 mb-4">
     <div class="col-md-6">

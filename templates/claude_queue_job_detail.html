@@ -49,6 +49,26 @@
                     <dt class="col-5 text-muted">Session</dt>
                     <dd class="col-7 text-break"><small>{{ job.session_id|default:"—" }}</small></dd>
 
+                    <dt class="col-5 text-muted">Auth-Modus</dt>
+                    <dd class="col-7">
+                        {% if job.auth_mode == 'api_key' %}
+                        <span class="badge bg-warning text-dark">API (Pay-per-use)</span>
+                        {% else %}
+                        <span class="badge bg-success">ABO</span>
+                        {% endif %}
+                        {% if job.auth_mode != job.requested_auth_mode %}
+                        <small class="text-muted d-block">angefordert: {{ job.get_requested_auth_mode_display }}</small>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-5 text-muted">Konto</dt>
+                    <dd class="col-7">
+                        {{ job.auth_user.name|default:"—" }}
+                        {% if job.auth_credential_source and job.auth_credential_source != 'user' %}
+                        <small class="text-muted d-block">{{ job.get_auth_credential_source_display }}</small>
+                        {% endif %}
+                    </dd>
+
                     <dt class="col-5 text-muted">Created</dt>
                     <dd class="col-7">{{ job.created_at|date:"Y-m-d H:i" }}</dd>
 

@@ -263,3 +263,47 @@ class FieldSpecRegistryTest(TestCase):
                      'requester', 'assigned_to', 'responsible', 'parent', 'solution_release',
                      'suggested_model']:
             self.assertIn(name, FIELD_SPECS)
+
+
+class ClaudeAuthModeFieldTest(GenericFieldUpdateTestBase):
+    """Inline per-issue ABO/API switch (#1083)."""
+
+    def test_defaults_to_subscription(self):
+        self.assertEqual(self.item.claude_auth_mode, 'oauth')
+
+    def test_switches_to_api(self):
+        response = self.client.post(
+            self.url(), {'field': 'claude_auth_mode', 'value': 'api_key'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.claude_auth_mode, 'api_key')
+
+    def test_switches_back_to_subscription(self):
+        self.item.claude_auth_mode = 'api_key'
+        self.item.save()
+
+        response = self.client.post(
+            self.url(), {'field': 'claude_auth_mode', 'value': 'oauth'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.claude_auth_mode, 'oauth')
+
+    def test_unknown_mode_rejected(self):
+        response = self.client.post(
+            self.url(), {'field': 'claude_auth_mode', 'value': 'free-lunch'}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.claude_auth_mode, 'oauth')
+
+    def test_empty_value_rejected_rather_than_reset(self):
+        self.item.claude_auth_mode = 'api_key'
+        self.item.save()
+
+        response = self.client.post(self.url(), {'field': 'claude_auth_mode', 'value': ''})
+
+        self.assertEqual(response.status_code, 400)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.claude_auth_mode, 'api_key')

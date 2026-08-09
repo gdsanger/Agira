@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from core.models import (
     Item, Project, ItemStatus, ItemType, User, Release,
-    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel,
+    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel, ClaudeQueueJobAuthMode,
     ExternalIssueMapping, ExternalIssueKind,
 )
 from core.services.activity import ActivityService
@@ -145,3 +145,57 @@ class SystemAnalyticsViewTestCase(TestCase):
         top_cost_items = response.context['top_cost_items']
         self.assertEqual(len(top_cost_items), 1)
         self.assertEqual(top_cost_items[0].id, self.item.id)
+
+
+class PerUserCostSplitTestCase(TestCase):
+    """Real (API) vs. theoretical (subscription) cost, per user (#1083)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.viewer = User.objects.create_user(
+            username='viewer', password='testpass123', email='viewer@example.com',
+        )
+        self.alice = User.objects.create_user(
+            username='alice', password='pw', email='alice@example.com', name='Alice',
+        )
+        self.bob = User.objects.create_user(
+            username='bob', password='pw', email='bob@example.com', name='Bob',
+        )
+        self.project = Project.objects.create(name='P', description='d')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+
+        self._job(self.alice, ClaudeQueueJobAuthMode.OAUTH, '1.00')
+        self._job(self.alice, ClaudeQueueJobAuthMode.OAUTH, '2.00')
+        self._job(self.alice, ClaudeQueueJobAuthMode.API_KEY, '4.00')
+        self._job(self.bob, ClaudeQueueJobAuthMode.API_KEY, '8.00')
+
+    def _job(self, user, auth_mode, cost):
+        item = Item.objects.create(
+            title='I', description='d', project=self.project, type=self.item_type,
+        )
+        return ClaudeQueueJob.objects.create(
+            item=item, project=self.project, status=ClaudeQueueJobStatus.DONE,
+            model=ClaudeQueueJobModel.SONNET, auth_user=user,
+            requested_auth_mode=auth_mode, auth_mode=auth_mode,
+            total_cost_usd=Decimal(cost),
+        )
+
+    def _context(self):
+        self.client.login(username='viewer', password='testpass123')
+        return self.client.get(reverse('system-analytics')).context
+
+    def test_totals_separate_billed_from_subscription_runs(self):
+        context = self._context()
+
+        self.assertEqual(context['total_cost_api'], Decimal('12.00'))
+        self.assertEqual(context['total_cost_subscription'], Decimal('3.00'))
+
+    def test_rows_are_split_per_user(self):
+        rows = {row['auth_user__username']: row for row in self._context()['cost_by_auth_user']}
+
+        self.assertEqual(rows['alice']['api_cost'], Decimal('4.00'))
+        self.assertEqual(rows['alice']['abo_cost'], Decimal('3.00'))
+        self.assertEqual(rows['alice']['api_jobs'], 1)
+        self.assertEqual(rows['alice']['abo_jobs'], 2)
+        self.assertEqual(rows['bob']['api_cost'], Decimal('8.00'))
+        self.assertEqual(rows['bob']['abo_jobs'], 0)

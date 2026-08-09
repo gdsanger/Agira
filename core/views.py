@@ -32,7 +32,7 @@ from .models import (
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
     GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
-    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel)
+    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel, ClaudeQueueJobAuthMode)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -840,7 +840,7 @@ def claude_queue_jobs(request):
     that fragment is re-rendered instead of the full page.
     """
     jobs = ClaudeQueueJob.objects.select_related(
-        'item', 'project'
+        'item', 'project', 'auth_user'
     ).order_by('-created_at')
 
     project_filter = request.GET.get('project', '')
@@ -880,7 +880,7 @@ def claude_queue_job_row(request, job_id):
     row swaps in a static version that stops the poll.
     """
     try:
-        job = ClaudeQueueJob.objects.select_related('item', 'project').get(id=job_id)
+        job = ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user').get(id=job_id)
     except ClaudeQueueJob.DoesNotExist:
         # HTMX-friendly: no error page, and 204 leaves the existing row in place.
         return HttpResponse(status=204)
@@ -895,7 +895,7 @@ def claude_queue_job_row(request, job_id):
 def claude_queue_job_detail(request, job_id):
     """Detail view for a single Claude queue job."""
     job = get_object_or_404(
-        ClaudeQueueJob.objects.select_related('item', 'project'),
+        ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'),
         id=job_id,
     )
     return render(request, 'claude_queue_job_detail.html', {
@@ -913,7 +913,7 @@ def claude_queue_job_live(request, job_id):
     emitted while the job is active, so the poll stops when the job settles.
     """
     try:
-        job = ClaudeQueueJob.objects.select_related('item', 'project').get(id=job_id)
+        job = ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user').get(id=job_id)
     except ClaudeQueueJob.DoesNotExist:
         return HttpResponse(status=204)
 
@@ -1100,6 +1100,7 @@ def item_detail(request, item_id):
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
         'suggested_model_choices': ClaudeQueueJobModel.choices,
+        'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         'claude_queue_jobs': claude_queue_jobs,
         'claude_total_cost': claude_total_cost,
     }
@@ -1225,6 +1226,7 @@ def item_claude_enqueue(request, item_id):
     creates a queued ClaudeQueueJob, and moves the item to Working. If the
     item already has an active job, no duplicate is created.
     """
+    from core.services.claude_queue.credentials import MissingClaudeCredential
     from core.services.claude_queue.enqueue import enqueue_item_for_claude
 
     item = get_object_or_404(Item, id=item_id)
@@ -1237,26 +1239,30 @@ def item_claude_enqueue(request, item_id):
 
     try:
         job, created = enqueue_item_for_claude(item, actor=request.user)
-
-        if not created:
-            return JsonResponse({
-                'success': True,
-                'message': f'Item already has an active Claude job (#{job.pk}).',
-                'no_change': True,
-                'job_id': job.pk,
-            })
-
-        return JsonResponse({
-            'success': True,
-            'message': f'Enqueued for Claude Code (job #{job.pk}).',
-            'job_id': job.pk,
-        })
+    except MissingClaudeCredential as e:
+        # A missing credential is a user-fixable configuration problem, not a
+        # server error: report it verbatim so the message can be acted on.
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         logger.error(f"Error enqueueing item {item_id} for Claude: {e}")
         return JsonResponse({
             'success': False,
             'error': str(e)
         }, status=500)
+
+    if not created:
+        return JsonResponse({
+            'success': True,
+            'message': f'Item already has an active Claude job (#{job.pk}).',
+            'no_change': True,
+            'job_id': job.pk,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Enqueued for Claude Code (job #{job.pk}).',
+        'job_id': job.pk,
+    })
 
 
 @login_required
@@ -4384,6 +4390,19 @@ def _resolve_suggested_model(item, request):
     return ModelClassifierService().classify(item)
 
 
+def _resolve_claude_auth_mode(request, current=None):
+    """Resolve Item.claude_auth_mode (#1083) from the form.
+
+    Only the two defined modes are accepted; anything else keeps the current
+    value (or the subscription default for a new item), so a malformed POST can
+    never flip an issue onto pay-per-use.
+    """
+    value = request.POST.get('claude_auth_mode', '').strip()
+    if value in ClaudeQueueJobAuthMode.values:
+        return value
+    return current or ClaudeQueueJobAuthMode.OAUTH
+
+
 def _resolve_epic_order(request):
     """Resolve Item.epic_order (#1076) from the form.
 
@@ -4614,6 +4633,7 @@ def item_create(request):
             'nodes': nodes,
             'blueprints': blueprints,
             'suggested_model_choices': ClaudeQueueJobModel.choices,
+            'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         }
         return render(request, 'item_form.html', context)
     
@@ -4673,6 +4693,7 @@ def item_create(request):
             status=request.POST.get('status', ItemStatus.INBOX),
         )
         item.suggested_model = _resolve_suggested_model(item, request)
+        item.claude_auth_mode = _resolve_claude_auth_mode(request)
 
         # Set optional fields with automatic pre-population
         # Auto-populate requester with current user if not explicitly provided
@@ -4814,6 +4835,7 @@ def item_edit(request, item_id):
             'parent_items': parent_items,
             'nodes': nodes,
             'suggested_model_choices': ClaudeQueueJobModel.choices,
+            'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         }
         return render(request, 'item_form.html', context)
     
@@ -4863,6 +4885,8 @@ def item_update(request, item_id):
         item.status = request.POST.get('status', item.status)
         if 'suggested_model' in request.POST:
             item.suggested_model = _resolve_suggested_model(item, request)
+        if 'claude_auth_mode' in request.POST:
+            item.claude_auth_mode = _resolve_claude_auth_mode(request, item.claude_auth_mode)
 
         # Update boolean fields
         item.intern = request.POST.get('intern') == 'on' or request.POST.get('intern') == 'true'
@@ -7831,6 +7855,33 @@ def system_analytics(request):
     avg_cost_per_item = (total_cost_all_time / items_with_jobs_count) if items_with_jobs_count else None
 
     # ------------------------------------------------------------------
+    # Tatsächliche vs. theoretische Kosten je Benutzer (#1083). Beides ist
+    # derselbe Schätzwert (total_cost_usd), nur getrennt nach dem Modus, in dem
+    # der jeweils letzte Versuch gelaufen ist: API-Läufe wurden wirklich
+    # abgerechnet, Abo-Läufe liefen auf bereits bezahltem Kontingent - ihre
+    # Summe ist das, was pay-per-use gekostet HÄTTE (also das Eingesparte).
+    # ------------------------------------------------------------------
+    _api_filter = Q(auth_mode=ClaudeQueueJobAuthMode.API_KEY)
+    _abo_filter = ~Q(auth_mode=ClaudeQueueJobAuthMode.API_KEY)
+    cost_by_auth_user = list(
+        ClaudeQueueJob.objects
+        .values('auth_user', 'auth_user__name', 'auth_user__username')
+        .annotate(
+            api_cost=Sum('total_cost_usd', filter=_api_filter),
+            api_jobs=Count('id', filter=_api_filter),
+            abo_cost=Sum('total_cost_usd', filter=_abo_filter),
+            abo_jobs=Count('id', filter=_abo_filter),
+        )
+        .order_by('-api_cost', '-abo_cost')
+    )
+    cost_totals = ClaudeQueueJob.objects.aggregate(
+        api=Sum('total_cost_usd', filter=_api_filter),
+        abo=Sum('total_cost_usd', filter=_abo_filter),
+    )
+    total_cost_api = cost_totals['api'] or Decimal('0')
+    total_cost_subscription = cost_totals['abo'] or Decimal('0')
+
+    # ------------------------------------------------------------------
     # Claude-Queue-Anteil & Qualität. Das ist der messbare Anteil, KEIN
     # Autonomiegrad: bis Anfang Juli 2026 lief die autonome Umsetzung über
     # GitHub Copilot (eigene Anbindung, nicht in dieser Queue erfasst) - siehe #1002.
@@ -7957,6 +8008,9 @@ def system_analytics(request):
         'avg_cost_per_item': avg_cost_per_item,
         'items_with_jobs_count': items_with_jobs_count,
         'model_mix': model_mix,
+        'cost_by_auth_user': cost_by_auth_user,
+        'total_cost_api': total_cost_api,
+        'total_cost_subscription': total_cost_subscription,
         'cost_chart_json': json.dumps({
             'labels': month_labels,
             'data': month_cost_series,
@@ -11996,28 +12050,53 @@ def user_settings(request):
     context = {
         'user': request.user,
         'has_github_pat': request.user.has_github_pat(),
+        # Only the *presence* of the Claude credentials reaches the template —
+        # the secrets themselves are never rendered back (#1083).
+        'has_claude_oauth_token': request.user.has_claude_oauth_token(),
+        'has_claude_api_key': request.user.has_claude_api_key(),
     }
     return render(request, 'user_settings.html', context)
+
+
+# Personal secrets editable from the profile: form field -> (attribute, label).
+# Each is write-only — an empty submitted value keeps the stored secret, and
+# clearing happens through the explicit "clear_<field>" checkbox. Rendering the
+# secret back into the form (so an empty POST could mean "delete") would put it
+# in the page source and the browser cache for no gain.
+_USER_SECRET_FIELDS = {
+    'github_pat': ('github_pat', 'GitHub Personal Access Token'),
+    'claude_oauth_token': ('claude_oauth_token', 'Claude OAuth token'),
+    'claude_api_key': ('claude_api_key', 'Anthropic API key'),
+}
 
 
 @login_required
 @require_http_methods(["POST"])
 def user_settings_update(request):
-    """Update User Settings."""
+    """Update User Settings (personal credentials)."""
     user = request.user
 
     try:
-        # Update GitHub PAT
-        github_pat = request.POST.get('github_pat', '').strip()
-        if github_pat:
-            user.github_pat = github_pat
+        updated = []
+        for form_field, (attr, label) in _USER_SECRET_FIELDS.items():
+            value = request.POST.get(form_field, '').strip()
+            if request.POST.get(f'clear_{form_field}'):
+                if getattr(user, attr):
+                    setattr(user, attr, '')
+                    updated.append(f'{label} cleared')
+            elif value:
+                setattr(user, attr, value)
+                updated.append(f'{label} updated')
+            elif form_field == 'github_pat' and form_field in request.POST and getattr(user, attr):
+                # Pre-#1083 behaviour of the GitHub PAT field: submitting it
+                # empty clears it. Kept so the existing "Clear PAT" button and
+                # its callers keep working.
+                setattr(user, attr, '')
+                updated.append(f'{label} cleared')
+
+        if updated:
             user.save()
-            messages.success(request, 'GitHub Personal Access Token updated successfully.')
-        elif 'github_pat' in request.POST:
-            # Empty string means user wants to clear the PAT
-            user.github_pat = ''
-            user.save()
-            messages.success(request, 'GitHub Personal Access Token cleared successfully.')
+            messages.success(request, f"{', '.join(updated)}.")
 
         return redirect('user-settings')
 

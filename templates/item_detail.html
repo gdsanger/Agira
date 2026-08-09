@@ -867,6 +867,22 @@
                             <div id="field-feedback-suggested_model" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
+                            <strong>Auth-Modus:</strong>
+                            <select class="form-select form-select-sm mt-1"
+                                    name="value"
+                                    hx-post="{% url 'item-update-field' item.id %}"
+                                    hx-vals='{"field": "claude_auth_mode"}'
+                                    hx-trigger="change"
+                                    hx-target="#field-feedback-claude_auth_mode"
+                                    hx-swap="innerHTML">
+                                {% for value, display in claude_auth_mode_choices %}
+                                <option value="{{ value }}" {% if item.claude_auth_mode == value %}selected{% endif %}>{{ display }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Abo (Standard) oder Pay-per-use-API-Key — jeweils vom Credential des zuständigen Benutzers.</div>
+                            <div id="field-feedback-claude_auth_mode" class="mt-1"></div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Parent Item:</strong>
                             <div class="mt-2 d-flex gap-2" id="parent-field-container">
                                 <select 

@@ -29,6 +29,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import Model
 
 from core.models import (
+    ClaudeQueueJobAuthMode,
     ClaudeQueueJobModel,
     Item,
     ItemStatus,
@@ -193,6 +194,26 @@ def _suggested_model_display(value: Any) -> str:
     return _SUGGESTED_MODEL_LABELS.get(value, value) if value else "None"
 
 
+def _resolve_claude_auth_mode(_item: Item, raw: str) -> str:
+    """Resolve the per-issue ABO/API switch (#1083).
+
+    Only the two defined modes are accepted, and an empty value is rejected
+    rather than silently reset to the default: this field decides whether a run
+    spends money, so an unparsable value must not quietly pick a side.
+    """
+    value = (raw or "").strip()
+    if value not in ClaudeQueueJobAuthMode.values:
+        raise FieldUpdateError("Ungültiger Auth-Modus.")
+    return value
+
+
+_CLAUDE_AUTH_MODE_LABELS = dict(ClaudeQueueJobAuthMode.choices)
+
+
+def _claude_auth_mode_display(value: Any) -> str:
+    return _CLAUDE_AUTH_MODE_LABELS.get(value, value) if value else "None"
+
+
 def _user_display(user: Optional[User]) -> str:
     return user.name if user else "None"
 
@@ -240,6 +261,10 @@ FIELD_SPECS: dict[str, FieldSpec] = {
     "suggested_model": FieldSpec(
         "suggested_model", "text", _resolve_suggested_model,
         display=_suggested_model_display, label="Suggested Model",
+    ),
+    "claude_auth_mode": FieldSpec(
+        "claude_auth_mode", "text", _resolve_claude_auth_mode,
+        display=_claude_auth_mode_display, label="Auth-Modus",
     ),
 }
 
