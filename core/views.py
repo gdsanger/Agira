@@ -1227,7 +1227,7 @@ def item_claude_enqueue(request, item_id):
     item already has an active job, no duplicate is created.
     """
     from core.services.claude_queue.credentials import MissingClaudeCredential
-    from core.services.claude_queue.enqueue import enqueue_item_for_claude
+    from core.services.claude_queue.enqueue import InvalidClaudeModel, enqueue_item_for_claude
 
     item = get_object_or_404(Item, id=item_id)
 
@@ -1239,9 +1239,9 @@ def item_claude_enqueue(request, item_id):
 
     try:
         job, created = enqueue_item_for_claude(item, actor=request.user)
-    except MissingClaudeCredential as e:
-        # A missing credential is a user-fixable configuration problem, not a
-        # server error: report it verbatim so the message can be acted on.
+    except (MissingClaudeCredential, InvalidClaudeModel) as e:
+        # Both are user-fixable configuration problems, not server errors:
+        # report verbatim so the message can be acted on.
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         logger.error(f"Error enqueueing item {item_id} for Claude: {e}")
