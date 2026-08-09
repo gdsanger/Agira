@@ -238,6 +238,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     github_pat = EncryptedCharField(max_length=500, blank=True, default='',
                                     help_text=_('Personal GitHub token for creating issues'))
 
+    # Per-user Claude credentials (#1083). Each team member runs the Claude
+    # queue on their *own* subscription, so both credentials live on the user,
+    # not on the host: the OAuth token drives the Max/Pro subscription, the API
+    # key drives pay-per-use. Encrypted at rest (same mechanism as github_pat),
+    # write-only in the UI, and deliberately absent from the Django admin —
+    # a personal credential is set by its owner, not by an administrator.
+    claude_oauth_token = EncryptedCharField(
+        max_length=500, blank=True, default='',
+        help_text=_('Personal Claude Code OAuth token (`claude setup-token`) — runs jobs on this user\'s subscription'),
+    )
+    claude_api_key = EncryptedCharField(
+        max_length=500, blank=True, default='',
+        help_text=_('Personal Anthropic API key — runs jobs pay-per-use on this user\'s account'),
+    )
+
     # Per-user token used by the Agira MCP server to attribute actions
     # (e.g. set as `responsible` on items created via Claude). Not a login credential.
     mcp_token = models.CharField(max_length=64, unique=True, null=True, blank=True,
@@ -298,6 +313,25 @@ class User(AbstractBaseUser, PermissionsMixin):
             bool: True if PAT is configured, False otherwise
         """
         return bool(self.github_pat and self.github_pat.strip())
+
+    def has_claude_oauth_token(self):
+        """True if this user has a personal Claude subscription (OAuth) token."""
+        return bool(self.claude_oauth_token and self.claude_oauth_token.strip())
+
+    def has_claude_api_key(self):
+        """True if this user has a personal Anthropic API key stored."""
+        return bool(self.claude_api_key and self.claude_api_key.strip())
+
+    def claude_credential_for(self, auth_mode):
+        """Return this user's credential for ``auth_mode``, or '' if not stored.
+
+        Deliberately mode-strict: an OAuth run never falls back to the API key
+        (that would silently turn a subscription run into a paid one) and vice
+        versa. The caller decides what a missing credential means.
+        """
+        if auth_mode == ClaudeQueueJobAuthMode.API_KEY:
+            return (self.claude_api_key or '').strip()
+        return (self.claude_oauth_token or '').strip()
 
 
 class UserOrganisation(models.Model):
@@ -674,6 +708,20 @@ class ClaudeQueueJobAuthMode(models.TextChoices):
     API_KEY = 'api_key', _('Anthropic API key')
 
 
+class ClaudeCredentialSource(models.TextChoices):
+    """Where the credential of a run came from (#1083).
+
+    Cost attribution is only honest if it is visible *whose* credential paid
+    for a run: ``user`` is the per-user credential from the profile, ``shared``
+    the host-wide credential from the environment (the #1078 single-account
+    case), ``host_login`` the interactive ``claude login`` credential in
+    ``~/.claude``. Only ``user`` can be billed back to a person.
+    """
+    USER = 'user', _('Personal credential of the job user')
+    SHARED = 'shared', _('Host-wide credential (shared)')
+    HOST_LOGIN = 'host_login', _('Interactive host login (~/.claude)')
+
+
 class Item(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -700,6 +748,17 @@ class Item(models.Model):
         choices=ClaudeQueueJobModel.choices,
         default=ClaudeQueueJobModel.SONNET,
         help_text=_('AI-suggested Claude model for automated processing. A suggestion, not a gate — overridable in the UI.'),
+    )
+    # Which credential a Claude run for this item is billed to (#1083). Default
+    # is the subscription: the quota is already paid for, so pay-per-use has to
+    # be an explicit, per-issue decision — typically taken by the user whose
+    # subscription quota is exhausted. Switching is manual on purpose; an
+    # automatic ABO→API fallback would spend money without anyone deciding to.
+    claude_auth_mode = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobAuthMode.choices,
+        default=ClaudeQueueJobAuthMode.OAUTH,
+        help_text=_('Auth mode for Claude runs on this item: subscription (default) or pay-per-use API key'),
     )
     # Position of this item inside its parent's epic (#1076). Sub-issues of an
     # epic are layers of *one* vertical slice (data model → logic → UI), so
@@ -1966,6 +2025,37 @@ class ClaudeQueueJob(models.Model):
         choices=ClaudeQueueJobAuthMode.choices,
         default=ClaudeQueueJobAuthMode.OAUTH,
         help_text=_('How the latest run authenticated (subscription OAuth vs. API key)'),
+    )
+    # What the *item* asked for, frozen at enqueue time (#1083). Kept apart from
+    # ``auth_mode`` on purpose: a limit fallback rewrites ``auth_mode`` to
+    # ``api_key``, and that must not retroactively rewrite the user's choice.
+    requested_auth_mode = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobAuthMode.choices,
+        default=ClaudeQueueJobAuthMode.OAUTH,
+        help_text=_('Auth mode requested for this job (frozen from the item at enqueue time)'),
+    )
+    # Whose Claude account this run is billed to (#1083). Resolved once at
+    # enqueue time and stored, so a later change of responsible/assignee cannot
+    # silently re-attribute a finished run's cost. Null only for jobs from
+    # before per-user auth, or when no user could be determined at all.
+    auth_user = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='claude_auth_jobs',
+        help_text=_('User whose Claude credential this job runs on — the basis for per-user cost attribution'),
+    )
+    # Set by the worker for the latest attempt: was the personal credential of
+    # ``auth_user`` actually used, or did the run fall back to the host-wide one?
+    # Without this, a shared-credential run would look like personal usage.
+    auth_credential_source = models.CharField(
+        max_length=20,
+        choices=ClaudeCredentialSource.choices,
+        blank=True,
+        default='',
+        help_text=_('Which credential the latest run actually used (personal vs. host-wide)'),
     )
     # Static job property (set at enqueue time, independent of current usage):
     # if the subscription limit is hit, may this job re-run on the paid API key
