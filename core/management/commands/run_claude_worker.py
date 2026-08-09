@@ -73,6 +73,7 @@ from core.models import (
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
     ItemStatus,
+    claude_cli_model_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -936,12 +937,17 @@ class Command(BaseCommand):
         return result
 
     def _build_claude_args(self, job):
-        """Assemble the headless Claude Code command line."""
-        model = job.model or job.item.suggested_model or 'sonnet'
+        """Assemble the headless Claude Code command line.
+
+        The job's model is a stored slug (``opus-5``), not something the CLI
+        understands — it is translated to a concrete ``--model`` identifier
+        here (#1082).
+        """
+        model = job.model or job.item.suggested_model
         return [
             settings.CLAUDE_CLI_BIN,
             '-p', self._build_prompt(job.item),
-            '--model', model,
+            '--model', claude_cli_model_id(model),
             '--output-format', 'stream-json',
             '--verbose',
             '--dangerously-skip-permissions',

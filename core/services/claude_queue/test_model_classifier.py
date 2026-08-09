@@ -23,21 +23,21 @@ class ClassifyByHeuristicsTestCase(TestCase):
 
     def test_migration_keyword_triggers_opus(self):
         item = self._item(description='This needs a database migration to add a column.')
-        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS)
+        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS_4_8)
 
     def test_security_keyword_triggers_opus(self):
         item = self._item(description='Fix an authentication bypass vulnerability in login.')
-        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS)
+        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS_4_8)
 
     def test_large_scope_keyword_triggers_opus(self):
         item = self._item(description='Refactor the billing architecture across the codebase.')
-        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS)
+        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS_4_8)
 
     def test_many_file_mentions_trigger_opus(self):
         item = self._item(
             description='Update views.py, models.py and templates/item_form.html consistently.'
         )
-        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS)
+        self.assertEqual(classify_by_heuristics(item), ClaudeQueueJobModel.OPUS_4_8)
 
     def test_clear_scoped_description_returns_sonnet(self):
         item = self._item(
@@ -71,7 +71,7 @@ class ModelClassifierServiceTestCase(TestCase):
 
         result = service.classify(item)
 
-        self.assertEqual(result, ClaudeQueueJobModel.OPUS)
+        self.assertEqual(result, ClaudeQueueJobModel.OPUS_4_8)
         agent_service.execute_agent.assert_not_called()
 
     def test_ambiguous_heuristic_falls_back_to_haiku_opus(self):
@@ -82,7 +82,7 @@ class ModelClassifierServiceTestCase(TestCase):
 
         result = service.classify(item)
 
-        self.assertEqual(result, ClaudeQueueJobModel.OPUS)
+        self.assertEqual(result, ClaudeQueueJobModel.OPUS_4_8)
         agent_service.execute_agent.assert_called_once()
         self.assertEqual(
             agent_service.execute_agent.call_args.kwargs['filename'],

@@ -619,12 +619,46 @@ class ChangePolicyRole(models.Model):
 
 
 class ClaudeQueueJobModel(models.TextChoices):
-    """Claude models available for automated item processing.
+    """Claude models available for automated item processing (#1082).
 
-    Fable is intentionally excluded from the automatism.
+    The Opus generations are listed separately so a job can be steered at a
+    specific one: Opus 4.8 and Opus 5 differ in cost and capability, and the
+    epic review pass (#1076/#1079) has to run on a different model than the
+    code author. Fable 5 rounds the list out at the top end.
+
+    The stored value is a stable slug, not a CLI identifier — see
+    ``CLAUDE_CLI_MODEL_IDS`` for the translation to ``claude --model``.
     """
     SONNET = 'sonnet', _('Sonnet')
-    OPUS = 'opus', _('Opus')
+    OPUS_4_8 = 'opus-4-8', _('Opus 4.8')
+    OPUS_5 = 'opus-5', _('Opus 5')
+    FABLE_5 = 'fable-5', _('Fable 5')
+
+
+# Display slug -> identifier handed to `claude --model`.
+#
+# Sonnet stays on the CLI's floating alias (that is the pre-#1082 behaviour and
+# keeps the cheap default tracking the current Sonnet); the Opus/Fable entries
+# are pinned to exact model IDs, because pinning is the whole point of the
+# split — a floating `opus` alias is what made 4.8 and 5 indistinguishable.
+CLAUDE_CLI_MODEL_IDS = {
+    ClaudeQueueJobModel.SONNET: 'sonnet',
+    ClaudeQueueJobModel.OPUS_4_8: 'claude-opus-4-8',
+    ClaudeQueueJobModel.OPUS_5: 'claude-opus-5',
+    ClaudeQueueJobModel.FABLE_5: 'claude-fable-5',
+}
+
+
+def claude_cli_model_id(value) -> str:
+    """Translate a stored ``ClaudeQueueJobModel`` slug into a CLI ``--model``.
+
+    Unknown or empty values fall back to Sonnet rather than being passed
+    through: a stale slug would otherwise reach the CLI verbatim and fail the
+    run, and the cheap default is the safe outcome for a suggestion field.
+    """
+    return CLAUDE_CLI_MODEL_IDS.get(
+        value, CLAUDE_CLI_MODEL_IDS[ClaudeQueueJobModel.SONNET]
+    )
 
 
 class ClaudeQueueJobAuthMode(models.TextChoices):

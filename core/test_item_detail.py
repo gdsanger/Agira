@@ -1102,7 +1102,7 @@ class ItemDetailClaudeCostAggregationTest(TestCase):
         )
         ClaudeQueueJob.objects.create(
             item=self.item, project=self.project,
-            model=ClaudeQueueJobModel.OPUS,
+            model=ClaudeQueueJobModel.OPUS_4_8,
             total_cost_usd=Decimal('2.500000'), num_turns=10,
         )
 

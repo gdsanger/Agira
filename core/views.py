@@ -4374,12 +4374,12 @@ def _resolve_suggested_model(item, request):
     Resolve Item.suggested_model (#834) from an explicit UI override or
     the hybrid classifier.
 
-    An explicit 'sonnet'/'opus' value in POST['suggested_model'] is a
+    Any valid ClaudeQueueJobModel value in POST['suggested_model'] is a
     manual override and is used as-is. Any other value (missing, or
     empty for "Auto-detect") triggers (re-)classification.
     """
     override = request.POST.get('suggested_model', '').strip()
-    if override in (ClaudeQueueJobModel.SONNET, ClaudeQueueJobModel.OPUS):
+    if override in ClaudeQueueJobModel.values:
         return override
     return ModelClassifierService().classify(item)
 
@@ -4599,6 +4599,7 @@ def item_create(request):
             'default_project': default_project,
             'nodes': nodes,
             'blueprints': blueprints,
+            'suggested_model_choices': ClaudeQueueJobModel.choices,
         }
         return render(request, 'item_form.html', context)
     
@@ -4796,6 +4797,7 @@ def item_edit(request, item_id):
             'releases': releases,
             'parent_items': parent_items,
             'nodes': nodes,
+            'suggested_model_choices': ClaudeQueueJobModel.choices,
         }
         return render(request, 'item_form.html', context)
     

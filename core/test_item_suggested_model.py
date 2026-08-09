@@ -35,7 +35,7 @@ class ItemSuggestedModelViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         item = Item.objects.get(id=response.json()['item_id'])
-        self.assertEqual(item.suggested_model, 'opus')
+        self.assertEqual(item.suggested_model, 'opus-4-8')
 
     def test_create_classifies_well_scoped_item_as_sonnet(self):
         response = self.client.post(reverse('item-create'), {
@@ -55,17 +55,17 @@ class ItemSuggestedModelViewTest(TestCase):
             'type': self.item_type.id,
             'title': 'Rename export button',
             'description': 'Change the label on the export button from "Export" to "Download CSV".',
-            'suggested_model': 'opus',
+            'suggested_model': 'opus-5',
         })
 
         self.assertEqual(response.status_code, 200)
         item = Item.objects.get(id=response.json()['item_id'])
-        self.assertEqual(item.suggested_model, 'opus')
+        self.assertEqual(item.suggested_model, 'opus-5')
 
     def test_update_without_suggested_model_field_leaves_it_unchanged(self):
         item = Item.objects.create(
             title='Existing item', description='Some description.',
-            project=self.project, type=self.item_type, suggested_model='opus',
+            project=self.project, type=self.item_type, suggested_model='opus-5',
         )
 
         response = self.client.post(reverse('item-update', args=[item.id]), {
@@ -74,7 +74,7 @@ class ItemSuggestedModelViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
-        self.assertEqual(item.suggested_model, 'opus')
+        self.assertEqual(item.suggested_model, 'opus-5')
 
     def test_update_with_explicit_override_changes_it(self):
         item = Item.objects.create(
@@ -84,12 +84,12 @@ class ItemSuggestedModelViewTest(TestCase):
 
         response = self.client.post(reverse('item-update', args=[item.id]), {
             'title': item.title,
-            'suggested_model': 'opus',
+            'suggested_model': 'fable-5',
         })
 
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
-        self.assertEqual(item.suggested_model, 'opus')
+        self.assertEqual(item.suggested_model, 'fable-5')
 
     def test_update_with_auto_detect_reclassifies(self):
         item = Item.objects.create(
@@ -105,4 +105,4 @@ class ItemSuggestedModelViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
-        self.assertEqual(item.suggested_model, 'opus')
+        self.assertEqual(item.suggested_model, 'opus-4-8')

@@ -39,6 +39,18 @@ FILE_PATH_PATTERN = re.compile(r'\b[\w./-]+\.[A-Za-z]{1,5}\b')
 MIN_WORDS_FOR_CONFIDENT_SONNET = 10
 MIN_FILE_MENTIONS_FOR_OPUS = 3
 
+# The classifier only distinguishes "cheap default" from "needs an Opus-class
+# model" — picking *which* Opus generation is a human call, made in the UI
+# (#1082). Its coarse verdict therefore lands on Opus 4.8, the cheaper of the
+# two; the Haiku agent's vocabulary is unchanged and its bare 'opus' is mapped
+# onto the same value.
+AUTO_DETECT_OPUS = ClaudeQueueJobModel.OPUS_4_8
+
+_HAIKU_VALUE_ALIASES = {
+    'sonnet': ClaudeQueueJobModel.SONNET,
+    'opus': AUTO_DETECT_OPUS,
+}
+
 
 def _text_for(item) -> str:
     """Concatenate the item's textual fields for keyword/heuristic scans."""
@@ -52,19 +64,19 @@ def _contains_any(text: str, keywords) -> bool:
 def classify_by_heuristics(item) -> Optional[str]:
     """Cheap, deterministic first pass.
 
-    Returns 'opus' or 'sonnet' when confident, None when the signals are
-    inconclusive and a Haiku call is warranted.
+    Returns AUTO_DETECT_OPUS or 'sonnet' when confident, None when the signals
+    are inconclusive and a Haiku call is warranted.
     """
     text = _text_for(item).lower()
 
     if _contains_any(text, MIGRATION_KEYWORDS):
-        return ClaudeQueueJobModel.OPUS
+        return AUTO_DETECT_OPUS
     if _contains_any(text, SECURITY_KEYWORDS):
-        return ClaudeQueueJobModel.OPUS
+        return AUTO_DETECT_OPUS
     if _contains_any(text, LARGE_SCOPE_KEYWORDS):
-        return ClaudeQueueJobModel.OPUS
+        return AUTO_DETECT_OPUS
     if len(FILE_PATH_PATTERN.findall(text)) >= MIN_FILE_MENTIONS_FOR_OPUS:
-        return ClaudeQueueJobModel.OPUS
+        return AUTO_DETECT_OPUS
 
     if len((item.description or '').split()) >= MIN_WORDS_FOR_CONFIDENT_SONNET:
         return ClaudeQueueJobModel.SONNET
@@ -82,7 +94,10 @@ class ModelClassifierService:
         self.agent_service = agent_service or AgentService()
 
     def classify(self, item) -> str:
-        """Return the suggested Claude model ('sonnet' or 'opus') for item.
+        """Return the suggested Claude model for item.
+
+        The result is one of ``ClaudeQueueJobModel.SONNET`` /
+        ``AUTO_DETECT_OPUS``; the remaining choices are manual-only (#1082).
 
         Never raises: any failure in the Haiku fallback degrades to the
         safe default (sonnet) rather than silently defaulting to opus.
@@ -105,8 +120,8 @@ class ModelClassifierService:
             return None
 
         value = response.strip().lower()
-        if value in (ClaudeQueueJobModel.SONNET, ClaudeQueueJobModel.OPUS):
-            return value
+        if value in _HAIKU_VALUE_ALIASES:
+            return _HAIKU_VALUE_ALIASES[value]
 
         logger.warning(f"Haiku model classification returned unexpected value {value!r}, defaulting to sonnet")
         return None
