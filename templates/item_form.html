@@ -464,7 +464,16 @@
                         {% endif %}
                     </select>
                 </div>
-                
+
+                <!-- Epic-Order (#1076) -->
+                <div class="mb-3">
+                    <label for="epic_order" class="form-label">Epic-Order</label>
+                    <input type="number" class="form-control" id="epic_order" name="epic_order"
+                           form="itemForm" min="0" step="10"
+                           value="{% if item %}{{ item.epic_order }}{% else %}0{% endif %}">
+                    <small class="form-text text-muted">Reihenfolge innerhalb des Parent-Epics (#1076). Sub-Issues werden strikt aufsteigend abgearbeitet — z.&nbsp;B. Datenmodell 10, Logik 20, UI 30. Ohne Parent Item ohne Wirkung.</small>
+                </div>
+
                 <!-- Solution Release -->
                 <div class="mb-3">
                     <label for="solution_release" class="form-label">Solution Release</label>

@@ -4,6 +4,7 @@ Tests for the GitHub `pull_request` webhook endpoint.
 import hashlib
 import hmac
 import json
+from unittest.mock import patch
 
 from django.test import TestCase, Client
 from django.urls import reverse
@@ -36,6 +37,7 @@ def pr_payload(
     state='closed',
     body='## Summary\n\nWhy we chose the queue-based approach.',
     merge_commit_sha='abc123def456',
+    base=None,
 ):
     pull_request = {
         'id': github_id,
@@ -45,6 +47,8 @@ def pr_payload(
         'html_url': f'https://github.com/testowner/testrepo/pull/{number}',
         'body': body,
     }
+    if base is not None:
+        pull_request['base'] = {'ref': base}
     if merged:
         pull_request['merged_at'] = '2026-07-03T10:00:00Z'
         pull_request['merge_commit_sha'] = merge_commit_sha
@@ -290,3 +294,147 @@ class GitHubPRWebhookTestCase(TestCase):
 
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, ItemStatus.TESTING)
+
+
+class EpicMergeWebhookTestCase(TestCase):
+    """Status logic and the final epic PR under the epic-branch model (#1076)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('github-pull-request-webhook')
+
+        config = GitHubConfiguration.load()
+        config.enable_github = True
+        config.webhook_secret = WEBHOOK_SECRET
+        config.save()
+
+        self.project = Project.objects.create(
+            name='Test Project', github_owner='testowner', github_repo='testrepo',
+        )
+        self.item_type = ItemType.objects.create(key='feature', name='Feature')
+        self.epic = Item.objects.create(
+            project=self.project,
+            title='Kundenportal',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+        )
+        self.epic_branch = f'feature/{self.epic.id}-kundenportal'
+        self.data_model = self._sub_issue('Datenmodell', 10, github_id=7001, number=51)
+        self.ui = self._sub_issue('UI', 20, github_id=7002, number=52)
+
+    def _sub_issue(self, title, epic_order, *, github_id, number):
+        item = Item.objects.create(
+            project=self.project,
+            title=title,
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            parent=self.epic,
+            epic_order=epic_order,
+        )
+        item.mapping = ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=github_id,
+            number=number,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url=f'https://github.com/testowner/testrepo/pull/{number}',
+        )
+        return item
+
+    def _post(self, payload):
+        body = json.dumps(payload).encode('utf-8')
+        return self.client.post(
+            self.url,
+            data=body,
+            content_type='application/json',
+            HTTP_X_GITHUB_EVENT='pull_request',
+            HTTP_X_HUB_SIGNATURE_256=sign(body, WEBHOOK_SECRET),
+        )
+
+    def _merge_sub_issue(self, item):
+        return self._post(pr_payload(
+            github_id=item.mapping.github_id,
+            number=item.mapping.number,
+            merged=True,
+            state='closed',
+            base=self.epic_branch,
+        ))
+
+    def test_sub_issue_merged_into_epic_branch_moves_to_testing(self):
+        with patch('core.services.github.service.ensure_epic_pr') as ensure:
+            self._merge_sub_issue(self.data_model)
+
+        self.data_model.refresh_from_db()
+        self.assertEqual(self.data_model.status, ItemStatus.TESTING)
+        # The epic itself is only a container — it stays in Working.
+        self.epic.refresh_from_db()
+        self.assertEqual(self.epic.status, ItemStatus.WORKING)
+        ensure.assert_not_called()
+
+    def test_epic_stays_working_when_its_branch_merges_into_another_branch(self):
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.epic,
+            github_id=7100,
+            number=60,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/pull/60',
+        )
+        self._post(pr_payload(
+            github_id=mapping.github_id, number=mapping.number,
+            merged=True, state='closed', base='feature/999-other',
+        ))
+
+        self.epic.refresh_from_db()
+        self.assertEqual(self.epic.status, ItemStatus.WORKING)
+
+    def test_epic_moves_to_testing_when_its_pr_merges_into_main(self):
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.epic,
+            github_id=7101,
+            number=61,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/pull/61',
+        )
+        self._post(pr_payload(
+            github_id=mapping.github_id, number=mapping.number,
+            merged=True, state='closed', base='main',
+        ))
+
+        self.epic.refresh_from_db()
+        self.assertEqual(self.epic.status, ItemStatus.TESTING)
+
+    def test_last_sub_issue_merge_opens_the_final_epic_pr(self):
+        with patch('core.services.github.service.ensure_epic_pr') as ensure:
+            self._merge_sub_issue(self.data_model)
+            ensure.assert_not_called()
+
+            self._merge_sub_issue(self.ui)
+            ensure.assert_called_once_with(self.epic)
+
+    def test_sub_issue_merge_of_a_standalone_item_opens_no_epic_pr(self):
+        standalone = Item.objects.create(
+            project=self.project,
+            title='Standalone',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+        )
+        mapping = ExternalIssueMapping.objects.create(
+            item=standalone,
+            github_id=7200,
+            number=70,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/pull/70',
+        )
+
+        with patch('core.services.github.service.ensure_epic_pr') as ensure:
+            self._post(pr_payload(
+                github_id=mapping.github_id, number=mapping.number,
+                merged=True, state='closed', base='main',
+            ))
+
+        standalone.refresh_from_db()
+        self.assertEqual(standalone.status, ItemStatus.TESTING)
+        ensure.assert_not_called()

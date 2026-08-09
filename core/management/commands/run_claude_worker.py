@@ -6,11 +6,14 @@ rows and runs them end-to-end:
 
 1. Prepare a per-project repo checkout under ``settings.REPO_BASE_DIR`` (never
    the app directory — Claude edits there, the process runs from the app tree).
-2. Open a **draft PR up front**: branch ``fix/{item-slug}`` off ``main``, an
-   empty commit, push, then a draft PR via the existing ``GitHubService`` infra.
-   The PR reference (number/url/github-id) is written to the job and to an
+2. Open a **PR up front**: branch ``fix/{item-slug}`` off the item's base, an
+   empty commit, push, then a PR via the existing ``GitHubService`` infra. The
+   PR reference (number/url/github-id) is written to the job and to an
    ``ExternalIssueMapping`` (Kind=PR) *before* Claude runs, so it is
-   deterministic regardless of what Claude reports.
+   deterministic regardless of what Claude reports. The base is ``main`` and
+   the PR a draft for a standalone item; for a sub-issue of an epic (#1076) it
+   is the parent's epic branch and the PR is opened ready-for-review with
+   squash auto-merge armed.
 3. Run Claude Code headless (``--output-format stream-json``) in the checkout,
    parsing the event stream line-by-line to advance ``progress_text`` live and
    to persist ``session_id`` / ``num_turns`` / ``total_cost_usd`` from the final
@@ -75,6 +78,11 @@ from core.models import (
     ItemStatus,
     claude_cli_model_id,
 )
+from core.services.claude_queue.branch import (
+    DEFAULT_BASE_BRANCH,
+    resolve_base_branch,
+)
+from core.services.claude_queue.epic import can_start, sub_issue_position
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +192,17 @@ BACKGROUND_MARKERS = (
     'soll ich fortfahren',
 )
 
+# Commit-message convention (#1076). Sub-issue PRs squash-merge into the epic
+# branch, so each sub-issue becomes exactly one commit on it — and that commit's
+# subject is all the final epic PR shows for a whole layer. Carrying the Agira id
+# is what keeps that PR reviewable commit-for-commit instead of a wall of
+# untraceable squashes.
+COMMIT_MESSAGE_INSTRUCTIONS = (
+    "Verwende Conventional-Commit-Messages mit der Agira-ID im Scope, z. B. "
+    "`feat(#{item_id}): …` oder `fix(#{item_id}): …`, damit der Epic-PR "
+    "commit-für-commit nachvollziehbar bleibt."
+)
+
 # Fixed PR body sections Claude must write into PR_BODY_FILE. Literal headings
 # so the resulting PR bodies are uniform and cleanly chunkable for the
 # Weaviate RAG index.
@@ -291,12 +310,14 @@ class Command(BaseCommand):
     def claim_next_job(self):
         """Atomically claim the next eligible job and mark it ``running``.
 
-        Eligible = the oldest *pending* job of a repo (the project's
+        Eligible = the oldest *pending, unblocked* job of a repo (the project's
         ``github_owner``/``github_repo``) that currently has no ``running`` job.
         "Pending" means a ``queued`` job, or a ``waiting_limit`` job whose quota
         reset time has passed (or is unknown) — the latter is how a run parked on
-        a subscription limit is resumed automatically. Returns the claimed job
-        (already committed as running) or ``None`` if nothing is claimable.
+        a subscription limit is resumed automatically. "Unblocked" means the
+        item's predecessors inside its epic have merged (#1076). Returns the
+        claimed job (already committed as running) or ``None`` if nothing is
+        claimable.
         """
         with transaction.atomic():
             now = timezone.now()
@@ -308,6 +329,18 @@ class Command(BaseCommand):
                 | Q(status=ClaudeQueueJobStatus.WAITING_LIMIT, limit_reset_at__isnull=True)
                 | Q(status=ClaudeQueueJobStatus.WAITING_LIMIT, limit_reset_at__lte=now)
             )
+
+            # Sub-issues of an epic must run strictly in ``epic_order``: a
+            # layer started before its foundation merged is how an agent ends
+            # up inventing a mock for the missing part and shipping a green PR
+            # built on a prop. Blocked jobs stay ``queued`` and are simply not
+            # claimable yet — the merge of the predecessor unblocks them on a
+            # later poll, with no intervention.
+            #
+            # Excluded from the head-of-line subquery below as well, not just
+            # from the candidates: otherwise a blocked job that happens to be
+            # its repo's oldest would mask every claimable job behind it.
+            blocked_ids = self._blocked_job_ids(pending)
 
             # Repos that already have a running job are off-limits. Keyed on
             # repo identity, not project_id: two projects configured with the
@@ -328,7 +361,7 @@ class Command(BaseCommand):
                 pending,
                 project__github_owner=OuterRef('project__github_owner'),
                 project__github_repo=OuterRef('project__github_repo'),
-            ).filter(
+            ).exclude(pk__in=blocked_ids).filter(
                 Q(created_at__lt=OuterRef('created_at'))
                 | Q(created_at=OuterRef('created_at'), pk__lt=OuterRef('pk'))
             )
@@ -336,6 +369,7 @@ class Command(BaseCommand):
             candidates = (
                 ClaudeQueueJob.objects
                 .filter(pending)
+                .exclude(pk__in=blocked_ids)
                 .annotate(_is_busy=Exists(busy_repos))
                 .filter(_is_busy=False)
                 .annotate(_has_older=Exists(older))
@@ -368,6 +402,21 @@ class Command(BaseCommand):
             f"Claimed job #{job.pk} (project {job.project_id}, item {job.item_id})"
         ))
         return job
+
+    def _blocked_job_ids(self, pending):
+        """Ids of pending jobs whose sub-issue may not start yet (#1076).
+
+        Only jobs of items that actually sit inside an epic can be blocked, so
+        the candidate set is narrowed by ``item__parent__isnull=False`` first —
+        for a queue of standalone items this costs one extra, empty query and
+        nothing else.
+        """
+        sub_issue_jobs = (
+            ClaudeQueueJob.objects
+            .filter(pending, item__parent__isnull=False)
+            .select_related('item', 'item__parent')
+        )
+        return [job.pk for job in sub_issue_jobs if not can_start(job.item)]
 
     # ------------------------------------------------------------------ #
     # Processing
@@ -561,21 +610,26 @@ class Command(BaseCommand):
         settings_file.write_text(json.dumps(payload, indent=2))
 
     # ------------------------------------------------------------------ #
-    # Branch + draft PR (the up-front trick)
+    # Branch + PR (the up-front trick)
     # ------------------------------------------------------------------ #
     def _create_branch_and_pr(self, job, repo_dir):
-        """Create ``fix/{item-slug}`` off main, empty commit, push, draft PR.
+        """Cut ``fix/{item-slug}`` off the item's base, empty commit, push, PR.
 
-        The PR is opened *before* Claude runs and its reference is written to the
-        job + an ``ExternalIssueMapping`` (Kind=PR) immediately, so it stays
+        The base is ``main`` for a standalone item and the parent's epic branch
+        for a sub-issue (#1076) — see ``_ensure_base_branch``. The PR is opened
+        *before* Claude runs and its reference is written to the job + an
+        ``ExternalIssueMapping`` (Kind=PR) immediately, so it stays
         deterministic regardless of what Claude does. Returns ``(branch,
         bootstrap_sha)`` — the latter is the empty bootstrap commit's SHA, used
         after the run to detect an empty PR (see ``_detect_completion_uncertain``).
         """
         item = job.item
         branch = self._branch_name(item)
+        base = self._ensure_base_branch(job, repo_dir)
 
-        self._git(['checkout', '-B', branch, 'origin/main'], cwd=repo_dir)
+        # The base ref is local and current at this point: ``main`` from the
+        # checkout reset, an epic branch from ``_ensure_base_branch``.
+        self._git(['checkout', '-B', branch, base], cwd=repo_dir)
         self._git(
             ['commit', '--allow-empty', '-m',
              f"chore: start Claude work on item #{item.id}"],
@@ -590,7 +644,7 @@ class Command(BaseCommand):
         job.branch_name = branch
         job.save(update_fields=['branch_name'])
 
-        self._open_draft_pr(job, branch, repo_dir)
+        self._open_pr(job, branch, repo_dir, base)
         return branch, bootstrap_sha
 
     def _branch_name(self, item):
@@ -598,8 +652,69 @@ class Command(BaseCommand):
         slug = slugify(item.title)[:50].strip('-')
         return f"fix/{slug}-{item.id}" if slug else f"fix/item-{item.id}"
 
-    def _open_draft_pr(self, job, branch, repo_dir):
-        """Open the draft PR and record it on the job + ExternalIssueMapping.
+    def _ensure_base_branch(self, job, repo_dir):
+        """Materialise the branch this job's work branch is cut from (#1076).
+
+        Returns a *local* ref name, already checked out and current.
+
+        For an item without a parent this is plain ``main`` — the checkout was
+        just hard-reset to ``origin/main``, so there is nothing to do and the
+        pre-#1076 path is bit-for-bit unchanged.
+
+        For a sub-issue it is the parent's epic branch, which is created here
+        on first use (nobody creates it up front) and otherwise brought up to
+        date with ``main`` before the sub-issue branches off it. Pulling
+        ``main`` in *now* rather than later is what keeps each layer starting
+        from the newest foundation instead of accumulating drift across a
+        chain that may run for days.
+        """
+        base = resolve_base_branch(job.item)
+        if base == DEFAULT_BASE_BRANCH:
+            return DEFAULT_BASE_BRANCH
+
+        if self._remote_branch_exists(repo_dir, base):
+            self._git(['checkout', '-B', base, f'origin/{base}'], cwd=repo_dir)
+            try:
+                self._git(
+                    ['merge', '--no-edit', f'origin/{DEFAULT_BASE_BRANCH}'],
+                    cwd=repo_dir,
+                )
+            except RuntimeError as exc:
+                # A conflict between main and the epic branch needs a human;
+                # continuing would silently build the next layer on a stale
+                # base. Abort the half-done merge so the checkout stays usable.
+                self._git(['merge', '--abort'], cwd=repo_dir)
+                raise RuntimeError(
+                    f"Epic-Branch '{base}' konnte nicht mit "
+                    f"'{DEFAULT_BASE_BRANCH}' zusammengeführt werden: {exc}"
+                ) from exc
+            self._save_progress(job, f"Epic-Branch {base} auf main-Stand gebracht")
+        else:
+            self._git(
+                ['checkout', '-B', base, f'origin/{DEFAULT_BASE_BRANCH}'],
+                cwd=repo_dir,
+            )
+            self._save_progress(job, f"Epic-Branch {base} angelegt")
+
+        self._git(['push', '-u', 'origin', base], cwd=repo_dir)
+        return base
+
+    def _remote_branch_exists(self, repo_dir, branch):
+        """True if ``origin/<branch>`` exists in the (freshly fetched) checkout."""
+        output = self._git(
+            ['ls-remote', '--heads', 'origin', branch], cwd=repo_dir,
+        )
+        return bool(output.strip())
+
+    def _open_pr(self, job, branch, repo_dir, base=DEFAULT_BASE_BRANCH):
+        """Open the PR and record it on the job + ExternalIssueMapping.
+
+        A PR against ``main`` is a **draft** merged by hand, as before. A
+        sub-issue PR against an epic branch is opened ready-for-review with
+        squash auto-merge armed instead (#1076): a single layer is not
+        independently testable, so waiting for a human between layers would
+        stall the chain for no gained signal — CI plus the review pass are the
+        gate, and the human review happens once on the assembled epic.
 
         A retried job reuses the exact same deterministic branch name as its
         earlier attempt (``_branch_name`` is keyed on the item, not the job),
@@ -614,36 +729,68 @@ class Command(BaseCommand):
         from core.services.github.service import GitHubService
 
         service = GitHubService()
+        draft = base == DEFAULT_BASE_BRANCH
 
         mapping = self._find_existing_pr(job, branch, service)
-        if mapping is not None:
-            self._apply_pr_mapping(job, mapping, reused=True)
-            return
+        reused = mapping is not None
 
+        if mapping is None:
+            try:
+                mapping = service.create_draft_pr_for_item(
+                    job.item,
+                    branch_name=branch,
+                    base=base,
+                    title=job.item.title,
+                    body=self._pr_body(job, base),
+                    draft=draft,
+                )
+            except Exception as exc:  # noqa: BLE001 — a retry may hit an already-open PR
+                logger.warning(
+                    "PR API call failed for job #%s (%s); looking for an "
+                    "existing PR on %s",
+                    job.pk, exc, branch,
+                )
+                mapping = (
+                    self._find_existing_pr(job, branch, service)
+                    or self._pr_from_gh_fallback(job, branch, repo_dir)
+                )
+                if mapping is None:
+                    raise
+                reused = True
+
+        self._apply_pr_mapping(job, mapping, reused=reused)
+        if not draft:
+            self._enable_auto_merge(job, mapping.number, repo_dir)
+
+    def _enable_auto_merge(self, job, pr_number, repo_dir):
+        """Arm squash auto-merge on a sub-issue PR (#1076).
+
+        Squash so the epic PR stays reviewable commit-for-commit: one commit
+        per sub-issue, carrying its Agira id. GitHub then merges the PR by
+        itself once the required checks pass — that is the whole point, since
+        the chain has to keep moving overnight without a human in the loop.
+
+        Best-effort: if the repo has neither auto-merge enabled nor required
+        checks configured, the call fails and the PR simply waits for a manual
+        merge. That is a slower chain, not a broken job.
+        """
         try:
-            mapping = service.create_draft_pr_for_item(
-                job.item,
-                branch_name=branch,
-                base='main',
-                title=job.item.title,
-                body=self._pr_body(job),
+            proc = subprocess.run(
+                ['gh', 'pr', 'merge', str(pr_number), '--squash', '--auto'],
+                cwd=repo_dir, capture_output=True, text=True, timeout=60,
             )
-        except Exception as exc:  # noqa: BLE001 — a retry may hit an already-open PR
-            logger.warning(
-                "Draft PR API call failed for job #%s (%s); looking for an "
-                "existing PR on %s",
-                job.pk, exc, branch,
-            )
-            mapping = (
-                self._find_existing_pr(job, branch, service)
-                or self._pr_from_gh_fallback(job, branch, repo_dir)
-            )
-            if mapping is None:
-                raise
-            self._apply_pr_mapping(job, mapping, reused=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("Auto-merge call failed for job #%s: %s", job.pk, exc)
             return
 
-        self._apply_pr_mapping(job, mapping, reused=False)
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not enable auto-merge on PR #%s (job #%s): %s",
+                pr_number, job.pk, (proc.stderr or proc.stdout).strip(),
+            )
+            return
+
+        self.stdout.write(f"  Auto-merge (squash) armed on PR #{pr_number}")
 
     def _find_existing_pr(self, job, branch, service):
         """Best-effort lookup of an already-open PR for ``branch`` via the API.
@@ -716,14 +863,23 @@ class Command(BaseCommand):
         )
         return mapping
 
-    def _pr_body(self, job):
+    def _pr_body(self, job, base=DEFAULT_BASE_BRANCH):
         item = job.item
-        return (
-            f"Automated draft PR opened by the Claude queue worker for "
-            f"Agira item #{item.id}.\n\n"
-            f"Model: {job.get_model_display()}\n"
-            f"Job: #{job.pk}"
-        )
+        lines = [
+            "Automated PR opened by the Claude queue worker for "
+            f"Agira item #{item.id}.",
+            '',
+            f"Model: {job.get_model_display()}",
+            f"Job: #{job.pk}",
+        ]
+        if base != DEFAULT_BASE_BRANCH:
+            position = sub_issue_position(item)
+            lines += [
+                f"Epic: #{item.parent_id} — Sub-Issue {position} "
+                f"(Order {item.epic_order})",
+                f"Target: `{base}` (Epic-Branch, Squash-Auto-Merge)",
+            ]
+        return '\n'.join(lines)
 
     def _update_pr_body(self, job, *, summary=None, error=None, pr_body_file=None):
         """Replace the draft PR body with Claude's structured PR text (or a failure note).
@@ -1143,6 +1299,7 @@ class Command(BaseCommand):
             "Implement the change in this repository. Make focused edits and "
             "commit them to the current branch with git. Do not push."
         )
+        parts.append(COMMIT_MESSAGE_INSTRUCTIONS.format(item_id=item.id))
         parts += ['', PR_BODY_FILE_INSTRUCTIONS]
         return '\n'.join(parts)
 

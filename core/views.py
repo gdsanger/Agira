@@ -4384,6 +4384,20 @@ def _resolve_suggested_model(item, request):
     return ModelClassifierService().classify(item)
 
 
+def _resolve_epic_order(request):
+    """Resolve Item.epic_order (#1076) from the form.
+
+    Missing, empty or non-numeric input falls back to 0 ("unordered") rather
+    than rejecting the form: the field only has meaning for a sub-issue of an
+    epic, and an ordering typo must not be able to block saving the item.
+    """
+    raw = request.POST.get('epic_order', '').strip()
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _send_responsible_notification(item, new_responsible):
     """
     Send email notification to new responsible user.
@@ -4691,7 +4705,9 @@ def item_create(request):
         parent_id = request.POST.get('parent')
         if parent_id:
             item.parent = get_object_or_404(Item, id=parent_id)
-        
+
+        item.epic_order = _resolve_epic_order(request)
+
         solution_release_id = request.POST.get('solution_release')
         if solution_release_id:
             item.solution_release = get_object_or_404(Release, id=solution_release_id)
@@ -4894,7 +4910,10 @@ def item_update(request, item_id):
             item.parent = get_object_or_404(Item, id=parent_id)
         elif parent_id == '':
             item.parent = None
-        
+
+        if 'epic_order' in request.POST:
+            item.epic_order = _resolve_epic_order(request)
+
         solution_release_id = request.POST.get('solution_release')
         if solution_release_id:
             item.solution_release = get_object_or_404(Release, id=solution_release_id)

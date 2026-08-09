@@ -212,6 +212,34 @@ class SuggestedModelFieldTest(GenericFieldUpdateTestBase):
         self.assertEqual(response.status_code, 400)
 
 
+class EpicOrderFieldTest(GenericFieldUpdateTestBase):
+    """Inline HTMX editing of the sub-issue order inside an epic (#1076)."""
+
+    def test_epic_order_updates(self):
+        response = self.client.post(self.url(), {'field': 'epic_order', 'value': '20'})
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.epic_order, 20)
+
+    def test_empty_value_means_unordered(self):
+        self.item.epic_order = 30
+        self.item.save()
+        response = self.client.post(self.url(), {'field': 'epic_order', 'value': ''})
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.epic_order, 0)
+
+    def test_non_numeric_value_rejected(self):
+        response = self.client.post(self.url(), {'field': 'epic_order', 'value': 'zehn'})
+        self.assertEqual(response.status_code, 400)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.epic_order, 0)
+
+    def test_negative_value_rejected(self):
+        response = self.client.post(self.url(), {'field': 'epic_order', 'value': '-10'})
+        self.assertEqual(response.status_code, 400)
+
+
 class ActivityLoggingTest(GenericFieldUpdateTestBase):
     def test_change_creates_activity(self):
         before = Activity.objects.count()

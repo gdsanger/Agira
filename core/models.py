@@ -701,6 +701,16 @@ class Item(models.Model):
         default=ClaudeQueueJobModel.SONNET,
         help_text=_('AI-suggested Claude model for automated processing. A suggestion, not a gate — overridable in the UI.'),
     )
+    # Position of this item inside its parent's epic (#1076). Sub-issues of an
+    # epic are layers of *one* vertical slice (data model → logic → UI), so
+    # their order is not arbitrary: a later layer built before its foundation
+    # exists invites the agent to invent a mock and call it done. Gapped values
+    # (10/20/30) are the intended usage so a layer can be slipped in later.
+    # Deliberately a flat number, not a dependency graph — see docs/EPIC_BRANCH_WORKFLOW.md.
+    epic_order = models.PositiveIntegerField(
+        default=0,
+        help_text=_('Order within the parent epic. Sub-issues are worked strictly ascending; ties break by item id.'),
+    )
 
     class Meta:
         ordering = ['-updated_at']
