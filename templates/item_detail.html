@@ -895,6 +895,28 @@
                             </div>
                             <div id="field-feedback-parent" class="mt-1"></div>
                         </div>
+                        {% if item.parent %}
+                        <!-- Epic-Order (#1076): Reihenfolge innerhalb des Epics -->
+                        <div class="mb-3">
+                            <strong>Epic-Order:</strong>
+                            <input type="number"
+                                   class="form-control form-control-sm mt-1"
+                                   name="value"
+                                   min="0"
+                                   step="10"
+                                   value="{{ item.epic_order }}"
+                                   hx-post="{% url 'item-update-field' item.id %}"
+                                   hx-vals='{"field": "epic_order"}'
+                                   hx-trigger="change"
+                                   hx-target="#field-feedback-epic_order"
+                                   hx-swap="innerHTML">
+                            <small class="form-text text-muted">
+                                Sub-Issues des Epics werden strikt aufsteigend abgearbeitet
+                                (z.&nbsp;B. Datenmodell&nbsp;10, Logik&nbsp;20, UI&nbsp;30).
+                            </small>
+                            <div id="field-feedback-epic_order" class="mt-1"></div>
+                        </div>
+                        {% endif %}
                         <div class="mb-3">
                             <strong>Solution Release:</strong>
                             <div class="mt-2 d-flex gap-2" id="release-field-container">

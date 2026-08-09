@@ -31,6 +31,8 @@ from core.models import (
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
+    ExternalIssueKind,
+    ExternalIssueMapping,
     Item,
     ItemStatus,
     ItemType,
@@ -52,6 +54,14 @@ def _ok_result(**overrides):
     }
     result.update(overrides)
     return result
+
+
+def _pr_mapping_stub(number=42):
+    """Minimal stand-in for the ExternalIssueMapping returned by the PR call."""
+    return ExternalIssueMapping(
+        number=number,
+        html_url=f'https://github.com/acme/repo-a/pull/{number}',
+    )
 
 
 class ClaudeWorkerTestBase(TestCase):
@@ -739,7 +749,7 @@ class StreamParsingTests(ClaudeWorkerTestBase):
 
 
 class DraftPrTests(ClaudeWorkerTestBase):
-    def test_open_draft_pr_writes_job_fields(self):
+    def test_open_pr_writes_job_fields(self):
         from unittest.mock import MagicMock
         from core.models import ExternalIssueKind, ExternalIssueMapping
 
@@ -756,14 +766,14 @@ class DraftPrTests(ClaudeWorkerTestBase):
 
         with patch('core.services.github.service.GitHubService',
                    return_value=fake_service):
-            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+            Command()._open_pr(job, 'fix/x-1', '/tmp/repo')
 
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
         self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
         fake_service.create_draft_pr_for_item.assert_called_once()
 
-    def test_open_draft_pr_reuses_existing_open_pr_without_creating(self):
+    def test_open_pr_reuses_existing_open_pr_without_creating(self):
         """A retry hits the same deterministic branch — reuse its open PR."""
         from unittest.mock import MagicMock
         from core.models import ExternalIssueKind, ExternalIssueMapping
@@ -780,7 +790,7 @@ class DraftPrTests(ClaudeWorkerTestBase):
 
         with patch('core.services.github.service.GitHubService',
                    return_value=fake_service):
-            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+            Command()._open_pr(job, 'fix/x-1', '/tmp/repo')
 
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
@@ -788,7 +798,7 @@ class DraftPrTests(ClaudeWorkerTestBase):
         self.assertIn('Reusing existing PR #42', job.progress_text)
         fake_service.create_draft_pr_for_item.assert_not_called()
 
-    def test_open_draft_pr_falls_back_to_existing_pr_after_422(self):
+    def test_open_pr_falls_back_to_existing_pr_after_422(self):
         """create_draft_pr_for_item 422s (already exists) -> re-check finds it."""
         from unittest.mock import MagicMock
         from core.models import ExternalIssueKind, ExternalIssueMapping
@@ -811,14 +821,14 @@ class DraftPrTests(ClaudeWorkerTestBase):
 
         with patch('core.services.github.service.GitHubService',
                    return_value=fake_service):
-            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+            Command()._open_pr(job, 'fix/x-1', '/tmp/repo')
 
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
         self.assertEqual(job.pr_url, 'https://github.com/o/r/pull/42')
         self.assertIn('Reusing existing PR #42', job.progress_text)
 
-    def test_open_draft_pr_lookup_failure_still_allows_creation(self):
+    def test_open_pr_lookup_failure_still_allows_creation(self):
         """A broken existing-PR lookup must not block the normal create path."""
         from unittest.mock import MagicMock
         from core.models import ExternalIssueKind, ExternalIssueMapping
@@ -836,13 +846,13 @@ class DraftPrTests(ClaudeWorkerTestBase):
 
         with patch('core.services.github.service.GitHubService',
                    return_value=fake_service):
-            Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+            Command()._open_pr(job, 'fix/x-1', '/tmp/repo')
 
         job.refresh_from_db()
         self.assertEqual(job.pr_number, 42)
         fake_service.create_draft_pr_for_item.assert_called_once()
 
-    def test_open_draft_pr_raises_when_no_pr_found_anywhere(self):
+    def test_open_pr_raises_when_no_pr_found_anywhere(self):
         """No existing PR and creation fails -> propagate (real job failure)."""
         from unittest.mock import MagicMock
 
@@ -859,7 +869,7 @@ class DraftPrTests(ClaudeWorkerTestBase):
                    return_value=fake_service), \
              patch.object(Command, '_pr_from_gh_fallback', return_value=None):
             with self.assertRaises(RuntimeError):
-                Command()._open_draft_pr(job, 'fix/x-1', '/tmp/repo')
+                Command()._open_pr(job, 'fix/x-1', '/tmp/repo')
 
 
 class UpdatePrBodyTests(ClaudeWorkerTestBase):
@@ -884,7 +894,7 @@ class UpdatePrBodyTests(ClaudeWorkerTestBase):
 
         call_kwargs = fake_service.update_pr_body.call_args[1]
         self.assertEqual(call_kwargs['number'], 42)
-        self.assertIn('Automated draft PR', call_kwargs['body'])
+        self.assertIn('Automated PR', call_kwargs['body'])
         self.assertIn('## Claude Summary', call_kwargs['body'])
         self.assertIn('Implemented the thing.', call_kwargs['body'])
 
@@ -899,7 +909,7 @@ class UpdatePrBodyTests(ClaudeWorkerTestBase):
             Command()._update_pr_body(job, error='Claude reported an error.')
 
         call_kwargs = fake_service.update_pr_body.call_args[1]
-        self.assertIn('Automated draft PR', call_kwargs['body'])
+        self.assertIn('Automated PR', call_kwargs['body'])
         self.assertIn('Run failed', call_kwargs['body'])
         self.assertIn('Claude reported an error.', call_kwargs['body'])
         self.assertNotIn('## Claude Summary', call_kwargs['body'])
@@ -1288,3 +1298,228 @@ class WaitingLimitClaimTests(ClaudeWorkerTestBase):
         claimed = Command().claim_next_job()
 
         self.assertEqual(claimed.pk, job.pk)
+
+
+class EpicOrderClaimTests(ClaudeWorkerTestBase):
+    """A sub-issue is only claimable once its predecessors merged (#1076)."""
+
+    def setUp(self):
+        super().setUp()
+        self.epic = self._item(self.project_a)
+        self.epic.title = 'Kundenportal'
+        self.epic.save(update_fields=['title'])
+        self.data_model = self._sub_issue('Datenmodell', 10)
+        self.ui = self._sub_issue('UI', 30)
+
+    def _sub_issue(self, title, epic_order):
+        return Item.objects.create(
+            project=self.project_a,
+            title=title,
+            type=self.item_type,
+            status=ItemStatus.BACKLOG,
+            parent=self.epic,
+            epic_order=epic_order,
+        )
+
+    def _merge(self, item):
+        ExternalIssueMapping.objects.create(
+            item=item,
+            github_id=90000 + item.id,
+            number=item.id,
+            kind=ExternalIssueKind.PR,
+            state='merged',
+            html_url=f'https://github.com/acme/repo-a/pull/{item.id}',
+        )
+
+    def test_blocked_sub_issue_is_not_claimed_and_stays_queued(self):
+        job = self._job(self.project_a, item=self.ui)
+
+        self.assertIsNone(Command().claim_next_job())
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
+
+    def test_sub_issue_becomes_claimable_once_the_predecessor_merged(self):
+        job = self._job(self.project_a, item=self.ui)
+        self._merge(self.data_model)
+
+        claimed = Command().claim_next_job()
+
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, job.pk)
+
+    def test_blocked_head_of_line_job_does_not_mask_a_claimable_one(self):
+        # The later layer was enqueued first. Without excluding blocked jobs
+        # from the head-of-line check it would shadow the foundation's job
+        # and the whole repo lane would stall.
+        self._job(self.project_a, item=self.ui)
+        foundation_job = self._job(self.project_a, item=self.data_model)
+
+        claimed = Command().claim_next_job()
+
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, foundation_job.pk)
+
+    def test_item_without_parent_is_unaffected(self):
+        job = self._job(self.project_a, item=self._item(self.project_a))
+
+        claimed = Command().claim_next_job()
+
+        self.assertEqual(claimed.pk, job.pk)
+
+
+class EpicBranchAndPrTests(ClaudeWorkerTestBase):
+    """Base-branch resolution and the PR mode that follows from it (#1076)."""
+
+    def setUp(self):
+        super().setUp()
+        self.epic = self._item(self.project_a)
+        self.epic.title = 'Kundenportal'
+        self.epic.save(update_fields=['title'])
+        self.sub_issue = Item.objects.create(
+            project=self.project_a,
+            title='Datenmodell',
+            type=self.item_type,
+            status=ItemStatus.WORKING,
+            parent=self.epic,
+            epic_order=10,
+        )
+        self.epic_branch = f'feature/{self.epic.id}-kundenportal'
+
+    def _command_with_git(self, calls, *, remote_has_epic_branch):
+        command = Command()
+
+        def fake_git(args, cwd):
+            calls.append(list(args))
+            if args[0] == 'ls-remote':
+                return f'sha\trefs/heads/{args[-1]}\n' if remote_has_epic_branch else ''
+            if args[0] == 'rev-parse':
+                return 'deadbeef\n'
+            return ''
+
+        command._git = fake_git
+        return command
+
+    def test_standalone_item_still_branches_off_main(self):
+        job = self._job(self.project_a, item=self._item(self.project_a))
+        calls = []
+        command = self._command_with_git(calls, remote_has_epic_branch=False)
+
+        self.assertEqual(command._ensure_base_branch(job, '/tmp/repo'), 'main')
+        self.assertEqual(calls, [])
+
+    def test_missing_epic_branch_is_created_off_main_and_pushed(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        calls = []
+        command = self._command_with_git(calls, remote_has_epic_branch=False)
+
+        base = command._ensure_base_branch(job, '/tmp/repo')
+
+        self.assertEqual(base, self.epic_branch)
+        self.assertIn(['checkout', '-B', self.epic_branch, 'origin/main'], calls)
+        self.assertIn(['push', '-u', 'origin', self.epic_branch], calls)
+
+    def test_existing_epic_branch_is_brought_up_to_date_with_main(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        calls = []
+        command = self._command_with_git(calls, remote_has_epic_branch=True)
+
+        base = command._ensure_base_branch(job, '/tmp/repo')
+
+        self.assertEqual(base, self.epic_branch)
+        self.assertIn(
+            ['checkout', '-B', self.epic_branch, f'origin/{self.epic_branch}'], calls,
+        )
+        self.assertIn(['merge', '--no-edit', 'origin/main'], calls)
+
+    def test_merge_conflict_aborts_the_merge_and_fails_the_job(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        calls = []
+        command = Command()
+
+        def fake_git(args, cwd):
+            calls.append(list(args))
+            if args[0] == 'ls-remote':
+                return f'sha\trefs/heads/{args[-1]}\n'
+            if args[0] == 'merge' and args[1] == '--no-edit':
+                raise RuntimeError('CONFLICT (content)')
+            return ''
+
+        command._git = fake_git
+
+        with self.assertRaises(RuntimeError) as ctx:
+            command._ensure_base_branch(job, '/tmp/repo')
+
+        self.assertIn(self.epic_branch, str(ctx.exception))
+        self.assertIn(['merge', '--abort'], calls)
+        self.assertNotIn(['push', '-u', 'origin', self.epic_branch], calls)
+
+    def test_sub_issue_pr_targets_the_epic_branch_without_draft(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        command = Command()
+        command._enable_auto_merge = lambda *a, **kw: None
+
+        with patch('core.services.github.service.GitHubService') as service_cls:
+            service = service_cls.return_value
+            service.find_open_pr_for_branch.return_value = None
+            service.create_draft_pr_for_item.return_value = _pr_mapping_stub()
+
+            command._open_pr(job, 'fix/datenmodell-1', '/tmp/repo', self.epic_branch)
+
+        kwargs = service.create_draft_pr_for_item.call_args.kwargs
+        self.assertEqual(kwargs['base'], self.epic_branch)
+        self.assertFalse(kwargs['draft'])
+
+    def test_main_targeting_pr_stays_a_draft_without_auto_merge(self):
+        job = self._job(self.project_a, item=self._item(self.project_a))
+        command = Command()
+        armed = []
+        command._enable_auto_merge = lambda *a, **kw: armed.append(a)
+
+        with patch('core.services.github.service.GitHubService') as service_cls:
+            service = service_cls.return_value
+            service.find_open_pr_for_branch.return_value = None
+            service.create_draft_pr_for_item.return_value = _pr_mapping_stub()
+
+            command._open_pr(job, 'fix/thing-1', '/tmp/repo', 'main')
+
+        kwargs = service.create_draft_pr_for_item.call_args.kwargs
+        self.assertEqual(kwargs['base'], 'main')
+        self.assertTrue(kwargs['draft'])
+        self.assertEqual(armed, [])
+
+    def test_auto_merge_is_armed_with_squash_for_a_sub_issue_pr(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        command = Command()
+        command.stdout = StringIO()
+
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.return_value = subprocess.CompletedProcess([], 0, '', '')
+            command._enable_auto_merge(job, 77, '/tmp/repo')
+
+        self.assertEqual(
+            run.call_args.args[0],
+            ['gh', 'pr', 'merge', '77', '--squash', '--auto'],
+        )
+
+    def test_auto_merge_failure_does_not_raise(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+        command = Command()
+        command.stdout = StringIO()
+
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.return_value = subprocess.CompletedProcess([], 1, '', 'auto-merge disabled')
+            command._enable_auto_merge(job, 77, '/tmp/repo')
+
+    def test_pr_body_names_the_epic_and_the_order(self):
+        job = self._job(self.project_a, item=self.sub_issue)
+
+        body = Command()._pr_body(job, self.epic_branch)
+
+        self.assertIn(f'Epic: #{self.epic.id}', body)
+        self.assertIn('Order 10', body)
+        self.assertIn(self.epic_branch, body)
+
+    def test_prompt_asks_for_the_agira_id_commit_convention(self):
+        prompt = Command()._build_prompt(self.sub_issue)
+
+        self.assertIn(f'feat(#{self.sub_issue.id})', prompt)

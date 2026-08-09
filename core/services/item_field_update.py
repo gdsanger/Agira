@@ -150,6 +150,25 @@ def _resolve_parent(item: Item, raw: str) -> Optional[Item]:
     return parent
 
 
+def _resolve_epic_order(_item: Item, raw: str) -> int:
+    """Resolve the sub-issue's position inside its parent epic (#1076).
+
+    Empty means "unordered" and maps to 0 rather than an error: an item only
+    becomes part of an ordered chain once a parent is set, so an untouched
+    field must not block saving anything else.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return 0
+    try:
+        order = int(value)
+    except (TypeError, ValueError):
+        raise FieldUpdateError("Order muss eine ganze Zahl sein.")
+    if order < 0:
+        raise FieldUpdateError("Order darf nicht negativ sein.")
+    return order
+
+
 def _resolve_release(_item: Item, raw: str) -> Optional[Release]:
     return _resolve_fk(Release, raw, nullable=True, label="Release")
 
@@ -210,6 +229,9 @@ FIELD_SPECS: dict[str, FieldSpec] = {
     "parent": FieldSpec(
         "parent", "fk", _resolve_parent,
         display=lambda v: v.title if v else "None", label="Parent Item",
+    ),
+    "epic_order": FieldSpec(
+        "epic_order", "text", _resolve_epic_order, label="Epic-Order",
     ),
     "solution_release": FieldSpec(
         "solution_release", "fk", _resolve_release,

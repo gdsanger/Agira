@@ -20,6 +20,12 @@ from core.models import (
     Activity,
     User,
 )
+from core.services.claude_queue.branch import DEFAULT_BASE_BRANCH
+from core.services.claude_queue.epic import (
+    all_sub_issues_merged,
+    ensure_epic_pr,
+    is_epic,
+)
 from core.services.integrations.base import (
     IntegrationBase,
     IntegrationDisabled,
@@ -378,15 +384,21 @@ class GitHubService(IntegrationBase):
         body: Optional[str] = None,
         actor=None,
         user: Optional[User] = None,
+        draft: bool = True,
     ) -> ExternalIssueMapping:
         """
-        Create a draft pull request for an Agira item and record the mapping.
+        Create a pull request for an Agira item and record the mapping.
 
         Used by the Claude queue worker to open the PR *before* Claude runs, so
         the PR reference is deterministic regardless of what Claude reports. The
         head branch must already exist on the remote (the worker pushes an empty
         commit first). Reuses the standard ``ExternalIssueMapping`` (Kind=PR)
         rather than a parallel tracking mechanism.
+
+        Draft is the default and the ``main``-targeting behaviour: a PR that a
+        human reviews and merges. ``draft=False`` is for sub-issue PRs against
+        an epic branch (#1076), which are merged by CI + auto-merge and would
+        never become mergeable as a draft.
 
         Args:
             item: Agira item the PR belongs to
@@ -396,6 +408,7 @@ class GitHubService(IntegrationBase):
             body: PR body (markdown)
             actor: User performing the action (optional)
             user: User whose GitHub PAT should be used (default: global token)
+            draft: Open as a draft PR (default: True)
 
         Returns:
             Created ExternalIssueMapping (kind=PR)
@@ -416,7 +429,7 @@ class GitHubService(IntegrationBase):
             head=branch_name,
             base=base,
             body=body,
-            draft=True,
+            draft=draft,
         )
 
         mapping = ExternalIssueMapping.objects.create(
@@ -428,16 +441,17 @@ class GitHubService(IntegrationBase):
             html_url=github_pr['html_url'],
         )
 
+        kind_label = 'draft PR' if draft else 'PR'
         self._log_activity(
             item=item,
             verb='github.pr_created',
-            summary=f"Created draft PR #{github_pr['number']}: {pr_title}",
+            summary=f"Created {kind_label} #{github_pr['number']} → {base}: {pr_title}",
             actor=actor,
         )
 
         logger.info(
-            f"Created draft PR #{github_pr['number']} for item {item.id} "
-            f"(branch {branch_name})"
+            f"Created {kind_label} #{github_pr['number']} for item {item.id} "
+            f"(branch {branch_name} → {base})"
         )
 
         return mapping
@@ -589,12 +603,16 @@ class GitHubService(IntegrationBase):
         it is still Working, and all other writes are plain overwrites of the
         latest known state.
 
+        Since #1076 the merge's *base* branch matters: a sub-issue merging into
+        its epic branch is done, but an epic itself is only done once its own
+        branch lands on ``main``. See ``_merge_completes_item``.
+
         Args:
             pull_request_data: The `pull_request` object from the webhook payload
 
         Returns:
             Dict describing the outcome: matched, mapping_id, item_id,
-            old_state, new_state, item_transitioned
+            old_state, new_state, item_transitioned, epic_pr_opened
         """
         github_id = pull_request_data.get('id')
         result = {
@@ -605,6 +623,7 @@ class GitHubService(IntegrationBase):
             'new_state': None,
             'item_transitioned': False,
             'pr_body_indexed': False,
+            'epic_pr_opened': False,
         }
 
         try:
@@ -670,7 +689,13 @@ class GitHubService(IntegrationBase):
                 summary=f"GitHub PR #{mapping.number} changed from {old_state} to {new_state}",
             )
 
-        if new_state == 'merged' and item.status == ItemStatus.WORKING:
+        base_ref = ((pull_request_data.get('base') or {}).get('ref') or '')
+
+        if (
+            new_state == 'merged'
+            and item.status == ItemStatus.WORKING
+            and self._merge_completes_item(item, base_ref)
+        ):
             from core.services.activity import ActivityService
 
             old_item_status = item.status
@@ -683,7 +708,42 @@ class GitHubService(IntegrationBase):
             )
             result['item_transitioned'] = True
 
+        if new_state == 'merged':
+            result['epic_pr_opened'] = self._maybe_open_epic_pr(item)
+
         return result
+
+    def _merge_completes_item(self, item: Item, base_ref: str) -> bool:
+        """Whether a merged PR finishes its item, i.e. moves it to Testing (#1076).
+
+        A sub-issue's PR merges into the epic branch, and that *is* the
+        sub-issue's completion — there is no separate per-layer test step,
+        because a single layer of a vertical slice cannot be run on its own.
+
+        An epic is different: it is a container whose branch collects the
+        layers, so a merge into anything other than ``main`` leaves it in
+        Working. Only its own epic → ``main`` PR (opened as a draft and merged
+        by hand after review) completes it.
+        """
+        if not base_ref or base_ref == DEFAULT_BASE_BRANCH:
+            return True
+        return not is_epic(item)
+
+    def _maybe_open_epic_pr(self, item: Item) -> bool:
+        """Open the final epic → ``main`` draft PR once the epic is complete.
+
+        Triggered by the merge of the *last* sub-issue: at that moment the epic
+        branch holds the whole assembled slice and there is nothing left to
+        wait for. Returns True if a PR was opened or already existed.
+
+        Best-effort by design — this is the hand-off to the human review, and
+        failing to create it must not fail the webhook that reported a
+        perfectly good merge.
+        """
+        epic = item.parent
+        if epic is None or not all_sub_issues_merged(epic):
+            return False
+        return ensure_epic_pr(epic) is not None
 
     def sync_item(self, item: Item) -> int:
         """
