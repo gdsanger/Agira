@@ -169,14 +169,33 @@ class RequesterOrganisationSideEffectTest(GenericFieldUpdateTestBase):
 class SuggestedModelFieldTest(GenericFieldUpdateTestBase):
     """Inline HTMX editing of the manually overridable suggested_model (#1072)."""
 
-    def test_suggested_model_updates_to_opus(self):
-        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})
+    def test_suggested_model_updates_to_opus_4_8(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus-4-8'})
         self.assertEqual(response.status_code, 200)
         self.item.refresh_from_db()
-        self.assertEqual(self.item.suggested_model, 'opus')
+        self.assertEqual(self.item.suggested_model, 'opus-4-8')
+
+    def test_suggested_model_updates_to_opus_5(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus-5'})
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.suggested_model, 'opus-5')
+
+    def test_suggested_model_updates_to_fable_5(self):
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'fable-5'})
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.suggested_model, 'fable-5')
+
+    def test_legacy_opus_value_rejected(self):
+        """The pre-#1082 generic slug is gone; it must not slip through."""
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})
+        self.assertEqual(response.status_code, 400)
+        self.item.refresh_from_db()
+        self.assertNotEqual(self.item.suggested_model, 'opus')
 
     def test_response_fragment_reports_success(self):
-        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})
+        response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus-5'})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Gespeichert')
 

@@ -157,8 +157,9 @@ def _resolve_release(_item: Item, raw: str) -> Optional[Release]:
 def _resolve_suggested_model(_item: Item, raw: str) -> str:
     """Resolve the manually overridable Claude-queue model suggestion (#1072).
 
-    Only the existing field choices (sonnet/opus) are accepted; there is no
-    inline "Auto-detect", so no classifier logic runs on this path.
+    Only the existing field choices (Sonnet / Opus 4.8 / Opus 5 / Fable 5) are
+    accepted; there is no inline "Auto-detect", so no classifier logic runs on
+    this path.
     """
     value = (raw or "").strip()
     if value not in ClaudeQueueJobModel.values:

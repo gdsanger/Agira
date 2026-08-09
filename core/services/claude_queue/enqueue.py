@@ -20,16 +20,14 @@ from core.services.activity import ActivityService
 from core.services.claude_queue.hint import ensure_git_workflow_hint
 from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
 
-# TODO(#834): once the model-selection agent lands, read `item.suggested_model`
-# here instead of always defaulting to sonnet.
 DEFAULT_CLAUDE_MODEL = ClaudeQueueJobModel.SONNET
 
 
 def _resolve_model(item) -> str:
     """Return the Claude model to run this item with.
 
-    Degrades gracefully to DEFAULT_CLAUDE_MODEL until #834 adds
-    `suggested_model` to Item.
+    The item's `suggested_model` wins; DEFAULT_CLAUDE_MODEL is the fallback for
+    items that carry no suggestion at all.
     """
     return getattr(item, 'suggested_model', None) or DEFAULT_CLAUDE_MODEL
 
