@@ -1,5 +1,12 @@
 # Claude Code über Max-Abo (OAuth) statt API-Key betreiben
 
+> **Ein-Konto-Fall.** Dieses Dokument beschreibt den Betrieb mit *einem*
+> Credential auf dem Worker-Host. Im Team hat jeder sein eigenes Abo: dann
+> liegen Token und API-Key im Benutzerprofil, der Modus wird je Issue gewählt
+> und jeder Job läuft auf dem Credential seines Benutzers — siehe
+> [`PER_USER_CLAUDE_AUTH.md`](PER_USER_CLAUDE_AUTH.md) (#1083). Die
+> Host-Credentials hier sind dann nur noch Fallback.
+
 Die Claude-Code-Läufe des Queue-Workers (`run_claude_worker`) können wahlweise
 über das **Claude Max/Pro Abo** (OAuth) oder über einen **Anthropic API-Key**
 laufen. Standard ist das Abo — so wird das bereits bezahlte Kontingent genutzt
@@ -41,6 +48,11 @@ Ist `CLAUDE_CODE_OAUTH_TOKEN` leer, greift der Worker auf die von `claude login`
 auf dem Host hinterlegten Credentials (`~/.claude`) zurück.
 
 ## 2. Umschalten des Auth-Modus
+
+> Seit #1083 ist `CLAUDE_AUTH_MODE` nur noch der Host-Default für Jobs ohne
+> eigene Angabe. Der Modus wird regulär **je Issue** gewählt
+> (`Item.claude_auth_mode`, Default ABO) und beim Einreihen auf dem Job
+> eingefroren.
 
 `.env` (siehe `.env.example`):
 

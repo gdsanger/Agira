@@ -248,6 +248,13 @@ CLAUDE_AUTH_MODE = os.getenv('CLAUDE_AUTH_MODE', 'oauth').strip().lower()
 # the CLI falls back to an interactive `claude login` credential stored on the
 # host (~/.claude). Never log this value.
 CLAUDE_CODE_OAUTH_TOKEN = os.getenv('CLAUDE_CODE_OAUTH_TOKEN', '')
+# Per-user credentials (#1083): when true, a Claude job may only run on the
+# personal credential of its user (profile → "User Settings"); a user without
+# one gets a clear failure instead of quietly drawing on the host-wide token.
+# Default false keeps the single-account setup of #1078 working as before.
+CLAUDE_REQUIRE_USER_CREDENTIALS = os.getenv(
+    'CLAUDE_REQUIRE_USER_CREDENTIALS', 'false'
+).strip().lower() in ('1', 'true', 'yes', 'on')
 
 # Cache configuration
 # Using LocMemCache for simplicity and performance

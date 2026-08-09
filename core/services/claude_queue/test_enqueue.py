@@ -1,17 +1,20 @@
 """Tests for the Claude queue enqueue pipeline (#833): branch-name slug,
 git-workflow hint injection, and the enqueue orchestration."""
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from core.models import (
     ClaudeQueueJob,
+    ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
     Item,
     ItemStatus,
     ItemType,
     Project,
     User,
+    UserRole,
 )
+from core.services.claude_queue.credentials import MissingClaudeCredential
 from core.services.claude_queue.branch import build_branch_name
 from core.services.claude_queue.enqueue import enqueue_item_for_claude
 from core.services.claude_queue.hint import (
@@ -174,3 +177,79 @@ class EnqueueItemForClaudeTestCase(TestCase):
         self.assertTrue(created)
         self.assertNotEqual(second_job.pk, first_job.pk)
         self.assertEqual(ClaudeQueueJob.objects.filter(item=self.item).count(), 2)
+
+
+class EnqueueAuthTaggingTestCase(TestCase):
+    """Every job is tagged with the auth mode and the user paying for it (#1083)."""
+
+    def setUp(self):
+        self.actor = User.objects.create_user(
+            username='actor', password='pw12345', email='actor@example.com',
+            name='Actor', claude_oauth_token='oauth-actor', claude_api_key='sk-actor',
+        )
+        self.responsible = User.objects.create_user(
+            username='resp', password='pw12345', email='resp@example.com',
+            name='Resp', role=UserRole.AGENT, claude_oauth_token='oauth-resp',
+        )
+        self.project = Project.objects.create(name='Test Project')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+
+    def _item(self, **kwargs):
+        return Item.objects.create(
+            title='Fix the login bug', description='Original description.',
+            project=self.project, type=self.item_type, status=ItemStatus.BACKLOG,
+            **kwargs,
+        )
+
+    def test_job_defaults_to_subscription_mode(self):
+        job, _ = enqueue_item_for_claude(self._item(), actor=self.actor)
+
+        self.assertEqual(job.requested_auth_mode, ClaudeQueueJobAuthMode.OAUTH)
+        self.assertEqual(job.auth_mode, ClaudeQueueJobAuthMode.OAUTH)
+
+    def test_job_inherits_the_items_api_choice(self):
+        item = self._item(claude_auth_mode=ClaudeQueueJobAuthMode.API_KEY)
+
+        job, _ = enqueue_item_for_claude(item, actor=self.actor)
+
+        self.assertEqual(job.requested_auth_mode, ClaudeQueueJobAuthMode.API_KEY)
+        self.assertEqual(job.auth_mode, ClaudeQueueJobAuthMode.API_KEY)
+
+    def test_job_is_tagged_with_the_triggering_user(self):
+        item = self._item(responsible=self.responsible)
+
+        job, _ = enqueue_item_for_claude(item, actor=self.actor)
+
+        self.assertEqual(job.auth_user, self.actor)
+
+    def test_job_without_an_actor_falls_back_to_the_responsible_user(self):
+        item = self._item(responsible=self.responsible)
+
+        job, _ = enqueue_item_for_claude(item)
+
+        self.assertEqual(job.auth_user, self.responsible)
+
+    def test_frozen_mode_survives_a_later_item_change(self):
+        item = self._item()
+        job, _ = enqueue_item_for_claude(item, actor=self.actor)
+
+        item.claude_auth_mode = ClaudeQueueJobAuthMode.API_KEY
+        item.save()
+
+        job.refresh_from_db()
+        self.assertEqual(job.requested_auth_mode, ClaudeQueueJobAuthMode.OAUTH)
+
+    @override_settings(CLAUDE_REQUIRE_USER_CREDENTIALS=True)
+    def test_missing_credential_is_rejected_and_leaves_the_item_alone(self):
+        no_credentials = User.objects.create_user(
+            username='nocred', password='pw12345', email='nocred@example.com',
+            name='No Cred',
+        )
+        item = self._item()
+
+        with self.assertRaises(MissingClaudeCredential):
+            enqueue_item_for_claude(item, actor=no_credentials)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.BACKLOG)
+        self.assertFalse(ClaudeQueueJob.objects.filter(item=item).exists())

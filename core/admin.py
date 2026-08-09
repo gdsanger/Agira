@@ -643,15 +643,21 @@ class AIJobsHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(ClaudeQueueJob)
 class ClaudeQueueJobAdmin(admin.ModelAdmin):
-    list_display = ['id', 'created_at', 'project', 'item', 'status', 'model', 'auth_mode', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
-    list_filter = ['status', 'model', 'auth_mode', 'allow_api_key_fallback', 'project', 'pr_state']
+    list_display = ['id', 'created_at', 'project', 'item', 'status', 'model', 'auth_mode', 'auth_user', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
+    list_filter = ['status', 'model', 'auth_mode', 'auth_credential_source', 'allow_api_key_fallback', 'project', 'pr_state']
     search_fields = ['item__title', 'project__name', 'branch_name', 'session_id', 'error_text']
     autocomplete_fields = ['item', 'project']
     readonly_fields = ['created_at', 'started_at', 'finished_at']
 
     fieldsets = (
         (None, {'fields': ('item', 'project', 'status', 'model')}),
-        ('Auth', {'fields': ('auth_mode', 'allow_api_key_fallback', 'limit_reset_at')}),
+        ('Auth', {
+            'fields': ('requested_auth_mode', 'auth_mode', 'auth_user',
+                       'auth_credential_source', 'allow_api_key_fallback', 'limit_reset_at'),
+            'description': 'Whose credential the job runs on and in which mode (#1083). '
+                           'The credentials themselves live encrypted on the user profile '
+                           'and are never shown here.',
+        }),
         ('Worker Result', {'fields': ('branch_name', 'pr_number', 'pr_url', 'pr_state')}),
         ('Claude Metrics', {'fields': ('session_id', 'num_turns', 'total_cost_usd')}),
         ('Progress', {'fields': ('progress_text', 'error_text')}),

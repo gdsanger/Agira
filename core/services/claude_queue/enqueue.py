@@ -11,12 +11,17 @@ from django.db import transaction
 
 from core.models import (
     ClaudeQueueJob,
+    ClaudeQueueJobAuthMode,
     ClaudeQueueJobModel,
     ClaudeQueueJobStatus,
     Item,
     ItemStatus,
 )
 from core.services.activity import ActivityService
+from core.services.claude_queue.credentials import (
+    resolve_claude_credential,
+    resolve_credential_user,
+)
 from core.services.claude_queue.hint import ensure_git_workflow_hint
 from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
 
@@ -32,16 +37,33 @@ def _resolve_model(item) -> str:
     return getattr(item, 'suggested_model', None) or DEFAULT_CLAUDE_MODEL
 
 
+def _resolve_auth_mode(item) -> str:
+    """Return the auth mode the item asks its Claude runs to use (#1083).
+
+    The item's own field wins — that is the per-issue ABO/API switch. A blank
+    value (rows predating the field) falls back to the subscription default.
+    """
+    return getattr(item, 'claude_auth_mode', None) or ClaudeQueueJobAuthMode.OAUTH
+
+
 def enqueue_item_for_claude(
     item: Item, *, actor=None, allow_api_key_fallback: bool = False,
 ) -> tuple[ClaudeQueueJob, bool]:
     """Hand ``item`` off to the Claude queue.
 
-    Runs use the default auth mode (``settings.CLAUDE_AUTH_MODE``, normally the
-    subscription/OAuth). ``allow_api_key_fallback`` is a static per-job property:
-    when set, a run that hits the subscription limit is re-run on the paid API
-    key instead of waiting for the quota rollover. It does not change the regular
-    auth and is independent of current usage; default off = wait.
+    The run's auth is decided here and frozen on the job (#1083): the item's
+    ``claude_auth_mode`` (ABO by default) plus the user whose credential pays
+    for it (see ``resolve_credential_user``). Freezing both at enqueue time
+    means a later edit of the item cannot retroactively re-attribute a run.
+
+    ``allow_api_key_fallback`` is a static per-job property: when set, a run
+    that hits the subscription limit is re-run on the paid API key instead of
+    waiting for the quota rollover. It does not change the regular auth and is
+    independent of current usage; default off = wait.
+
+    Raises :class:`~core.services.claude_queue.credentials.MissingClaudeCredential`
+    when the chosen mode has no usable credential — rejecting at the button is
+    clearer than a job that fails minutes later, and the item stays untouched.
 
     Returns ``(job, created)``. ``created`` is False when the item already
     had a queued/running job — that job is returned unchanged instead of
@@ -57,6 +79,11 @@ def enqueue_item_for_claude(
         if existing_job is not None:
             return existing_job, False
 
+        auth_mode = _resolve_auth_mode(locked_item)
+        auth_user = resolve_credential_user(locked_item, actor=actor)
+        # Raises when the mode cannot be served — before the item is moved.
+        resolve_claude_credential(auth_user, auth_mode)
+
         if ensure_git_workflow_hint(locked_item):
             locked_item.save()
 
@@ -68,13 +95,20 @@ def enqueue_item_for_claude(
             project=locked_item.project,
             status=ClaudeQueueJobStatus.QUEUED,
             model=model,
+            auth_user=auth_user,
+            requested_auth_mode=auth_mode,
+            auth_mode=auth_mode,
             allow_api_key_fallback=allow_api_key_fallback,
         )
 
+    who = auth_user.username if auth_user else 'host'
     ActivityService().log(
         verb='item.claude_enqueued',
         target=locked_item,
         actor=actor,
-        summary=f'Enqueued for Claude Code (job #{job.pk}, model={model})',
+        summary=(
+            f'Enqueued for Claude Code (job #{job.pk}, model={model}, '
+            f'auth={auth_mode} via {who})'
+        ),
     )
     return job, True

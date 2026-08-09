@@ -72,6 +72,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.models import (
+    ClaudeCredentialSource,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
@@ -81,6 +82,11 @@ from core.models import (
 from core.services.claude_queue.branch import (
     DEFAULT_BASE_BRANCH,
     resolve_base_branch,
+)
+from core.services.claude_queue.credentials import (
+    ALL_AUTH_ENV_VARS,
+    MissingClaudeCredential,
+    resolve_claude_credential,
 )
 from core.services.claude_queue.epic import can_start, sub_issue_position
 
@@ -444,6 +450,18 @@ class Command(BaseCommand):
 
     def _process_job_inner(self, job, timeout, idle_timeout, pr_body_file):
         try:
+            # Credential check first: a job whose user has no credential for the
+            # chosen mode must fail with that reason, not silently on the other
+            # mode — and before a checkout and an empty PR exist for it (#1083).
+            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
+        except MissingClaudeCredential as exc:
+            self._fail_job(job, error=str(exc))
+            self.stdout.write(self.style.ERROR(
+                f"Job #{job.pk} failed: missing Claude credential"
+            ))
+            return
+
+        try:
             repo_dir = self._prepare_checkout(job)
             branch, bootstrap_sha = self._create_branch_and_pr(job, repo_dir)
             result = self._run_cli_with_auth(job, repo_dir, timeout, idle_timeout, pr_body_file)
@@ -478,7 +496,7 @@ class Command(BaseCommand):
         if self._is_auth_error(result):
             # A broken/expired credential never fixes itself by waiting — fail
             # the job with an actionable message instead of parking it.
-            error = self._auth_error_message(result)
+            error = self._auth_error_message(result, job)
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(
@@ -1118,6 +1136,11 @@ class Command(BaseCommand):
         first, and exactly the one matching ``auth_mode`` is set. This is what
         guarantees an OAuth run never silently spends the API key even when the
         key is exported globally on the host.
+
+        Which secret that is comes from ``job.auth_user`` (#1083) — the run
+        goes on *that* user's subscription or API account. Handing it over via
+        the environment rather than a CLI flag is also the safer channel: argv
+        is visible to every process via ``ps``, the environment is not.
         """
         env = dict(
             os.environ,
@@ -1125,27 +1148,21 @@ class Command(BaseCommand):
             PR_BODY_FILE=str(pr_body_file),
         )
         # Start from a clean slate so nothing inherited decides the auth for us.
-        env.pop('ANTHROPIC_API_KEY', None)
-        env.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
+        for name in ALL_AUTH_ENV_VARS:
+            env.pop(name, None)
 
-        if auth_mode == ClaudeQueueJobAuthMode.API_KEY:
-            api_key = getattr(settings, 'ANTHROPIC_API_KEY', '') or os.environ.get(
-                'ANTHROPIC_API_KEY', ''
-            )
-            if not api_key:
-                raise RuntimeError(
-                    'API-key run requested but no ANTHROPIC_API_KEY is configured.'
-                )
-            env['ANTHROPIC_API_KEY'] = api_key
-        else:
-            # Subscription run: hand the CLI the OAuth token if we have one,
-            # otherwise rely on the `claude login` credential stored on the host.
-            token = getattr(settings, 'CLAUDE_CODE_OAUTH_TOKEN', '') or os.environ.get(
-                'CLAUDE_CODE_OAUTH_TOKEN', ''
-            )
-            if token:
-                env['CLAUDE_CODE_OAUTH_TOKEN'] = token
+        credential = resolve_claude_credential(job.auth_user, auth_mode)
+        if credential.value:
+            env[credential.env_var] = credential.value
+        self._set_credential_source(job, credential.source)
         return env
+
+    def _set_credential_source(self, job, source):
+        """Record which credential the current attempt actually used."""
+        if job.auth_credential_source == source:
+            return
+        job.auth_credential_source = source
+        job.save(update_fields=['auth_credential_source'])
 
     # ------------------------------------------------------------------ #
     # Auth mode + reactive limit handling
@@ -1171,7 +1188,7 @@ class Command(BaseCommand):
             return result
 
         if auth_mode == ClaudeQueueJobAuthMode.OAUTH and self._is_limit_error(result):
-            if job.allow_api_key_fallback and self._api_key_available():
+            if job.allow_api_key_fallback and self._api_key_available(job):
                 self._save_progress(
                     job, 'Abo-Limit erreicht – Fallback auf API-Key (Job-Flag gesetzt).'
                 )
@@ -1191,8 +1208,17 @@ class Command(BaseCommand):
         return result
 
     def _resolve_auth_mode(self, job):
-        """Map the configured default (``settings.CLAUDE_AUTH_MODE``) to an enum."""
-        configured = (getattr(settings, 'CLAUDE_AUTH_MODE', 'oauth') or 'oauth').strip().lower()
+        """Return the auth mode this run must use.
+
+        The job carries the item's per-issue choice, frozen at enqueue time
+        (#1083); ``settings.CLAUDE_AUTH_MODE`` is only the host-wide fallback
+        for jobs from before that field existed.
+        """
+        configured = (
+            job.requested_auth_mode
+            or getattr(settings, 'CLAUDE_AUTH_MODE', 'oauth')
+            or 'oauth'
+        ).strip().lower()
         if configured == ClaudeQueueJobAuthMode.API_KEY:
             return ClaudeQueueJobAuthMode.API_KEY
         return ClaudeQueueJobAuthMode.OAUTH
@@ -1202,11 +1228,13 @@ class Command(BaseCommand):
         job.auth_mode = auth_mode
         job.save(update_fields=['auth_mode'])
 
-    def _api_key_available(self):
-        return bool(
-            getattr(settings, 'ANTHROPIC_API_KEY', '')
-            or os.environ.get('ANTHROPIC_API_KEY', '')
-        )
+    def _api_key_available(self, job):
+        """True if an API-key run for this job's user could be served at all."""
+        try:
+            resolve_claude_credential(job.auth_user, ClaudeQueueJobAuthMode.API_KEY)
+        except MissingClaudeCredential:
+            return False
+        return True
 
     def _park_for_limit(self, job, wait):
         """Move a limit-hit job to ``WAITING_LIMIT`` until the quota rolls over.
@@ -1254,14 +1282,27 @@ class Command(BaseCommand):
         detail = (result.get('result_text') or result.get('stderr') or '').strip()
         return detail[:500]
 
-    def _auth_error_message(self, result):
-        """An actionable failure message for a credential problem."""
+    def _auth_error_message(self, result, job=None):
+        """An actionable failure message for a credential problem.
+
+        Points at the credential the run actually used: a personal one is fixed
+        by its owner in the user profile, a host-wide one by the administrator.
+        """
         detail = (result.get('result_text') or result.get('stderr') or '').strip()
-        base = (
-            "Claude-Authentifizierung fehlgeschlagen (Token/Key abgelaufen oder "
-            "ungültig). OAuth-Token per `claude setup-token` erneuern bzw. "
-            "CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY prüfen."
-        )
+        if job is not None and job.auth_credential_source == ClaudeCredentialSource.USER:
+            owner = job.auth_user.name if job.auth_user else 'der Benutzer'
+            base = (
+                f"Claude-Authentifizierung fehlgeschlagen: das persönliche Credential "
+                f"von {owner} ist abgelaufen oder ungültig. Neuen Token per "
+                f"`claude setup-token` erzeugen bzw. den API-Key erneuern und unter "
+                f"„User Settings“ hinterlegen."
+            )
+        else:
+            base = (
+                "Claude-Authentifizierung fehlgeschlagen (Token/Key abgelaufen oder "
+                "ungültig). OAuth-Token per `claude setup-token` erneuern bzw. "
+                "CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY prüfen."
+            )
         return f"{base}\n\n{detail}".strip() if detail else base
 
     def _parse_limit_reset(self, result):

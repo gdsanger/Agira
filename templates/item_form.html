@@ -301,6 +301,17 @@
                     <small class="form-text text-muted">Used by the Claude queue (#833). A suggestion, not a gate — pick "Auto-detect" to let the classifier decide.</small>
                 </div>
 
+                <!-- Auth-Modus (#1083) -->
+                <div class="mb-3">
+                    <label for="claude_auth_mode" class="form-label">Auth-Modus</label>
+                    <select class="form-select" id="claude_auth_mode" name="claude_auth_mode" form="itemForm">
+                        {% for value, display in claude_auth_mode_choices %}
+                        <option value="{{ value }}" {% if item and item.claude_auth_mode == value %}selected{% endif %}>{{ display }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">Womit Claude-Jobs zu diesem Issue laufen: Abo (Standard, bereits bezahltes Kontingent) oder Anthropic-API-Key (Pay-per-use). Es zählt immer das Credential des zuständigen Benutzers.</small>
+                </div>
+
                 <!-- Organisation -->
                 <div class="mb-3">
                     <label for="organisation" class="form-label">Organisation</label>

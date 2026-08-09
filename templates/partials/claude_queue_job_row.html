@@ -59,6 +59,14 @@ when the row is embedded in a container that already polls itself (the
     <td class="text-nowrap">
         {% if job.num_turns is not None %}{{ job.num_turns }} turns{% else %}—{% endif %}
         {% if job.total_cost_usd is not None %}<br><small class="text-muted">${{ job.total_cost_usd|floatformat:4 }}</small>{% endif %}
+        {# Whether that cost was actually billed (API) or covered by a subscription (#1083). #}
+        <br>
+        {% if job.auth_mode == 'api_key' %}
+        <span class="badge bg-warning text-dark" title="Pay-per-use über den API-Key">API</span>
+        {% else %}
+        <span class="badge bg-success" title="Über das Abo-Kontingent – keine Pay-per-use-Kosten">ABO</span>
+        {% endif %}
+        {% if job.auth_user %}<small class="text-muted">{{ job.auth_user.name }}</small>{% endif %}
     </td>
     <td class="text-nowrap"><small class="text-muted">{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
     <td class="text-nowrap" onclick="event.stopPropagation();">

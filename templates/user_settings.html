@@ -82,6 +82,103 @@
             </div>
         </div>
 
+        <!-- Claude Credentials (#1083) -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Claude Code (persönliche Credentials)</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Claude-Jobs zu einem Issue laufen über <strong>dein</strong> Konto.
+                    Der Auth-Modus wird je Issue gewählt: <strong>ABO</strong> nutzt den
+                    OAuth-Token (bereits bezahltes Kontingent, Standard),
+                    <strong>API</strong> den Anthropic-API-Key (Pay-per-use).
+                    Beide werden verschlüsselt gespeichert und nie wieder angezeigt.
+                </p>
+
+                <form method="POST" action="{% url 'user-settings-update' %}">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label for="claude_oauth_token" class="form-label">
+                            Claude OAuth-Token (ABO)
+                        </label>
+                        <input type="password"
+                               class="form-control"
+                               id="claude_oauth_token"
+                               name="claude_oauth_token"
+                               autocomplete="off"
+                               placeholder="sk-ant-oat…"
+                               value="">
+                        <div class="form-text">
+                            {% if has_claude_oauth_token %}
+                            <span class="text-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                                Token hinterlegt (••••••). Neuen Token eintragen zum Ersetzen, leer lassen zum Beibehalten.
+                            </span>
+                            {% else %}
+                            <span class="text-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                Kein Token hinterlegt. Issues im Modus „ABO“ können ohne Token nicht über dein Abo laufen.
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="form-text mt-1">
+                            Erzeugen mit <code>claude setup-token</code> (Claude-Code-CLI, einmalig pro Konto).
+                        </div>
+                        {% if has_claude_oauth_token %}
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" value="true"
+                                   id="clear_claude_oauth_token" name="clear_claude_oauth_token">
+                            <label class="form-check-label" for="clear_claude_oauth_token">
+                                Token löschen
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="claude_api_key" class="form-label">
+                            Anthropic API-Key (API / Pay-per-use)
+                        </label>
+                        <input type="password"
+                               class="form-control"
+                               id="claude_api_key"
+                               name="claude_api_key"
+                               autocomplete="off"
+                               placeholder="sk-ant-api…"
+                               value="">
+                        <div class="form-text">
+                            {% if has_claude_api_key %}
+                            <span class="text-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                                API-Key hinterlegt (••••••). Neuen Key eintragen zum Ersetzen, leer lassen zum Beibehalten.
+                            </span>
+                            {% else %}
+                            <span class="text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                Kein API-Key hinterlegt. Nötig, wenn du ein Issue auf „API“ umstellst (z. B. bei vollem Abo-Kontingent).
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% if has_claude_api_key %}
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" value="true"
+                                   id="clear_claude_api_key" name="clear_claude_api_key">
+                            <label class="form-check-label" for="clear_claude_api_key">
+                                API-Key löschen
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Claude-Credentials speichern
+                    </button>
+                </form>
+            </div>
+        </div>
+
         <!-- User Information (read-only) -->
         <div class="card mb-4">
             <div class="card-header">
