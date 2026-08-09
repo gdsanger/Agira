@@ -28,6 +28,7 @@ from core.management.commands.run_claude_worker import (
     DEFAULT_TIMEOUT_SECONDS,
 )
 from core.models import (
+    ClaudeCredentialSource,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
@@ -37,6 +38,7 @@ from core.models import (
     ItemStatus,
     ItemType,
     Project,
+    User,
 )
 
 
@@ -1147,6 +1149,152 @@ class AuthModeEnvTests(ClaudeWorkerTestBase):
             os.environ.pop('ANTHROPIC_API_KEY', None)
             with self.assertRaises(RuntimeError):
                 self._env(ClaudeQueueJobAuthMode.API_KEY, ANTHROPIC_API_KEY='')
+
+
+class PerUserCredentialEnvTests(ClaudeWorkerTestBase):
+    """Each run carries the credential of *its* user, not the host's (#1083)."""
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            username='alice', email='alice@example.com', password='x', name='Alice',
+            claude_oauth_token='oauth-alice', claude_api_key='sk-alice',
+        )
+        self.pr_body_file = Path(tempfile.gettempdir()) / 'claude-pr-body-test.md'
+
+    def _env(self, job, auth_mode, **settings_over):
+        with override_settings(**settings_over):
+            return Command()._build_env(job, self.pr_body_file, auth_mode=auth_mode)
+
+    def test_subscription_run_uses_the_users_own_token(self):
+        job = self._job(self.project_a, auth_user=self.user)
+
+        env = self._env(
+            job, ClaudeQueueJobAuthMode.OAUTH,
+            CLAUDE_CODE_OAUTH_TOKEN='oauth-host', ANTHROPIC_API_KEY='sk-host',
+        )
+
+        self.assertEqual(env['CLAUDE_CODE_OAUTH_TOKEN'], 'oauth-alice')
+        # Hard rule from #1078, now per user: no API key in an ABO run.
+        self.assertNotIn('ANTHROPIC_API_KEY', env)
+        job.refresh_from_db()
+        self.assertEqual(job.auth_credential_source, ClaudeCredentialSource.USER)
+
+    def test_api_run_uses_the_users_own_key(self):
+        job = self._job(self.project_a, auth_user=self.user)
+
+        env = self._env(
+            job, ClaudeQueueJobAuthMode.API_KEY, ANTHROPIC_API_KEY='sk-host',
+        )
+
+        self.assertEqual(env['ANTHROPIC_API_KEY'], 'sk-alice')
+        self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', env)
+
+    def test_two_jobs_of_different_users_get_different_credentials(self):
+        bob = User.objects.create_user(
+            username='bob', email='bob@example.com', password='x', name='Bob',
+            claude_oauth_token='oauth-bob',
+        )
+        env_a = self._env(
+            self._job(self.project_a, auth_user=self.user),
+            ClaudeQueueJobAuthMode.OAUTH,
+        )
+        env_b = self._env(
+            self._job(self.project_b, auth_user=bob), ClaudeQueueJobAuthMode.OAUTH,
+        )
+
+        self.assertEqual(env_a['CLAUDE_CODE_OAUTH_TOKEN'], 'oauth-alice')
+        self.assertEqual(env_b['CLAUDE_CODE_OAUTH_TOKEN'], 'oauth-bob')
+
+    def test_run_falls_back_to_the_host_token_and_records_it(self):
+        without_token = User.objects.create_user(
+            username='carol', email='carol@example.com', password='x', name='Carol',
+        )
+        job = self._job(self.project_a, auth_user=without_token)
+
+        env = self._env(
+            job, ClaudeQueueJobAuthMode.OAUTH, CLAUDE_CODE_OAUTH_TOKEN='oauth-host',
+        )
+
+        self.assertEqual(env['CLAUDE_CODE_OAUTH_TOKEN'], 'oauth-host')
+        job.refresh_from_db()
+        # Marked as shared, so the run is not counted as this user's usage.
+        self.assertEqual(job.auth_credential_source, ClaudeCredentialSource.SHARED)
+
+
+class MissingCredentialJobTests(ClaudeWorkerTestBase):
+    """A job whose user has no credential fails clearly, before any PR exists."""
+
+    @override_settings(CLAUDE_REQUIRE_USER_CREDENTIALS=True,
+                       CLAUDE_CODE_OAUTH_TOKEN='oauth-host')
+    def test_job_fails_with_an_actionable_message_and_no_checkout(self):
+        user = User.objects.create_user(
+            username='dave', email='dave@example.com', password='x', name='Dave',
+        )
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        self._job(self.project_a, item=item, auth_user=user)
+        job = Command().claim_next_job()
+
+        with patch.object(Command, '_prepare_checkout') as checkout:
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        checkout.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('Dave', job.error_text)
+        self.assertIn('User Settings', job.error_text)
+
+    @override_settings(CLAUDE_REQUIRE_USER_CREDENTIALS=True)
+    def test_api_mode_without_a_personal_key_does_not_fall_back_to_oauth(self):
+        user = User.objects.create_user(
+            username='erin', email='erin@example.com', password='x', name='Erin',
+            claude_oauth_token='oauth-erin',
+        )
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        self._job(
+            self.project_a, item=item, auth_user=user,
+            requested_auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+            auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+        )
+        job = Command().claim_next_job()
+
+        with patch.object(Command, '_prepare_checkout') as checkout:
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        checkout.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('API-Key', job.error_text)
+
+
+class RequestedAuthModeTests(ClaudeWorkerTestBase):
+    """The per-issue choice drives the run, not the host-wide default."""
+
+    @override_settings(CLAUDE_AUTH_MODE='oauth', ANTHROPIC_API_KEY='sk-host')
+    def test_job_requesting_api_runs_on_api(self):
+        job = self._job(
+            self.project_a,
+            requested_auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+        )
+        self.assertEqual(
+            Command()._resolve_auth_mode(job), ClaudeQueueJobAuthMode.API_KEY
+        )
+
+    @override_settings(CLAUDE_AUTH_MODE='api_key')
+    def test_job_requesting_abo_ignores_the_host_default(self):
+        job = self._job(
+            self.project_a, requested_auth_mode=ClaudeQueueJobAuthMode.OAUTH,
+        )
+        self.assertEqual(
+            Command()._resolve_auth_mode(job), ClaudeQueueJobAuthMode.OAUTH
+        )
+
+    @override_settings(CLAUDE_AUTH_MODE='api_key')
+    def test_legacy_job_without_a_request_uses_the_host_default(self):
+        job = self._job(self.project_a, requested_auth_mode='')
+        self.assertEqual(
+            Command()._resolve_auth_mode(job), ClaudeQueueJobAuthMode.API_KEY
+        )
 
 
 class LimitDetectionTests(ClaudeWorkerTestBase):
