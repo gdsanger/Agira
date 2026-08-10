@@ -291,6 +291,10 @@ class Command(BaseCommand):
             self.recover_orphans(timeout)
 
         if once:
+            # Before claiming: a chain whose current layer landed since the last
+            # run has a next layer to release, and releasing it is what makes it
+            # claimable below (#1079).
+            self.advance_epics()
             job = self.claim_next_job()
             if job is None:
                 self.stdout.write("No eligible job to claim.")
@@ -302,6 +306,7 @@ class Command(BaseCommand):
         self._install_signal_handlers()
         self.stdout.write(f"Entering daemon loop (poll interval {interval}s). Ctrl-C to stop.")
         while not self._stop:
+            self.advance_epics()
             job = self.claim_next_job()
             if job is None:
                 # Nothing claimable right now — sleep, but stay responsive to signals.
@@ -440,13 +445,72 @@ class Command(BaseCommand):
         outside the checkout (so ``reset --hard``/``clean -fd`` can't touch it
         and Claude can't accidentally commit it). It is created empty up front
         and removed again once the job reaches a terminal state.
+
+        An epic node (#1079) never gets here: it has no item to implement, so
+        it takes the short orchestration path instead of a CLI run.
         """
+        if job.is_epic_node:
+            self.process_epic_job(job)
+            return
+
         pr_body_file = self._pr_body_file_path(job)
         self._init_pr_body_file(pr_body_file)
         try:
             self._process_job_inner(job, timeout, idle_timeout, pr_body_file)
         finally:
             self._cleanup_pr_body_file(pr_body_file)
+
+    def process_epic_job(self, job):
+        """Run the start step of an epic node (#1079).
+
+        Two things happen and no more: the epic branch is materialised, and the
+        chain is built and its first layer released. Then the node steps out of
+        ``running`` into ``orchestrating`` — it must not keep the repo lane it
+        holds while running, because the sub-runs it is now waiting for need
+        exactly that lane.
+
+        The branch is created here rather than left to the first sub-run (which
+        would create it too, see ``_ensure_base_branch``) so that "the epic has
+        started" is a fact on the remote from the first second, not a promise
+        that materialises whenever the first layer happens to get claimed.
+        """
+        from core.services.claude_queue.branch import build_epic_branch_name
+        from core.services.claude_queue.orchestration import start_epic
+
+        branch = build_epic_branch_name(job.item)
+        try:
+            repo_dir = self._prepare_checkout(job)
+            self._materialise_epic_branch(job, repo_dir, branch)
+            job.branch_name = branch
+            job.save(update_fields=['branch_name'])
+            self._save_progress(job, f"Epic-Branch {branch} bereit")
+            outcome = start_epic(job)
+        except Exception as exc:  # noqa: BLE001 — same contract as a failed run
+            logger.exception("Epic node #%s failed to start", job.pk)
+            self._fail_job(job, error=str(exc))
+            self.stdout.write(self.style.ERROR(
+                f"Epic node #{job.pk} failed to start: {exc}"
+            ))
+            return
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Epic node #{job.pk} orchestrating {branch} ({outcome})"
+        ))
+
+    def advance_epics(self):
+        """Let every orchestrating epic node act on what the queue now knows.
+
+        This — not a GitHub webhook — is what drives a chain: the poll that
+        already looks for claimable work also asks each epic whether its
+        current layer finished cleanly enough to release the next one.
+        """
+        from core.services.claude_queue.orchestration import advance_all_epics
+
+        try:
+            return advance_all_epics()
+        except Exception:  # noqa: BLE001 — never let orchestration stop claiming
+            logger.exception("Advancing epic chains failed")
+            return 0
 
     def _process_job_inner(self, job, timeout, idle_timeout, pr_body_file):
         try:
@@ -689,7 +753,16 @@ class Command(BaseCommand):
         base = resolve_base_branch(job.item)
         if base == DEFAULT_BASE_BRANCH:
             return DEFAULT_BASE_BRANCH
+        return self._materialise_epic_branch(job, repo_dir, base)
 
+    def _materialise_epic_branch(self, job, repo_dir, base):
+        """Create or refresh epic branch ``base`` locally and on the remote.
+
+        Split out of ``_ensure_base_branch`` because the epic node's start step
+        (#1079) needs exactly this and nothing else: the node has no work
+        branch to cut and no PR to open, it just has to make sure the branch
+        its chain will target exists before releasing the first layer.
+        """
         if self._remote_branch_exists(repo_dir, base):
             self._git(['checkout', '-B', base, f'origin/{base}'], cwd=repo_dir)
             try:

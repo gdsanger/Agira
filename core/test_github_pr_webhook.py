@@ -438,3 +438,68 @@ class EpicMergeWebhookTestCase(TestCase):
         standalone.refresh_from_db()
         self.assertEqual(standalone.status, ItemStatus.TESTING)
         ensure.assert_not_called()
+
+
+class EpicChainWebhookNudgeTests(EpicMergeWebhookTestCase):
+    """The merge webhook confirms a merge and nudges the chain — nothing more (#1079)."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import ClaudeQueueJob, ClaudeQueueJobKind, ClaudeQueueJobStatus
+
+        self.node = ClaudeQueueJob.objects.create(
+            item=self.epic,
+            project=self.project,
+            kind=ClaudeQueueJobKind.EPIC,
+            status=ClaudeQueueJobStatus.ORCHESTRATING,
+        )
+        self.first = ClaudeQueueJob.objects.create(
+            item=self.data_model, project=self.project, parent_job=self.node,
+            epic_order=10, status=ClaudeQueueJobStatus.QUEUED,
+        )
+        self.second = ClaudeQueueJob.objects.create(
+            item=self.ui, project=self.project, parent_job=self.node,
+            epic_order=20, status=ClaudeQueueJobStatus.BLOCKED,
+        )
+
+    def _finish(self, job):
+        from core.models import ClaudeQueueJobStatus
+
+        job.transition_to(ClaudeQueueJobStatus.RUNNING)
+        job.transition_to(ClaudeQueueJobStatus.DONE)
+
+    def test_merge_of_a_clean_sub_run_releases_the_next_entry(self):
+        from core.models import ClaudeQueueJobStatus
+
+        self._finish(self.first)
+        with patch('core.services.github.service.ensure_epic_pr'):
+            self._merge_sub_issue(self.data_model)
+
+        self.second.refresh_from_db()
+        self.assertEqual(self.second.status, ClaudeQueueJobStatus.QUEUED)
+
+    def test_merge_of_an_uncertain_sub_run_leaves_the_chain_halted(self):
+        from core.models import ClaudeQueueJobStatus
+
+        self.first.completion_uncertain = True
+        self.first.completion_uncertain_reason = 'Claude kündigt Hintergrund-Job an'
+        self.first.save()
+        self._finish(self.first)
+
+        with patch('core.services.github.service.ensure_epic_pr'):
+            self._merge_sub_issue(self.data_model)
+
+        self.second.refresh_from_db()
+        self.assertEqual(self.second.status, ClaudeQueueJobStatus.BLOCKED)
+        self.assertTrue(self.node.epic_chain.is_halted)
+
+    def test_a_broken_chain_never_fails_the_webhook(self):
+        with patch(
+            'core.services.claude_queue.orchestration.advance_epic_for_item',
+            side_effect=RuntimeError('boom'),
+        ), patch('core.services.github.service.ensure_epic_pr'):
+            response = self._merge_sub_issue(self.data_model)
+
+        self.assertEqual(response.status_code, 200)
+        self.data_model.refresh_from_db()
+        self.assertEqual(self.data_model.status, ItemStatus.TESTING)

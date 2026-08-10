@@ -643,14 +643,21 @@ class AIJobsHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(ClaudeQueueJob)
 class ClaudeQueueJobAdmin(admin.ModelAdmin):
-    list_display = ['id', 'created_at', 'project', 'item', 'status', 'model', 'auth_mode', 'auth_user', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
-    list_filter = ['status', 'model', 'auth_mode', 'auth_credential_source', 'allow_api_key_fallback', 'project', 'pr_state']
+    list_display = ['id', 'created_at', 'project', 'item', 'kind', 'status', 'parent_job', 'epic_order', 'model', 'auth_mode', 'auth_user', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
+    list_filter = ['kind', 'status', 'model', 'auth_mode', 'auth_credential_source', 'allow_api_key_fallback', 'project', 'pr_state']
     search_fields = ['item__title', 'project__name', 'branch_name', 'session_id', 'error_text']
-    autocomplete_fields = ['item', 'project']
+    autocomplete_fields = ['item', 'project', 'parent_job']
+    list_select_related = ['item', 'project', 'auth_user', 'parent_job']
     readonly_fields = ['created_at', 'started_at', 'finished_at']
 
     fieldsets = (
-        (None, {'fields': ('item', 'project', 'status', 'model')}),
+        (None, {'fields': ('item', 'project', 'kind', 'status', 'model')}),
+        ('Epic-Kette', {
+            'fields': ('parent_job', 'epic_order'),
+            'description': 'Hierarchy of the queue (#1079): an epic node implements '
+                           'nothing and releases its sub-entries one at a time, strictly '
+                           'in epic_order and only after an unambiguously successful run.',
+        }),
         ('Auth', {
             'fields': ('requested_auth_mode', 'auth_mode', 'auth_user',
                        'auth_credential_source', 'allow_api_key_fallback', 'limit_reset_at'),

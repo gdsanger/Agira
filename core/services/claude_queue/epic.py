@@ -19,8 +19,9 @@ dependency graph, deliberately: a graph is more expressive and much harder to
 see wrong at a glance.
 
 The queue-side orchestration that drives a chain forward (advancement only on
-unambiguous success, halt on error) lives in #1079; this module owns only the
-branch-model facts it needs to answer.
+unambiguous success, halt on error) lives in
+:mod:`core.services.claude_queue.orchestration` (#1079); this module owns only
+the branch-model facts it needs to answer.
 """
 
 import logging

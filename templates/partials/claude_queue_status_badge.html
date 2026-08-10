@@ -1,5 +1,16 @@
 {% comment %}Status badge for a ClaudeQueueJob. Expects `job` in context.{% endcomment %}
-{% if job.status == 'queued' %}
+{% if job.status == 'blocked' %}
+<span class="badge bg-light text-dark border" title="Wartet in der Epic-Kette auf die Freigabe durch den Epic-Knoten"><i class="bi bi-lock"></i> Geblockt</span>
+{% elif job.status == 'orchestrating' %}
+{# The chain's own state is the interesting part; the node itself just runs it. #}
+{% with chain=job.epic_chain %}
+<span class="badge {% if chain.is_halted %}bg-warning text-dark{% else %}bg-primary{% endif %}"
+      title="{{ chain.label }}{% if chain.reason %} – {{ chain.reason }}{% endif %}">
+    <i class="bi {% if chain.is_halted %}bi-pause-circle{% else %}bi-diagram-3{% endif %}"></i>
+    {% if chain.is_halted %}Pausiert{% else %}Epic läuft{% endif %}
+</span>
+{% endwith %}
+{% elif job.status == 'queued' %}
 <span class="badge bg-secondary"><i class="bi bi-hourglass-split"></i> {{ job.get_status_display }}</span>
 {% elif job.status == 'running' %}
 <span class="badge bg-primary"><span class="spinner-border spinner-border-sm" role="status" style="width:0.7rem;height:0.7rem;"></span> {{ job.get_status_display }}</span>

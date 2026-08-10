@@ -47,6 +47,12 @@ Expects `job` and `active_statuses` in context.
             <div class="markdown-viewer">{{ job.progress_text|render_markdown }}</div>
             {% elif job.status == 'queued' %}
             <span class="text-muted">Waiting in queue…</span>
+            {% elif job.status == 'blocked' %}
+            <span class="text-muted">
+                <i class="bi bi-lock"></i>
+                Wartet in der Epic-Kette – wird freigegeben, sobald der vorherige
+                Sub-Run eindeutig erfolgreich war.
+            </span>
             {% else %}
             <span class="text-muted">—</span>
             {% endif %}

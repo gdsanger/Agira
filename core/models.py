@@ -1973,8 +1973,19 @@ class ClaudeQueueJobStatus(models.TextChoices):
     (e.g. Working → Testing) are driven by the GitHub sync (PR merged),
     not by this job's state machine.
     """
+    # A sub-entry of an epic chain that has not been released yet (#1079).
+    # Distinct from QUEUED on purpose: a queued job is one the worker may claim
+    # at any moment, and the whole point of the chain is that a later layer is
+    # *not* claimable until its predecessor landed. Making that a status rather
+    # than a filter keeps the queue view honest — the rows are visible, in
+    # order, and plainly not about to run.
+    BLOCKED = 'blocked', _('Blocked (waiting in epic chain)')
     QUEUED = 'queued', _('Queued')
     RUNNING = 'running', _('Running')
+    # An epic node that has done its start step and is now driving its chain
+    # (#1079). Non-terminal and *not* running: the node holds no worker and no
+    # repo lane — if it did, the sub-runs it is waiting for could never start.
+    ORCHESTRATING = 'orchestrating', _('Orchestrating epic')
     # Reached the Max/Pro subscription usage limit and is parked until the quota
     # rolls over. A non-terminal, re-claimable state: the worker picks the job
     # up again once ``limit_reset_at`` has passed. Kept distinct from FAILED so
@@ -1983,6 +1994,18 @@ class ClaudeQueueJobStatus(models.TextChoices):
     DONE = 'done', _('Done')
     FAILED = 'failed', _('Failed')
     CANCELLED = 'cancelled', _('Cancelled')
+
+
+class ClaudeQueueJobKind(models.TextChoices):
+    """What a queue entry *is* (#1079).
+
+    ``issue`` is the only kind that runs Claude, and its behaviour is the
+    pre-#1079 one, unchanged — one item per run. ``epic`` is a pure
+    orchestration node: it carries the epic branch and the chain state and
+    implements nothing itself, so the worker never starts a CLI for it.
+    """
+    ISSUE = 'issue', _('Issue run')
+    EPIC = 'epic', _('Epic orchestration')
 
 
 # Runtime after which a still-running job is flagged in the UI as taking
@@ -2015,6 +2038,34 @@ class ClaudeQueueJob(models.Model):
         max_length=20,
         choices=ClaudeQueueJobModel.choices,
         default=ClaudeQueueJobModel.SONNET,
+    )
+
+    # --- Epic chain (#1079) -------------------------------------------- #
+    # The hierarchy lives in the queue, not in a side table or a webhook
+    # reconstruction: the queue already knows whether a run finished cleanly
+    # (done vs. "possibly incomplete" vs. failed), and that signal is exactly
+    # what drives the chain forward. It is also the view the developer works
+    # in, so the structure is visible where the decisions are made.
+    kind = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueJobKind.choices,
+        default=ClaudeQueueJobKind.ISSUE,
+        help_text=_('Issue run (executes Claude) or epic node (orchestrates a chain of sub-entries)'),
+    )
+    parent_job = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sub_jobs',
+        help_text=_('Epic node this entry belongs to; null for a standalone run'),
+    )
+    # Frozen copy of ``Item.epic_order`` from the moment the chain was built.
+    # Frozen rather than followed so re-ordering the items mid-chain cannot
+    # retroactively rewrite the sequence a half-finished epic was built in.
+    epic_order = models.PositiveIntegerField(
+        default=0,
+        help_text=_('Position of this entry inside its epic chain (ascending; ties break by item id)'),
     )
 
     # Authentication for the run. ``auth_mode`` records how the *latest* attempt
@@ -2160,14 +2211,48 @@ class ClaudeQueueJob(models.Model):
         """True if this job is in a terminal state and safe to delete."""
         return self.status in self._DELETABLE_STATUSES
 
+    @property
+    def is_epic_node(self):
+        """True if this entry orchestrates an epic chain instead of running Claude."""
+        return self.kind == ClaudeQueueJobKind.EPIC
+
+    @property
+    def epic_chain(self):
+        """Derived progress of the chain below an epic node, or None (#1079).
+
+        Computed on every access from the sub-entries rather than mirrored
+        into fields on the node: a stored "paused at sub X" is a second copy
+        of something the sub-entries already say, and the copy is what goes
+        stale when a developer re-triggers a sub run by hand.
+        """
+        if not self.is_epic_node:
+            return None
+        from core.services.claude_queue.orchestration import chain_state
+
+        return chain_state(self)
+
     # Allowed state transitions for the job state machine.
     _TRANSITIONS = {
+        # Released by its epic node once the predecessor landed, or dropped
+        # from the chain by hand. Never straight to RUNNING: release and claim
+        # are separate decisions, taken by the orchestration and the worker.
+        ClaudeQueueJobStatus.BLOCKED: {
+            ClaudeQueueJobStatus.QUEUED,
+            ClaudeQueueJobStatus.CANCELLED,
+        },
         ClaudeQueueJobStatus.QUEUED: {ClaudeQueueJobStatus.RUNNING, ClaudeQueueJobStatus.CANCELLED},
         ClaudeQueueJobStatus.RUNNING: {
             ClaudeQueueJobStatus.DONE,
             ClaudeQueueJobStatus.FAILED,
             ClaudeQueueJobStatus.CANCELLED,
             ClaudeQueueJobStatus.WAITING_LIMIT,
+            # Epic node only: the start step is over, the chain is in flight.
+            ClaudeQueueJobStatus.ORCHESTRATING,
+        },
+        ClaudeQueueJobStatus.ORCHESTRATING: {
+            ClaudeQueueJobStatus.DONE,
+            ClaudeQueueJobStatus.FAILED,
+            ClaudeQueueJobStatus.CANCELLED,
         },
         # A parked run can be resumed (re-claimed), abandoned, or cancelled.
         ClaudeQueueJobStatus.WAITING_LIMIT: {

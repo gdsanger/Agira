@@ -710,6 +710,7 @@ class GitHubService(IntegrationBase):
 
         if new_state == 'merged':
             result['epic_pr_opened'] = self._maybe_open_epic_pr(item)
+            result['epic_advanced'] = self._advance_epic_chain(item)
 
         return result
 
@@ -744,6 +745,29 @@ class GitHubService(IntegrationBase):
         if epic is None or not all_sub_issues_merged(epic):
             return False
         return ensure_epic_pr(epic) is not None
+
+    def _advance_epic_chain(self, item: Item) -> bool:
+        """Nudge the queue's epic chain now that a merge is confirmed (#1079).
+
+        Strictly a nudge. The orchestrator is the queue, which re-derives the
+        same decision on every worker poll — this only shortens the gap between
+        "the layer landed" and "the next one is released" from a poll interval
+        to a moment. It must therefore never fail the webhook: a merge was
+        reported correctly whether or not the chain moved.
+        """
+        from core.services.claude_queue.orchestration import (
+            ADVANCE_FINISHED,
+            ADVANCE_RELEASED,
+            advance_epic_for_item,
+        )
+
+        try:
+            return advance_epic_for_item(item) in (ADVANCE_RELEASED, ADVANCE_FINISHED)
+        except Exception:  # noqa: BLE001 — best effort, see docstring
+            logger.exception(
+                "Could not advance the epic chain after item #%s merged", item.id
+            )
+            return False
 
     def sync_item(self, item: Item) -> int:
         """

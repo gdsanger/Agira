@@ -144,14 +144,87 @@ Fehlt die Auto-Merge-Einstellung oder gibt es keine Required Checks, schlägt da
 Scharfschalten fehl und der Sub-Issue-PR wartet auf einen manuellen Merge. Das
 ist eine langsamere Kette, kein kaputter Job.
 
+## Orchestrierung über die Claude Queue (#1079)
+
+Getrieben wird die Kette von der **Queue selbst** – nicht von einem
+langlebigen Orchestrator-Job und nicht von GitHub-Webhooks.
+
+Gegen einen Orchestrator-Job spricht die Nebenläufigkeitsregel des Workers: Er
+lässt pro Repository genau einen Job laufen. Ein wartender Orchestrator stünde
+also in `running` und würde damit genau die Sub-Runs blockieren, auf die er
+wartet. Gegen den Webhook spricht, dass die Queue längst weiß, was er erst
+rekonstruieren müsste: ob ein Run sauber durchlief (`Done`), fehlschlug oder
+verdächtig aussah (`Ggf. unvollständig`). Der Merge-Webhook bestätigt nur, dass
+ein Merge wirklich stattfand, und verkürzt die Reaktionszeit von einem
+Poll-Intervall auf einen Augenblick.
+
+### Struktur
+
+```
+Epic-Knoten (kind=epic)          setzt nichts um, trägt Branch + Kettenstand
+ ├── Sub-Eintrag  Order 10       geblockt → freigegeben → Run → gemergt
+ ├── Sub-Eintrag  Order 20       geblockt, bis 10 eindeutig erfolgreich war
+ └── Sub-Eintrag  Order 30       geblockt
+```
+
+Der Worker-Kern bleibt „ein Issue pro Run". Die Hierarchie ist Struktur *um*
+die Einzel-Runs herum: `parent_job`, `epic_order` und `kind` am
+`ClaudeQueueJob`.
+
+### Ablauf
+
+1. **Epic starten:** „An Claude übergeben" auf einem Item mit Sub-Issues legt
+   einen Epic-Knoten an (kein Claude-Run, kein `fix/`-Hinweis am Item). Der
+   Worker holt ihn, legt den Epic-Branch an bzw. zieht ihn auf `main`-Stand,
+   baut die Kette aus den Sub-Issues und gibt den ersten Eintrag frei. Danach
+   geht der Knoten von `running` nach `orchestrating` – er darf die Repo-Spur
+   nicht halten, die seine eigenen Sub-Runs brauchen.
+2. **Sub-Run:** ganz normaler Queue-Job, siehe „Ablauf eines Sub-Issues".
+3. **Advancement:** Bei jedem Worker-Poll prüft der Knoten seine Kette neu.
+4. **Abschluss:** Ist kein Eintrag mehr offen, legt der Knoten selbst den
+   Draft-PR Epic→`main` an und ist danach `Done`.
+
+### Advancement-Regel
+
+Die Kette rückt **ausschließlich bei eindeutigem Erfolg** weiter:
+
+| Zustand des aktuellen Sub-Eintrags        | Kette                       |
+|-------------------------------------------|-----------------------------|
+| `Done`, nicht unsicher, PR gemergt        | nächsten Eintrag freigeben  |
+| `Done`, PR noch nicht gemergt             | warten (Auto-Merge läuft)   |
+| `Done` + **`Ggf. unvollständig`**         | **Halt**                    |
+| `Failed` / `Cancelled`                    | **Halt**                    |
+
+Der Grund ist derselbe wie beim Order-Gate: Rückt die Kette über einen
+halbfertigen Stand weiter, baut die nächste Schicht auf einem Fundament, das
+möglicherweise nur eine Attrappe ist. Die Unsicherheits-Heuristik muss dafür
+nicht perfekt sein – im Zweifel hält sie an. Aus dem bisherigen Störgeräusch
+„Ggf. unvollständig" wird so ein Sicherheits-Feature.
+
+Ein Merge-Konflikt beim Sub→Epic-Merge ist kein Sonderfall: Der Sub-Run
+schlägt fehl, die Kette hält an wie bei jedem anderen Fehler.
+
+### Halt und Wiederaufnahme
+
+Der Epic-Knoten zeigt „**Pausiert bei Sub-Issue #X (2/3)**" samt Grund; die
+restlichen Einträge bleiben sichtbar in Reihenfolge geblockt. Es gibt
+**keinen automatischen Retry** über einen unklaren Stand hinweg. Der Entwickler
+prüft den Sub-Run und stößt ihn neu an – der neue Job hängt sich automatisch an
+dieselbe Kette (der Knoten liest je Sub-Issue immer den *neuesten* Eintrag), und
+nach eindeutigem Erfolg läuft die Kette von allein weiter.
+
+### Der flache Ablauf bleibt
+
+Ein Issue ohne Sub-Issues und ohne Parent wird wie vor #1079 enqueued:
+`kind=issue`, kein `parent_job`, `epic_order=0`. Auch ein einzelnes Sub-Issue
+kann weiterhin von Hand an Claude übergeben werden, ohne dass ein Epic-Knoten
+existiert – dann greift nur das Order-Gate aus #1076.
+
 ## Abgrenzung
 
-Dieses Dokument beschreibt das **Branch-Modell**. Wie die Kette getrieben wird
-(hierarchische Queue, Advancement nur bei eindeutigem Erfolg, Halt bei
-„Ggf. unvollständig"/Fehler), gehört zu #1079.
-
 Nicht Teil des Modells: Stacked PRs, Rebase-basierte Kettenpflege früherer
-Branches, eine feste Obergrenze für die Epic-Größe.
+Branches, eine feste Obergrenze für die Epic-Größe, ein Abhängigkeits-Graph
+statt des flachen Order-Felds.
 
 ## Code-Landkarte
 
@@ -159,6 +232,8 @@ Branches, eine feste Obergrenze für die Epic-Größe.
 |-------|-------|
 | `core/services/claude_queue/branch.py` | Ableitung von `fix/*`- und `feature/*`-Namen, Base-Branch-Auflösung |
 | `core/services/claude_queue/epic.py`   | Reihenfolge, Start-Gate, finaler Epic-PR |
+| `core/services/claude_queue/orchestration.py` | Kette aufbauen, Advancement-Regel, Halt-Zustände, Abschluss-Schritt |
+| `core/services/claude_queue/enqueue.py` | Epic-Knoten vs. Issue-Run, Wiederanhängen eines neu angestoßenen Sub-Runs |
 | `core/services/claude_queue/hint.py`   | Git-Workflow-Hinweis am Item (nennt den Base-Branch) |
-| `core/management/commands/run_claude_worker.py` | Epic-Branch anlegen/nachziehen, PR-Ziel, Auto-Merge, Order-Gate beim Claim |
-| `core/services/github/service.py`      | Statuslogik beim Merge, Auslösen des Epic-PRs |
+| `core/management/commands/run_claude_worker.py` | Epic-Branch anlegen/nachziehen, Start-Schritt des Epic-Knotens, Ketten-Sweep im Poll, PR-Ziel, Auto-Merge, Order-Gate beim Claim |
+| `core/services/github/service.py`      | Statuslogik beim Merge, Auslösen des Epic-PRs, Nudge an die Kette |
