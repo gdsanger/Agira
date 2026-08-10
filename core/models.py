@@ -2266,6 +2266,10 @@ class ClaudeQueueJob(models.Model):
             ClaudeQueueJobStatus.FAILED,
             ClaudeQueueJobStatus.CANCELLED,
             ClaudeQueueJobStatus.WAITING_LIMIT,
+            # Startup crash recovery (#1110): a job whose worker was hard-killed
+            # mid-run is put back to QUEUED so it simply runs again, instead of
+            # being failed to Backlog or holding its repo lane as a zombie.
+            ClaudeQueueJobStatus.QUEUED,
             # Epic node only: the start step is over, the chain is in flight.
             ClaudeQueueJobStatus.ORCHESTRATING,
         },

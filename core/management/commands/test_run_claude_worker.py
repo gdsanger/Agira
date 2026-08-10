@@ -289,7 +289,10 @@ class ProcessJobTests(ClaudeWorkerTestBase):
 
 
 class CrashRecoveryTests(ClaudeWorkerTestBase):
-    def test_recovers_running_job_with_dead_pid_on_this_host(self):
+    def test_reclaims_running_job_with_dead_pid_on_this_host(self):
+        # Hard-kill mid-run (#1110): the owning worker's PID on this host is
+        # dead, so the job is put back to QUEUED to run again — not failed —
+        # and its item stays in Working.
         import socket
         job = self._job(
             self.project_a,
@@ -306,10 +309,34 @@ class CrashRecoveryTests(ClaudeWorkerTestBase):
         cmd.recover_orphans(timeout=1800)
 
         job.refresh_from_db()
-        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
-        self.assertIn('Crash recovery', job.error_text)
+        self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
+        self.assertFalse(job.error_text)
+        self.assertIsNone(job.worker_pid)
         job.item.refresh_from_db()
-        self.assertEqual(job.item.status, ItemStatus.BACKLOG)
+        self.assertEqual(job.item.status, ItemStatus.WORKING)
+
+    def test_reclaimed_job_no_longer_blocks_its_repo_lane(self):
+        # A dead-worker zombie must not keep its repo busy after restart: once
+        # reclaimed to QUEUED it is claimable again, so the lane runs.
+        import socket
+        zombie = self._job(
+            self.project_a,
+            status=ClaudeQueueJobStatus.RUNNING,
+            worker_host=socket.gethostname(),
+            worker_pid=999_999_999,  # not a live pid
+            started_at=timezone.now(),
+        )
+
+        cmd = Command()
+        cmd.stdout = StringIO()
+        cmd.recover_orphans(timeout=1800)
+
+        zombie.refresh_from_db()
+        self.assertEqual(zombie.status, ClaudeQueueJobStatus.QUEUED)
+        # The lane is free: the reclaimed job is the eligible candidate again.
+        claimed = cmd.claim_next_job()
+        self.assertEqual(claimed.pk, zombie.pk)
+        self.assertEqual(claimed.status, ClaudeQueueJobStatus.RUNNING)
 
     def test_does_not_recover_job_with_live_pid(self):
         import socket
@@ -356,6 +383,36 @@ class CrashRecoveryTests(ClaudeWorkerTestBase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+
+
+class UnbufferedOutputTests(TestCase):
+    """The startup buffering fix (#1110): logs must not sit in a pipe buffer."""
+
+    def test_reconfigures_streams_to_line_buffering(self):
+        import sys
+
+        class _FakeStream:
+            def __init__(self):
+                self.kwargs = None
+
+            def reconfigure(self, **kwargs):
+                self.kwargs = kwargs
+
+        fake_out, fake_err = _FakeStream(), _FakeStream()
+        with patch.object(sys, 'stdout', fake_out), \
+                patch.object(sys, 'stderr', fake_err):
+            Command()._configure_unbuffered_output()
+
+        self.assertEqual(fake_out.kwargs, {'line_buffering': True})
+        self.assertEqual(fake_err.kwargs, {'line_buffering': True})
+
+    def test_tolerates_streams_without_reconfigure(self):
+        import sys
+
+        # A StringIO has no ``reconfigure`` — must be skipped, not crash.
+        with patch.object(sys, 'stdout', StringIO()), \
+                patch.object(sys, 'stderr', StringIO()):
+            Command()._configure_unbuffered_output()  # no exception = pass
 
 
 class OnceModeTests(ClaudeWorkerTestBase):
