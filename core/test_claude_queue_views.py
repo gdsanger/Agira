@@ -671,8 +671,12 @@ class ClaudeQueueEpicHierarchyViewTests(TestCase):
         self.assertContains(response, f'cqj-row-{standalone.id}')
 
     def test_list_marks_a_blocked_entry_as_waiting_for_release(self):
+        # A blocked entry names the predecessor it waits on (#1109), so it can
+        # never be mistaken for a stalled ``queued`` row. Here ``ui`` waits on
+        # the not-yet-merged ``data_model``.
         response = self.client.get(reverse('claude-queue-jobs'))
-        self.assertContains(response, 'Wartet auf Freigabe durch das Epic')
+        self.assertContains(response, 'Wartet auf Merge der Epic-Vorgänger')
+        self.assertContains(response, f'#{self.data_model.id}')
 
     def test_epic_node_row_reports_the_running_sub_issue(self):
         response = self.client.get(reverse('claude-queue-job-row', args=[self.node.id]))

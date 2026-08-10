@@ -23,6 +23,7 @@ from core.models import (
     Project,
 )
 from core.services.claude_queue.enqueue import (
+    SubIssueOutsideEpic,
     enqueue_epic_for_claude,
     enqueue_item_for_claude,
 )
@@ -416,6 +417,107 @@ class FlatFlowUnchangedTests(OrchestrationTestBase):
         self.assertEqual(standalone.status, ItemStatus.WORKING)
 
     def test_a_sub_issue_enqueued_without_an_active_epic_stays_unattached(self):
+        # ``data_model`` is the lowest-ordered layer: it has no predecessors, so
+        # it can start on its own and a flat enqueue is legitimate.
         job, created = enqueue_item_for_claude(self.data_model)
         self.assertTrue(created)
         self.assertIsNone(job.parent_job_id)
+
+
+class SubIssueDeadEndTests(OrchestrationTestBase):
+    """The #1109 dead-end: a sub-issue handed to Claude outside its epic.
+
+    ``ui`` (order 30) has two unmerged predecessors and no epic node driving
+    it. Before the fix such a job was created ``queued``, then silently
+    excluded by the worker's block gate forever — no log, no status, no error.
+    """
+
+    def test_standalone_sub_issue_with_unmerged_predecessors_is_rejected(self):
+        with self.assertRaises(SubIssueOutsideEpic) as ctx:
+            enqueue_item_for_claude(self.ui)
+
+        message = str(ctx.exception)
+        self.assertIn(f'#{self.ui.id}', message)
+        self.assertIn(f'#{self.epic.id}', message)
+        # Rejected cleanly: no job, and the item was not dragged into Working.
+        self.assertFalse(
+            ClaudeQueueJob.objects.filter(item=self.ui).exists()
+        )
+        self.ui.refresh_from_db()
+        self.assertNotEqual(self.ui.status, ItemStatus.WORKING)
+
+    def test_startable_sub_issue_is_still_allowed_standalone(self):
+        # The lowest layer has no predecessors — running it alone is fine and
+        # must not be swept up by the guard.
+        job, created = enqueue_item_for_claude(self.data_model)
+        self.assertTrue(created)
+        self.assertIsNone(job.parent_job_id)
+
+    def test_sub_issue_becomes_enqueueable_once_predecessors_merged(self):
+        self._merge(self.data_model)
+        self._merge(self.logic)
+
+        job, created = enqueue_item_for_claude(self.ui)
+
+        self.assertTrue(created)
+        self.assertIsNone(job.parent_job_id)
+
+    def test_starting_the_epic_attaches_the_sub_issue_instead_of_dead_ending(self):
+        # The recommended path: start the epic, then the same sub-issue enqueue
+        # rejoins the chain rather than being refused or stranded.
+        node = self._epic_node()
+
+        job, created = enqueue_item_for_claude(self.ui)
+
+        self.assertFalse(created)  # already has a blocked chain entry
+        self.assertEqual(job.parent_job_id, node.pk)
+
+
+class SubIssueReleaseOrderTests(OrchestrationTestBase):
+    """AC2: starting an epic runs the sub-issues in order; none stays blocked."""
+
+    @patch('core.services.claude_queue.orchestration.ensure_epic_pr')
+    def test_each_layer_is_released_only_after_the_previous_one_merged(self, ensure):
+        ensure.return_value = ExternalIssueMapping(
+            number=99, state='open',
+            html_url='https://github.com/testowner/testrepo/pull/99',
+        )
+        node, _ = enqueue_epic_for_claude(self.epic)
+        node.transition_to(ClaudeQueueJobStatus.RUNNING)
+        start_epic(node)
+
+        order = [self.data_model, self.logic, self.ui]
+        released = []
+        for expected in order:
+            entry = self._entry(node, expected)
+            self.assertEqual(
+                entry.status, ClaudeQueueJobStatus.QUEUED,
+                f'sub-issue #{expected.id} was not released in turn',
+            )
+            released.append(entry.item_id)
+            # Everything after it is still visibly blocked, not silently queued.
+            for later in order[len(released):]:
+                self.assertEqual(
+                    self._entry(node, later).status,
+                    ClaudeQueueJobStatus.BLOCKED,
+                )
+            self._finish(entry)
+            advance_epic(node)
+
+        self.assertEqual(released, [i.id for i in order])
+        # No sub-entry is left stranded: all merged, node finished.
+        self.assertFalse(
+            node.sub_jobs.filter(status=ClaudeQueueJobStatus.BLOCKED).exists()
+        )
+
+    def test_blocked_entry_reports_which_predecessor_it_waits_on(self):
+        # AC1: a blocked sub-entry is legible, not an anonymous queued row.
+        node = self._epic_node()
+        advance_epic(node)  # releases data_model; logic + ui stay blocked
+        self._finish(self._entry(node, self.data_model))
+
+        ui_entry = self._entry(node, self.ui)
+        reason = ui_entry.blocked_reason
+        # data_model merged, logic not — so logic is the pending predecessor.
+        self.assertIn(f'#{self.logic.id}', reason)
+        self.assertNotIn(f'#{self.data_model.id}', reason)

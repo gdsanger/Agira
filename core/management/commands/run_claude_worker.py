@@ -415,19 +415,27 @@ class Command(BaseCommand):
         return job
 
     def _blocked_job_ids(self, pending):
-        """Ids of pending jobs whose sub-issue may not start yet (#1076).
+        """Ids of pending chain entries whose predecessor has not merged (#1076, #1109).
 
-        Only jobs of items that actually sit inside an epic can be blocked, so
-        the candidate set is narrowed by ``item__parent__isnull=False`` first —
-        for a queue of standalone items this costs one extra, empty query and
-        nothing else.
+        The block is decided on the **job** now (``parent_job`` set), not on the
+        item's ``parent`` alone. Keying it on the item hierarchy was the #1109
+        bug: a sub-issue enqueued *standalone* (``parent_job=None``) has an item
+        with a parent, so it matched here and ``can_start`` stayed False forever
+        — but no epic node existed to ever release it, so it sat in ``queued``
+        indefinitely, indistinguishable from a claimable job. Such a standalone
+        run is now rejected or attached to a chain at enqueue time (see
+        ``enqueue.SubIssueOutsideEpic``); the claim gate concerns itself only
+        with genuine chain entries, so the queue's chain and the item hierarchy
+        can no longer disagree about what "belongs to an epic" means.
+
+        For a queue of standalone jobs this is one extra, empty query.
         """
-        sub_issue_jobs = (
+        chain_jobs = (
             ClaudeQueueJob.objects
-            .filter(pending, item__parent__isnull=False)
+            .filter(pending, parent_job__isnull=False)
             .select_related('item', 'item__parent')
         )
-        return [job.pk for job in sub_issue_jobs if not can_start(job.item)]
+        return [job.pk for job in chain_jobs if not can_start(job.item)]
 
     # ------------------------------------------------------------------ #
     # Processing

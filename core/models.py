@@ -2217,6 +2217,26 @@ class ClaudeQueueJob(models.Model):
         return self.kind == ClaudeQueueJobKind.EPIC
 
     @property
+    def blocked_reason(self):
+        """Why a blocked chain entry is waiting, for the queue view (#1109).
+
+        A blocked sub-entry must not read as a stalled ``queued`` row — that
+        indistinguishability is exactly what cost a long debug session (#1109).
+        This names *what* it is waiting on: the specific unmerged predecessor
+        sub-issues, or a plain "waiting for the epic to release it" when the
+        entry is simply next in line. Empty for anything that is not blocked.
+        """
+        if self.status != ClaudeQueueJobStatus.BLOCKED:
+            return ''
+        from core.services.claude_queue.epic import blocking_predecessors
+
+        pending = blocking_predecessors(self.item)
+        if not pending:
+            return _('Wartet auf Freigabe durch das Epic')
+        ids = ', '.join(f'#{p.id}' for p in pending)
+        return _('Wartet auf Merge der Epic-Vorgänger %(ids)s') % {'ids': ids}
+
+    @property
     def epic_chain(self):
         """Derived progress of the chain below an epic node, or None (#1079).
 
