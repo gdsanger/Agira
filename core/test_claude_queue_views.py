@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from core.models import (
     Item, Project, ItemStatus, ItemType, User,
-    ClaudeQueueJob, ClaudeQueueJobStatus,
+    ClaudeQueueJob, ClaudeQueueJobKind, ClaudeQueueJobStatus,
     CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS,
 )
 
@@ -612,3 +612,94 @@ class ClaudeQueueViewsTestCase(TestCase):
         job = self._running_job()
         response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
         self.assertNotContains(response, reverse('claude-queue-job-delete', args=[job.id]))
+
+
+class ClaudeQueueEpicHierarchyViewTests(TestCase):
+    """The queue shows the epic/sub hierarchy in order, with per-level status (#1079)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='epicuser', password='testpass123', email='epic@example.com',
+        )
+        self.user.active = True
+        self.user.save()
+        self.client.login(username='epicuser', password='testpass123')
+
+        self.project = Project.objects.create(name='Epic Project')
+        self.item_type = ItemType.objects.create(key='feature', name='Feature')
+        self.epic = self._item('Kundenportal')
+        self.data_model = self._item('Datenmodell', parent=self.epic, epic_order=10)
+        self.ui = self._item('UI', parent=self.epic, epic_order=30)
+
+        self.node = ClaudeQueueJob.objects.create(
+            item=self.epic,
+            project=self.project,
+            kind=ClaudeQueueJobKind.EPIC,
+            status=ClaudeQueueJobStatus.ORCHESTRATING,
+        )
+        self.first = ClaudeQueueJob.objects.create(
+            item=self.data_model, project=self.project, parent_job=self.node,
+            epic_order=10, status=ClaudeQueueJobStatus.RUNNING,
+        )
+        self.second = ClaudeQueueJob.objects.create(
+            item=self.ui, project=self.project, parent_job=self.node,
+            epic_order=30, status=ClaudeQueueJobStatus.BLOCKED,
+        )
+
+    def _item(self, title, *, parent=None, epic_order=0):
+        return Item.objects.create(
+            title=title, project=self.project, type=self.item_type,
+            parent=parent, epic_order=epic_order,
+        )
+
+    def test_list_orders_the_epic_node_ahead_of_its_sub_entries(self):
+        response = self.client.get(reverse('claude-queue-jobs'))
+        body = response.content.decode()
+        positions = [
+            body.index(f'cqj-row-{job.id}')
+            for job in (self.node, self.first, self.second)
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_list_shows_a_standalone_job_outside_any_chain(self):
+        standalone = ClaudeQueueJob.objects.create(
+            item=self._item('Einzel'), project=self.project,
+            status=ClaudeQueueJobStatus.QUEUED,
+        )
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(response, f'cqj-row-{standalone.id}')
+
+    def test_list_marks_a_blocked_entry_as_waiting_for_release(self):
+        response = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(response, 'Wartet auf Freigabe durch das Epic')
+
+    def test_epic_node_row_reports_the_running_sub_issue(self):
+        response = self.client.get(reverse('claude-queue-job-row', args=[self.node.id]))
+        self.assertContains(response, f'Sub-Issue #{self.data_model.id} läuft')
+        self.assertContains(response, '1/2')
+
+    def test_epic_node_row_reports_a_halt_with_the_sub_issue(self):
+        self.first.completion_uncertain = True
+        self.first.completion_uncertain_reason = 'Claude wartet auf Antwort'
+        self.first.status = ClaudeQueueJobStatus.DONE
+        self.first.save()
+
+        response = self.client.get(reverse('claude-queue-job-row', args=[self.node.id]))
+        self.assertContains(response, f'Pausiert bei Sub-Issue #{self.data_model.id}')
+        self.assertContains(response, 'Claude wartet auf Antwort')
+
+    def test_detail_lists_the_chain_in_order(self):
+        response = self.client.get(reverse('claude-queue-job-detail', args=[self.node.id]))
+        self.assertContains(response, 'Epic-Kette')
+        body = response.content.decode()
+        self.assertLess(
+            body.index(f'#{self.data_model.id}'), body.index(f'#{self.ui.id}'),
+        )
+
+    def test_detail_of_a_sub_entry_links_back_to_its_epic_node(self):
+        response = self.client.get(reverse('claude-queue-job-detail', args=[self.first.id]))
+        self.assertContains(
+            response, reverse('claude-queue-job-detail', args=[self.node.id]),
+        )
+        self.assertContains(response, 'Order 10')

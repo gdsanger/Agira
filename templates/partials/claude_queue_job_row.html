@@ -6,8 +6,13 @@ a terminal state the swapped-in row omits those attributes and polling stops.
 Expects `job` and `active_statuses` in context. Pass `disable_row_polling=True`
 when the row is embedded in a container that already polls itself (the
 /claude-queue/ list) to avoid polling the same data twice.
+
+Epic chains (#1079) are shown by indentation, not nesting: the list view sorts
+an epic node directly ahead of its sub-entries, so a plain row can carry the
+hierarchy while pagination and per-row polling stay exactly as they were.
 {% endcomment %}
 <tr id="cqj-row-{{ job.id }}"
+    class="{% if job.is_epic_node %}table-light fw-semibold{% endif %}"
     style="cursor: pointer;"
     onclick="window.location='{% url 'claude-queue-job-detail' job.id %}'"
     {% if job.status in active_statuses and not disable_row_polling %}
@@ -17,8 +22,19 @@ when the row is embedded in a container that already polls itself (the
     {% endif %}>
     <td class="text-muted">#{{ job.id }}</td>
     <td>
+        {% if job.parent_job_id %}
+        <span class="text-muted me-1" title="Sub-Eintrag des Epics #{{ job.parent_job.item_id }}">&#8627;</span>
+        <span class="badge bg-light text-dark border" title="Epic-Order">{{ job.epic_order }}</span>
+        {% elif job.is_epic_node %}
+        <i class="bi bi-diagram-3 me-1" title="Epic-Knoten – setzt selbst nichts um"></i>
+        {% endif %}
         <strong>{{ job.item.title }}</strong>
         <br><small class="text-muted">Item #{{ job.item.id }}</small>
+        {% if job.is_epic_node %}
+        {% with chain=job.epic_chain %}
+        <small class="text-muted">· {{ chain.done }}/{{ chain.total }} Sub-Issues gemergt</small>
+        {% endwith %}
+        {% endif %}
     </td>
     <td>{{ job.project.name }}</td>
     <td>
@@ -30,7 +46,21 @@ when the row is embedded in a container that already polls itself (the
         {% endif %}
     </td>
     <td class="cqj-progress" onclick="event.stopPropagation();">
-        {% if job.status == 'failed' and job.error_text %}
+        {% if job.is_epic_node and job.status == 'orchestrating' %}
+        {% with chain=job.epic_chain %}
+        <span class="{% if chain.is_halted %}text-warning{% else %}text-muted{% endif %}"
+              title="{{ chain.reason }}">
+            <i class="bi {% if chain.is_halted %}bi-pause-circle{% else %}bi-diagram-3{% endif %}"></i>
+            {{ chain.label }}
+        </span>
+        {% if chain.reason %}<br><small class="text-muted">{{ chain.reason|truncatechars:80 }}</small>{% endif %}
+        {% endwith %}
+        {# A release the node could not carry out (e.g. a closed sub-issue): the
+           chain looks merely blocked, so the reason has to be said out loud. #}
+        {% if job.error_text %}<br><small class="text-warning">{{ job.error_text|truncatechars:120 }}</small>{% endif %}
+        {% elif job.status == 'blocked' %}
+        <span class="text-muted"><i class="bi bi-lock"></i> Wartet auf Freigabe durch das Epic</span>
+        {% elif job.status == 'failed' and job.error_text %}
         <span class="text-danger" title="{{ job.error_text }}">
             <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}
         </span>

@@ -31,6 +31,7 @@ from core.models import (
     ClaudeCredentialSource,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
+    ClaudeQueueJobKind,
     ClaudeQueueJobStatus,
     ExternalIssueKind,
     ExternalIssueMapping,
@@ -1671,3 +1672,137 @@ class EpicBranchAndPrTests(ClaudeWorkerTestBase):
         prompt = Command()._build_prompt(self.sub_issue)
 
         self.assertIn(f'feat(#{self.sub_issue.id})', prompt)
+
+
+class EpicNodeProcessingTests(ClaudeWorkerTestBase):
+    """The epic node's start step (#1079): a branch and a release, no CLI run."""
+
+    def setUp(self):
+        super().setUp()
+        self.epic = self._item(self.project_a)
+        self.epic.title = 'Kundenportal'
+        self.epic.save(update_fields=['title'])
+        self.data_model = Item.objects.create(
+            project=self.project_a,
+            title='Datenmodell',
+            type=self.item_type,
+            parent=self.epic,
+            epic_order=10,
+        )
+        self.logic = Item.objects.create(
+            project=self.project_a,
+            title='Logik',
+            type=self.item_type,
+            parent=self.epic,
+            epic_order=20,
+        )
+        self.epic_branch = f'feature/{self.epic.id}-kundenportal'
+
+    def _epic_node(self, status=ClaudeQueueJobStatus.RUNNING):
+        return self._job(
+            self.project_a,
+            item=self.epic,
+            status=status,
+            kind=ClaudeQueueJobKind.EPIC,
+        )
+
+    def test_start_step_materialises_the_branch_and_releases_the_first_layer(self):
+        node = self._epic_node()
+        command = Command()
+        command.stdout = StringIO()
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_materialise_epic_branch') as branch:
+            command.process_epic_job(node)
+
+        branch.assert_called_once()
+        self.assertEqual(branch.call_args[0][2], self.epic_branch)
+
+        node.refresh_from_db()
+        self.assertEqual(node.status, ClaudeQueueJobStatus.ORCHESTRATING)
+        self.assertEqual(node.branch_name, self.epic_branch)
+        self.assertEqual(
+            node.sub_jobs.get(item=self.data_model).status,
+            ClaudeQueueJobStatus.QUEUED,
+        )
+        self.assertEqual(
+            node.sub_jobs.get(item=self.logic).status,
+            ClaudeQueueJobStatus.BLOCKED,
+        )
+
+    def test_no_cli_is_ever_started_for_an_epic_node(self):
+        node = self._epic_node()
+        command = Command()
+        command.stdout = StringIO()
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_materialise_epic_branch'), \
+                patch.object(Command, '_run_cli') as run_cli:
+            command.process_job(node, timeout=60)
+
+        run_cli.assert_not_called()
+
+    def test_a_failing_start_step_fails_the_node(self):
+        node = self._epic_node()
+        command = Command()
+        command.stdout = StringIO()
+
+        with patch.object(
+            Command, '_prepare_checkout', side_effect=RuntimeError('no remote'),
+        ):
+            command.process_epic_job(node)
+
+        node.refresh_from_db()
+        self.assertEqual(node.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('no remote', node.error_text)
+
+    def test_blocked_entries_are_never_claimed(self):
+        node = self._epic_node(status=ClaudeQueueJobStatus.ORCHESTRATING)
+        ClaudeQueueJob.objects.create(
+            item=self.data_model,
+            project=self.project_a,
+            status=ClaudeQueueJobStatus.BLOCKED,
+            parent_job=node,
+            epic_order=10,
+        )
+        self.assertIsNone(Command().claim_next_job())
+
+    def test_an_orchestrating_node_does_not_hold_the_repo_lane(self):
+        """The node must not block the sub-runs it is waiting for."""
+        node = self._epic_node(status=ClaudeQueueJobStatus.ORCHESTRATING)
+        released = ClaudeQueueJob.objects.create(
+            item=self.data_model,
+            project=self.project_a,
+            status=ClaudeQueueJobStatus.QUEUED,
+            parent_job=node,
+            epic_order=10,
+        )
+
+        claimed = Command().claim_next_job()
+
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, released.pk)
+
+    def test_the_poll_advances_chains_before_claiming(self):
+        from django.core.management import call_command
+
+        node = self._epic_node(status=ClaudeQueueJobStatus.ORCHESTRATING)
+        ClaudeQueueJob.objects.create(
+            item=self.data_model,
+            project=self.project_a,
+            status=ClaudeQueueJobStatus.BLOCKED,
+            parent_job=node,
+            epic_order=10,
+        )
+
+        out = StringIO()
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr',
+                             return_value=('fix/x-1', 'bootstrap-sha')), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_run_cli', return_value=_ok_result()):
+            call_command('run_claude_worker', '--once', '--skip-recovery', stdout=out)
+
+        # Released by the sweep and then immediately claimed and run.
+        entry = node.sub_jobs.get(item=self.data_model)
+        self.assertEqual(entry.status, ClaudeQueueJobStatus.DONE)

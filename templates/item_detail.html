@@ -235,8 +235,13 @@
                 </li>
                 {% if item.status != 'Closed' %}
                 <li>
+                    {# An item with sub-issues is handed over as an epic chain, not as a single run (#1079). #}
                     <button type="button" class="dropdown-item" onclick="enqueueToClaude()">
+                        {% if item.children.exists %}
+                        <i class="bi bi-diagram-3 me-2"></i>Epic an Claude übergeben
+                        {% else %}
                         <i class="bi bi-robot me-2"></i>An Claude übergeben
+                        {% endif %}
                     </button>
                 </li>
                 {% endif %}
@@ -1583,9 +1588,17 @@
         }
     }
 
-    // An Claude übergeben action
+    // An Claude übergeben action. An item with sub-issues starts an epic chain
+    // instead of a single run (#1079) — the wording says which one you get.
     function enqueueToClaude() {
-        if (confirm('An Claude Code übergeben? Das Item wird auf "Working" gesetzt und ein Job eingereiht.')) {
+        {% if item.children.exists %}
+        const confirmText = 'Epic an Claude Code übergeben? Die Sub-Issues werden in '
+            + 'Reihenfolge (Epic-Order) abgearbeitet – das nächste startet erst nach '
+            + 'eindeutigem Erfolg des vorherigen.';
+        {% else %}
+        const confirmText = 'An Claude Code übergeben? Das Item wird auf "Working" gesetzt und ein Job eingereiht.';
+        {% endif %}
+        if (confirm(confirmText)) {
             fetch('{% url 'item-claude-enqueue' item.id %}', {
                 method: 'POST',
                 headers: {

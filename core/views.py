@@ -4,7 +4,8 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import models, transaction, IntegrityError
-from django.db.models import Q, Count
+from django.db.models import Case, Count, Q, Value, When
+from django.db.models.functions import Coalesce
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
@@ -32,7 +33,8 @@ from .models import (
     ExternalIssueMapping, ExternalIssueKind, Change, ChangeStatus, ChangeApproval, ApprovalStatus, RiskLevel, ReleaseType,
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
     GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
-    ClaudeQueueJob, ClaudeQueueJobStatus, ClaudeQueueJobModel, ClaudeQueueJobAuthMode)
+    ClaudeQueueJob, ClaudeQueueJobKind, ClaudeQueueJobStatus, ClaudeQueueJobModel,
+    ClaudeQueueJobAuthMode)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -738,10 +740,14 @@ def changes(request):
 # reaches done/failed/cancelled.
 # ---------------------------------------------------------------------------
 
-# Statuses that are still in flight and therefore keep polling.
+# Statuses whose row/live block keeps polling: anything that can still change
+# on its own. An epic node and a blocked sub-entry qualify (#1079) — both move
+# without anyone touching them, driven by the chain below/above them.
 _CLAUDE_QUEUE_ACTIVE_STATUSES = (
+    ClaudeQueueJobStatus.BLOCKED,
     ClaudeQueueJobStatus.QUEUED,
     ClaudeQueueJobStatus.RUNNING,
+    ClaudeQueueJobStatus.ORCHESTRATING,
 )
 
 
@@ -838,10 +844,31 @@ def claude_queue_jobs(request):
     fragment (partials/claude_queue_list.html) so new/finished jobs and the
     KPI counters stay current without a manual reload. On an HTMX poll only
     that fragment is re-rendered instead of the full page.
+
+    Rows are grouped into epic chains (#1079): an epic node is followed by its
+    sub-entries in ``epic_order``, and standalone jobs keep sorting purely by
+    recency as before. Ordering rather than nesting keeps pagination, the
+    filters and the row-level HTMX polling working unchanged — the hierarchy is
+    a reading aid, not a second list structure.
     """
     jobs = ClaudeQueueJob.objects.select_related(
-        'item', 'project', 'auth_user'
-    ).order_by('-created_at')
+        'item', 'project', 'auth_user', 'parent_job'
+    ).annotate(
+        # The chain a row belongs to (its epic node, or itself) and when that
+        # chain started: sorting by the *chain's* recency is what keeps a
+        # sub-entry created days later next to its epic instead of at the top.
+        chain_id=Coalesce('parent_job_id', 'id'),
+        chain_created=Coalesce('parent_job__created_at', 'created_at'),
+        # The epic node sorts ahead of its own sub-entries; epic_order alone
+        # would not, since a sub-issue may legitimately have order 0.
+        chain_depth=Case(
+            When(parent_job__isnull=True, then=Value(0)),
+            default=Value(1),
+            output_field=models.IntegerField(),
+        ),
+    ).order_by(
+        '-chain_created', '-chain_id', 'chain_depth', 'epic_order', 'created_at', 'id',
+    )
 
     project_filter = request.GET.get('project', '')
     if project_filter:
@@ -893,14 +920,33 @@ def claude_queue_job_row(request, job_id):
 
 @login_required
 def claude_queue_job_detail(request, job_id):
-    """Detail view for a single Claude queue job."""
+    """Detail view for a single Claude queue job.
+
+    An epic node additionally gets its chain: the sub-entries in order, with
+    the per-entry state that decides whether the chain moves (#1079). This is
+    where "pausiert bei Sub-Issue X" is answered concretely — which layer, why,
+    and what is queued behind it.
+    """
+    from core.services.claude_queue.orchestration import (
+        sub_job_state,
+        sub_jobs_in_order,
+    )
+
     job = get_object_or_404(
-        ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'),
+        ClaudeQueueJob.objects.select_related(
+            'item', 'project', 'auth_user', 'parent_job',
+        ),
         id=job_id,
     )
+    chain_entries = [
+        {'job': entry, 'state': sub_job_state(entry)}
+        for entry in sub_jobs_in_order(job)
+    ] if job.is_epic_node else []
+
     return render(request, 'claude_queue_job_detail.html', {
         'job': job,
         'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
+        'chain_entries': chain_entries,
     })
 
 
@@ -1225,9 +1271,19 @@ def item_claude_enqueue(request, item_id):
     Force-appends the git-workflow hint to the item's description (once),
     creates a queued ClaudeQueueJob, and moves the item to Working. If the
     item already has an active job, no duplicate is created.
+
+    An item with sub-issues is enqueued as an *epic node* instead (#1079): it
+    orchestrates its sub-issues in ``epic_order`` rather than being handed to
+    Claude itself. Running an epic through the CLI directly would ask one run
+    to implement the whole vertical slice the sub-issues exist to cut up.
     """
     from core.services.claude_queue.credentials import MissingClaudeCredential
-    from core.services.claude_queue.enqueue import InvalidClaudeModel, enqueue_item_for_claude
+    from core.services.claude_queue.enqueue import (
+        InvalidClaudeModel,
+        enqueue_epic_for_claude,
+        enqueue_item_for_claude,
+    )
+    from core.services.claude_queue.epic import is_epic
 
     item = get_object_or_404(Item, id=item_id)
 
@@ -1237,8 +1293,9 @@ def item_claude_enqueue(request, item_id):
             'error': 'Cannot enqueue a closed item for Claude.',
         }, status=400)
 
+    enqueue = enqueue_epic_for_claude if is_epic(item) else enqueue_item_for_claude
     try:
-        job, created = enqueue_item_for_claude(item, actor=request.user)
+        job, created = enqueue(item, actor=request.user)
     except (MissingClaudeCredential, InvalidClaudeModel) as e:
         # Both are user-fixable configuration problems, not server errors:
         # report verbatim so the message can be acted on.
@@ -1250,17 +1307,23 @@ def item_claude_enqueue(request, item_id):
             'error': str(e)
         }, status=500)
 
+    kind = 'Epic' if job.is_epic_node else 'Item'
     if not created:
         return JsonResponse({
             'success': True,
-            'message': f'Item already has an active Claude job (#{job.pk}).',
+            'message': f'{kind} already has an active Claude job (#{job.pk}).',
             'no_change': True,
             'job_id': job.pk,
         })
 
+    message = (
+        f'Epic enqueued – orchestrates its sub-issues (job #{job.pk}).'
+        if job.is_epic_node
+        else f'Enqueued for Claude Code (job #{job.pk}).'
+    )
     return JsonResponse({
         'success': True,
-        'message': f'Enqueued for Claude Code (job #{job.pk}).',
+        'message': message,
         'job_id': job.pk,
     })
 
@@ -7886,16 +7949,26 @@ def system_analytics(request):
     # Autonomiegrad: bis Anfang Juli 2026 lief die autonome Umsetzung über
     # GitHub Copilot (eigene Anbindung, nicht in dieser Queue erfasst) - siehe #1002.
     # ------------------------------------------------------------------
-    total_jobs = ClaudeQueueJob.objects.count()
+    # Run quality is about *runs*: epic nodes (#1079) are excluded throughout,
+    # since a node never invokes Claude and would otherwise count as a free
+    # success in the rate below.
+    run_jobs = ClaudeQueueJob.objects.filter(kind=ClaudeQueueJobKind.ISSUE)
+    total_jobs = run_jobs.count()
     claude_queue_share_pct = (items_with_jobs_count / total_items * 100) if total_items else 0
 
-    done_jobs = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.DONE)
+    done_jobs = run_jobs.filter(status=ClaudeQueueJobStatus.DONE)
     jobs_done_ok = done_jobs.filter(completion_uncertain=False).count()
     jobs_done_uncertain = done_jobs.filter(completion_uncertain=True).count()
-    jobs_failed = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.FAILED).count()
-    jobs_cancelled = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.CANCELLED).count()
-    jobs_in_flight = ClaudeQueueJob.objects.filter(
-        status__in=[ClaudeQueueJobStatus.QUEUED, ClaudeQueueJobStatus.RUNNING]
+    jobs_failed = run_jobs.filter(status=ClaudeQueueJobStatus.FAILED).count()
+    jobs_cancelled = run_jobs.filter(status=ClaudeQueueJobStatus.CANCELLED).count()
+    # Everything that has not settled yet, including the entries a chain is
+    # still holding back — they are queued work, just not claimable work.
+    jobs_in_flight = run_jobs.filter(
+        status__in=[
+            ClaudeQueueJobStatus.BLOCKED,
+            ClaudeQueueJobStatus.QUEUED,
+            ClaudeQueueJobStatus.RUNNING,
+        ]
     ).count()
     success_rate = (jobs_done_ok / total_jobs * 100) if total_jobs else 0
 

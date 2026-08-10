@@ -152,3 +152,52 @@ class ItemClaudeEnqueueViewTestCase(TestCase):
                 self.assertEqual(response.status_code, 200)
                 job = ClaudeQueueJob.objects.get(item=item)
                 self.assertEqual(job.model, value)
+
+
+class EpicEnqueueRoutingTestCase(TestCase):
+    """An item with sub-issues is handed over as an epic node, not as a run (#1079)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='epicrouter', password='testpass123', email='er@example.com',
+        )
+        self.user.active = True
+        self.user.save()
+        self.client.login(username='epicrouter', password='testpass123')
+
+        self.project = Project.objects.create(name='Epic Project')
+        self.item_type = ItemType.objects.create(key='feature', name='Feature')
+        self.epic = Item.objects.create(
+            title='Kundenportal', project=self.project, type=self.item_type,
+            status=ItemStatus.BACKLOG,
+        )
+        self.sub_issue = Item.objects.create(
+            title='Datenmodell', project=self.project, type=self.item_type,
+            parent=self.epic, epic_order=10, status=ItemStatus.BACKLOG,
+        )
+
+    def _post(self, item):
+        return self.client.post(reverse('item-claude-enqueue', args=[item.id]))
+
+    def test_an_item_with_sub_issues_becomes_an_epic_node(self):
+        response = self._post(self.epic)
+
+        self.assertEqual(response.status_code, 200)
+        job = ClaudeQueueJob.objects.get(item=self.epic)
+        self.assertTrue(job.is_epic_node)
+        self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
+        self.assertIn('Epic', response.json()['message'])
+
+    def test_the_epic_item_gets_no_fix_branch_hint(self):
+        self._post(self.epic)
+        self.epic.refresh_from_db()
+        self.assertNotIn(GIT_WORKFLOW_HINT_MARKER, self.epic.description)
+
+    def test_a_sub_issue_on_its_own_still_takes_the_flat_path(self):
+        self._post(self.sub_issue)
+
+        job = ClaudeQueueJob.objects.get(item=self.sub_issue)
+        self.assertFalse(job.is_epic_node)
+        self.sub_issue.refresh_from_db()
+        self.assertIn(GIT_WORKFLOW_HINT_MARKER, self.sub_issue.description)
