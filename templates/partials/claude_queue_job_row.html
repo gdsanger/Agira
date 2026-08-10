@@ -59,7 +59,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
            chain looks merely blocked, so the reason has to be said out loud. #}
         {% if job.error_text %}<br><small class="text-warning">{{ job.error_text|truncatechars:120 }}</small>{% endif %}
         {% elif job.status == 'blocked' %}
-        <span class="text-muted"><i class="bi bi-lock"></i> Wartet auf Freigabe durch das Epic</span>
+        <span class="text-muted" title="{{ job.blocked_reason }}"><i class="bi bi-lock"></i> {{ job.blocked_reason }}</span>
         {% elif job.status == 'failed' and job.error_text %}
         <span class="text-danger" title="{{ job.error_text }}">
             <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}

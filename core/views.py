@@ -1280,6 +1280,7 @@ def item_claude_enqueue(request, item_id):
     from core.services.claude_queue.credentials import MissingClaudeCredential
     from core.services.claude_queue.enqueue import (
         InvalidClaudeModel,
+        SubIssueOutsideEpic,
         enqueue_epic_for_claude,
         enqueue_item_for_claude,
     )
@@ -1296,9 +1297,10 @@ def item_claude_enqueue(request, item_id):
     enqueue = enqueue_epic_for_claude if is_epic(item) else enqueue_item_for_claude
     try:
         job, created = enqueue(item, actor=request.user)
-    except (MissingClaudeCredential, InvalidClaudeModel) as e:
-        # Both are user-fixable configuration problems, not server errors:
-        # report verbatim so the message can be acted on.
+    except (MissingClaudeCredential, InvalidClaudeModel, SubIssueOutsideEpic) as e:
+        # All three are user-fixable situations, not server errors: a missing
+        # credential, an unmapped model, or a sub-issue that must go through its
+        # epic (#1109). Report verbatim so the message can be acted on.
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         logger.error(f"Error enqueueing item {item_id} for Claude: {e}")

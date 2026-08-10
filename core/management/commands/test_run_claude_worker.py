@@ -1450,13 +1450,27 @@ class WaitingLimitClaimTests(ClaudeWorkerTestBase):
 
 
 class EpicOrderClaimTests(ClaudeWorkerTestBase):
-    """A sub-issue is only claimable once its predecessors merged (#1076)."""
+    """A chain entry is only claimable once its predecessors merged (#1076, #1109).
+
+    The claim-time block is decided on the **job** (``parent_job`` set), not on
+    the item's ``parent`` alone: keying it on the item hierarchy silently
+    stranded a standalone sub-issue job forever (#1109, see
+    ``SubIssueDeadEndClaimTests``). These tests use jobs attached to an epic
+    node, the only thing the gate now looks at.
+    """
 
     def setUp(self):
         super().setUp()
         self.epic = self._item(self.project_a)
         self.epic.title = 'Kundenportal'
         self.epic.save(update_fields=['title'])
+        # An orchestrating node the chain entries hang off. ORCHESTRATING is
+        # not a pending state, so the node itself is never a claim candidate.
+        self.node = self._job(
+            self.project_a, item=self.epic,
+            kind=ClaudeQueueJobKind.EPIC,
+            status=ClaudeQueueJobStatus.ORCHESTRATING,
+        )
         self.data_model = self._sub_issue('Datenmodell', 10)
         self.ui = self._sub_issue('UI', 30)
 
@@ -1470,6 +1484,13 @@ class EpicOrderClaimTests(ClaudeWorkerTestBase):
             epic_order=epic_order,
         )
 
+    def _chain_job(self, item):
+        """A QUEUED chain entry — the state a released sub-run is claimed from."""
+        return self._job(
+            self.project_a, item=item,
+            parent_job=self.node, epic_order=item.epic_order,
+        )
+
     def _merge(self, item):
         ExternalIssueMapping.objects.create(
             item=item,
@@ -1481,14 +1502,14 @@ class EpicOrderClaimTests(ClaudeWorkerTestBase):
         )
 
     def test_blocked_sub_issue_is_not_claimed_and_stays_queued(self):
-        job = self._job(self.project_a, item=self.ui)
+        job = self._chain_job(self.ui)
 
         self.assertIsNone(Command().claim_next_job())
         job.refresh_from_db()
         self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
 
     def test_sub_issue_becomes_claimable_once_the_predecessor_merged(self):
-        job = self._job(self.project_a, item=self.ui)
+        job = self._chain_job(self.ui)
         self._merge(self.data_model)
 
         claimed = Command().claim_next_job()
@@ -1500,8 +1521,8 @@ class EpicOrderClaimTests(ClaudeWorkerTestBase):
         # The later layer was enqueued first. Without excluding blocked jobs
         # from the head-of-line check it would shadow the foundation's job
         # and the whole repo lane would stall.
-        self._job(self.project_a, item=self.ui)
-        foundation_job = self._job(self.project_a, item=self.data_model)
+        self._chain_job(self.ui)
+        foundation_job = self._chain_job(self.data_model)
 
         claimed = Command().claim_next_job()
 
@@ -1513,6 +1534,18 @@ class EpicOrderClaimTests(ClaudeWorkerTestBase):
 
         claimed = Command().claim_next_job()
 
+        self.assertEqual(claimed.pk, job.pk)
+
+    def test_standalone_sub_issue_job_is_not_gated_by_item_hierarchy(self):
+        # The #1109 regression at the claim layer: a job for a sub-issue item
+        # but with no ``parent_job`` (not part of any active chain) must NOT be
+        # silently excluded. It is claimed like any standalone run; the dead-end
+        # is prevented at enqueue time, not by stranding it here.
+        job = self._job(self.project_a, item=self.ui)  # parent_job stays None
+
+        claimed = Command().claim_next_job()
+
+        self.assertIsNotNone(claimed)
         self.assertEqual(claimed.pk, job.pk)
 
 

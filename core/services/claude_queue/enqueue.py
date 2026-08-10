@@ -48,6 +48,23 @@ class InvalidClaudeModel(ValueError):
     """
 
 
+class SubIssueOutsideEpic(ValueError):
+    """A sub-issue was handed to Claude standalone but cannot run yet (#1109).
+
+    The item has a parent (it is a layer of an epic) and predecessors that
+    have not merged, yet there is no active epic node to ever release it. Such
+    a job would be excluded by the worker's ``_blocked_job_ids`` gate and sit
+    in ``queued`` forever — indistinguishable from a claimable job, with no
+    log, no status change, no error (#1109: Job #169 stalled silently for
+    exactly this reason).
+
+    Rejecting it at the button turns that silent dead-end into an actionable
+    message: start the epic (which orchestrates the sub-issues in order and
+    *does* advance the chain), or merge the predecessors first. The message is
+    user-facing.
+    """
+
+
 def _resolve_model(item) -> str:
     """Return the Claude model to run this item with.
 
@@ -98,6 +115,7 @@ def enqueue_item_for_claude(
     had a queued/running job — that job is returned unchanged instead of
     creating a duplicate.
     """
+    from core.services.claude_queue.epic import can_start
     from core.services.claude_queue.orchestration import active_epic_job_for
 
     with transaction.atomic():
@@ -114,6 +132,34 @@ def enqueue_item_for_claude(
         if existing_job is not None:
             return existing_job, False
 
+        # Re-triggering a halted sub-issue by hand must rejoin its chain, not
+        # start a run beside it (#1079): the epic node reads the *newest* entry
+        # per sub-issue, so an unattached retry would leave the chain stuck on
+        # the failed attempt forever.
+        parent_job = active_epic_job_for(locked_item)
+
+        # Guard against the silent dead-end (#1109). A sub-issue with unmerged
+        # predecessors and no epic node to release it would be blocked at claim
+        # time (``_blocked_job_ids``) and never become claimable — ``can_start``
+        # only turns True when a *predecessor* merges, and nothing here drives
+        # that. It would sit in ``queued`` forever, looking exactly like a
+        # normal one. Refuse it with an actionable message instead. A sub-issue
+        # whose predecessors have all merged (``can_start``) is safe to run on
+        # its own and is deliberately left alone, as is any item already
+        # attached to an active chain.
+        if (
+            parent_job is None
+            and locked_item.parent_id is not None
+            and not can_start(locked_item)
+        ):
+            raise SubIssueOutsideEpic(
+                f'Item #{locked_item.id} ist ein Sub-Issue von Epic '
+                f'#{locked_item.parent_id} und hat noch nicht gemergte '
+                f'Vorgänger. Bitte das Epic #{locked_item.parent_id} starten '
+                f'– es orchestriert die Sub-Issues der Reihe nach – statt das '
+                f'Sub-Issue einzeln einzureihen.'
+            )
+
         auth_mode = _resolve_auth_mode(locked_item)
         auth_user = resolve_credential_user(locked_item, actor=actor)
         # Raises when the mode cannot be served — before the item is moved.
@@ -125,12 +171,6 @@ def enqueue_item_for_claude(
             locked_item.save()
 
         ItemWorkflowGuard().transition(locked_item, ItemStatus.WORKING, actor=actor)
-
-        # Re-triggering a halted sub-issue by hand must rejoin its chain, not
-        # start a run beside it (#1079): the epic node reads the *newest* entry
-        # per sub-issue, so an unattached retry would leave the chain stuck on
-        # the failed attempt forever.
-        parent_job = active_epic_job_for(locked_item)
 
         job = ClaudeQueueJob.objects.create(
             item=locked_item,
