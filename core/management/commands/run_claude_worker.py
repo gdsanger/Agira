@@ -58,6 +58,7 @@ import select
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone as datetime_timezone
@@ -278,6 +279,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self._stop = False
+        self._configure_unbuffered_output()
         once = options['once']
         interval = options['interval']
         timeout = options['timeout']
@@ -1619,48 +1621,104 @@ class Command(BaseCommand):
     # Crash recovery
     # ------------------------------------------------------------------ #
     def recover_orphans(self, timeout):
-        """Fail running jobs whose supervising worker is gone.
+        """Resolve running jobs left behind by a worker that is no longer here.
 
-        Runs once at startup. A ``running`` job is an orphan when its owning
-        process on this host is dead, or when it has been running longer than
-        its timeout could allow (its supervisor would otherwise have killed it),
-        or when it carries no worker ownership at all.
+        Runs once at startup, before the first claim. A ``running`` job whose
+        supervisor is gone would otherwise hold its repo lane forever — the
+        per-repo concurrency gate in ``claim_next_job`` treats *any* ``running``
+        job as making that whole repo busy (see ``busy_repos``), so a single
+        zombie can block a lane indefinitely. Two dispositions (see
+        ``_orphan_disposition``):
+
+        * **Reclaim** — the owning worker process on this host is provably dead
+          (hard kill / crash mid-run, #1110). The work itself is not at fault,
+          so the job goes back to ``queued`` and simply runs again; its item
+          stays in ``Working``.
+        * **Fail** — the job outlived its timeout or never recorded an owner.
+          We cannot prove a clean interrupt, so it is failed and its item
+          released, exactly as before.
         """
         running = ClaudeQueueJob.objects.filter(status=ClaudeQueueJobStatus.RUNNING)
-        recovered = 0
+        reclaimed = 0
+        failed = 0
         for job in running:
-            reason = self._orphan_reason(job, timeout)
-            if reason is None:
+            disposition = self._orphan_disposition(job, timeout)
+            if disposition is None:
                 continue
-            self.stdout.write(self.style.WARNING(
-                f"Recovering orphaned job #{job.pk}: {reason}"
-            ))
-            self._fail_job(job, error=f"Crash recovery: {reason}")
-            recovered += 1
-        if recovered:
+            action, reason = disposition
+            if action == 'reclaim':
+                self.stdout.write(self.style.WARNING(
+                    f"Reclaiming orphaned job #{job.pk} to the queue: {reason}"
+                ))
+                self._reclaim_job(job, reason)
+                reclaimed += 1
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"Recovering orphaned job #{job.pk}: {reason}"
+                ))
+                self._fail_job(job, error=f"Crash recovery: {reason}")
+                failed += 1
+        if reclaimed or failed:
             self.stdout.write(self.style.SUCCESS(
-                f"Crash recovery: cleaned up {recovered} orphaned job(s)"
+                f"Crash recovery: requeued {reclaimed}, failed {failed} "
+                f"orphaned job(s)"
             ))
 
-    def _orphan_reason(self, job, timeout):
-        """Return a human reason if ``job`` is an orphan, else ``None``."""
-        # 1) Authoritative check for jobs owned by a process on this host.
+    def _orphan_disposition(self, job, timeout):
+        """Classify a running job for crash recovery.
+
+        Returns ``None`` for a job that is still legitimately running, or an
+        ``(action, reason)`` pair where ``action`` is:
+
+        * ``'reclaim'`` — the worker that owned this job is provably dead: its
+          PID on *this* host no longer exists. That is the hard-kill-mid-run
+          case (systemd stop, SIGKILL, crash), so the job is put back to
+          ``queued`` and runs again rather than being failed or left to block
+          its repo lane.
+        * ``'fail'`` — the job outlived its wall-clock timeout, or is running
+          with no owner recorded at all. Neither proves a clean interrupt (the
+          owner may be a live process on another host we cannot probe, or the
+          run blew its budget), so it is failed and its item released.
+        """
+        # Authoritative: a job owned by a dead process on *this* host was cut
+        # off mid-run — reclaim it so it runs again instead of stranding its
+        # repo lane behind a zombie ``running`` row.
         if job.worker_host == socket.gethostname() and job.worker_pid:
             if not self._pid_alive(job.worker_pid):
-                return "worker process no longer running"
+                return 'reclaim', 'worker process no longer running'
 
-        # 2) Anything running longer than its own timeout has lost its
-        #    supervisor (a live worker enforces the timeout locally).
+        # Ran longer than its own timeout could allow: a live worker would have
+        # enforced it locally, so its supervisor is gone. We can't probe a
+        # foreign host's PID, and a run that already blew its budget must not
+        # restart into the same wall — fail it.
         if job.started_at is not None:
             age = (timezone.now() - job.started_at).total_seconds()
             if age > timeout + STALE_BUFFER_SECONDS:
-                return f"running for {int(age)}s, exceeds timeout of {timeout}s"
+                return 'fail', f"running for {int(age)}s, exceeds timeout of {timeout}s"
 
-        # 3) Running with no owner recorded — nobody is driving it.
+        # Running with no owner recorded — nobody is driving it. An anomaly (a
+        # claim always records its owner), so fail rather than assume a rerun is
+        # safe.
         if not job.worker_pid:
-            return "running with no worker owner recorded"
+            return 'fail', 'running with no worker owner recorded'
 
         return None
+
+    def _reclaim_job(self, job, reason):
+        """Return an interrupted running job to the queue so it runs again.
+
+        Clears the dead worker's ownership and moves the job back to ``queued``;
+        the next poll re-claims it like any fresh entry (``transition_to`` then
+        re-stamps ``started_at``, so the age check measures the new run, not the
+        killed one). Deliberately leaves the item in ``Working`` and does not
+        set ``error_text`` — an interrupted run is not a failed one.
+        """
+        job.worker_host = ''
+        job.worker_pid = None
+        job.progress_text = (
+            f"Reclaim nach Worker-Neustart ({reason}); zurück in die Queue."
+        )[:2000]
+        job.transition_to(ClaudeQueueJobStatus.QUEUED)
 
     @staticmethod
     def _pid_alive(pid):
@@ -1679,6 +1737,30 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------ #
     # Daemon plumbing
     # ------------------------------------------------------------------ #
+    def _configure_unbuffered_output(self):
+        """Make stdout/stderr line-buffered so logs surface immediately (#1110).
+
+        Under systemd (and any pipe) Python block-buffers stdout, so the start
+        banner and the ``Claimed job``/recovery lines can sit unflushed for many
+        minutes — the worker looks dead in ``journalctl`` while it is in fact
+        just idle-polling. That false "the worker crashed" trail is exactly what
+        cost so much time in the #1109 debug session. Reconfiguring the streams
+        to line buffering flushes every newline-terminated ``write`` as it
+        happens — the same effect as ``PYTHONUNBUFFERED=1`` / ``python -u``, but
+        without depending on the deployment unit remembering to set it.
+
+        Best-effort: a stream that can't be reconfigured (a ``StringIO`` in
+        tests, an already-detached stream) is left as-is.
+        """
+        for stream in (sys.stdout, sys.stderr):
+            reconfigure = getattr(stream, 'reconfigure', None)
+            if reconfigure is None:
+                continue
+            try:
+                reconfigure(line_buffering=True)
+            except (ValueError, OSError):
+                pass
+
     def _install_signal_handlers(self):
         def _handler(signum, _frame):
             self.stdout.write(f"\nReceived signal {signum}, finishing up...")
