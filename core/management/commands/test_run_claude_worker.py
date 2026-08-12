@@ -288,6 +288,117 @@ class ProcessJobTests(ClaudeWorkerTestBase):
         self.assertIn('git clone failed', job.error_text)
 
 
+class MarkPrReadyTests(ClaudeWorkerTestBase):
+    """The draft → ready-for-review flip once a job finishes (#1114).
+
+    ``_mark_pr_ready`` is best-effort and guarded: it only touches an open draft
+    PR, tolerates a missing PR, and never turns a successful job into a failure.
+    """
+
+    @staticmethod
+    def _proc(returncode=0, stdout='', stderr=''):
+        return subprocess.CompletedProcess(
+            args=['gh'], returncode=returncode, stdout=stdout, stderr=stderr,
+        )
+
+    def _job_with_pr(self, number=42):
+        job = self._job(self.project_a)
+        job.pr_number = number
+        job.pr_url = f'https://github.com/acme/repo-a/pull/{number}'
+        job.save(update_fields=['pr_number', 'pr_url'])
+        return job
+
+    def test_open_draft_pr_is_marked_ready(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.side_effect = [
+                self._proc(stdout=json.dumps({'state': 'OPEN', 'isDraft': True})),
+                self._proc(),
+            ]
+            Command()._mark_pr_ready(job, '/tmp/repo')
+
+        self.assertEqual(run.call_count, 2)
+        view_cmd, ready_cmd = run.call_args_list[0][0][0], run.call_args_list[1][0][0]
+        self.assertEqual(view_cmd[:3], ['gh', 'pr', 'view'])
+        self.assertEqual(ready_cmd, ['gh', 'pr', 'ready', '42'])
+        job.refresh_from_db()
+        self.assertIn('Ready for review', job.progress_text)
+
+    def test_no_pr_recorded_is_a_noop(self):
+        job = self._job(self.project_a)  # pr_number stays None
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            Command()._mark_pr_ready(job, '/tmp/repo')
+        run.assert_not_called()
+
+    def test_already_ready_pr_is_not_flipped_again(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.side_effect = [
+                self._proc(stdout=json.dumps({'state': 'OPEN', 'isDraft': False})),
+            ]
+            Command()._mark_pr_ready(job, '/tmp/repo')
+
+        # Only the status probe runs — no `gh pr ready`.
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args_list[0][0][0][:3], ['gh', 'pr', 'view'])
+
+    def test_closed_pr_is_not_flipped(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.side_effect = [
+                self._proc(stdout=json.dumps({'state': 'MERGED', 'isDraft': False})),
+            ]
+            Command()._mark_pr_ready(job, '/tmp/repo')
+        self.assertEqual(run.call_count, 1)
+
+    def test_ready_failure_is_swallowed(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.side_effect = [
+                self._proc(stdout=json.dumps({'state': 'OPEN', 'isDraft': True})),
+                self._proc(returncode=1, stderr='API down'),
+            ]
+            # Best-effort: a failed flip must not raise.
+            Command()._mark_pr_ready(job, '/tmp/repo')
+        self.assertEqual(run.call_count, 2)
+
+    def test_status_probe_failure_skips_ready(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
+            run.side_effect = [self._proc(returncode=1, stderr='no such PR')]
+            Command()._mark_pr_ready(job, '/tmp/repo')
+        # Probe failed → we never attempt `gh pr ready`.
+        self.assertEqual(run.call_count, 1)
+
+    def test_subprocess_error_is_swallowed(self):
+        job = self._job_with_pr()
+        with patch('core.management.commands.run_claude_worker.subprocess.run',
+                   side_effect=OSError('gh missing')):
+            Command()._mark_pr_ready(job, '/tmp/repo')  # must not raise
+
+
+class SuccessfulRunMarksPrReadyTests(ProcessJobTests):
+    """The completion path invokes the draft → ready flip on success (#1114)."""
+
+    def test_process_job_marks_pr_ready_on_success(self):
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_mark_pr_ready') as mark_ready:
+            self._run(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        mark_ready.assert_called_once()
+
+    def test_process_job_does_not_mark_ready_on_failure(self):
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_mark_pr_ready') as mark_ready:
+            self._run(job, run_cli=lambda *a, **k: _ok_result(is_error=True))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        mark_ready.assert_not_called()
+
+
 class CrashRecoveryTests(ClaudeWorkerTestBase):
     def test_reclaims_running_job_with_dead_pid_on_this_host(self):
         # Hard-kill mid-run (#1110): the owning worker's PID on this host is

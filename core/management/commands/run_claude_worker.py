@@ -628,6 +628,9 @@ class Command(BaseCommand):
         self._update_pr_body(
             job, summary=result.get('result_text'), pr_body_file=pr_body_file
         )
+        # Work is done: flip the up-front draft PR to ready for review (#1114) so
+        # no manual `gh pr ready` is needed before the human review + merge.
+        self._mark_pr_ready(job, repo_dir)
         job.transition_to(ClaudeQueueJobStatus.DONE)
         if uncertain_reason:
             self.stdout.write(self.style.WARNING(
@@ -892,6 +895,79 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"  Auto-merge (squash) armed on PR #{pr_number}")
+
+    def _mark_pr_ready(self, job, repo_dir):
+        """Flip the job's draft PR to *ready for review* once the work is done (#1114).
+
+        The bootstrap PR against ``main`` is opened as a **draft** (see
+        ``_open_pr``) so a half-finished run never looks review-ready. Once the
+        job completes successfully the draft has served its purpose: mark it
+        ready so the only remaining human steps are review and merge — no manual
+        ``gh pr ready`` afterwards.
+
+        Guarded and idempotent, so retries and non-draft PRs are safe no-ops:
+        - skips when the job has no recorded PR at all,
+        - reads the PR first and only flips it when it is *still an open draft*.
+          A sub-issue PR is opened ready-for-review already (see ``_open_pr``),
+          and a re-run finds the PR already ready — both short-circuit here
+          instead of erroring on ``gh pr ready``.
+
+        Best-effort, mirroring ``_enable_auto_merge``: a failed flip is logged
+        but never fails an otherwise-successful job. Uses the ``gh`` CLI like the
+        auto-merge/PR-fallback paths — the draft→ready transition is a GraphQL
+        mutation the REST layer used elsewhere cannot express.
+        """
+        pr_number = job.pr_number
+        if not pr_number:
+            return
+
+        try:
+            proc = subprocess.run(
+                ['gh', 'pr', 'view', str(pr_number), '--json', 'state,isDraft'],
+                cwd=repo_dir, capture_output=True, text=True, timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("PR status lookup failed for job #%s: %s", job.pk, exc)
+            return
+
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not read PR #%s status (job #%s): %s",
+                pr_number, job.pk, (proc.stderr or proc.stdout).strip(),
+            )
+            return
+
+        try:
+            info = json.loads(proc.stdout or '{}')
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Could not parse PR #%s status (job #%s): %s", pr_number, job.pk, exc,
+            )
+            return
+
+        if info.get('state') != 'OPEN' or not info.get('isDraft'):
+            # Already ready-for-review, merged, or closed — nothing to do.
+            return
+
+        try:
+            proc = subprocess.run(
+                ['gh', 'pr', 'ready', str(pr_number)],
+                cwd=repo_dir, capture_output=True, text=True, timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("Mark-ready call failed for job #%s: %s", job.pk, exc)
+            return
+
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not mark PR #%s ready for review (job #%s): %s",
+                pr_number, job.pk, (proc.stderr or proc.stdout).strip(),
+            )
+            return
+
+        note = f"PR #{pr_number} auf Ready for review gesetzt"
+        self._save_progress(job, note)
+        self.stdout.write(f"  {note}")
 
     def _find_existing_pr(self, job, branch, service):
         """Best-effort lookup of an already-open PR for ``branch`` via the API.
