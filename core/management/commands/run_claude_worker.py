@@ -626,17 +626,29 @@ class Command(BaseCommand):
             job.completion_uncertain_reason = uncertain_reason
 
         self._update_pr_body(
-            job, summary=result.get('result_text'), pr_body_file=pr_body_file
+            job, summary=result.get('result_text'), pr_body_file=pr_body_file,
+            uncertain_reason=uncertain_reason,
         )
-        # Work is done: flip the up-front draft PR to ready for review (#1114) so
-        # no manual `gh pr ready` is needed before the human review + merge.
-        self._mark_pr_ready(job, repo_dir)
-        job.transition_to(ClaudeQueueJobStatus.DONE)
         if uncertain_reason:
+            # #1115: a completion-uncertain run must not *look* like a clean
+            # success. The up-front PR is opened as a draft precisely so a
+            # half-finished run never reads as review-ready — flipping it ready
+            # here (as a clean run does) would defeat that guard and leave a
+            # headless-blocked run indistinguishable from a done one at the PR
+            # level. So keep it a draft: the DONE+completion_uncertain job stays
+            # flagged in the queue, and the PR stays visibly unfinished on GitHub
+            # until a human has looked at it.
+            job.transition_to(ClaudeQueueJobStatus.DONE)
             self.stdout.write(self.style.WARNING(
-                f"Job #{job.pk} done, but completion uncertain: {uncertain_reason}"
+                f"Job #{job.pk} done, but completion uncertain — PR left as draft "
+                f"for manual review: {uncertain_reason}"
             ))
         else:
+            # Work is done and clean: flip the up-front draft PR to ready for
+            # review (#1114) so no manual `gh pr ready` is needed before the
+            # human review + merge.
+            self._mark_pr_ready(job, repo_dir)
+            job.transition_to(ClaudeQueueJobStatus.DONE)
             self.stdout.write(self.style.SUCCESS(f"Job #{job.pk} done"))
 
     # ------------------------------------------------------------------ #
@@ -1058,7 +1070,8 @@ class Command(BaseCommand):
             ]
         return '\n'.join(lines)
 
-    def _update_pr_body(self, job, *, summary=None, error=None, pr_body_file=None):
+    def _update_pr_body(self, job, *, summary=None, error=None, pr_body_file=None,
+                        uncertain_reason=None):
         """Replace the draft PR body with Claude's structured PR text (or a failure note).
 
         Runs through ``GitHubService`` — the same infra that opened the PR — so
@@ -1071,6 +1084,12 @@ class Command(BaseCommand):
         On success, prefers the fixed-structure text Claude wrote to
         ``pr_body_file``; falls back to the raw ``result_text`` summary when
         that file is missing or empty (e.g. an older/uncooperative run).
+
+        ``uncertain_reason`` (#1115): when the run completed but its outcome
+        looks doubtful (background/wait/ask signal, empty diff), the PR is left
+        as a draft — so the body leads with a visible warning banner naming the
+        reason, giving an operator opening the PR on GitHub the same
+        "needs a manual look" signal the queue badge carries.
         """
         if not job.pr_number:
             return
@@ -1085,6 +1104,16 @@ class Command(BaseCommand):
             else:
                 text = (summary or '').strip() or '_No summary provided._'
                 body = f"{header}\n\n---\n\n## Claude Summary\n\n{text}"
+            if uncertain_reason:
+                banner = (
+                    "> [!WARNING]\n"
+                    "> **Lauf möglicherweise unvollständig – manuelle Sichtung nötig.**\n"
+                    f"> {uncertain_reason.strip()}\n"
+                    ">\n"
+                    "> Der headless Worker hat diesen Lauf als nicht eindeutig "
+                    "abgeschlossen erkannt und den PR bewusst als *Draft* belassen."
+                )
+                body = f"{banner}\n\n{body}"
 
         try:
             from core.services.github.service import GitHubService
