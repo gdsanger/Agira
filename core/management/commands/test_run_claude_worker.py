@@ -398,6 +398,53 @@ class SuccessfulRunMarksPrReadyTests(ProcessJobTests):
         self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
         mark_ready.assert_not_called()
 
+    def test_process_job_leaves_pr_draft_when_completion_uncertain(self):
+        # #1115: a run Claude left waiting/asking is DONE+flagged, but the draft
+        # PR must NOT be flipped ready-for-review — else it reads as a clean
+        # success at the PR level, exactly the headless-blocked state this guards.
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_mark_pr_ready') as mark_ready, \
+                patch.object(Command, '_detect_completion_uncertain',
+                             return_value='Claude-Text deutet auf Warten hin (Hinweis: „background“).'):
+            self._run(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertTrue(job.completion_uncertain)
+        mark_ready.assert_not_called()
+
+    def test_background_marker_run_is_flagged_and_pr_kept_draft(self):
+        # The concretely observed case (#1115): Claude's final text mentions
+        # "background". Detection runs for real here, so this exercises the full
+        # marker → uncertain → keep-draft path end to end.
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_mark_pr_ready') as mark_ready, \
+                patch.object(Command, '_is_empty_diff', return_value=False):
+            self._run(job, run_cli=lambda *a, **k: _ok_result(
+                result_text='I moved the remaining work to a background task.',
+            ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertTrue(job.completion_uncertain)
+        self.assertIn('background', job.completion_uncertain_reason)
+        mark_ready.assert_not_called()
+
+    def test_clean_run_still_flips_pr_ready(self):
+        # Gegenprobe: a run without any wait/background/ask signal is unchanged —
+        # DONE, not flagged, and its draft PR flipped ready for review.
+        job = self._claimed_job(self.project_a)
+        with patch.object(Command, '_mark_pr_ready') as mark_ready, \
+                patch.object(Command, '_is_empty_diff', return_value=False):
+            self._run(job, run_cli=lambda *a, **k: _ok_result(
+                result_text='Implemented the fix and pushed the commit.',
+            ))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertFalse(job.completion_uncertain)
+        mark_ready.assert_called_once()
+
 
 class CrashRecoveryTests(ClaudeWorkerTestBase):
     def test_reclaims_running_job_with_dead_pid_on_this_host(self):
@@ -1084,6 +1131,42 @@ class UpdatePrBodyTests(ClaudeWorkerTestBase):
         self.assertIn('Run failed', call_kwargs['body'])
         self.assertIn('Claude reported an error.', call_kwargs['body'])
         self.assertNotIn('## Claude Summary', call_kwargs['body'])
+
+    def test_uncertain_reason_prepends_warning_banner(self):
+        # #1115: an uncertain run leaves the PR a draft, so its body must lead
+        # with a visible warning naming the reason — the operator opening the PR
+        # gets the same "needs a manual look" signal the queue badge carries.
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(
+                job, summary='Did most of it.',
+                uncertain_reason='Claude-Text deutet auf Warten hin (Hinweis: „background“).',
+            )
+
+        body = fake_service.update_pr_body.call_args[1]['body']
+        self.assertIn('[!WARNING]', body)
+        self.assertIn('manuelle Sichtung', body)
+        self.assertIn('background', body)
+        self.assertIn('Draft', body)
+        # Banner leads the body, the actual summary still follows.
+        self.assertLess(body.index('[!WARNING]'), body.index('Did most of it.'))
+
+    def test_clean_run_body_has_no_warning_banner(self):
+        from unittest.mock import MagicMock
+
+        job = self._job_with_pr()
+        fake_service = MagicMock()
+
+        with patch('core.services.github.service.GitHubService',
+                   return_value=fake_service):
+            Command()._update_pr_body(job, summary='Clean run.')
+
+        self.assertNotIn('[!WARNING]', fake_service.update_pr_body.call_args[1]['body'])
 
     def test_no_pr_number_skips_update(self):
         from unittest.mock import MagicMock
