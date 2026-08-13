@@ -10,11 +10,14 @@ It is a thin wrapper around the existing ``/api/customgpt/*`` REST API:
 Authentication model (Option B):
   * The shared API secret lives here, server-side (env ``AGIRA_API_SECRET``),
     and is never exposed to Claude.
-  * Each user connects with their personal token (Agira ``User.mcp_token``).
+  * Each user connects with their personal token (Agira ``User.mcp_token``),
+    copied from their Agira profile ("Claude MCP Integration").
     - Remote/HTTP: token from the connection URL ``?token=...`` or the
       ``x-agira-user-token`` header.
     - Local/stdio: token from env ``AGIRA_USER_TOKEN``.
   * Agira maps the token to a user and stamps created items' ``responsible``.
+  * Soft phase (#1119): a connection without a token is still served (anonymous,
+    org-level access as before) and only logs a warning — enforcement follows.
 
 Run locally against a dev instance (stdio):
     AGIRA_BASE_URL=http://localhost:8000 \\
@@ -31,12 +34,15 @@ from __future__ import annotations
 
 import argparse
 import contextvars
+import logging
 import os
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .client import AgiraClient, AgiraError
+
+logger = logging.getLogger(__name__)
 
 # Per-request user token (set by the ASGI middleware for HTTP transport).
 # The default is a sentinel (not None) so we can tell "no HTTP request context"
@@ -297,6 +303,16 @@ def _build_http_app():
                     if name == b"x-agira-user-token":
                         token = value.decode()
                         break
+            if not token:
+                # Soft phase (#1119): connections without a personal token stay
+                # allowed and act anonymously in Agira. Logged so we can see who
+                # still uses the old org-wide URL before enforcement lands.
+                logger.warning(
+                    "MCP connection without a per-user token (%s) — acting anonymously. "
+                    "Use the personal connector URL from the Agira profile "
+                    "(…/mcp/?token=<your-token>).",
+                    scope.get("path", "/"),
+                )
             reset = _current_user_token.set(token)
             try:
                 await inner(scope, receive, send)

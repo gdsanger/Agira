@@ -1,0 +1,87 @@
+{% comment %}
+Claude MCP Integration section of the user profile (#1119).
+
+Rendered both inside user_settings.html and standalone as the HTMX swap target
+of the rotate endpoint — keep it self-contained (id + outerHTML swap).
+{% endcomment %}
+<div id="mcp-token-section" class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Claude MCP Integration</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Dein persönlicher MCP-Token identifiziert dich gegenüber Agira, wenn Claude
+            (Desktop oder Web) über den Connector arbeitet. Trage die untenstehende URL
+            in Claude als eigenen Connector ein. Der Token ist kein Login — gib ihn nicht weiter.
+        </p>
+
+        {% if mcp_token_just_rotated %}
+        <div class="alert alert-success" role="alert">
+            <i class="bi bi-check-circle-fill"></i>
+            Neuer Token erzeugt. Der alte Token ist ab sofort ungültig — trage die neue URL in Claude ein.
+        </div>
+        {% endif %}
+
+        {% if mcp_token %}
+        {% if mcp_token_needs_rotation %}
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            {% if mcp_token_age_days is None %}
+            Für deinen MCP-Token ist kein Rotationsdatum bekannt.
+            {% else %}
+            Dein MCP-Token wurde zuletzt vor {{ mcp_token_age_days }} Tag{{ mcp_token_age_days|pluralize:"en" }} rotiert.
+            {% endif %}
+            Aus Sicherheitsgründen empfehlen wir eine monatliche Erneuerung.
+        </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label fw-bold" for="mcp-token-value">Token</label>
+            <div class="input-group">
+                <input type="text" class="form-control font-monospace" id="mcp-token-value"
+                       readonly value="{{ mcp_token_masked }}"
+                       data-masked="{{ mcp_token_masked }}" data-full="{{ mcp_token }}">
+                <button type="button" class="btn btn-outline-secondary" id="mcp-token-toggle"
+                        onclick="agiraToggleMcpToken()">
+                    <i class="bi bi-eye"></i> Anzeigen
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold" for="mcp-connector-url">Connector-URL für Claude</label>
+            <div class="input-group">
+                <input type="text" class="form-control font-monospace" id="mcp-connector-url"
+                       readonly value="{{ mcp_connector_url }}">
+                <button type="button" class="btn btn-outline-secondary"
+                        onclick="agiraCopyMcpUrl(this)">
+                    <i class="bi bi-clipboard"></i> Kopieren
+                </button>
+            </div>
+            <div class="form-text">
+                {% if mcp_token_age_days is not None %}
+                Zuletzt rotiert vor {{ mcp_token_age_days }} Tag{{ mcp_token_age_days|pluralize:"en" }}
+                (Empfehlung: alle {{ mcp_token_rotation_days }} Tage).
+                {% else %}
+                Empfehlung: Token alle {{ mcp_token_rotation_days }} Tage erneuern.
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            Für dich ist kein MCP-Token hinterlegt — der Claude-Connector kann dich damit
+            nicht zuordnen. Erzeuge über „Token rollieren“ einen neuen Token.
+        </div>
+        {% endif %}
+
+        <button type="button" class="btn btn-outline-danger"
+                hx-post="{% url 'user-mcp-token-rotate' %}"
+                hx-target="#mcp-token-section"
+                hx-swap="outerHTML"
+                hx-confirm="Achtung: Der alte Token wird sofort ungültig. Du musst den neuen Token in Claude neu eintragen.">
+            <i class="bi bi-arrow-repeat"></i>
+            {% if mcp_token %}Token rollieren{% else %}Token erzeugen{% endif %}
+        </button>
+    </div>
+</div>

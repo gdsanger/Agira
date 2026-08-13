@@ -45,7 +45,14 @@ class CustomGPTAPIAuthMiddleware:
                     {'error': 'Unauthorized. Invalid or missing x-api-secret header.'},
                     status=401
                 )
-        
+
+            # Resolve the acting MCP user early so every view can rely on
+            # `request.mcp_user` (#1119). Soft phase: an absent or unknown token
+            # only warns — the request continues with anonymous access.
+            # Imported lazily: this module is loaded before the app registry.
+            from core.views_api import resolve_mcp_user
+            resolve_mcp_user(request)
+
         response = self.get_response(request)
         return response
     

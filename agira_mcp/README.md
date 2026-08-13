@@ -14,10 +14,15 @@ Claude  --(per-user token)-->  MCP server  --(x-api-secret + x-agira-user-token)
 
 - The **shared API secret** (`AGIRA_API_SECRET`) lives only in the MCP server.
   Claude never sees it.
-- Each user connects with a **personal token** = their Agira `User.mcp_token`
-  (generate it in the Django admin: select the user → action *"Generate MCP token"*).
+- Each user connects with a **personal token** = their Agira `User.mcp_token`.
+  Every user gets one automatically and copies their ready-made connector URL
+  from **profile settings → "Claude MCP Integration"**, where they can also
+  rotate it (the old token dies immediately).
 - Agira maps the token to the user and records created items'
   **`responsible`** field. The user must have the Agira **"Agent"** role.
+- **Soft phase:** requests without a valid personal token are not rejected —
+  they act anonymously and are logged with a warning. A follow-up issue turns
+  this into a hard 401.
 
 ## Tools
 
@@ -86,5 +91,5 @@ https://agira.example.com/mcp?token=<their-mcp_token>
 
 > ⚠️ With the shared-secret model the MCP endpoint itself is the trust boundary.
 > Keep it behind VPN / IP-allowlist, and only hand out per-user `?token=` URLs.
-> User attribution comes from that token; revoke access via the admin action
-> *"Clear MCP token"*.
+> User attribution comes from that token; users rotate it in their profile,
+> admins revoke access via the admin action *"Clear MCP token"*.

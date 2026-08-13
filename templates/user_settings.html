@@ -179,6 +179,9 @@
             </div>
         </div>
 
+        <!-- Claude MCP Integration (#1119) -->
+        {% include "partials/user_mcp_token.html" %}
+
         <!-- User Information (read-only) -->
         <div class="card mb-4">
             <div class="card-header">
@@ -222,6 +225,42 @@
             form.appendChild(clearInput);
 
             form.submit();
+        }
+    }
+
+    // MCP token (#1119) — defined outside the HTMX swap target so the handlers
+    // survive a rotation swap.
+    function agiraToggleMcpToken() {
+        const field = document.getElementById('mcp-token-value');
+        const button = document.getElementById('mcp-token-toggle');
+        if (!field || !button) {
+            return;
+        }
+        const masked = field.dataset.masked;
+        const revealed = field.value !== masked;
+        field.value = revealed ? masked : field.dataset.full;
+        button.innerHTML = revealed
+            ? '<i class="bi bi-eye"></i> Anzeigen'
+            : '<i class="bi bi-eye-slash"></i> Verbergen';
+    }
+
+    function agiraCopyMcpUrl(button) {
+        const field = document.getElementById('mcp-connector-url');
+        if (!field) {
+            return;
+        }
+        const done = () => {
+            const original = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-check-lg"></i> Kopiert';
+            setTimeout(() => { button.innerHTML = original; }, 2000);
+        };
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(field.value).then(done);
+        } else {
+            // http:// dev hosts have no clipboard API — fall back to selection.
+            field.select();
+            document.execCommand('copy');
+            done();
         }
     }
 </script>

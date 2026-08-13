@@ -223,6 +223,11 @@ class ItemType(models.Model):
         return self.name
 
 
+# Recommended MCP token lifetime (#1119). Purely a soft nudge in the profile —
+# nothing expires or breaks when a token gets older than this.
+MCP_TOKEN_ROTATION_DAYS = 30
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
@@ -255,9 +260,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # Per-user token used by the Agira MCP server to attribute actions
     # (e.g. set as `responsible` on items created via Claude). Not a login credential.
+    # Generated automatically for every new user (#1119) so the connector URL in
+    # the profile is always ready to copy; clearing it revokes MCP access.
     mcp_token = models.CharField(max_length=64, unique=True, null=True, blank=True,
                                  help_text=_('Personal token for the Agira MCP connector (Claude). '
                                              'Leave empty to disable MCP access for this user.'))
+    mcp_token_last_rotated = models.DateTimeField(
+        null=True, blank=True,
+        help_text=_('When the MCP token was last generated or rotated. Drives the '
+                    'soft reminder to rotate it monthly.'))
 
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
@@ -274,10 +285,64 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f"{self.name} ({self.username})"
 
+    def save(self, *args, **kwargs):
+        """Give every newly created user an MCP token (#1119).
+
+        Only on creation and only when none was supplied: an administrator who
+        deliberately cleared a token (revoking MCP access) must not get it back
+        by simply saving the user again.
+        """
+        if self._state.adding and not self.mcp_token:
+            self.generate_mcp_token()
+        super().save(*args, **kwargs)
+
     def generate_mcp_token(self):
         """Generate and assign a new MCP token for this user (does not save)."""
         self.mcp_token = secrets.token_urlsafe(32)
+        self.mcp_token_last_rotated = timezone.now()
         return self.mcp_token
+
+    def rotate_mcp_token(self):
+        """Generate a new MCP token and persist it — the old one dies instantly."""
+        self.generate_mcp_token()
+        self.save(update_fields=['mcp_token', 'mcp_token_last_rotated'])
+        return self.mcp_token
+
+    def get_mcp_connector_url(self):
+        """Full MCP connector URL for this user, or '' if MCP access is revoked.
+
+        The token travels as a query parameter because Claude (Web) does not
+        reliably pass custom headers through its MCP connector.
+        """
+        if not self.mcp_token:
+            return ''
+        from django.conf import settings
+        return f"{settings.MCP_CONNECTOR_URL}?token={self.mcp_token}"
+
+    def get_mcp_token_masked(self):
+        """Token with only its last 4 characters visible (for the profile page)."""
+        if not self.mcp_token:
+            return ''
+        return f"{'•' * 12}{self.mcp_token[-4:]}"
+
+    @property
+    def mcp_token_age_days(self):
+        """Days since the token was last rotated, or None if that is unknown."""
+        if not self.mcp_token or not self.mcp_token_last_rotated:
+            return None
+        return (timezone.now() - self.mcp_token_last_rotated).days
+
+    @property
+    def mcp_token_needs_rotation(self):
+        """True when we should nudge the user to rotate (soft hint, never enforced).
+
+        A token whose rotation date is unknown predates #1119, so it is at least
+        as old as the feature — nudge for that one too.
+        """
+        if not self.mcp_token:
+            return False
+        age = self.mcp_token_age_days
+        return age is None or age >= MCP_TOKEN_ROTATION_DAYS
 
     def get_primary_org_short(self):
         """
