@@ -53,10 +53,13 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,agira.angermeier
 # Base URL for generating absolute URLs in emails (e.g., approval links)
 APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://localhost:8000')
 
-# Endpoint users enter in Claude as MCP connector (#1119). The per-user token is
-# appended as `?token=<mcp_token>`. Configurable because the MCP server may be
-# published under a different host than the app itself.
-MCP_CONNECTOR_URL = os.getenv('MCP_CONNECTOR_URL', f"{APP_BASE_URL.rstrip('/')}/mcp/")
+# Endpoint users enter in Claude as MCP connector (#1119, corrected #1120). The
+# per-user token is appended as `?token=<mcp_token>`. This must point at the MCP
+# server, which runs under its own host (e.g. https://agiramcp.example.de/mcp/)
+# and is NOT the Agira app host — so it is set per environment in the .env and
+# deliberately has no host-bearing default. Empty means "not configured", which
+# the profile surfaces instead of silently showing a wrong URL.
+MCP_CONNECTOR_URL = os.getenv('MCP_CONNECTOR_URL', '')
 CSRF_TRUSTED_ORIGINS = [
     "https://agira.angermeier.net",
     "https://agira.isarlabs.de",

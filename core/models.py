@@ -309,7 +309,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.mcp_token
 
     def get_mcp_connector_url(self):
-        """Full MCP connector URL for this user, or '' if MCP access is revoked.
+        """Full MCP connector URL for this user.
+
+        Returns '' when MCP access is revoked (no token) or when the deployment
+        has no MCP_CONNECTOR_URL configured (#1120) — the profile treats an empty
+        URL as "not configured" rather than guessing a host.
 
         The token travels as a query parameter because Claude (Web) does not
         reliably pass custom headers through its MCP connector.
@@ -317,6 +321,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.mcp_token:
             return ''
         from django.conf import settings
+        if not settings.MCP_CONNECTOR_URL:
+            return ''
         return f"{settings.MCP_CONNECTOR_URL}?token={self.mcp_token}"
 
     def get_mcp_token_masked(self):

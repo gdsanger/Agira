@@ -107,14 +107,22 @@ class McpTokenModelTests(TestCase):
         self.assertEqual(user.get_mcp_connector_url(), '')
         self.assertEqual(user.get_mcp_token_masked(), '')
 
-    @override_settings(MCP_CONNECTOR_URL='https://agira.example.com/mcp/')
+    @override_settings(MCP_CONNECTOR_URL='https://agiramcp.example.com/mcp/')
     def test_connector_url_carries_the_token(self):
         user = User.objects.create_user(username='u', email='u@example.com', name='U')
 
         self.assertEqual(
             user.get_mcp_connector_url(),
-            f'https://agira.example.com/mcp/?token={user.mcp_token}',
+            f'https://agiramcp.example.com/mcp/?token={user.mcp_token}',
         )
+
+    @override_settings(MCP_CONNECTOR_URL='')
+    def test_connector_url_is_empty_when_not_configured(self):
+        """A missing MCP_CONNECTOR_URL must fail visibly, not guess a host (#1120)."""
+        user = User.objects.create_user(username='u', email='u@example.com', name='U')
+
+        self.assertTrue(user.mcp_token)
+        self.assertEqual(user.get_mcp_connector_url(), '')
 
     def test_masked_token_only_shows_the_last_characters(self):
         user = User.objects.create_user(
@@ -126,7 +134,7 @@ class McpTokenModelTests(TestCase):
         self.assertNotIn('abcdefgh', masked)
 
 
-@override_settings(MCP_CONNECTOR_URL='https://agira.example.com/mcp/')
+@override_settings(MCP_CONNECTOR_URL='https://agiramcp.example.com/mcp/')
 class McpTokenProfileViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -141,9 +149,16 @@ class McpTokenProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn('Claude MCP Integration', content)
-        self.assertIn(f'https://agira.example.com/mcp/?token={self.user.mcp_token}', content)
+        self.assertIn(f'https://agiramcp.example.com/mcp/?token={self.user.mcp_token}', content)
         self.assertIn(self.user.get_mcp_token_masked(), content)
         self.assertIn('Token rollieren', content)
+
+    @override_settings(MCP_CONNECTOR_URL='')
+    def test_settings_page_flags_missing_connector_configuration(self):
+        response = self.client.get(reverse('user-settings'))
+
+        self.assertContains(response, 'MCP-Connector nicht konfiguriert')
+        self.assertNotContains(response, '?token=')
 
     def test_settings_page_shows_rotation_hint_for_old_token(self):
         User.objects.filter(pk=self.user.pk).update(

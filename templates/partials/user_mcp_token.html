@@ -50,6 +50,7 @@ of the rotate endpoint — keep it self-contained (id + outerHTML swap).
 
         <div class="mb-3">
             <label class="form-label fw-bold" for="mcp-connector-url">Connector-URL für Claude</label>
+            {% if mcp_connector_url %}
             <div class="input-group">
                 <input type="text" class="form-control font-monospace" id="mcp-connector-url"
                        readonly value="{{ mcp_connector_url }}">
@@ -66,6 +67,14 @@ of the rotate endpoint — keep it self-contained (id + outerHTML swap).
                 Empfehlung: Token alle {{ mcp_token_rotation_days }} Tage erneuern.
                 {% endif %}
             </div>
+            {% else %}
+            <div class="alert alert-danger mb-0" role="alert">
+                <i class="bi bi-exclamation-octagon-fill"></i>
+                MCP-Connector nicht konfiguriert. Die Server-Administration muss
+                <code>MCP_CONNECTOR_URL</code> in der Umgebung setzen, bevor du den Connector
+                in Claude einrichten kannst.
+            </div>
+            {% endif %}
         </div>
         {% else %}
         <div class="alert alert-warning" role="alert">
