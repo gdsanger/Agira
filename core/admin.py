@@ -114,9 +114,10 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Personal info', {'fields': ('name', 'email', 'role', 'active')}),
-        ('MCP / Claude', {'fields': ('mcp_token',),
-                          'description': 'Token for the Agira MCP connector. Use the '
-                                         '"Generate MCP token" action to create one.'}),
+        ('MCP / Claude', {'fields': ('mcp_token', 'mcp_token_last_rotated'),
+                          'description': 'Token for the Agira MCP connector. New users get one '
+                                         'automatically; users rotate it themselves in their '
+                                         'profile. Use the "Generate MCP token" action to reset it.'}),
         ('Permissions', {'fields': ('is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
@@ -128,20 +129,19 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ['last_login', 'date_joined']
+    readonly_fields = ['last_login', 'date_joined', 'mcp_token_last_rotated']
 
     @admin.action(description='Generate MCP token')
     def generate_mcp_tokens(self, request, queryset):
         count = 0
         for user in queryset:
-            user.generate_mcp_token()
-            user.save(update_fields=['mcp_token'])
+            user.rotate_mcp_token()
             count += 1
         self.message_user(request, f'Generated MCP token for {count} user(s).')
 
     @admin.action(description='Clear MCP token (revoke access)')
     def clear_mcp_tokens(self, request, queryset):
-        count = queryset.update(mcp_token=None)
+        count = queryset.update(mcp_token=None, mcp_token_last_rotated=None)
         self.message_user(request, f'Cleared MCP token for {count} user(s).')
 
 

@@ -13,6 +13,7 @@ urlpatterns = [
     # User Settings URLs
     path('user/settings/', views.user_settings, name='user-settings'),
     path('user/settings/update/', views.user_settings_update, name='user-settings-update'),
+    path('user/settings/mcp-token/rotate/', views.user_mcp_token_rotate, name='user-mcp-token-rotate'),
     path('users/search/', views.user_search, name='user-search'),
 
     # Azure AD SSO authentication URLs

@@ -34,7 +34,7 @@ from .models import (
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
     GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
     ClaudeQueueJob, ClaudeQueueJobKind, ClaudeQueueJobStatus, ClaudeQueueJobModel,
-    ClaudeQueueJobAuthMode)
+    ClaudeQueueJobAuthMode, MCP_TOKEN_ROTATION_DAYS)
 
 
 from .services.workflow import ItemWorkflowGuard
@@ -12119,6 +12119,23 @@ def item_apply_blueprint_submit(request, item_id):
 
 # User Settings Views
 
+def _mcp_token_context(user):
+    """Context for the "Claude MCP Integration" section of the profile (#1119).
+
+    The token itself *is* rendered here (unlike the Claude credentials above):
+    the user has to paste it into Claude, and it is their own page. It starts
+    masked and is revealed on demand.
+    """
+    return {
+        'mcp_token': user.mcp_token,
+        'mcp_token_masked': user.get_mcp_token_masked(),
+        'mcp_connector_url': user.get_mcp_connector_url(),
+        'mcp_token_age_days': user.mcp_token_age_days,
+        'mcp_token_needs_rotation': user.mcp_token_needs_rotation,
+        'mcp_token_rotation_days': MCP_TOKEN_ROTATION_DAYS,
+    }
+
+
 @login_required
 def user_settings(request):
     """User Settings view for managing personal preferences."""
@@ -12130,7 +12147,30 @@ def user_settings(request):
         'has_claude_oauth_token': request.user.has_claude_oauth_token(),
         'has_claude_api_key': request.user.has_claude_api_key(),
     }
+    context.update(_mcp_token_context(request.user))
     return render(request, 'user_settings.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def user_mcp_token_rotate(request):
+    """Rotate the caller's personal MCP token and re-render the section (HTMX).
+
+    Rotation is immediate and irreversible for the old token — the confirmation
+    dialog lives in the template, and the fresh connector URL is rendered right
+    back so the user can paste it into Claude without another page load.
+    """
+    request.user.rotate_mcp_token()
+    logger.info('MCP token rotated for user %s', request.user.username)
+
+    context = _mcp_token_context(request.user)
+    context['mcp_token_just_rotated'] = True
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'partials/user_mcp_token.html', context)
+
+    messages.success(request, 'MCP-Token wurde rotiert. Trage die neue URL in Claude ein.')
+    return redirect('user-settings')
 
 
 # Personal secrets editable from the profile: form field -> (attribute, label).

@@ -173,17 +173,26 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 6. Per-User-Tokens vergeben
 
-Im **Django-Admin**:
-1. User auswählen (muss Rolle **„Agent"** haben, damit `responsible` greift).
-2. Aktion **„Generate MCP token"** ausführen → Token wird in `User.mcp_token`
-   gespeichert.
-3. Dem User seine persönliche Connector-URL geben:
-   `https://agiramcp.isarlabs.de/mcp?token=<sein-token>`
+**Selfservice (Regelfall):** Jeder User findet seinen Token und die fertige
+Connector-URL unter **Benutzerprofil → Einstellungen → „Claude MCP Integration"**
+und kann ihn dort jederzeit per **„Token rollieren"** erneuern (der alte Token
+ist sofort ungültig). Neue User bekommen ihren Token automatisch beim Anlegen.
+Nach 30 Tagen weist das Profil auf eine Erneuerung hin — erzwungen wird nichts.
 
-Widerruf: Aktion **„Clear MCP token"**.
+Die dort angezeigte URL kommt aus `MCP_CONNECTOR_URL` (Default:
+`<APP_BASE_URL>/mcp/`) — auf den öffentlichen MCP-Endpunkt setzen, z. B.
+`https://agiramcp.isarlabs.de/mcp/`.
+
+Im **Django-Admin** (Notfall/Support): Aktion **„Generate MCP token"** setzt
+einen neuen Token, **„Clear MCP token"** widerruft den Zugang.
+Für `responsible` braucht der User zusätzlich die Rolle **„Agent"**.
 
 > Tokens sind Zugangsdaten — wie ein Passwort behandeln, nicht im Klartext
 > teilen, bei Verdacht neu generieren.
+
+**Soft-Phase:** Requests ohne (oder mit unbekanntem) Token werden derzeit
+*nicht* abgelehnt, sondern laufen anonym weiter und erzeugen eine Warnung im
+Log. Der harte 401 folgt in einem eigenen Issue („MCP Token Enforcement").
 
 ---
 

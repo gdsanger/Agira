@@ -19,22 +19,69 @@ logger = logging.getLogger(__name__)
 
 # Header used by the Agira MCP server to identify the acting user.
 MCP_USER_TOKEN_HEADER = 'HTTP_X_AGIRA_USER_TOKEN'
+# Query parameter carrying the same token — Claude (Web) does not reliably pass
+# custom headers through its MCP connector, so the personal connector URL uses
+# `?token=<mcp_token>` and the MCP server may forward it unchanged.
+MCP_USER_TOKEN_PARAM = 'token'
+
+
+# Sentinel distinguishing "not resolved yet" from the resolved value None
+# (= valid request, but no user behind the token).
+_MCP_UNRESOLVED = object()
+
+
+def get_mcp_token(request):
+    """Return the per-user MCP token carried by this request ('' if none).
+
+    Header first, query parameter second: the header is the machine-to-machine
+    path (MCP server -> Agira), the query parameter the one a user pastes into
+    Claude.
+    """
+    token = request.META.get(MCP_USER_TOKEN_HEADER, '').strip()
+    if not token:
+        token = request.GET.get(MCP_USER_TOKEN_PARAM, '').strip()
+    return token
 
 
 def resolve_mcp_user(request):
     """
-    Resolve the acting user from the per-user MCP token header.
+    Resolve the acting user from the per-user MCP token and cache it on the request.
 
-    The MCP server forwards the connecting user's personal token in the
-    `x-agira-user-token` header. We map it to a User via `mcp_token`.
+    Soft phase (#1119): a missing or unknown token is *not* an error. The request
+    keeps working with the generic, org-level access it had before — we only log
+    a warning so the switch to per-user tokens becomes visible before a follow-up
+    issue turns it into a hard 401.
+
+    Side effect:
+        Sets `request.mcp_user` to the resolved User or None.
 
     Returns:
         User instance if a valid token was provided, otherwise None.
     """
-    token = request.META.get(MCP_USER_TOKEN_HEADER, '').strip()
+    cached = getattr(request, 'mcp_user', _MCP_UNRESOLVED)
+    if cached is not _MCP_UNRESOLVED:
+        # Already resolved by the API middleware — don't query or warn twice.
+        return cached
+
+    token = get_mcp_token(request)
     if not token:
+        logger.warning(
+            'MCP request without a per-user token (%s) — falling back to anonymous '
+            'org-level access. Users should switch to their personal connector URL.',
+            request.path,
+        )
+        request.mcp_user = None
         return None
-    return User.objects.filter(mcp_token=token, active=True).first()
+
+    user = User.objects.filter(mcp_token=token, active=True).first()
+    if user is None:
+        logger.warning(
+            'MCP request with an unknown or inactive per-user token (%s) — falling '
+            'back to anonymous org-level access.',
+            request.path,
+        )
+    request.mcp_user = user
+    return user
 
 
 # Helper function to serialize Project model
