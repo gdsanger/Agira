@@ -36,6 +36,8 @@ class ItemListDeleteTestCase(TestCase):
             name="Test Project",
             status=ProjectStatus.WORKING
         )
+        # Item lists are scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.user)
         
         # Create item type
         self.item_type = ItemType.objects.create(

@@ -48,6 +48,8 @@ class DashboardViewsTestCase(TestCase):
             status=ProjectStatus.WORKING
         )
         self.project.clients.add(self.org)
+        # Dashboard KPIs are scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.user)
         
         # Create item type
         self.item_type = ItemType.objects.create(

@@ -27,6 +27,8 @@ class CommentCountListViewTestCase(TestCase):
         self.user.save()
 
         self.project = Project.objects.create(name='Project X', status=ProjectStatus.WORKING)
+        # Item lists are scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.user)
         self.item_type = ItemType.objects.create(key='bug', name='Bug')
 
         self.item_no_comments = Item.objects.create(

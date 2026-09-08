@@ -43,6 +43,8 @@ class KanbanViewTestCase(TestCase):
             github_owner='testowner',
             github_repo='testrepo'
         )
+        # The Kanban board is scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.user)
         
         # Create item type
         self.item_type = ItemType.objects.create(
