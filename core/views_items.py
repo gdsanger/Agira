@@ -3,7 +3,9 @@ Class-based views for Item list views using django-tables2 and django-filter.
 """
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.views.generic import ListView
+from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponse
 from django.db.models import Count
@@ -15,6 +17,7 @@ from django.conf import settings
 from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
 from .tables import ItemTable
 from .filters import ItemFilter, KanbanFilter
+from .services.workflow import ItemWorkflowGuard
 from .visibility import scope_items
 
 
@@ -369,6 +372,56 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
         context['page_description'] = 'All non-closed items organized by status'
         
         return context
+
+
+@login_required
+@require_POST
+def item_list_status_update(request, item_id):
+    """Change an item's status straight from a list view — without any mail flow (#1249).
+
+    Deliberately a separate endpoint from ``item_change_status``: that one is the
+    DetailView path and, after the transition, evaluates ``check_mail_trigger`` and
+    hands a mail preview back so the detail page can open its mail confirmation
+    modal. A list row has nowhere to show that modal and no way to let the user
+    confirm or cancel the mail, so a list-driven change must never enter that flow.
+
+    This endpoint therefore does exactly one thing: run the existing
+    ``ItemWorkflowGuard`` transition (status-choice validation + activity log, the
+    same validation the detail path uses) and swap the re-rendered status cell back
+    in. Permissions match the detail path: authenticated users, no item-level rules.
+
+    Returns the ``partials/item_status_cell.html`` fragment - 200 on success, 400
+    with an error message on a rejected status. In both cases the fragment is
+    rendered from the *persisted* status, so a rejected change snaps the select back
+    to what is actually stored instead of leaving the user's pick on screen.
+    """
+    item = get_object_or_404(Item, id=item_id)
+    new_status = (request.POST.get('status') or '').strip()
+
+    error = None
+    if not new_status:
+        error = 'Kein Status übermittelt.'
+    else:
+        try:
+            ItemWorkflowGuard().transition(item, new_status, actor=request.user)
+        except ValidationError as exc:
+            error = ' '.join(exc.messages)
+
+    if error:
+        # Drop whatever the rejected attempt may have left on the instance.
+        item.refresh_from_db()
+
+    return render(
+        request,
+        'partials/item_status_cell.html',
+        {
+            'item': item,
+            'status_choices': ItemStatus.choices,
+            'status_error': error,
+            'status_saved': error is None,
+        },
+        status=400 if error else 200,
+    )
 
 
 @login_required

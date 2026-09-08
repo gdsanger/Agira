@@ -57,9 +57,10 @@
     <table class="table table-hover">
         <thead>
             <tr>
+                <th style="width: 70px;">ID</th>
                 <th>Title</th>
                 <th>Type</th>
-                <th>Status</th>
+                <th style="width: 180px;">Status</th>
                 <th>Solution Release</th>
                 <th>Updated</th>
             </tr>
@@ -67,28 +68,17 @@
         <tbody>
             {% for item in page_obj %}
             <tr>
+                <td class="text-muted small" style="cursor: pointer;" onclick="window.location='{% url 'item-detail' item.id %}'">
+                    <span class="text-muted">#{{ item.id }}</span>
+                </td>
                 <td style="cursor: pointer;" onclick="window.location='{% url 'item-detail' item.id %}'">
                     <strong>{{ item.title }}</strong>
                 </td>
                 <td style="cursor: pointer;" onclick="window.location='{% url 'item-detail' item.id %}'">
                     {{ item.type.name }}
                 </td>
-                <td style="cursor: pointer;" onclick="window.location='{% url 'item-detail' item.id %}'">
-                    {% if item.status == 'Inbox' %}
-                    <span class="badge bg-info">{{ item.status }}</span>
-                    {% elif item.status == 'Backlog' %}
-                    <span class="badge bg-secondary">{{ item.status }}</span>
-                    {% elif item.status == 'Working' %}
-                    <span class="badge bg-primary">{{ item.status }}</span>
-                    {% elif item.status == 'Testing' %}
-                    <span class="badge bg-warning">{{ item.status }}</span>
-                    {% elif item.status == 'ReadyForRelease' %}
-                    <span class="badge bg-success">Ready for Release</span>
-                    {% elif item.status == 'Closed' %}
-                    <span class="badge bg-success">{{ item.status }}</span>
-                    {% else %}
-                    <span class="badge bg-secondary">{{ item.status }}</span>
-                    {% endif %}
+                <td class="item-status-cell-td">
+                    {% include 'partials/item_status_cell.html' with item=item status_choices=status_choices %}
                 </td>
                 <td onclick="event.stopPropagation();">
                     <select class="form-select form-select-sm"
