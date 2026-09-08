@@ -158,10 +158,15 @@ class ProjectAdmin(admin.ModelAdmin):
     list_display = ['name', 'status', 'github_owner', 'github_repo', 'sentry_enable_auto_fetch']
     list_filter = ['status', 'sentry_enable_auto_fetch']
     search_fields = ['name', 'github_owner', 'github_repo']
-    filter_horizontal = ['clients']
-    
+    filter_horizontal = ['clients', 'members']
+
     fieldsets = (
         (None, {'fields': ('name', 'description', 'status', 'clients')}),
+        ('UserUI visibility', {
+            'fields': ('members',),
+            'description': 'Users for whom this project shows up in the UserUI. '
+                           'A visibility filter, not a permission — see #1248.',
+        }),
         ('GitHub', {'fields': ('github_owner', 'github_repo')}),
         ('Sentry', {
             'fields': ('sentry_dsn', 'sentry_project_slug', 'sentry_auth_token', 'sentry_enable_auto_fetch'),
