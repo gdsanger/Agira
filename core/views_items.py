@@ -15,6 +15,7 @@ from django.conf import settings
 from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
 from .tables import ItemTable
 from .filters import ItemFilter, KanbanFilter
+from .visibility import scope_items
 
 
 class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
@@ -25,7 +26,7 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
     to provide filtering, sorting, and pagination for Items.
     
     The status scope is fixed and cannot be removed via UI filters.
-    Pipeline order: Status-Scope → Filter → Table
+    Pipeline order: Visibility-Scope → Status-Scope → Filter → Table
     """
     model = Item
     table_class = ItemTable
@@ -43,18 +44,22 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
     
     def get_queryset(self):
         """
-        Get the base queryset filtered by status.
-        
+        Get the base queryset filtered by visibility and status.
+
         This enforces the status scope before any other filters are applied.
         The status scope cannot be removed via UI filters.
         """
         if self.item_status is None:
             raise NotImplementedError("Subclasses must set item_status")
-        
+
         # Base queryset with status scope (fixed, not UI-removable)
         # comment_count is annotated here (single aggregate query) so the table
         # can display it without triggering a per-row query.
-        queryset = Item.objects.filter(status=self.item_status).select_related(
+        # The visibility scope (#1248) sits outermost: search, filters, sorting
+        # and pagination all run on the user's own slice of the data.
+        queryset = scope_items(
+            Item.objects.filter(status=self.item_status), self.request.user
+        ).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to'
         ).annotate(comment_count=Count('comments'))
 
@@ -88,7 +93,9 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         filtered_qs = self.get_queryset()
         
         # Apply user filters if any
-        filterset = self.filterset_class(self.request.GET, queryset=filtered_qs)
+        filterset = self.filterset_class(
+            self.request.GET, queryset=filtered_qs, request=self.request
+        )
         if filterset.is_valid():
             filtered_qs = filterset.qs
         
@@ -178,7 +185,7 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
 
     Similar to StatusItemListView but filters by user relationship instead of status.
     Shows items across all statuses (except closed) for the current user.
-    Pipeline order: User-Scope → Filter → Table
+    Pipeline order: Visibility-Scope → User-Scope → Filter → Table
     """
     model = Item
     table_class = ItemTable
@@ -205,11 +212,16 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
             raise NotImplementedError("Subclasses must set user_field")
 
         # Base queryset with user scope (fixed, not UI-removable)
-        # Exclude closed items by default
+        # Exclude closed items by default.
+        # The visibility scope (#1248) applies here too: item visibility is
+        # derived from the project, so an item in a project that is not assigned
+        # to the user stays hidden even when the user is its assignee.
         filter_kwargs = {
             self.user_field: self.request.user,
         }
-        queryset = Item.objects.filter(**filter_kwargs).exclude(
+        queryset = scope_items(
+            Item.objects.filter(**filter_kwargs), self.request.user
+        ).exclude(
             status=ItemStatus.CLOSED
         ).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to'
@@ -245,7 +257,9 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         filtered_qs = self.get_queryset()
 
         # Apply user filters if any
-        filterset = self.filterset_class(self.request.GET, queryset=filtered_qs)
+        filterset = self.filterset_class(
+            self.request.GET, queryset=filtered_qs, request=self.request
+        )
         if filterset.is_valid():
             filtered_qs = filterset.qs
 
@@ -313,9 +327,11 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
     
     def get_queryset(self):
         """
-        Get all non-closed items with related data.
+        Get all non-closed items the current user can see, with related data.
         """
-        queryset = Item.objects.exclude(status=ItemStatus.CLOSED).select_related(
+        queryset = scope_items(
+            Item.objects.all(), self.request.user
+        ).exclude(status=ItemStatus.CLOSED).select_related(
             'project', 'type', 'organisation', 'requester', 'assigned_to', 'solution_release'
         ).prefetch_related('external_mappings').annotate(comment_count=Count('comments'))
 
@@ -412,7 +428,7 @@ def item_list_delete(request, item_id):
     # Get queryset and apply filters
     queryset = view_instance.get_queryset()
     filterset_class = view_instance.filterset_class
-    filterset = filterset_class(request.GET, queryset=queryset)
+    filterset = filterset_class(request.GET, queryset=queryset, request=request)
     
     # Create table instance
     table_class = view_instance.table_class

@@ -11,6 +11,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from core.models import Project
+from core.visibility import visible_projects_for
 from .services.firstaid_service import FirstAIDService
 
 logger = logging.getLogger(__name__)
@@ -26,9 +27,9 @@ def firstaid_home(request):
     - Middle: Chat interface
     - Right: Tools/Actions
     """
-    # Get all projects for the project selector
-    projects = Project.objects.all().order_by('name')
-    
+    # Projects offered in the selector — the user's own (#1248)
+    projects = visible_projects_for(request.user)
+
     # Get selected project from query param or session
     project_id = request.GET.get('project')
     if not project_id:
