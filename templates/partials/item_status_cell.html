@@ -1,0 +1,37 @@
+{% comment %}
+Inline status editor for Item list views (#1249).
+
+One fragment for every item list — the django-tables2 tables render it through
+`ItemListColumnsMixin.render_status`, hand-written lists include it directly — so
+`/items/{status}/`, the project detail items tab and the nested lists all get the
+same markup, the same endpoint and the same error handling.
+
+Mail-free by construction: it posts to `item-list-status`, which only performs the
+workflow transition. The DetailView mail trigger / mail modal is not reachable here.
+
+Context: `item`, `status_choices` (from ItemStatus.choices), optional `status_error`
+and `status_saved`.
+{% endcomment %}
+<div class="item-status-cell" id="item-status-cell-{{ item.pk }}">
+    <select class="form-select form-select-sm item-status-select"
+            name="status"
+            aria-label="Status von Item #{{ item.pk }}"
+            hx-post="{% url 'item-list-status' item.pk %}"
+            hx-trigger="change"
+            hx-target="#item-status-cell-{{ item.pk }}"
+            hx-swap="outerHTML"
+            onclick="event.stopPropagation();">
+        {% for value, label in status_choices %}
+        <option value="{{ value }}"{% if value == item.status %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    {% if status_error %}
+    <span class="item-status-feedback item-status-feedback-error text-danger small d-block mt-1" role="alert">
+        <i class="bi bi-exclamation-circle me-1"></i>{{ status_error }}
+    </span>
+    {% elif status_saved %}
+    <span class="item-status-feedback item-status-feedback-ok text-success small d-block mt-1" role="status">
+        <i class="bi bi-check-circle me-1"></i>Gespeichert
+    </span>
+    {% endif %}
+</div>

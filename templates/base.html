@@ -42,6 +42,37 @@
         });
     </script>
     
+    <!-- Inline status editing in item lists (#1249) -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // The mail-free list status endpoint answers a rejected status with 400 and
+            // the cell re-rendered from the *stored* status. HTMX skips swaps on error
+            // responses by default, which would leave the rejected pick on screen, so
+            // allow the swap for status cells specifically.
+            document.body.addEventListener('htmx:beforeSwap', function(evt) {
+                var target = evt.detail.target;
+                if (target && target.classList && target.classList.contains('item-status-cell')) {
+                    if (evt.detail.xhr.status === 400 || evt.detail.xhr.status === 422) {
+                        evt.detail.shouldSwap = true;
+                        evt.detail.isError = false;
+                    }
+                }
+            });
+        });
+    </script>
+    <style>
+        /* Inline status feedback in item lists (#1249): the "Gespeichert" hint fades,
+           the error message stays until the next attempt. */
+        .item-status-feedback-ok {
+            animation: itemStatusSavedFade 2.4s ease-out forwards;
+        }
+        @keyframes itemStatusSavedFade {
+            0%   { opacity: 1; }
+            70%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+
     {% block extra_head %}{% endblock %}
 </head>
 <body>

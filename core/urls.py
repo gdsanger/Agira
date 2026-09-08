@@ -76,6 +76,7 @@ urlpatterns = [
     path('items/<int:item_id>/assign-responsible/', views.item_assign_responsible, name='item-assign-responsible'),
     path('items/<int:item_id>/delete/', views.item_delete, name='item-delete'),
     path('items/<int:item_id>/list-delete/', views_items.item_list_delete, name='item-list-delete'),
+    path('items/<int:item_id>/list-status/', views_items.item_list_status_update, name='item-list-status'),
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
     path('items/<int:item_id>/send-status-update/', views.item_send_status_update, name='item-send-status-update'),
     path('items/<int:item_id>/move-project/', views.item_move_project, name='item-move-project'),

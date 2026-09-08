@@ -2,16 +2,79 @@
 Django tables for Item model.
 """
 import django_tables2 as tables
+from django.template.loader import render_to_string
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import Item, Release
+from .models import Item, ItemStatus, Release
 
 
-class ItemTable(tables.Table):
+# Badge colours for the read-only status rendering (customer portal).
+ITEM_STATUS_BADGE_CLASSES = {
+    'Inbox': 'bg-info',
+    'Backlog': 'bg-secondary',
+    'Working': 'bg-warning',
+    'Testing': 'bg-primary',
+    'Review': 'bg-light text-dark',
+    'ReadyForRelease': 'bg-success',
+    'Closed': 'bg-dark',
+}
+
+
+def render_item_status_badge(value):
+    """Render a status value as a read-only badge."""
+    display_text = dict(ItemStatus.choices).get(value, value)
+    return format_html(
+        '<span class="badge {}">{}</span>',
+        ITEM_STATUS_BADGE_CLASSES.get(value, 'bg-secondary'),
+        display_text,
+    )
+
+
+class ItemListColumnsMixin(tables.Table):
+    """Shared ID and inline-editable status columns for every internal item list (#1249).
+
+    Lives in one place so the root lists (``/items/{status}/``) and the nested ones
+    (related items, release items) show the same visible ID, the same status and the
+    same inline editor instead of drifting apart. The status select posts to the
+    mail-free ``item-list-status`` endpoint - the DetailView mail flow stays out of
+    lists entirely.
+
+    Not applied to :class:`EmbedItemTable`: the customer portal is read-only and
+    unauthenticated, so it keeps its status badge.
+    """
+
+    id = tables.Column(
+        verbose_name='ID',
+        orderable=True,
+        attrs={
+            'td': {'class': 'text-muted small'},
+            'th': {'style': 'width: 70px;'},
+        },
+    )
+
+    status = tables.Column(
+        verbose_name='Status',
+        orderable=True,
+        attrs={'td': {'class': 'item-status-cell-td'}, 'th': {'style': 'width: 180px;'}},
+    )
+
+    def render_id(self, value):
+        """Render the item ID as a `#123` prefix - visible text, not just a link target."""
+        return format_html('<span class="text-muted">#{}</span>', value)
+
+    def render_status(self, record):
+        """Render the shared inline status editor fragment."""
+        return render_to_string(
+            'partials/item_status_cell.html',
+            {'item': record, 'status_choices': ItemStatus.choices},
+        )
+
+
+class ItemTable(ItemListColumnsMixin, tables.Table):
     """
     Table for displaying Item list with sortable columns.
     """
-    
+
     # Updated at column
     updated_at = tables.DateTimeColumn(
         verbose_name='Updated',
@@ -90,7 +153,7 @@ class ItemTable(tables.Table):
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('updated_at', 'title', 'type', 'project', 'organisation', 'requester', 'assigned_to', 'comments', 'actions')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'project', 'organisation', 'requester', 'assigned_to', 'comments', 'actions')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -192,12 +255,12 @@ class ItemTable(tables.Table):
         )
 
 
-class RelatedItemsTable(tables.Table):
+class RelatedItemsTable(ItemListColumnsMixin, tables.Table):
     """
     Table for displaying related (child) items.
     Shows items that have a relation from the parent item with type='Related'.
     """
-    
+
     # Updated at column
     updated_at = tables.DateTimeColumn(
         verbose_name='Updated',
@@ -221,12 +284,6 @@ class RelatedItemsTable(tables.Table):
         accessor='type__name'
     )
     
-    # Status column
-    status = tables.Column(
-        verbose_name='Status',
-        orderable=True
-    )
-    
     # Assigned to column
     assigned_to = tables.Column(
         verbose_name='Assigned To',
@@ -235,11 +292,11 @@ class RelatedItemsTable(tables.Table):
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
-    
+
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('updated_at', 'title', 'type', 'status', 'assigned_to')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'assigned_to')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -278,32 +335,6 @@ class RelatedItemsTable(tables.Table):
         return format_html(
             '<span class="badge bg-secondary">{}</span>',
             record.type.name
-        )
-    
-    def render_status(self, value):
-        """
-        Render status column as a badge with emoji.
-        """
-        from .models import ItemStatus
-        status_dict = dict(ItemStatus.choices)
-        display_text = status_dict.get(value, value)
-        
-        # Color mapping for status badges
-        status_colors = {
-            'Inbox': 'bg-info',
-            'Backlog': 'bg-secondary',
-            'Working': 'bg-warning',
-            'Testing': 'bg-primary',
-            'Review': 'bg-light text-dark',
-            'ReadyForRelease': 'bg-success',
-            'Closed': 'bg-dark',
-        }
-        color = status_colors.get(value, 'bg-secondary')
-        
-        return format_html(
-            '<span class="badge {}">{}</span>',
-            color,
-            display_text
         )
     
     def render_assigned_to(self, value, record):
@@ -406,30 +437,13 @@ class EmbedItemTable(tables.Table):
     
     def render_status(self, value):
         """
-        Render status column as a badge with emoji.
+        Render status column as a read-only badge.
+
+        The customer portal stays read-only: it is unauthenticated, so it never
+        gets the inline status editor the internal lists use.
         """
-        from .models import ItemStatus
-        status_dict = dict(ItemStatus.choices)
-        display_text = status_dict.get(value, value)
-        
-        # Color mapping for status badges
-        status_colors = {
-            'Inbox': 'bg-info',
-            'Backlog': 'bg-secondary',
-            'Working': 'bg-warning',
-            'Testing': 'bg-primary',
-            'Review': 'bg-light text-dark',
-            'ReadyForRelease': 'bg-success',
-            'Closed': 'bg-dark',
-        }
-        color = status_colors.get(value, 'bg-secondary')
-        
-        return format_html(
-            '<span class="badge {}">{}</span>',
-            color,
-            display_text
-        )
-    
+        return render_item_status_badge(value)
+
     def render_solution_release(self, value, record):
         """
         Render solution_release column with em dash for empty values.
@@ -457,12 +471,12 @@ class EmbedItemTable(tables.Table):
         return ''
 
 
-class ReleaseItemsTable(tables.Table):
+class ReleaseItemsTable(ItemListColumnsMixin, tables.Table):
     """
     Table for displaying items associated with a specific release.
     Similar to ItemTable but excludes the release column.
     """
-    
+
     # Updated at column
     updated_at = tables.DateTimeColumn(
         verbose_name='Updated',
@@ -486,12 +500,6 @@ class ReleaseItemsTable(tables.Table):
         accessor='type__name'
     )
     
-    # Status column
-    status = tables.Column(
-        verbose_name='Status',
-        orderable=True
-    )
-    
     # Organisation column
     organisation = tables.Column(
         verbose_name='Organisation',
@@ -500,7 +508,7 @@ class ReleaseItemsTable(tables.Table):
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
-    
+
     # Assigned to column
     assigned_to = tables.Column(
         verbose_name='Assigned To',
@@ -509,11 +517,11 @@ class ReleaseItemsTable(tables.Table):
         attrs={'td': {'class': 'small'}},
         empty_values=()
     )
-    
+
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('updated_at', 'title', 'type', 'status', 'organisation', 'assigned_to')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'organisation', 'assigned_to')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -552,32 +560,6 @@ class ReleaseItemsTable(tables.Table):
         return format_html(
             '<span class="badge bg-secondary">{}</span>',
             record.type.name
-        )
-    
-    def render_status(self, value):
-        """
-        Render status column as a badge with emoji.
-        """
-        from .models import ItemStatus
-        status_dict = dict(ItemStatus.choices)
-        display_text = status_dict.get(value, value)
-        
-        # Color mapping for status badges
-        status_colors = {
-            'Inbox': 'bg-info',
-            'Backlog': 'bg-secondary',
-            'Working': 'bg-warning',
-            'Testing': 'bg-primary',
-            'Review': 'bg-light text-dark',
-            'ReadyForRelease': 'bg-success',
-            'Closed': 'bg-dark',
-        }
-        color = status_colors.get(value, 'bg-secondary')
-        
-        return format_html(
-            '<span class="badge {}">{}</span>',
-            color,
-            display_text
         )
     
     def render_organisation(self, value, record):
