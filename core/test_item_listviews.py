@@ -53,6 +53,11 @@ class ItemListViewTestCase(TestCase):
             name="Project Beta",
             status=ProjectStatus.WORKING
         )
+
+        # Item lists are scoped to the projects assigned to the user (#1248);
+        # user1 is the one logging in below.
+        self.project1.members.add(self.user1)
+        self.project2.members.add(self.user1)
         
         # Create item types
         self.bug_type = ItemType.objects.create(
@@ -377,6 +382,8 @@ class UserScopedItemListViewTestCase(TestCase):
             name="Test Project",
             status=ProjectStatus.WORKING
         )
+        # Item lists are scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.agent_user, self.regular_user)
 
         # Create item type
         self.item_type = ItemType.objects.create(

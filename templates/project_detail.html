@@ -192,6 +192,11 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="members-tab" data-bs-toggle="tab" data-bs-target="#members" type="button" role="tab" aria-controls="members">
+                    Members <span class="badge bg-secondary">{{ members|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#project-attachments" type="button" role="tab" aria-controls="project-attachments">
                     Attachments <span class="badge bg-secondary">{{ attachments_count }}</span>
                 </button>
@@ -398,7 +403,41 @@
                 </div>
                 {% endif %}
             </div>
-            
+
+            <!-- Members Tab -->
+            <div class="tab-pane fade" id="members" role="tabpanel" aria-labelledby="members-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>Members</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+                        + Add Member
+                    </button>
+                </div>
+                <p class="text-muted small">
+                    Members see this project and its items in their UserUI. This is a visibility
+                    filter to keep lists relevant — it grants and revokes no permissions.
+                </p>
+                {% if members %}
+                <div class="list-group">
+                    {% for member in members %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ member.name }} <span class="text-muted">({{ member.username }})</span></span>
+                        <button class="btn btn-sm btn-danger"
+                                hx-post="{% url 'project-remove-member' project.id %}"
+                                hx-vals='{"user_id": "{{ member.id }}"}'
+                                hx-swap="none"
+                                hx-on::after-request="handleClientResponse(event)">
+                            Remove
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No members assigned to this project yet — nobody sees it in their UserUI.
+                </div>
+                {% endif %}
+            </div>
+
             <!-- Attachments Tab -->
             <div class="tab-pane fade" id="project-attachments" role="tabpanel" aria-labelledby="attachments-tab"
                  hx-get="{% url 'project-attachments-tab' project.id %}"
@@ -595,7 +634,7 @@ function applyItemsFiltersFromStorage(event) {
     const storageKey = 'projectDetail.activeTab.{{ project.id|escapejs }}';
     
     // List of valid tab IDs for this view
-    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'attachments-tab', 'costs-tab'];
+    const validTabIds = ['items-tab', 'nodes-tab', 'releases-tab', 'clients-tab', 'members-tab', 'attachments-tab', 'costs-tab'];
     
     // Restore active tab on page load
     function restoreActiveTab() {

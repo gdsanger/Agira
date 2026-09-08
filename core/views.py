@@ -37,6 +37,7 @@ from .models import (
     ClaudeQueueJobAuthMode, MCP_TOKEN_ROTATION_DAYS)
 
 
+from .visibility import scope_items, visible_projects_for
 from .services.workflow import ItemWorkflowGuard
 from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
@@ -168,15 +169,19 @@ def dashboard(request):
     """Dashboard page view with KPIs and activity overview."""
     from datetime import timedelta, date
     from django.db.models.functions import TruncDate
-    
+
+    # Item KPIs count the same data the item lists show (#1248): a number the
+    # user cannot drill into would be worse than no number at all.
+    items = scope_items(Item.objects.all(), request.user)
+
     # Calculate KPIs
     kpis = {
-        'inbox_count': Item.objects.filter(status=ItemStatus.INBOX).count(),
-        'backlog_count': Item.objects.filter(status=ItemStatus.BACKLOG).count(),
-        'in_progress_count': Item.objects.filter(
+        'inbox_count': items.filter(status=ItemStatus.INBOX).count(),
+        'backlog_count': items.filter(status=ItemStatus.BACKLOG).count(),
+        'in_progress_count': items.filter(
             status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
         ).count(),
-        'closed_7d_count': Item.objects.filter(
+        'closed_7d_count': items.filter(
             status=ItemStatus.CLOSED,
             updated_at__gte=timezone.now() - timedelta(days=7)
         ).count(),
@@ -199,7 +204,7 @@ def dashboard(request):
     days_ago_7 = today - timedelta(days=6)  # Include today = 7 days total
     
     # Get closed items grouped by date
-    closed_by_day = Item.objects.filter(
+    closed_by_day = items.filter(
         status=ItemStatus.CLOSED,
         updated_at__gte=timezone.make_aware(
             timezone.datetime.combine(days_ago_7, timezone.datetime.min.time())
@@ -232,9 +237,9 @@ def dashboard(request):
 
 @login_required
 def projects(request):
-    """Projects page view."""
-    projects_list = Project.objects.all()
-    
+    """Projects page view — limited to the projects assigned to the user (#1248)."""
+    projects_list = visible_projects_for(request.user)
+
     # Annotate with item counts by status
     projects_list = projects_list.annotate(
         inbox_count=Count('items', filter=Q(items__status=ItemStatus.INBOX)),
@@ -294,6 +299,10 @@ def project_create(request):
             github_owner=request.POST.get('github_owner', ''),
             github_repo=request.POST.get('github_repo', '')
         )
+        # Whoever creates a project obviously works on it, so assign them right
+        # away (#1248) — otherwise the redirect below would land on a project
+        # that has already vanished from their own project list.
+        project.members.add(request.user)
         return JsonResponse({
             'success': True,
             'message': 'Project created successfully',
@@ -364,7 +373,12 @@ def project_detail(request, id):
     
     # Get all organisations for the client management
     all_organisations = Organisation.objects.all().order_by('name')
-    
+
+    # Users for the member management (#1248). Not narrowed to the project's
+    # current members — this is the picker you use to add one.
+    all_users = User.objects.filter(active=True).order_by('name')
+    members = project.members.order_by('name')
+
     # Get all item types for adding new items
     item_types = ItemType.objects.filter(is_active=True).order_by('name')
     
@@ -384,6 +398,8 @@ def project_detail(request, id):
         'project': project,
         'description_html': description_html,
         'all_organisations': all_organisations,
+        'all_users': all_users,
+        'members': members,
         'item_types': item_types,
         'node_types': node_types,
         'attachments_count': attachments_count,
@@ -604,31 +620,38 @@ def items_ready(request):
     }
     return render(request, 'items_ready.html', context)
 
-def get_open_github_issues_count():
-    """
-    Get count of open GitHub issues linked to items with status Working or Testing.
-    
-    Returns:
-        int: Count of open GitHub issues (excluding PRs, excluding closed issues)
-    """
+def _open_github_issue_mappings(user):
+    """Open GitHub issues (no PRs) linked to Working/Testing items visible to `user`."""
     return ExternalIssueMapping.objects.filter(
-        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
+        item__in=scope_items(
+            Item.objects.filter(status__in=[ItemStatus.WORKING, ItemStatus.TESTING]), user
+        ),
         kind=ExternalIssueKind.ISSUE,
     ).exclude(
         state='closed'
-    ).count()
+    )
+
+
+def get_open_github_issues_count(user):
+    """
+    Get count of open GitHub issues linked to items with status Working or Testing.
+
+    Scoped to the projects assigned to `user` (#1248) so the sidebar badge and
+    the list it links to always show the same number.
+
+    Returns:
+        int: Count of open GitHub issues (excluding PRs, excluding closed issues)
+    """
+    return _open_github_issue_mappings(user).count()
 
 @login_required
 def items_github_open(request):
     """Open GitHub Issues page view - shows all open GitHub issues linked to Working/Testing items."""
     # Query ExternalIssueMapping directly to get all open issues from Working/Testing items
     # This avoids N+1 queries and correctly handles items with multiple mappings
-    open_issue_mappings = ExternalIssueMapping.objects.filter(
-        item__status__in=[ItemStatus.WORKING, ItemStatus.TESTING],
-        kind=ExternalIssueKind.ISSUE,
-    ).exclude(
-        state='closed'
-    ).select_related('item', 'item__project').prefetch_related('item__external_mappings').order_by('-number')
+    open_issue_mappings = _open_github_issue_mappings(request.user).select_related(
+        'item', 'item__project'
+    ).prefetch_related('item__external_mappings').order_by('-number')
     
     # Build list of issue data for display
     issues_data = []
@@ -713,7 +736,7 @@ def changes(request):
     )
     
     # Get all projects, statuses and risk levels for filter dropdowns
-    projects = Project.objects.all().order_by('name')
+    projects = visible_projects_for(request.user)
     statuses = ChangeStatus.choices
     risk_levels = RiskLevel.choices
     
@@ -887,7 +910,7 @@ def claude_queue_jobs(request):
     context = {
         'jobs': page_obj,
         'page_obj': page_obj,
-        'projects': Project.objects.all().order_by('name'),
+        'projects': visible_projects_for(request.user),
         'statuses': ClaudeQueueJobStatus.choices,
         'selected_project': project_filter,
         'selected_status': status_filter,
@@ -1074,9 +1097,9 @@ def item_detail(request, item_id):
     # Get agents for responsible field
     agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
     
-    # Get all projects for the move modal
-    projects = Project.objects.all().order_by('name')
-    
+    # Get the projects offered in the move modal (#1248: only the user's own)
+    projects = visible_projects_for(request.user)
+
     # Get releases for the inline edit (filtered by project and exclude Closed)
     releases = Release.objects.filter(
         project=item.project
@@ -1085,8 +1108,9 @@ def item_detail(request, item_id):
     ).order_by('-version')
     
     # Get parent items for the inline edit (exclude closed and self)
-    # Filter as per issue #352 - allow items from all projects, status != closed
-    parent_items = Item.objects.exclude(
+    # Filter as per issue #352 - allow items from all projects, status != closed.
+    # "All projects" now means all projects visible to this user (#1248).
+    parent_items = scope_items(Item.objects.all(), request.user).exclude(
         status=ItemStatus.CLOSED
     ).exclude(
         id=item.id
@@ -4647,8 +4671,8 @@ def item_create(request):
     if request.method == 'GET':
         # Show the create form
         from .models import IssueBlueprint
-        
-        projects = Project.objects.all().order_by('name')
+
+        projects = visible_projects_for(request.user)
         item_types = ItemType.objects.filter(is_active=True).order_by('name')
         organisations = Organisation.objects.all().order_by('name')
         # Prefetch user organizations for efficient org short code lookup in template
@@ -4677,7 +4701,10 @@ def item_create(request):
             try:
                 # Validate and convert project_id to integer
                 project_id_int = int(project_id)
-                default_project = Project.objects.get(id=project_id_int)
+                # Looked up within the visible set (#1248): pre-selecting a
+                # project the dropdown does not offer would render a selected
+                # option that is not in the list.
+                default_project = projects.get(id=project_id_int)
                 # Get nodes for the default project
                 nodes = Node.objects.filter(project=default_project).order_by('name')
             except (ValueError, Project.DoesNotExist, TypeError):
@@ -4867,7 +4894,7 @@ def item_edit(request, item_id):
     
     if request.method == 'GET':
         # Show the edit form
-        projects = Project.objects.all().order_by('name')
+        projects = visible_projects_for(request.user)
         item_types = ItemType.objects.filter(is_active=True).order_by('name')
         organisations = Organisation.objects.all().order_by('name')
         # Prefetch user organizations for efficient org short code lookup in template
@@ -4877,13 +4904,16 @@ def item_edit(request, item_id):
         # Filter agents for responsible field
         agents = User.objects.filter(role=UserRole.AGENT).order_by('name')
         statuses = ItemStatus.choices
-        
+
         # Get releases for the current project
         releases = Release.objects.filter(project=item.project).order_by('-version')
-        
+
         # Get potential parent items, exclude closed and self
-        # Filter as per issue #352 - allow items from all projects, status != closed
-        parent_items = Item.objects.exclude(status=ItemStatus.CLOSED).exclude(id=item.id).order_by('title')
+        # Filter as per issue #352 - allow items from all projects, status != closed.
+        # "All projects" now means all projects visible to this user (#1248).
+        parent_items = scope_items(Item.objects.all(), request.user).exclude(
+            status=ItemStatus.CLOSED
+        ).exclude(id=item.id).order_by('title')
         
         # Get nodes from the current project
         nodes = Node.objects.filter(project=item.project).order_by('name')
@@ -5559,6 +5589,48 @@ def project_remove_client(request, id):
         organisation = get_object_or_404(Organisation, id=org_id)
         project.clients.remove(organisation)
         return JsonResponse({'success': True, 'message': 'Client removed successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+
+@require_http_methods(["POST"])
+def project_add_member(request, id):
+    """Assign a user to a project so it shows up in their UserUI (#1248)."""
+    project = get_object_or_404(Project, id=id)
+    user_id = request.POST.get('user_id')
+
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+
+    try:
+        user = get_object_or_404(User, id=user_id)
+        project.members.add(user)
+        return JsonResponse({'success': True, 'message': 'Member added successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+
+@require_http_methods(["POST"])
+def project_remove_member(request, id):
+    """Remove a user's assignment to a project (#1248).
+
+    Only takes the project out of that user's lists and pickers — it revokes no
+    access and touches no item.
+    """
+    project = get_object_or_404(Project, id=id)
+    user_id = request.POST.get('user_id')
+
+    if not user_id:
+        return JsonResponse({'success': False, 'error': 'User ID required'}, status=400)
+
+    try:
+        user = get_object_or_404(User, id=user_id)
+        project.members.remove(user)
+        return JsonResponse({'success': True, 'message': 'Member removed successfully'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
@@ -8401,7 +8473,7 @@ def change_create(request):
     """Change create page view."""
     if request.method == 'GET':
         # Show the create form
-        projects = Project.objects.all().order_by('name')
+        projects = visible_projects_for(request.user)
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.all().select_related('project').order_by('-update_date')
@@ -8425,7 +8497,7 @@ def change_create(request):
                 return JsonResponse({'success': False, 'error': 'Project is required'}, status=400)
             else:
                 # Regular form submission - re-render form with error
-                projects = Project.objects.all().order_by('name')
+                projects = visible_projects_for(request.user)
                 statuses = ChangeStatus.choices
                 risk_levels = RiskLevel.choices
                 releases = Release.objects.all().select_related('project').order_by('-update_date')
@@ -8510,7 +8582,7 @@ def change_create(request):
         if request.headers.get('HX-Request'):
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
         else:
-            projects = Project.objects.all().order_by('name')
+            projects = visible_projects_for(request.user)
             statuses = ChangeStatus.choices
             risk_levels = RiskLevel.choices
             releases = Release.objects.all().select_related('project').order_by('-update_date')
@@ -8534,7 +8606,7 @@ def change_edit(request, id):
     
     if request.method == 'GET':
         # Show the edit form
-        projects = Project.objects.all().order_by('name')
+        projects = visible_projects_for(request.user)
         statuses = ChangeStatus.choices
         risk_levels = RiskLevel.choices
         releases = Release.objects.filter(project=change.project).order_by('-update_date')
@@ -10139,8 +10211,11 @@ def get_human_readable_verb(verb):
 @login_required
 def dashboard_in_progress_items(request):
     """HTMX partial for in-progress items list."""
-    items = Item.objects.filter(
-        status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+    items = scope_items(
+        Item.objects.filter(
+            status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+        ),
+        request.user,
     ).select_related(
         'project', 'type', 'organisation', 'requester', 'assigned_to'
     ).order_by('-updated_at')[:20]

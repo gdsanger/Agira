@@ -49,6 +49,8 @@ class OpenGitHubIssuesTestCase(TestCase):
             github_owner="testorg",
             github_repo="testrepo"
         )
+        # The open-issues list is scoped to the projects assigned to the user (#1248).
+        self.project.members.add(self.user)
         
         # Create item type
         self.item_type = ItemType.objects.create(
@@ -158,7 +160,7 @@ class OpenGitHubIssuesTestCase(TestCase):
     
     def test_get_open_github_issues_count(self):
         """Test the get_open_github_issues_count function"""
-        count = get_open_github_issues_count()
+        count = get_open_github_issues_count(self.user)
         
         # Should only count open issues (not PRs) from Working/Testing items
         # Expected: issues #101 and #102
@@ -348,7 +350,7 @@ class OpenGitHubIssuesTestCase(TestCase):
         self.assertNotIn(202, issue_numbers)
         
         # Count should include the mixed item's open issue
-        count = get_open_github_issues_count()
+        count = get_open_github_issues_count(self.user)
         self.assertEqual(count, 3)  # Original 2 + new open issue
     
     def test_pr_display_with_pr(self):

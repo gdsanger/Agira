@@ -5,9 +5,25 @@ import django_filters
 from django import forms
 from functools import cached_property
 from .models import Item, Project, ItemType, Organisation, User, Release
+from .visibility import visible_projects_for
 
 
-class ItemFilter(django_filters.FilterSet):
+class UserScopedProjectChoiceMixin:
+    """Narrow the `project` choice filter to the requesting user's projects (#1248).
+
+    django-filter hands the FilterSet the request, so the dropdown can be built
+    per user instead of listing every project in the system. Applied here rather
+    than on the declared queryset because that one is evaluated at import time,
+    when there is no user yet.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = getattr(self.request, 'user', None)
+        self.filters['project'].queryset = visible_projects_for(user)
+
+
+class ItemFilter(UserScopedProjectChoiceMixin, django_filters.FilterSet):
     """
     FilterSet for Item model.
     Supports filtering by search query, project, type, organisation, requester, and assigned_to.
@@ -78,7 +94,7 @@ class ItemFilter(django_filters.FilterSet):
         return queryset
 
 
-class KanbanFilter(django_filters.FilterSet):
+class KanbanFilter(UserScopedProjectChoiceMixin, django_filters.FilterSet):
     """
     FilterSet for Kanban view.
     Supports filtering by search query (title only), project, release, organisation, and requester.

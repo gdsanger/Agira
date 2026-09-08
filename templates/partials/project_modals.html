@@ -165,6 +165,39 @@
     </div>
 </div>
 
+<!-- Add Member Modal (#1248) -->
+<div class="modal fade" id="addMemberModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Member</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addMemberForm" hx-post="{% url 'project-add-member' project.id %}" hx-swap="none" hx-on::after-request="handleModalResponse(event, 'addMemberModal')">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="memberUser" class="form-label">User</label>
+                        <select class="form-select" id="memberUser" name="user_id" required>
+                            <option value="">Select user...</option>
+                            {% for u in all_users %}
+                            <option value="{{ u.id }}">{{ u.name }} ({{ u.username }})</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            The project and its items appear in this user's lists and project pickers.
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="addMemberForm" class="btn btn-primary">Add Member</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Release Modal -->
 <div class="modal fade" id="editReleaseModal" tabindex="-1">
     <div class="modal-dialog">

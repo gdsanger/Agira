@@ -433,8 +433,18 @@ class Project(models.Model):
     github_owner = models.CharField(max_length=255, blank=True)
     github_repo = models.CharField(max_length=255, blank=True)
     clients = models.ManyToManyField(Organisation, blank=True, related_name='projects')
+    # Which users this project is relevant for (#1248). Deliberately a plain
+    # visibility filter, not a permission: it decides what the UserUI *offers*
+    # (project lists, project pickers, item lists derived from them) so nobody
+    # has to wade through projects they never touch. It grants and revokes
+    # nothing — an existing URL keeps working exactly as before.
+    members = models.ManyToManyField(
+        User, blank=True, related_name='visible_projects',
+        help_text=_('Users for whom this project is relevant. Drives what the UserUI shows, '
+                    'not what a user is allowed to do.'),
+    )
     status = models.CharField(max_length=20, choices=ProjectStatus.choices, default=ProjectStatus.NEW)
-    
+
     # Sentry fields
     sentry_dsn = models.CharField(max_length=500, blank=True)
     sentry_project_slug = models.CharField(max_length=255, blank=True)
