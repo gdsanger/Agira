@@ -187,6 +187,13 @@ class SuggestedModelFieldTest(GenericFieldUpdateTestBase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.suggested_model, 'fable-5')
 
+    def test_suggested_model_updates_to_5_5_generation(self):
+        for value in ('opus-5-5', 'sonnet-5-5'):
+            response = self.client.post(self.url(), {'field': 'suggested_model', 'value': value})
+            self.assertEqual(response.status_code, 200)
+            self.item.refresh_from_db()
+            self.assertEqual(self.item.suggested_model, value)
+
     def test_legacy_opus_value_rejected(self):
         """The pre-#1082 generic slug is gone; it must not slip through."""
         response = self.client.post(self.url(), {'field': 'suggested_model', 'value': 'opus'})

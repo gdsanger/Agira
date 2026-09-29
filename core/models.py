@@ -739,7 +739,9 @@ class ClaudeQueueJobModel(models.TextChoices):
     The Opus generations are listed separately so a job can be steered at a
     specific one: Opus 4.8 and Opus 5 differ in cost and capability, and the
     epic review pass (#1076/#1079) has to run on a different model than the
-    code author. Fable 5 rounds the list out at the top end.
+    code author. Fable 5 rounds the list out at the top end. Opus 5.5 and
+    Sonnet 5.5 are the newer, cheaper generations; the floating
+    ``sonnet`` entry is kept alongside the pinned Sonnet 5.5.
 
     The stored value is a stable slug, not a CLI identifier — see
     ``CLAUDE_CLI_MODEL_IDS`` for the translation to ``claude --model``.
@@ -748,6 +750,8 @@ class ClaudeQueueJobModel(models.TextChoices):
     OPUS_4_8 = 'opus-4-8', _('Opus 4.8')
     OPUS_5 = 'opus-5', _('Opus 5')
     FABLE_5 = 'fable-5', _('Fable 5')
+    OPUS_5_5 = 'opus-5-5', _('Opus 5.5')
+    SONNET_5_5 = 'sonnet-5-5', _('Sonnet 5.5')
 
 
 # Display slug -> identifier handed to `claude --model`.
@@ -761,6 +765,9 @@ CLAUDE_CLI_MODEL_IDS = {
     ClaudeQueueJobModel.OPUS_4_8: 'claude-opus-4-8',
     ClaudeQueueJobModel.OPUS_5: 'claude-opus-5',
     ClaudeQueueJobModel.FABLE_5: 'claude-fable-5',
+    # Dateless IDs (generation 4.6+): the ID is the alias, no snapshot suffix.
+    ClaudeQueueJobModel.OPUS_5_5: 'claude-opus-5-5',
+    ClaudeQueueJobModel.SONNET_5_5: 'claude-sonnet-5-5',
 }
 
 

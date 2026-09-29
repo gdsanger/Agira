@@ -40,6 +40,14 @@ class ClaudeCliModelIdTest(TestCase):
             claude_cli_model_id(ClaudeQueueJobModel.FABLE_5), 'claude-fable-5',
         )
 
+    def test_5_5_generation_maps_to_dateless_ids(self):
+        self.assertEqual(
+            claude_cli_model_id(ClaudeQueueJobModel.OPUS_5_5), 'claude-opus-5-5',
+        )
+        self.assertEqual(
+            claude_cli_model_id(ClaudeQueueJobModel.SONNET_5_5), 'claude-sonnet-5-5',
+        )
+
     def test_sonnet_keeps_the_floating_cli_alias(self):
         self.assertEqual(claude_cli_model_id(ClaudeQueueJobModel.SONNET), 'sonnet')
 
@@ -72,6 +80,20 @@ class BuildClaudeArgsModelTest(TestCase):
             model=ClaudeQueueJobModel.OPUS_5,
         )
         self.assertEqual(self._model_arg(job), 'claude-opus-5')
+
+    def test_opus_5_5_job_passes_its_model_id(self):
+        job = ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.OPUS_5_5,
+        )
+        self.assertEqual(self._model_arg(job), 'claude-opus-5-5')
+
+    def test_sonnet_5_5_job_passes_its_model_id(self):
+        job = ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project,
+            model=ClaudeQueueJobModel.SONNET_5_5,
+        )
+        self.assertEqual(self._model_arg(job), 'claude-sonnet-5-5')
 
     def test_falls_back_to_the_items_suggestion(self):
         job = ClaudeQueueJob.objects.create(
