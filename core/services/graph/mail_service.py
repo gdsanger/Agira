@@ -325,6 +325,59 @@ def send_email(
         )
 
 
+def send_multipart_email(
+    subject: str,
+    text_body: str,
+    html_body: str,
+    to: List[str],
+    sender: Optional[str] = None,
+) -> GraphSendResult:
+    """
+    Send an HTML email with a plain-text alternative via Microsoft Graph.
+
+    Builds a multipart/alternative MIME message and sends it unchanged, so
+    clients that do not render HTML show the text part. Not linked to an item.
+
+    Returns:
+        GraphSendResult; failures are logged and returned, not raised.
+    """
+    from django.core.mail import EmailMultiAlternatives
+
+    if not subject or not subject.strip():
+        raise ServiceError("Email subject cannot be empty")
+    if not to:
+        raise ServiceError("At least one recipient is required")
+
+    config = get_graph_config()
+    if config is None or not config.enabled:
+        error_msg = "Email service is not enabled"
+        logger.error(f"Failed to send email '{subject}': {error_msg}")
+        return GraphSendResult(sender=sender or "unknown", to=to, subject=subject, success=False, error=error_msg)
+
+    if _is_blocked_system_recipient(to):
+        error_msg = "Email blocked: recipient list contains system default address (mail loop protection)"
+        logger.warning(f"Blocked mail '{subject}' to system default address: {to}")
+        return GraphSendResult(sender=sender or config.default_mail_sender or "unknown", to=to, subject=subject, success=False, error=error_msg)
+
+    sender = sender or config.default_mail_sender
+    if not sender:
+        error_msg = "No sender specified and no default_mail_sender configured"
+        logger.error(f"Failed to send email '{subject}': {error_msg}")
+        return GraphSendResult(sender="unknown", to=to, subject=subject, success=False, error=error_msg)
+
+    try:
+        message = EmailMultiAlternatives(subject=subject, body=text_body, from_email=sender, to=to)
+        message.attach_alternative(html_body, "text/html")
+        get_client().send_mime_mail(sender_upn=sender, mime_message=message.message().as_bytes())
+    except Exception as e:
+        error_msg = str(e) or e.__class__.__name__
+        logger.error(f"Failed to send email '{subject}': {error_msg}", exc_info=True)
+        return GraphSendResult(sender=sender, to=to, subject=subject, success=False, error=error_msg)
+
+    logger.info(f"Email '{subject}' sent successfully to {len(to)} recipient(s)")
+    return GraphSendResult(sender=sender, to=to, subject=subject, success=True)
+
+
 def _build_email_payload(
     subject: str,
     body: str,

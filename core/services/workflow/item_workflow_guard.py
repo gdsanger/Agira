@@ -68,6 +68,7 @@ class ItemWorkflowGuard:
         # Update status
         old_status = from_status
         item.status = to_status
+        item._status_changed_by = actor
         item.save()
         
         # Log activity
