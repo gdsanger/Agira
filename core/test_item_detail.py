@@ -373,15 +373,12 @@ def example():
         self.item.refresh_from_db()
         self.assertIsNone(self.item.parent)
 
-    def test_item_update_parent_allows_different_project(self):
-        """Test that parent from different project is now allowed (as per issue #352)."""
-        # Create another project
+    def test_item_update_parent_rejects_different_project(self):
+        """A parent from a different project is rejected (parent must share the project)."""
         other_project = Project.objects.create(
             name='Other Project',
             description='Other description'
         )
-
-        # Create item in other project
         other_item = Item.objects.create(
             project=other_project,
             title='Other Project Item',
@@ -393,11 +390,39 @@ def example():
         url = reverse('item-update-field', args=[self.item.id])
         response = self.client.post(url, {'field': 'parent', 'value': other_item.id})
 
-        self.assertEqual(response.status_code, 200)
-
-        # Check that item parent was updated
+        self.assertEqual(response.status_code, 400)
         self.item.refresh_from_db()
-        self.assertEqual(self.item.parent, other_item)
+        self.assertIsNone(self.item.parent)
+
+    def test_parent_picker_only_offers_items_of_same_project(self):
+        """The parent dropdown lists open items of the item's project only."""
+        self.project.members.add(self.user)
+        other_project = Project.objects.create(name='Other Project', description='x')
+        same_project_item = Item.objects.create(
+            project=self.project, title='Same Project Item', description='x',
+            type=self.item_type, status=ItemStatus.WORKING,
+        )
+        Item.objects.create(
+            project=other_project, title='Other Project Item', description='x',
+            type=self.item_type, status=ItemStatus.WORKING,
+        )
+
+        for url_name in ('item-detail', 'item-edit'):
+            response = self.client.get(reverse(url_name, args=[self.item.id]))
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(list(response.context['parent_items']), [same_project_item])
+
+    def test_parent_picker_keeps_existing_cross_project_parent(self):
+        """A legacy parent from another project stays selectable so it is not dropped."""
+        other_project = Project.objects.create(name='Other Project', description='x')
+        legacy_parent = Item.objects.create(
+            project=other_project, title='Legacy Parent', description='x',
+            type=self.item_type, status=ItemStatus.WORKING,
+        )
+        Item.objects.filter(id=self.item.id).update(parent=legacy_parent)
+
+        response = self.client.get(reverse('item-detail', args=[self.item.id]))
+        self.assertIn(legacy_parent, list(response.context['parent_items']))
 
     def test_item_update_parent_allows_item_with_parent(self):
         """Test that item with parent (nested parent) is now allowed (as per issue #306)."""

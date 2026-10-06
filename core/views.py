@@ -1108,13 +1108,7 @@ def item_detail(request, item_id):
     ).order_by('-version')
     
     # Get parent items for the inline edit (exclude closed and self)
-    # Filter as per issue #352 - allow items from all projects, status != closed.
-    # "All projects" now means all projects visible to this user (#1248).
-    parent_items = scope_items(Item.objects.all(), request.user).exclude(
-        status=ItemStatus.CLOSED
-    ).exclude(
-        id=item.id
-    ).order_by('title')
+    parent_items = _parent_item_choices(item, request.user)
     
     # Get requester's primary organisation short code
     requester_org_short = None
@@ -1175,6 +1169,22 @@ def item_detail(request, item_id):
         'claude_total_cost': claude_total_cost,
     }
     return render(request, 'item_detail.html', context)
+
+
+def _parent_item_choices(item, user):
+    """Items offered in the parent picker: open items of the same project, minus self.
+
+    The currently set parent is always kept so an existing (legacy cross-project or
+    closed) parent stays selected and is not silently dropped on save.
+    """
+    candidates = scope_items(Item.objects.all(), user).filter(
+        project_id=item.project_id
+    ).exclude(
+        status=ItemStatus.CLOSED
+    ).exclude(id=item.id)
+    if item.parent_id:
+        candidates = candidates | Item.objects.filter(id=item.parent_id)
+    return candidates.distinct().order_by('title')
 
 
 @login_required
@@ -4909,11 +4919,7 @@ def item_edit(request, item_id):
         releases = Release.objects.filter(project=item.project).order_by('-version')
 
         # Get potential parent items, exclude closed and self
-        # Filter as per issue #352 - allow items from all projects, status != closed.
-        # "All projects" now means all projects visible to this user (#1248).
-        parent_items = scope_items(Item.objects.all(), request.user).exclude(
-            status=ItemStatus.CLOSED
-        ).exclude(id=item.id).order_by('title')
+        parent_items = _parent_item_choices(item, request.user)
         
         # Get nodes from the current project
         nodes = Node.objects.filter(project=item.project).order_by('name')

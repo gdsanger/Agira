@@ -148,6 +148,8 @@ def _resolve_parent(item: Item, raw: str) -> Optional[Item]:
         raise FieldUpdateError("Ein Item kann nicht sein eigenes Parent sein.")
     if parent.status == ItemStatus.CLOSED:
         raise FieldUpdateError("Ein geschlossenes Item kann nicht als Parent gesetzt werden.")
+    if parent.project_id != item.project_id:
+        raise FieldUpdateError("Das Parent Item muss im selben Projekt liegen.")
     return parent
 
 
