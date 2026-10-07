@@ -120,6 +120,7 @@ class DashboardViewsTestCase(TestCase):
     
     def test_dashboard_view(self):
         """Test dashboard view loads correctly"""
+        self.client.force_login(self.user)
         url = reverse('dashboard')
         response = self.client.get(url)
         
@@ -129,6 +130,7 @@ class DashboardViewsTestCase(TestCase):
     
     def test_dashboard_kpis(self):
         """Test dashboard KPIs are calculated correctly"""
+        self.client.force_login(self.user)
         url = reverse('dashboard')
         response = self.client.get(url)
         
@@ -142,6 +144,7 @@ class DashboardViewsTestCase(TestCase):
     
     def test_dashboard_in_progress_partial(self):
         """Test in-progress items partial view"""
+        self.client.force_login(self.user)
         url = reverse('dashboard-in-progress-items')
         response = self.client.get(url)
         
@@ -153,30 +156,63 @@ class DashboardViewsTestCase(TestCase):
         self.assertNotContains(response, 'Inbox Item')
         self.assertNotContains(response, 'Backlog Item')
     
-    def test_dashboard_activity_stream_partial(self):
-        """Test activity stream partial view"""
-        url = reverse('dashboard-activity-stream')
-        response = self.client.get(url)
-        
-        self.assertEqual(response.status_code, 200)
-        # Check for activity stream structure
-        self.assertContains(response, 'activity-stream')
-    
-    def test_dashboard_activity_stream_filter_items(self):
-        """Test activity stream with items filter"""
-        url = reverse('dashboard-activity-stream') + '?filter=items'
-        response = self.client.get(url)
-        
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'activity-stream')
-    
-    def test_dashboard_activity_stream_pagination(self):
-        """Test activity stream pagination"""
-        url = reverse('dashboard-activity-stream') + '?offset=10'
-        response = self.client.get(url)
-        
-        self.assertEqual(response.status_code, 200)
-    
+    def test_activity_stream_removed(self):
+        """The global activity stream is gone from the dashboard."""
+        from django.urls import NoReverseMatch
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'Global Activity Stream')
+        with self.assertRaises(NoReverseMatch):
+            reverse('dashboard-activity-stream')
+
+    def test_dashboard_section_order(self):
+        """KPIs and closed chart first, new analytics, Currently Worked On last."""
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('dashboard')).content.decode()
+        positions = [html.index(marker) for marker in (
+            'closedItemsChart', 'Status by Responsible', 'Status by Assigned To',
+            'Status Distribution', '7-Day Trend', 'Currently Worked On',
+        )]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_dashboard_status_distribution(self):
+        """Distribution counts open items of the user's projects only."""
+        other = Project.objects.create(name="Other", status=ProjectStatus.WORKING)
+        Item.objects.create(project=other, title="Hidden", type=self.item_type, status=ItemStatus.INBOX)
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        totals = {row['label']: row['count'] for row in response.context['status_totals']}
+        self.assertEqual(totals['Inbox'], 1)
+        self.assertEqual(totals['Working'], 1)
+        self.assertEqual(response.context['status_total_open'], 5)
+        self.assertEqual([p['name'] for p in response.context['status_projects']], ['Test Project'])
+        self.assertEqual(len(response.context['trend_rows']), 7)
+
+    def test_dashboard_person_charts(self):
+        """Per-person breakdown: open items by status plus Closed of the last 7 days."""
+        import json
+        agent = User.objects.create(username="agent", email="agent@example.com", name="Agent A", role=UserRole.AGENT)
+        Item.objects.filter(title="Working Item").update(responsible=agent)
+        old_closed = Item.objects.create(
+            project=self.project, title="Closed long ago", type=self.item_type,
+            status=ItemStatus.CLOSED, assigned_to=self.user,
+        )
+        old_closed.status_changes.update(changed_at=timezone.now() - timedelta(days=30))
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+
+        assigned = json.loads(response.context['assigned_chart_json'])
+        self.assertEqual(assigned['labels'][0], 'Test User')
+        by_status = {ds['status']: ds['data'][0] for ds in assigned['datasets']}
+        self.assertEqual(by_status['Working'], 1)
+        self.assertEqual(by_status['Testing'], 1)
+        self.assertEqual(by_status['ReadyForRelease'], 1)
+        self.assertEqual(by_status['Closed'], 1)  # setUp item, not the one closed 30 days ago
+        self.assertEqual(assigned['labels'][-1], 'Unassigned')
+
+        responsible = json.loads(response.context['responsible_chart_json'])
+        self.assertEqual(responsible['labels'], ['Agent A', 'No responsible'])
+
     def test_dashboard_closed_items_chart_data(self):
         """Test that closed items chart data is calculated correctly"""
         self.client.force_login(self.user)

@@ -910,6 +910,25 @@ a:hover {
     margin: 0;
 }
 
+/* Dashboard status analytics */
+.status-tile {
+    padding: var(--space-3);
+}
+
+.status-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.status-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
 /* Activity Stream */
 .activity-stream {
     display: flex;

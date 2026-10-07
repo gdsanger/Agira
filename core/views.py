@@ -166,13 +166,14 @@ def logout_view(request):
 
 @login_required
 def dashboard(request):
-    """Dashboard page view with KPIs and activity overview."""
-    from datetime import timedelta, date
-    from django.db.models.functions import TruncDate
+    """Dashboard page view with KPIs, status analytics and in-progress items."""
+    from datetime import timedelta
+    from core.services.daily_report.dashboard import build_dashboard_status, closed_since
 
     # Item KPIs count the same data the item lists show (#1248): a number the
     # user cannot drill into would be worse than no number at all.
     items = scope_items(Item.objects.all(), request.user)
+    now = timezone.now()
 
     # Calculate KPIs
     kpis = {
@@ -181,57 +182,51 @@ def dashboard(request):
         'in_progress_count': items.filter(
             status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
         ).count(),
-        'closed_7d_count': items.filter(
-            status=ItemStatus.CLOSED,
-            updated_at__gte=timezone.now() - timedelta(days=7)
-        ).count(),
+        # "Closed" is the actual switch to Closed (status history), not the
+        # last edit of an already closed item.
+        'closed_7d_count': closed_since(items, now - timedelta(days=7)).count(),
         'changes_open_count': Change.objects.exclude(status__in=[ChangeStatus.DEPLOYED, ChangeStatus.CANCELED]).count(),
         'ai_jobs_24h_count': AIJobsHistory.objects.filter(
-            timestamp__gte=timezone.now() - timedelta(hours=24)
+            timestamp__gte=now - timedelta(hours=24)
         ).count(),
     }
     
     # Calculate AI jobs cost (24h)
     ai_jobs_24h = AIJobsHistory.objects.filter(
-        timestamp__gte=timezone.now() - timedelta(hours=24),
+        timestamp__gte=now - timedelta(hours=24),
         costs__isnull=False
     ).aggregate(total_costs=models.Sum('costs'))
     kpis['ai_jobs_24h_costs'] = ai_jobs_24h['total_costs'] or Decimal('0')
     
-    # Calculate closed items by day for the last 7 days
-    now = timezone.now()
+    # Closed items by local calendar day for the last 7 days (today included)
     today = timezone.localdate()
-    days_ago_7 = today - timedelta(days=6)  # Include today = 7 days total
+    first_day = today - timedelta(days=6)
+    since = timezone.make_aware(timezone.datetime.combine(first_day, timezone.datetime.min.time()))
+    closed_dict = {}
+    for closed_at in closed_since(items, since).values_list('closed_at', flat=True):
+        day = timezone.localtime(closed_at).date()
+        closed_dict[day] = closed_dict.get(day, 0) + 1
     
-    # Get closed items grouped by date
-    closed_by_day = items.filter(
-        status=ItemStatus.CLOSED,
-        updated_at__gte=timezone.make_aware(
-            timezone.datetime.combine(days_ago_7, timezone.datetime.min.time())
-        )
-    ).annotate(
-        date=TruncDate('updated_at')
-    ).values('date').annotate(
-        count=Count('id')
-    ).order_by('date')
-    
-    # Create a dictionary for quick lookup
-    closed_dict = {item['date']: item['count'] for item in closed_by_day}
-    
-    # Generate all 7 days with counts (0 if no items closed that day)
     closed_items_chart = []
     for i in range(6, -1, -1):  # 6 days ago to today
         day = today - timedelta(days=i)
-        count = closed_dict.get(day, 0)
         closed_items_chart.append({
             'date': day.strftime('%Y-%m-%d'),
             'date_display': day.strftime('%d.%m'),  # Format for display
-            'count': count
+            'count': closed_dict.get(day, 0),
         })
-    
+
+    # Status distribution, 7-day trend and per-person breakdowns — same data
+    # basis as the daily mail report, scoped to the user's projects.
+    status = build_dashboard_status(visible_projects_for(request.user).values_list('id', flat=True))
+
     context = {
         'kpis': kpis,
         'closed_items_chart_json': mark_safe(json.dumps(closed_items_chart)),
+        **status,
+        'trend_chart_json': mark_safe(json.dumps(status['trend_chart'])),
+        'responsible_chart_json': mark_safe(json.dumps(status['responsible_chart'])),
+        'assigned_chart_json': mark_safe(json.dumps(status['assigned_chart'])),
     }
     return render(request, 'dashboard.html', context)
 
@@ -10162,59 +10157,6 @@ Rollback Plan:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-def get_human_readable_verb(verb):
-    """Convert activity verb to human-readable text."""
-    verb_mapping = {
-        # Items
-        'item.created': 'Item created',
-        'item.status_changed': 'Status changed',
-        'item.assigned': 'Item assigned',
-        'item.updated': 'Item updated',
-        
-        # Projects
-        'project.created': 'Project created',
-        'project.status_changed': 'Project status changed',
-        'project.updated': 'Project updated',
-        
-        # GitHub
-        'github.issue_created': 'GitHub issue created',
-        'github.pr_created': 'GitHub PR created',
-        'github.mapping_synced': 'GitHub mapping synced',
-        'github.linked': 'GitHub linked',
-        
-        # Comments
-        'comment.added': 'Comment added',
-        'comment.updated': 'Comment updated',
-        'comment.deleted': 'Comment deleted',
-        
-        # Attachments
-        'attachment.uploaded': 'Attachment uploaded',
-        'attachment.deleted': 'Attachment deleted',
-        
-        # Changes
-        'change.created': 'Change created',
-        'change.status_changed': 'Change status changed',
-        'change.approved': 'Change approved',
-        'change.rejected': 'Change rejected',
-        
-        # AI
-        'ai.job_completed': 'AI job completed',
-        'ai.job_failed': 'AI job failed',
-        
-        # Graph API
-        'graph.mail_sent': 'Email sent',
-        
-        # Default fallback
-        'created': 'Created',
-        'updated': 'Updated',
-        'deleted': 'Deleted',
-        'approved': 'Approved',
-        'rejected': 'Rejected',
-    }
-    
-    return verb_mapping.get(verb, verb.replace('_', ' ').replace('.', ' ').title())
-
-
 @login_required
 def dashboard_in_progress_items(request):
     """HTMX partial for in-progress items list."""
@@ -10231,89 +10173,6 @@ def dashboard_in_progress_items(request):
         'items': items,
     }
     return render(request, 'partials/dashboard_in_progress.html', context)
-
-
-@login_required
-def dashboard_activity_stream(request):
-    """HTMX partial for global activity stream."""
-    from django.utils.timesince import timesince
-    
-    # Get filter parameter
-    filter_type = request.GET.get('filter', 'all')
-    offset = int(request.GET.get('offset', 0))
-    limit = 50
-    
-    # Base queryset
-    activity_service = ActivityService()
-    activities = Activity.objects.select_related('actor', 'target_content_type').order_by('-created_at')
-    
-    # Apply filter
-    if filter_type and filter_type != 'all':
-        if filter_type == 'items':
-            item_ct = ContentType.objects.get_for_model(Item)
-            activities = activities.filter(target_content_type=item_ct)
-        elif filter_type == 'projects':
-            project_ct = ContentType.objects.get_for_model(Project)
-            activities = activities.filter(target_content_type=project_ct)
-        elif filter_type == 'github':
-            activities = activities.filter(verb__startswith='github.')
-        elif filter_type == 'changes':
-            change_ct = ContentType.objects.get_for_model(Change)
-            activities = activities.filter(target_content_type=change_ct)
-        elif filter_type == 'ai':
-            activities = activities.filter(verb__startswith='ai.')
-    
-    # Paginate
-    activities = activities[offset:offset + limit]
-    
-    # Build activity list with human-readable verbs and relative times
-    activity_list = []
-    for activity in activities:
-        # Get target URL if possible
-        target_url = None
-        target_title = None
-        if activity.target_content_type.model == 'item' and activity.target_object_id:
-            try:
-                item = Item.objects.get(id=activity.target_object_id)
-                target_url = f'/items/{item.id}/'
-                target_title = item.title
-            except Item.DoesNotExist:
-                pass
-        elif activity.target_content_type.model == 'project' and activity.target_object_id:
-            try:
-                project = Project.objects.get(id=activity.target_object_id)
-                target_url = f'/projects/{project.id}/'
-                target_title = project.name
-            except Project.DoesNotExist:
-                pass
-        elif activity.target_content_type.model == 'change' and activity.target_object_id:
-            try:
-                change = Change.objects.get(id=activity.target_object_id)
-                target_url = f'/changes/{change.id}/'
-                target_title = change.title
-            except Change.DoesNotExist:
-                pass
-        
-        activity_list.append({
-            'id': activity.id,
-            'verb': get_human_readable_verb(activity.verb),
-            'actor': activity.actor,
-            'summary': activity.summary,
-            'created_at': activity.created_at,
-            'time_ago': timesince(activity.created_at),
-            'target_url': target_url,
-            'target_title': target_title,
-        })
-    
-    context = {
-        'activities': activity_list,
-        'filter_type': filter_type,
-        'offset': offset,
-        'limit': limit,
-        'has_more': len(activities) == limit,
-        'next_offset': offset + limit,
-    }
-    return render(request, 'partials/dashboard_activity_stream.html', context)
 
 
 @login_required

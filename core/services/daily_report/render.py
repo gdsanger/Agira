@@ -19,13 +19,17 @@ from .report import (
     report_timezone,
 )
 
+# Categorical status colours, validated for colour-vision deficiency in this
+# order (adjacent stacked segments). Light steps for the white mail body; the
+# dashboard uses the dark steps of the same hues (see dashboard.py).
 STATUS_COLORS = {
-    'Inbox': '#0d6efd',
-    'Backlog': '#6c757d',
-    'Working': '#fd7e14',
-    'Testing': '#6f42c1',
-    'Review': '#20c997',
-    'ReadyForRelease': '#198754',
+    'Inbox': '#2a78d6',
+    'Backlog': '#eb6834',
+    'Working': '#1baf7a',
+    'Testing': '#eda100',
+    'Review': '#e87ba4',
+    'ReadyForRelease': '#008300',
+    'Closed': '#4a3aa7',
 }
 
 WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
