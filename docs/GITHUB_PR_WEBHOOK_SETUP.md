@@ -4,7 +4,7 @@
 
 Wenn ein Pull Request auf GitHub gemerged wird, soll Agira automatisch informiert werden, damit:
 
-- das zugehörige Item den Status **`Working` → `Testing`** wechselt, und
+- das zugehörige Item den Status **`Working` → `Testing`** (in der UI „🏁 Implemented“) wechselt, und
 - der aktuelle PR-Status (offen, merged, geschlossen) sichtbar in Agira gepflegt wird (Job und Activity-Log).
 
 Dazu wird ein **GitHub Webhook** auf Repository-Ebene eingerichtet, der bei relevanten `pull_request`-Events direkt einen HTTP-POST-Request an einen öffentlich erreichbaren Agira-Endpoint sendet.

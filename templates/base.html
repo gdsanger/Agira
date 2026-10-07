@@ -189,12 +189,12 @@
                             <span class="sidebar-text">Working</span>
                         </a>
                         <a href="{% url 'items-testing' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-testing' %}active{% endif %}">
-                            <i class="bi bi-bug sidebar-icon"></i>
-                            <span class="sidebar-text">Testing</span>
+                            <i class="bi bi-flag sidebar-icon"></i>
+                            <span class="sidebar-text">Implemented</span>
                         </a>
                         <a href="{% url 'items-review' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-review' %}active{% endif %}">
-                            <i class="bi bi-eye sidebar-icon"></i>
-                            <span class="sidebar-text">Review</span>
+                            <i class="bi bi-question-circle sidebar-icon"></i>
+                            <span class="sidebar-text">Clarification</span>
                         </a>
                         <a href="{% url 'items-ready' %}" class="sidebar-link sidebar-link-sub {% if request.resolver_match.url_name == 'items-ready' %}active{% endif %}">
                             <i class="bi bi-check-circle sidebar-icon"></i>

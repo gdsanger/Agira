@@ -188,7 +188,7 @@ def render_text(report: DailyReport) -> str:
             [[p.name, p.total] for p in report.requesters] + [['Summe', ctx['requesters_total']]],
         ),
         '',
-        '5. Responsible in Bearbeitung (Working/Testing/Review)',
+        '5. Responsible in Bearbeitung (Working/Implemented/Clarification)',
         *_table(
             ['Responsible', *ctx['active_labels'], 'Summe'],
             [[p['name'], *p['counts'], p['total']] for p in ctx['responsibles']]

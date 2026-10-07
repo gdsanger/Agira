@@ -13,13 +13,13 @@ Fenster schließen lückenlos aneinander an.
 
 1. **Neue Items (24 h)** – Basis `created_at`; ID, Titel, Projekt, Requester.
 2. **Statusverteilung** – offene Items je Status (Inbox, Backlog, Working,
-   Testing, Review, Ready for Release), zusätzlich je Projekt (nur Projekte mit
+   Implemented, Clarification, Ready for Release), zusätzlich je Projekt (nur Projekte mit
    offenen Items).
 3. **Geschlossen (24 h)** – Items, die im Fenster tatsächlich auf `Closed`
    gewechselt sind (aus `ItemStatusChange`, nicht `updated_at`); ID, Titel,
    Projekt, Responsible. Mehrfaches Schließen im Fenster zählt einmal.
 4. **Requester** – offene Items je Requester (Name), eigene Zeile „ohne Requester“.
-5. **Responsible in Bearbeitung** – Items in Working/Testing/Review je
+5. **Responsible in Bearbeitung** – Items in Working/Implemented/Clarification je
    Responsible, eigene Zeile „ohne Responsible“.
 6. **Verlauf 7 Tage** – je Tag neu, geschlossen, Bestand offen und je Status;
    Tabelle plus Inline-Balkendiagramm (nur Tabellen/`bgcolor`, rendert in Outlook).

@@ -111,7 +111,7 @@
             {% for p in responsibles %}
             <tr><td style="border-bottom:1px solid #eeeeee;{% if p.placeholder %}font-style:italic;color:#6c757d;{% endif %}">{{ p.name }}</td>{% for c in p.counts %}<td align="right" style="border-bottom:1px solid #eeeeee;{% if not c %}color:#adb5bd;{% endif %}">{{ c }}</td>{% endfor %}<td align="right" style="border-bottom:1px solid #eeeeee;font-weight:bold;">{{ p.total }}</td></tr>
             {% empty %}
-            <tr><td colspan="5" style="color:#6c757d;">Keine Items in Working/Testing/Review.</td></tr>
+            <tr><td colspan="5" style="color:#6c757d;">Keine Items in Working/Implemented/Clarification.</td></tr>
             {% endfor %}
             {% if responsibles %}<tr><td style="font-weight:bold;" colspan="4">Summe</td><td align="right" style="font-weight:bold;">{{ responsibles_total }}</td></tr>{% endif %}
           </table>
