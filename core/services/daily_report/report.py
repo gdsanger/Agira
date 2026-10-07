@@ -115,14 +115,22 @@ def item_url(item_id: int) -> str:
 # Item states
 # ---------------------------------------------------------------------------
 
-def _open_states_live() -> List[dict]:
+def _items(project_ids=None):
+    """All items, or only those of ``project_ids`` (dashboard scope, #1248)."""
+    items = Item.objects.all()
+    if project_ids is not None:
+        items = items.filter(project_id__in=project_ids)
+    return items
+
+
+def _open_states_live(project_ids=None) -> List[dict]:
     return list(
-        Item.objects.exclude(status=ItemStatus.CLOSED)
+        _items(project_ids).exclude(status=ItemStatus.CLOSED)
         .values('id', 'status', 'project_id', 'project__name', 'requester_id', 'responsible_id')
     )
 
 
-def _open_states_at(moment: datetime) -> List[dict]:
+def _open_states_at(moment: datetime, project_ids=None) -> List[dict]:
     """Open items with their status at ``moment``, reconstructed from history.
 
     Only correct when every change after ``moment`` is recorded, i.e. for
@@ -139,7 +147,7 @@ def _open_states_at(moment: datetime) -> List[dict]:
         first_change_after.setdefault(item_id, from_status)
 
     states = []
-    items = Item.objects.filter(created_at__lte=moment).values(
+    items = _items(project_ids).filter(created_at__lte=moment).values(
         'id', 'status', 'project_id', 'project__name', 'requester_id', 'responsible_id',
     )
     for row in items:
@@ -175,12 +183,15 @@ def _per_project(states: List[dict]) -> Dict[str, Dict[str, int]]:
     }
 
 
-def _snapshot_state(day: date) -> Optional[DayState]:
-    snapshot_rows = list(
-        ItemStatusSnapshot.objects.filter(date=day).values('project__name', 'status', 'count')
-    )
-    if not snapshot_rows:
+def _snapshot_state(day: date, project_ids=None) -> Optional[DayState]:
+    snapshots = ItemStatusSnapshot.objects.filter(date=day)
+    # Existence is checked unscoped: a snapshot without rows for the given
+    # projects means "no open items there", not "no data".
+    if not snapshots.exists():
         return None
+    if project_ids is not None:
+        snapshots = snapshots.filter(project_id__in=project_ids)
+    snapshot_rows = list(snapshots.values('project__name', 'status', 'count'))
     counts = {status: 0 for status in OPEN_STATUSES}
     per_project = defaultdict(lambda: {status: 0 for status in OPEN_STATUSES})
     for row in snapshot_rows:
@@ -190,16 +201,16 @@ def _snapshot_state(day: date) -> Optional[DayState]:
     return DayState(counts=counts, source=SOURCE_SNAPSHOT, per_project=dict(per_project))
 
 
-def day_state(day: date, today: date, tracking_start: Optional[datetime]) -> Optional[DayState]:
+def day_state(day: date, today: date, tracking_start: Optional[datetime], project_ids=None) -> Optional[DayState]:
     """Open-item distribution at ``day``'s cut-off, or ``None`` for a gap."""
-    snapshot = _snapshot_state(day)
+    snapshot = _snapshot_state(day, project_ids)
     if snapshot is not None:
         return snapshot
     if day == today:
-        states = _open_states_live()
+        states = _open_states_live(project_ids)
         return DayState(counts=_counts(states), source=SOURCE_LIVE, per_project=_per_project(states))
     if tracking_start is not None and cutoff(day) >= tracking_start:
-        states = _open_states_at(cutoff(day))
+        states = _open_states_at(cutoff(day), project_ids)
         return DayState(counts=_counts(states), source=SOURCE_HISTORY, per_project=_per_project(states))
     return None
 
@@ -284,15 +295,14 @@ class DailyReport:
         return sorted(rows, key=lambda r: (-r[2], r[0].lower()))
 
 
-def _closed_changes(start: datetime, end: datetime):
+def _closed_changes(start: datetime, end: datetime, project_ids=None):
     """Distinct item ids that switched to Closed within ``[start, end)``."""
-    return (
-        ItemStatusChange.objects.filter(
-            to_status=ItemStatus.CLOSED, changed_at__gte=start, changed_at__lt=end,
-        )
-        .values_list('item_id', flat=True)
-        .distinct()
+    changes = ItemStatusChange.objects.filter(
+        to_status=ItemStatus.CLOSED, changed_at__gte=start, changed_at__lt=end,
     )
+    if project_ids is not None:
+        changes = changes.filter(item__project_id__in=project_ids)
+    return changes.values_list('item_id', flat=True).distinct()
 
 
 def _users_by_id(ids) -> Dict[int, User]:
@@ -317,7 +327,8 @@ def _person_counts(states, key: str, statuses, placeholder: str, users) -> List[
     return sorted(result, key=lambda p: (p.is_placeholder, -p.total, p.name.lower()))
 
 
-def build_report(report_date: date, now: Optional[datetime] = None) -> DailyReport:
+def build_report(report_date: date, now: Optional[datetime] = None, project_ids=None) -> DailyReport:
+    """Build the report; ``project_ids`` limits it to those projects (``None`` = all)."""
     now = now or timezone.now()
     today = local_today(now)
     tracking_start = history_start()
@@ -325,7 +336,7 @@ def build_report(report_date: date, now: Optional[datetime] = None) -> DailyRepo
 
     # 1. New items
     new_qs = (
-        Item.objects.filter(created_at__gte=window_start, created_at__lt=window_end)
+        _items(project_ids).filter(created_at__gte=window_start, created_at__lt=window_end)
         .select_related('project', 'requester')
         .order_by('id')
     )
@@ -336,7 +347,7 @@ def build_report(report_date: date, now: Optional[datetime] = None) -> DailyRepo
 
     # 3. Closed items — from the recorded transition, not updated_at
     closed_qs = (
-        Item.objects.filter(id__in=_closed_changes(window_start, window_end))
+        Item.objects.filter(id__in=_closed_changes(window_start, window_end, project_ids))
         .select_related('project', 'responsible')
         .order_by('id')
     )
@@ -348,18 +359,18 @@ def build_report(report_date: date, now: Optional[datetime] = None) -> DailyRepo
 
     # 2./4./5. State at the cut-off
     if report_date == today:
-        states = _open_states_live()
+        states = _open_states_live(project_ids)
         state_source = SOURCE_LIVE
         state_hint = ''
     elif tracking_start is not None and window_end >= tracking_start:
-        states = _open_states_at(window_end)
+        states = _open_states_at(window_end, project_ids)
         state_source = SOURCE_HISTORY
         state_hint = (
             'Status rekonstruiert aus der Statushistorie; Projekt, Requester und '
             'Responsible entsprechen dem heutigen Stand.'
         )
     else:
-        states = _open_states_live()
+        states = _open_states_live(project_ids)
         state_source = SOURCE_LIVE
         state_hint = (
             'Die Statushistorie reicht nicht bis zu diesem Stichtag zurück – '
@@ -368,7 +379,7 @@ def build_report(report_date: date, now: Optional[datetime] = None) -> DailyRepo
     # For a past date the distribution prefers the stored snapshot: it reflects
     # the projects as they were at the cut-off, not after later moves. Today
     # stays live so sections 2, 4 and 5 agree on a later manual run.
-    snapshot = None if report_date == today else _snapshot_state(report_date)
+    snapshot = None if report_date == today else _snapshot_state(report_date, project_ids)
     state = snapshot or DayState(
         counts=_counts(states),
         source=state_source,
@@ -388,10 +399,10 @@ def build_report(report_date: date, now: Optional[datetime] = None) -> DailyRepo
         start, end = report_window(day)
         trend.append(TrendDay(
             date=day,
-            new=Item.objects.filter(created_at__gte=start, created_at__lt=end).count(),
-            closed=_closed_changes(start, end).count(),
+            new=_items(project_ids).filter(created_at__gte=start, created_at__lt=end).count(),
+            closed=_closed_changes(start, end, project_ids).count(),
             closed_complete=tracking_start is not None and start >= tracking_start,
-            state=state if day == report_date else day_state(day, today, tracking_start),
+            state=state if day == report_date else day_state(day, today, tracking_start, project_ids),
         ))
     trend_has_gaps = any(d.state is None or not d.closed_complete for d in trend)
 

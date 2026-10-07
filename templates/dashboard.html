@@ -116,6 +116,131 @@
     </div>
 </div>
 
+<!-- Status by Responsible / Assigned To -->
+<div class="row g-4 mb-4">
+    <div class="col-xl-6">
+        <div class="dashboard-section h-100">
+            <div class="dashboard-section-header">
+                <h2 class="dashboard-section-title">
+                    <i class="bi bi-person-badge me-2"></i>Status by Responsible
+                </h2>
+            </div>
+            <p class="small text-muted mt-n2 mb-3">Open items per status · Closed: last 7 days</p>
+            {% if responsible_rows %}
+            <div class="person-chart" style="position: relative;">
+                <canvas id="responsibleChart" aria-label="Item status by responsible" role="img"></canvas>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No items.</p>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="dashboard-section h-100">
+            <div class="dashboard-section-header">
+                <h2 class="dashboard-section-title">
+                    <i class="bi bi-person-check me-2"></i>Status by Assigned To
+                </h2>
+            </div>
+            <p class="small text-muted mt-n2 mb-3">Open items per status · Closed: last 7 days</p>
+            {% if assigned_rows %}
+            <div class="person-chart" style="position: relative;">
+                <canvas id="assignedChart" aria-label="Item status by assigned user" role="img"></canvas>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No items.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Status Distribution (same as the daily mail report) -->
+<div class="dashboard-section mb-4">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title">
+            <i class="bi bi-bar-chart-steps me-2"></i>Status Distribution
+        </h2>
+        <small class="text-muted">{{ status_total_open }} open items</small>
+    </div>
+    <div class="row g-2 mb-3">
+        {% for s in status_totals %}
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="kpi-card status-tile">
+                <span class="status-swatch" style="background-color: {{ s.color }};"></span>
+                <div class="kpi-content">
+                    <div class="kpi-value">{{ s.count }}</div>
+                    <div class="kpi-label">{{ s.label }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if status_projects %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 status-table">
+            <thead>
+                <tr>
+                    <th>Project</th>
+                    {% for label in status_open_labels %}<th class="text-end">{{ label }}</th>{% endfor %}
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in status_projects %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    {% for c in p.counts %}<td class="text-end{% if not c %} text-muted{% endif %}">{{ c }}</td>{% endfor %}
+                    <td class="text-end fw-semibold">{{ p.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 7-Day Trend (same as the daily mail report) -->
+<div class="dashboard-section mb-4">
+    <div class="dashboard-section-header">
+        <h2 class="dashboard-section-title">
+            <i class="bi bi-graph-up me-2"></i>7-Day Trend
+        </h2>
+        <small class="text-muted">open items at 07:30 each day</small>
+    </div>
+    <div style="position: relative; height: 260px;" class="mb-3">
+        <canvas id="trendChart" aria-label="Open items per status over the last 7 days" role="img"></canvas>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 status-table">
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th class="text-end">New</th>
+                    <th class="text-end">Closed</th>
+                    <th class="text-end">Open</th>
+                    {% for label in status_open_labels %}<th class="text-end">{{ label }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in trend_rows %}
+                <tr{% if r.gap %} class="text-muted"{% endif %}>
+                    <td class="text-nowrap">{{ r.day }}</td>
+                    <td class="text-end">{{ r.new }}</td>
+                    <td class="text-end">{{ r.closed }}</td>
+                    <td class="text-end fw-semibold">{{ r.open }}</td>
+                    {% for c in r.counts %}<td class="text-end">{{ c }}</td>{% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if trend_notes %}
+    <div class="small text-muted mt-2">
+        {% for n in trend_notes %}<div><i class="bi bi-info-circle me-1"></i>{{ n }}</div>{% endfor %}
+    </div>
+    {% endif %}
+</div>
+
 <!-- Currently Worked On Section -->
 <div class="dashboard-section mb-4">
     <div class="dashboard-section-header">
@@ -142,49 +267,6 @@
         </div>
     </div>
 </div>
-
-<!-- Global Activity Stream Section -->
-<div class="dashboard-section">
-    <div class="dashboard-section-header">
-        <h2 class="dashboard-section-title">
-            <i class="bi bi-activity me-2"></i>Global Activity Stream
-        </h2>
-        <div class="btn-group">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi bi-funnel"></i> Filter
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=all" 
-                    hx-target="#activity-stream">All</a></li>
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=items" 
-                    hx-target="#activity-stream">Items</a></li>
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=projects" 
-                    hx-target="#activity-stream">Projects</a></li>
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=github" 
-                    hx-target="#activity-stream">GitHub</a></li>
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=changes" 
-                    hx-target="#activity-stream">Changes</a></li>
-                <li><a class="dropdown-item" href="#" 
-                    hx-get="{% url 'dashboard-activity-stream' %}?filter=ai" 
-                    hx-target="#activity-stream">AI</a></li>
-            </ul>
-        </div>
-    </div>
-    <div id="activity-stream" 
-         hx-get="{% url 'dashboard-activity-stream' %}" 
-         hx-trigger="load">
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_head %}
@@ -195,59 +277,113 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Chart colours follow the dark theme tokens; status hues are validated
+    // for colour-vision deficiency (see core/services/daily_report/dashboard.py).
+    const css = getComputedStyle(document.documentElement);
+    const textColor = css.getPropertyValue('--text-secondary').trim() || '#cbd5e1';
+    const gridColor = css.getPropertyValue('--border-color').trim() || '#2a3140';
+    const surface = css.getPropertyValue('--bg-secondary').trim() || '#121720';
+    Chart.defaults.color = textColor;
+    Chart.defaults.borderColor = gridColor;
+
+    // Closed items by day
     const ctx = document.getElementById('closedItemsChart');
     if (ctx) {
         const chartData = {{ closed_items_chart_json }};
-        
-        const labels = chartData.map(item => item.date_display);
-        const data = chartData.map(item => item.count);
-        
         new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels: chartData.map(item => item.date_display),
                 datasets: [{
                     label: 'Closed Items',
-                    data: data,
-                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
-                    borderColor: 'rgba(25, 135, 84, 1)',
-                    borderWidth: 1
+                    data: chartData.map(item => item.count),
+                    backgroundColor: '#9085e9',
+                    borderRadius: 4,
+                    maxBarThickness: 48
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
                 plugins: {
-                    legend: {
-                        display: false
-                    },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             title: function(context) {
-                                const index = context[0].dataIndex;
-                                return chartData[index].date;
+                                return chartData[context[0].dataIndex].date;
                             }
                         }
                     }
                 },
                 scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1,
-                            precision: 0
-                        },
-                        title: {
-                            display: true,
-                            text: 'Number of Items'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Date'
-                        }
+                    y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, grid: { color: gridColor } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // Stacked bars: a surface-coloured border separates adjacent segments.
+    function stacked(datasets) {
+        return datasets.map(ds => Object.assign({}, ds, {
+            borderColor: surface,
+            borderWidth: 1,
+            borderSkipped: false,
+            maxBarThickness: 28
+        }));
+    }
+
+    function personChart(canvasId, data) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !data.labels.length) return;
+        // One bar row per person; height grows with the number of people.
+        canvas.parentElement.style.height = (data.labels.length * 34 + 90) + 'px';
+        new Chart(canvas, {
+            type: 'bar',
+            data: { labels: data.labels, datasets: stacked(data.datasets) },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', axis: 'y', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12 } },
+                    tooltip: {
+                        filter: item => item.raw > 0,
+                        footer: items => 'Total: ' + items.reduce((sum, i) => sum + i.raw, 0)
                     }
+                },
+                scales: {
+                    x: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: gridColor } },
+                    y: { stacked: true, grid: { display: false } }
+                }
+            }
+        });
+    }
+    personChart('responsibleChart', {{ responsible_chart_json }});
+    personChart('assignedChart', {{ assigned_chart_json }});
+
+    // 7-day trend of open items, stacked by status. Days without data stay empty.
+    const trendCanvas = document.getElementById('trendChart');
+    if (trendCanvas) {
+        const trend = {{ trend_chart_json }};
+        new Chart(trendCanvas, {
+            type: 'bar',
+            data: { labels: trend.labels, datasets: stacked(trend.datasets) },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12 } },
+                    tooltip: {
+                        filter: item => item.raw !== null,
+                        footer: items => items.length ? 'Open: ' + items.reduce((sum, i) => sum + (i.raw || 0), 0) : 'No data'
+                    }
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: gridColor } }
                 }
             }
         });

@@ -128,3 +128,12 @@ damit auch an Sentry) und beenden das Command mit Exit-Code ≠ 0 – die Unit
 steht dann in `systemctl --failed`. Der Snapshot wird vor dem Versand
 geschrieben, ein fehlgeschlagener Versand verliert also keinen Verlaufspunkt;
 ein manueller Neustart der Unit verschickt den Report erneut.
+
+## Dashboard
+
+Das Dashboard zeigt Statusverteilung und 7-Tage-Verlauf mit derselben Logik
+(`core/services/daily_report/dashboard.py`), allerdings beschränkt auf die
+Projekte, denen der angemeldete User zugeordnet ist. Dazu kommen gestapelte
+Balken je Responsible bzw. Assigned To: offene Items je Status plus Closed der
+letzten 7 Tage. „Closed“ (KPI, Tages-Chart, Personen-Charts) basiert auf dem
+tatsächlichen Wechsel nach `Closed`, für Altfälle ohne Historie auf `updated_at`.

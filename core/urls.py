@@ -23,7 +23,6 @@ urlpatterns = [
     
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard/partials/in_progress_items/', views.dashboard_in_progress_items, name='dashboard-in-progress-items'),
-    path('dashboard/partials/activity_stream/', views.dashboard_activity_stream, name='dashboard-activity-stream'),
     path('projects/', views.projects, name='projects'),
     path('projects/new/', views.project_create, name='project-create'),
     path('projects/<int:id>/', views.project_detail, name='project-detail'),
