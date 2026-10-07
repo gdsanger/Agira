@@ -162,17 +162,17 @@ class ItemsWorkingView(StatusItemListView):
 
 
 class ItemsTestingView(StatusItemListView):
-    """Items Testing - items being tested."""
+    """Items Implemented (status value 'Testing') - nothing left for the developer for now."""
     item_status = ItemStatus.TESTING
-    page_title = "Items - Testing"
-    page_description = "Items being tested"
+    page_title = "Items - Implemented"
+    page_description = "Implemented items — nothing left to do for the developer for now"
 
 
 class ItemsReviewView(StatusItemListView):
-    """Items Review - items marked for coordination or open questions."""
+    """Items Clarification (status value 'Review') - open questions to discuss."""
     item_status = ItemStatus.REVIEW
-    page_title = "Items - Review"
-    page_description = "Items marked for review/coordination"
+    page_title = "Items - Clarification"
+    page_description = "Items with open questions that need clarification"
 
 
 class ItemsReadyView(StatusItemListView):

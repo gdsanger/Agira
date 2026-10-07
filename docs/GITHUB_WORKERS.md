@@ -10,7 +10,7 @@ Agira provides two separate Django management commands for synchronizing data fr
 
 **Responsibilities:**
 - Syncs status of GitHub Issues to Agira Items
-- Updates Item status to "Testing" when GitHub Issue is closed
+- Updates Item status to "Testing" (shown as "Implemented") when GitHub Issue is closed
 - Links Pull Requests to Issues based on timeline events
 - Pushes Issue/PR content to Weaviate for AI indexing
 - Respects the "Closed" status rule (items in Closed status are not synced)

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Items - Testing - Agira{% endblock %}
+{% block title %}Items - Implemented - Agira{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <h1>Items - Testing</h1>
+            <h1>Items - Implemented</h1>
             <p class="text-muted">Items currently being tested</p>
         </div>
         <div>
@@ -100,12 +100,12 @@
             {% empty %}
             <tr>
                 <td colspan="7" class="text-center text-muted py-4">
-                    <div class="mb-2">🧪</div>
-                    <div>No items in testing</div>
+                    <div class="mb-2">🏁</div>
+                    <div>No implemented items</div>
                     {% if search_query %}
                     <small>Try adjusting your search filters</small>
                     {% else %}
-                    <small>All items have passed testing!</small>
+                    <small>Nothing waiting here.</small>
                     {% endif %}
                 </td>
             </tr>

@@ -81,8 +81,13 @@ class ItemStatus(models.TextChoices):
     INBOX = 'Inbox', _('📥 Inbox')
     BACKLOG = 'Backlog', _('📋 Backlog')
     WORKING = 'Working', _('🚧 Working')
-    TESTING = 'Testing', _('🧪 Testing')
-    REVIEW = 'Review', _('👀 Review')
+    # The stored values 'Testing' and 'Review' are kept for compatibility (REST,
+    # MCP, mail mappings, status history, search index); only the labels
+    # changed. 'Testing' means "implemented — nothing left for the developer
+    # for now", not the business-side test, which happens later on a Change.
+    # 'Review' means "needs clarification / discussion".
+    TESTING = 'Testing', _('🏁 Implemented')
+    REVIEW = 'Review', _('❓ Clarification')
     READY_FOR_RELEASE = 'ReadyForRelease', _('✅ Ready for Release')
     CLOSED = 'Closed', _('✔ Closed')
 
@@ -91,8 +96,8 @@ class ItemStatus(models.TextChoices):
         """
         Status choices eligible for MailActionMapping configuration.
 
-        Review is excluded: it only marks an item for coordination/questions
-        and must never be wired to a mail trigger.
+        Review ("Clarification") is excluded: it only marks an item for
+        coordination/questions and must never be wired to a mail trigger.
         """
         return [choice for choice in cls.choices if choice[0] != cls.REVIEW]
 

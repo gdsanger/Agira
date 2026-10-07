@@ -47,8 +47,8 @@ STATUS_LABELS = {
     ItemStatus.INBOX: 'Inbox',
     ItemStatus.BACKLOG: 'Backlog',
     ItemStatus.WORKING: 'Working',
-    ItemStatus.TESTING: 'Testing',
-    ItemStatus.REVIEW: 'Review',
+    ItemStatus.TESTING: 'Implemented',
+    ItemStatus.REVIEW: 'Clarification',
     ItemStatus.READY_FOR_RELEASE: 'Ready for Release',
     ItemStatus.CLOSED: 'Closed',
 }
