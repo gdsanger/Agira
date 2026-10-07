@@ -277,6 +277,19 @@ CACHES = {
     }
 }
 
+# Daily status report (manage.py daily_status_report), see docs/DAILY_STATUS_REPORT.md.
+# Comma-separated recipient list; the sender is the Graph default_mail_sender
+# unless DAILY_REPORT_SENDER is set.
+DAILY_REPORT_RECIPIENTS = [
+    addr.strip()
+    for addr in os.getenv('DAILY_REPORT_RECIPIENTS', 'christian.angermeier@isartec.de').split(',')
+    if addr.strip()
+]
+DAILY_REPORT_SENDER = os.getenv('DAILY_REPORT_SENDER', '').strip() or None
+# Report cut-off: window is previous day HH:MM to report day HH:MM, local time.
+DAILY_REPORT_TIMEZONE = os.getenv('DAILY_REPORT_TIMEZONE', 'Europe/Berlin')
+DAILY_REPORT_CUTOFF = os.getenv('DAILY_REPORT_CUTOFF', '07:30')
+
 # Redis Configuration for AI Agent Response Cache
 REDIS_CACHE_ENABLED = os.getenv('REDIS_CACHE_ENABLED', 'False') == 'True'
 REDIS_CACHE_HOST = os.getenv('REDIS_CACHE_HOST', 'localhost')

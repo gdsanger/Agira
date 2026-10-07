@@ -972,11 +972,14 @@ class Item(models.Model):
             self.description = '\n'.join(new_lines)
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        old_status = None
         # Check if this is an update (not a new item)
         if self.pk:
             try:
                 # Get the old item from database
                 old_item = Item.objects.get(pk=self.pk)
+                old_status = old_item.status
                 old_requester_id = old_item.requester_id if old_item.requester else None
                 new_requester_id = self.requester_id if self.requester else None
                 
@@ -991,10 +994,22 @@ class Item(models.Model):
                     # (as per requirement: leave unchanged, but display warning to user)
             except Item.DoesNotExist:
                 # This shouldn't happen, but handle gracefully
-                pass
+                is_new = True
         
         self.full_clean()
         super().save(*args, **kwargs)
+
+        # Status history for reporting (daily status report). Recorded here and
+        # not in the views so every path that saves an item is covered — the
+        # Activity log only sees transitions that explicitly call
+        # log_status_change(). Creation is recorded as '' → initial status.
+        if is_new or old_status != self.status:
+            ItemStatusChange.objects.create(
+                item=self,
+                from_status='' if is_new else old_status,
+                to_status=self.status,
+                changed_by=getattr(self, '_status_changed_by', None),
+            )
     
     def get_followers(self):
         """
@@ -1005,6 +1020,53 @@ class Item(models.Model):
 
     def __str__(self):
         return f"{self.project.name} - {self.title}"
+
+
+class ItemStatusChange(models.Model):
+    """One status transition of an item, written by Item.save().
+
+    ``from_status`` is empty for the creation of an item. Rows with
+    ``backfilled=True`` were reconstructed from the Activity log when this
+    model was introduced and are therefore not complete.
+    """
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='status_changes')
+    from_status = models.CharField(max_length=20, blank=True)
+    to_status = models.CharField(max_length=20)
+    changed_at = models.DateTimeField(default=timezone.now, db_index=True)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='item_status_changes')
+    backfilled = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['changed_at', 'id']
+        indexes = [
+            models.Index(fields=['to_status', 'changed_at']),
+            models.Index(fields=['item', 'changed_at']),
+        ]
+
+    def __str__(self):
+        return f"#{self.item_id}: {self.from_status or '∅'} → {self.to_status} @ {self.changed_at}"
+
+
+class ItemStatusSnapshot(models.Model):
+    """Number of open items per project and status at a report's cut-off.
+
+    Written by the daily status report so the 7-day trend stays stable even
+    when items are later moved between projects or deleted.
+    """
+    date = models.DateField(db_index=True)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='status_snapshots')
+    status = models.CharField(max_length=20, choices=ItemStatus.choices)
+    count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'project', 'status']
+        constraints = [
+            models.UniqueConstraint(fields=['date', 'project', 'status'], name='uniq_item_status_snapshot'),
+        ]
+
+    def __str__(self):
+        return f"{self.date} {self.project_id} {self.status}: {self.count}"
 
 
 class ItemRelation(models.Model):

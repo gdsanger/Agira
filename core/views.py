@@ -4984,6 +4984,7 @@ def item_update(request, item_id):
         item.solution_description = request.POST.get('solution_description', item.solution_description)
         item.short_description = request.POST.get('short_description', item.short_description)
         item.status = request.POST.get('status', item.status)
+        item._status_changed_by = request.user
         if 'suggested_model' in request.POST:
             item.suggested_model = _resolve_suggested_model(item, request)
         if 'claude_auth_mode' in request.POST:

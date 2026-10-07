@@ -5,7 +5,7 @@ from .models import (
     Organisation, ItemType, User, UserOrganisation,
     Project, Node, Release, Change, ChangeApproval, ChangePolicy, ChangePolicyRole,
     Item, ItemRelation, ExternalIssueMapping, ItemComment,
-    Attachment, AttachmentLink, Activity,
+    Attachment, AttachmentLink, Activity, ItemStatusChange, ItemStatusSnapshot,
     GitHubConfiguration, WeaviateConfiguration, GooglePSEConfiguration,
     GraphAPIConfiguration, ZammadConfiguration,
     AIProvider, AIModel, AIJobsHistory,
@@ -475,6 +475,22 @@ class ActivityAdmin(admin.ModelAdmin):
     autocomplete_fields = ['actor']
     readonly_fields = ['created_at', 'target_content_type', 'target_object_id']
     date_hierarchy = 'created_at'
+
+
+@admin.register(ItemStatusChange)
+class ItemStatusChangeAdmin(admin.ModelAdmin):
+    list_display = ['changed_at', 'item', 'from_status', 'to_status', 'changed_by', 'backfilled']
+    list_filter = ['to_status', 'backfilled', 'changed_at']
+    search_fields = ['item__title', 'item__id']
+    raw_id_fields = ['item', 'changed_by']
+    date_hierarchy = 'changed_at'
+
+
+@admin.register(ItemStatusSnapshot)
+class ItemStatusSnapshotAdmin(admin.ModelAdmin):
+    list_display = ['date', 'project', 'status', 'count']
+    list_filter = ['date', 'status', 'project']
+    date_hierarchy = 'date'
     
     def has_add_permission(self, request):
         # Activities are created by the system via ActivityService, not manually

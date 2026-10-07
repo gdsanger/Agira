@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ subject }}</title>
+</head>
+{% comment %}
+  E-Mail-Template für den täglichen Status-Report. Muss in Outlook rendern:
+  nur Tabellen, Inline-Styles und bgcolor/width-Attribute, keine externen
+  Ressourcen (CSS, JS, Bilder).
+{% endcomment %}
+<body style="margin:0;padding:0;background-color:#f4f5f7;font-family:Segoe UI,Arial,Helvetica,sans-serif;font-size:14px;color:#212529;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f7">
+<tr><td align="center" style="padding:16px 8px;">
+<table role="presentation" width="760" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:760px;max-width:100%;border:1px solid #dee2e6;">
+
+  <tr><td bgcolor="#1f3a5f" style="padding:16px 20px;color:#ffffff;">
+    <div style="font-size:20px;font-weight:bold;">{{ subject }}</div>
+    <div style="font-size:12px;color:#d0d7e2;padding-top:4px;">Zeitfenster {{ window }} &middot; erzeugt {{ generated }}</div>
+  </td></tr>
+
+  {# Kennzahlen #}
+  <tr><td style="padding:16px 20px 0 20px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td width="33%" align="center" style="padding:10px;border:1px solid #dee2e6;">
+          <div style="font-size:24px;font-weight:bold;">{{ report.new_items|length }}</div>
+          <div style="font-size:12px;color:#6c757d;">neu (24 h)</div>
+        </td>
+        <td width="34%" align="center" style="padding:10px;border:1px solid #dee2e6;">
+          <div style="font-size:24px;font-weight:bold;">{{ report.closed_items|length }}{% if not report.closed_complete %}*{% endif %}</div>
+          <div style="font-size:12px;color:#6c757d;">geschlossen (24 h)</div>
+        </td>
+        <td width="33%" align="center" style="padding:10px;border:1px solid #dee2e6;">
+          <div style="font-size:24px;font-weight:bold;">{{ total_open }}</div>
+          <div style="font-size:12px;color:#6c757d;">offen</div>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  {# 1. Neue Items #}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">1. Neue Items (24 h): {{ report.new_items|length }}</div>
+    {% if report.new_items %}
+    <table role="presentation" width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:6px;">
+      <tr bgcolor="#f1f3f5"><th align="left" width="60">ID</th><th align="left">Titel</th><th align="left" width="140">Projekt</th><th align="left" width="130">Requester</th></tr>
+      {% for i in report.new_items %}
+      <tr><td style="border-bottom:1px solid #eeeeee;"><a href="{{ i.url }}" style="color:#0d6efd;">#{{ i.id }}</a></td><td style="border-bottom:1px solid #eeeeee;">{{ i.title }}</td><td style="border-bottom:1px solid #eeeeee;">{{ i.project }}</td><td style="border-bottom:1px solid #eeeeee;">{{ i.person|default:"–" }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<div style="padding-top:6px;color:#6c757d;">Keine neuen Items.</div>{% endif %}
+  </td></tr>
+
+  {# 2. Statusverteilung #}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">2. Statusverteilung (offen: {{ total_open }})</div>
+    <table role="presentation" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:6px;">
+      <tr>
+        {% for s in status_totals %}
+        <td align="center" style="padding:6px 10px;border:1px solid #dee2e6;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td width="10" height="10" bgcolor="{{ s.color }}" style="font-size:0;line-height:0;">&nbsp;</td></tr></table>
+          <div style="font-size:18px;font-weight:bold;">{{ s.count }}</div>
+          <div style="font-size:11px;color:#6c757d;">{{ s.label }}</div>
+        </td>
+        {% endfor %}
+      </tr>
+    </table>
+    {% if projects %}
+    <table role="presentation" width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:10px;">
+      <tr bgcolor="#f1f3f5"><th align="left">Projekt</th>{% for l in open_labels %}<th align="right">{{ l }}</th>{% endfor %}<th align="right">Summe</th></tr>
+      {% for p in projects %}
+      <tr><td style="border-bottom:1px solid #eeeeee;">{{ p.name }}</td>{% for c in p.counts %}<td align="right" style="border-bottom:1px solid #eeeeee;{% if not c %}color:#adb5bd;{% endif %}">{{ c }}</td>{% endfor %}<td align="right" style="border-bottom:1px solid #eeeeee;font-weight:bold;">{{ p.total }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </td></tr>
+
+  {# 3. Geschlossen #}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">3. Geschlossen (24 h): {{ report.closed_items|length }}{% if not report.closed_complete %}*{% endif %}</div>
+    {% if report.closed_items %}
+    <table role="presentation" width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:6px;">
+      <tr bgcolor="#f1f3f5"><th align="left" width="60">ID</th><th align="left">Titel</th><th align="left" width="140">Projekt</th><th align="left" width="130">Responsible</th></tr>
+      {% for i in report.closed_items %}
+      <tr><td style="border-bottom:1px solid #eeeeee;"><a href="{{ i.url }}" style="color:#0d6efd;">#{{ i.id }}</a></td><td style="border-bottom:1px solid #eeeeee;">{{ i.title }}</td><td style="border-bottom:1px solid #eeeeee;">{{ i.project }}</td><td style="border-bottom:1px solid #eeeeee;">{{ i.person|default:"–" }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<div style="padding-top:6px;color:#6c757d;">Keine Items geschlossen.</div>{% endif %}
+  </td></tr>
+
+  {# 4. Requester / 5. Responsible #}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td width="44%" valign="top" style="padding-right:12px;">
+          <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">4. Offen je Requester</div>
+          <table role="presentation" width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:6px;">
+            <tr bgcolor="#f1f3f5"><th align="left">Requester</th><th align="right">Offen</th></tr>
+            {% for p in requesters %}
+            <tr><td style="border-bottom:1px solid #eeeeee;{% if p.is_placeholder %}font-style:italic;color:#6c757d;{% endif %}">{{ p.name }}</td><td align="right" style="border-bottom:1px solid #eeeeee;">{{ p.total }}</td></tr>
+            {% endfor %}
+            <tr><td style="font-weight:bold;">Summe</td><td align="right" style="font-weight:bold;">{{ requesters_total }}</td></tr>
+          </table>
+        </td>
+        <td width="56%" valign="top" style="padding-left:12px;">
+          <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">5. Responsible in Bearbeitung</div>
+          <table role="presentation" width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:6px;">
+            <tr bgcolor="#f1f3f5"><th align="left">Responsible</th>{% for l in active_labels %}<th align="right">{{ l }}</th>{% endfor %}<th align="right">Summe</th></tr>
+            {% for p in responsibles %}
+            <tr><td style="border-bottom:1px solid #eeeeee;{% if p.placeholder %}font-style:italic;color:#6c757d;{% endif %}">{{ p.name }}</td>{% for c in p.counts %}<td align="right" style="border-bottom:1px solid #eeeeee;{% if not c %}color:#adb5bd;{% endif %}">{{ c }}</td>{% endfor %}<td align="right" style="border-bottom:1px solid #eeeeee;font-weight:bold;">{{ p.total }}</td></tr>
+            {% empty %}
+            <tr><td colspan="5" style="color:#6c757d;">Keine Items in Working/Testing/Review.</td></tr>
+            {% endfor %}
+            {% if responsibles %}<tr><td style="font-weight:bold;" colspan="4">Summe</td><td align="right" style="font-weight:bold;">{{ responsibles_total }}</td></tr>{% endif %}
+          </table>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  {# 6. Verlauf #}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <div style="font-size:16px;font-weight:bold;padding-bottom:6px;border-bottom:2px solid #1f3a5f;">6. Verlauf 7 Tage</div>
+    <table role="presentation" width="100%" cellpadding="3" cellspacing="0" border="0" style="font-size:12px;margin-top:6px;">
+      <tr bgcolor="#f1f3f5"><th align="left">Tag</th><th align="right">Neu</th><th align="right">Geschl.</th><th align="right">Offen</th>{% for l in open_labels %}<th align="right">{{ l }}</th>{% endfor %}</tr>
+      {% for r in trend %}
+      <tr{% if r.gap %} style="color:#adb5bd;"{% endif %}><td style="border-bottom:1px solid #eeeeee;white-space:nowrap;">{{ r.day }}</td><td align="right" style="border-bottom:1px solid #eeeeee;">{{ r.new }}</td><td align="right" style="border-bottom:1px solid #eeeeee;">{{ r.closed }}</td><td align="right" style="border-bottom:1px solid #eeeeee;font-weight:bold;">{{ r.open }}</td>{% for c in r.counts %}<td align="right" style="border-bottom:1px solid #eeeeee;">{{ c }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:11px;margin-top:12px;">
+      {% for r in trend %}
+      <tr>
+        <td width="60" style="padding:2px 6px 2px 0;white-space:nowrap;color:#6c757d;">{{ r.day }}</td>
+        <td style="padding:2px 0;">
+          {% if r.segments %}
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            {% for s in r.segments %}<td width="{{ s.width }}" height="14" bgcolor="{{ s.color }}" style="width:{{ s.width }}px;height:14px;font-size:0;line-height:0;" title="{{ s.label }}: {{ s.count }}">&nbsp;</td>{% endfor %}
+          </tr></table>
+          {% else %}<span style="color:#adb5bd;">keine Daten</span>{% endif %}
+        </td>
+        <td style="padding:2px 0 2px 6px;color:#6c757d;">{{ r.open }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:11px;margin-top:6px;color:#6c757d;"><tr>
+      {% for l in legend %}<td width="10" height="10" bgcolor="{{ l.color }}" style="font-size:0;line-height:0;">&nbsp;</td><td style="padding:0 10px 0 4px;">{{ l.label }}</td>{% endfor %}
+    </tr></table>
+  </td></tr>
+
+  {% if notes %}
+  <tr><td style="padding:20px 20px 0 20px;">
+    <table role="presentation" width="100%" cellpadding="8" cellspacing="0" border="0" bgcolor="#fff8e1" style="font-size:12px;border:1px solid #ffe08a;">
+      <tr><td><strong>Hinweise</strong>
+        {% for n in notes %}<div style="padding-top:4px;">&bull; {{ n }}</div>{% endfor %}
+      </td></tr>
+    </table>
+  </td></tr>
+  {% endif %}
+
+  <tr><td style="padding:20px;font-size:11px;color:#adb5bd;">Automatisch erzeugt von Agira (<code>manage.py daily_status_report</code>).</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

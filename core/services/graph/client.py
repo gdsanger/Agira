@@ -129,6 +129,7 @@ class GraphClient:
         url: str,
         json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
+        data: Optional[bytes] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Make an HTTP request to the Graph API.
@@ -138,6 +139,8 @@ class GraphClient:
             url: Full URL or path (if path, BASE_URL is prepended)
             json: Optional JSON payload
             headers: Optional additional headers
+            data: Optional raw request body (instead of ``json``); set the
+                matching Content-Type via ``headers``
             
         Returns:
             Response JSON as dict, or None for 202/204 responses
@@ -167,6 +170,7 @@ class GraphClient:
                 method=method,
                 url=url,
                 json=json,
+                data=data,
                 headers=req_headers,
                 timeout=self.TIMEOUT,
             )
@@ -233,6 +237,33 @@ class GraphClient:
         
         logger.info("Email sent successfully via Graph API")
     
+    def send_mime_mail(self, sender_upn: str, mime_message: bytes) -> None:
+        """
+        Send a complete MIME message via Graph API.
+
+        Unlike ``send_mail`` this keeps multipart/alternative bodies (HTML plus
+        plain-text fallback), which the JSON sendMail schema cannot express.
+
+        Args:
+            sender_upn: User Principal Name of the sender
+            mime_message: RFC 822 message bytes
+
+        Raises:
+            ServiceError: If sending fails
+        """
+        import base64
+
+        url = f"/users/{sender_upn}/sendMail"
+        logger.info(f"Sending MIME email via Graph API from {sender_upn}")
+        # Graph expects the MIME content base64-encoded with Content-Type text/plain.
+        self.request(
+            "POST",
+            url,
+            data=base64.b64encode(mime_message),
+            headers={"Content-Type": "text/plain"},
+        )
+        logger.info("MIME email sent successfully via Graph API")
+
     def get_inbox_messages(
         self,
         user_upn: str,
