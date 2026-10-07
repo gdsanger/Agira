@@ -1627,7 +1627,7 @@ def item_related_items_tab(request, item_id):
     queryset = Item.objects.filter(
         id__in=related_item_ids
     ).select_related(
-        'project', 'type', 'assigned_to'
+        'project', 'type', 'assigned_to', 'responsible'
     )
     
     # Apply filters
@@ -5947,7 +5947,7 @@ def release_detail_modal(request, release_id):
     
     # Get items for this release
     items_queryset = Item.objects.filter(solution_release=release).select_related(
-        'type', 'organisation', 'assigned_to'
+        'type', 'organisation', 'assigned_to', 'responsible'
     )
     
     # Apply filters

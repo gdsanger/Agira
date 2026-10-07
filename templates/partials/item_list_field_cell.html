@@ -1,0 +1,39 @@
+{% comment %}
+Inline editor for the `responsible` and `suggested_model` columns of the item lists.
+
+Same contract as `partials/item_status_cell.html`: one fragment for every
+django-tables2 item table (rendered through `ItemListColumnsMixin`), posting to the
+list endpoint `item-list-field`, which swaps the re-rendered cell back in - 200 on
+success, 400 with an error message (cell re-rendered from the stored value).
+
+Context: `item`, `field` ('responsible' | 'suggested_model'), `choices` (list of
+(value, label) pairs), `current` (stored value as string, '' for none),
+`allow_empty`, optional `field_error` and `field_saved`.
+{% endcomment %}
+<div class="item-list-field-cell" id="item-{{ field }}-cell-{{ item.pk }}">
+    <select class="form-select form-select-sm item-list-field-select"
+            name="value"
+            aria-label="{% if field == 'responsible' %}Responsible{% else %}Suggested Model{% endif %} von Item #{{ item.pk }}"
+            hx-post="{% url 'item-list-field' item.pk %}"
+            hx-vals='{"field": "{{ field }}"}'
+            hx-trigger="change"
+            hx-target="#item-{{ field }}-cell-{{ item.pk }}"
+            hx-swap="outerHTML"
+            onclick="event.stopPropagation();">
+        {% if allow_empty %}
+        <option value=""{% if not current %} selected{% endif %}>—</option>
+        {% endif %}
+        {% for value, label in choices %}
+        <option value="{{ value }}"{% if value == current %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    {% if field_error %}
+    <span class="item-status-feedback item-status-feedback-error text-danger small d-block mt-1" role="alert">
+        <i class="bi bi-exclamation-circle me-1"></i>{{ field_error }}
+    </span>
+    {% elif field_saved %}
+    <span class="item-status-feedback item-status-feedback-ok text-success small d-block mt-1" role="status">
+        <i class="bi bi-check-circle me-1"></i>Gespeichert
+    </span>
+    {% endif %}
+</div>

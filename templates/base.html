@@ -48,10 +48,12 @@
             // The mail-free list status endpoint answers a rejected status with 400 and
             // the cell re-rendered from the *stored* status. HTMX skips swaps on error
             // responses by default, which would leave the rejected pick on screen, so
-            // allow the swap for status cells specifically.
+            // allow the swap for status cells specifically. The inline responsible /
+            // suggested-model cells follow the same contract.
             document.body.addEventListener('htmx:beforeSwap', function(evt) {
                 var target = evt.detail.target;
-                if (target && target.classList && target.classList.contains('item-status-cell')) {
+                if (target && target.classList && (target.classList.contains('item-status-cell')
+                        || target.classList.contains('item-list-field-cell'))) {
                     if (evt.detail.xhr.status === 400 || evt.detail.xhr.status === 422) {
                         evt.detail.shouldSwap = true;
                         evt.detail.isError = false;
