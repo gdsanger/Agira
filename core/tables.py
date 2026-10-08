@@ -5,7 +5,7 @@ import django_tables2 as tables
 from django.template.loader import render_to_string
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import Item, ItemStatus, Release
+from .models import ClaudeQueueJobModel, Item, ItemStatus, Release, User, UserRole
 
 
 # Badge colours for the read-only status rendering (customer portal).
@@ -27,6 +27,55 @@ def render_item_status_badge(value):
         '<span class="badge {}">{}</span>',
         ITEM_STATUS_BADGE_CLASSES.get(value, 'bg-secondary'),
         display_text,
+    )
+
+
+# Fields the item lists edit inline next to the status (see ``item-list-field``).
+LIST_INLINE_FIELDS = ('responsible', 'suggested_model')
+
+
+def agent_choices():
+    """(pk, name) pairs of every user that may be set as responsible (role Agent)."""
+    return [
+        (str(pk), name)
+        for pk, name in User.objects.filter(role=UserRole.AGENT)
+        .order_by('name')
+        .values_list('pk', 'name')
+    ]
+
+
+def render_item_list_field_cell(item, field, agents=None, error=None, saved=False):
+    """Render the inline responsible / suggested-model editor for one list row.
+
+    ``agents`` is the (pk, name) list from :func:`agent_choices`; tables pass it
+    in once so a page of rows does not run one agent query per row.
+    """
+    if field == 'responsible':
+        choices = list(agents if agents is not None else agent_choices())
+        current = str(item.responsible_id) if item.responsible_id else ''
+        # Keep a responsible that is no longer an agent visible instead of
+        # silently showing "—" for it.
+        if current and current not in {value for value, _ in choices}:
+            choices.insert(0, (current, item.responsible.name))
+        allow_empty = True
+    elif field == 'suggested_model':
+        choices = ClaudeQueueJobModel.choices
+        current = item.suggested_model or ''
+        allow_empty = False
+    else:
+        raise ValueError(f'Field "{field}" is not editable in item lists.')
+
+    return render_to_string(
+        'partials/item_list_field_cell.html',
+        {
+            'item': item,
+            'field': field,
+            'choices': choices,
+            'current': current,
+            'allow_empty': allow_empty,
+            'field_error': error,
+            'field_saved': saved,
+        },
     )
 
 
@@ -57,6 +106,30 @@ class ItemListColumnsMixin(tables.Table):
         orderable=True,
         attrs={'td': {'class': 'item-status-cell-td'}, 'th': {'style': 'width: 180px;'}},
     )
+
+    responsible = tables.Column(
+        verbose_name='Responsible',
+        orderable=True,
+        accessor='responsible__name',
+        empty_values=(),
+        attrs={'td': {'class': 'item-list-field-cell-td'}, 'th': {'style': 'width: 170px;'}},
+    )
+
+    suggested_model = tables.Column(
+        verbose_name='Suggested Model',
+        orderable=True,
+        attrs={'td': {'class': 'item-list-field-cell-td'}, 'th': {'style': 'width: 140px;'}},
+    )
+
+    def render_responsible(self, record):
+        """Render the inline responsible editor (agents only, like the DetailView)."""
+        if not hasattr(self, '_agent_choices'):
+            self._agent_choices = agent_choices()
+        return render_item_list_field_cell(record, 'responsible', agents=self._agent_choices)
+
+    def render_suggested_model(self, record):
+        """Render the inline suggested-model editor."""
+        return render_item_list_field_cell(record, 'suggested_model')
 
     def render_id(self, value):
         """Render the item ID as a `#123` prefix - visible text, not just a link target."""
@@ -106,15 +179,6 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
         attrs={'td': {'class': 'small'}}
     )
     
-    # Organisation column
-    organisation = tables.Column(
-        verbose_name='Organisation',
-        orderable=True,
-        accessor='organisation__name',
-        attrs={'td': {'class': 'small'}},
-        empty_values=()
-    )
-    
     # Requester column
     requester = tables.Column(
         verbose_name='Requester',
@@ -124,15 +188,6 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
         empty_values=()
     )
     
-    # Assigned to column
-    assigned_to = tables.Column(
-        verbose_name='Assigned To',
-        orderable=True,
-        accessor='assigned_to__username',
-        attrs={'td': {'class': 'small'}},
-        empty_values=()
-    )
-
     # Comments column (annotated comment_count, no per-row query)
     comments = tables.Column(
         verbose_name='Comments',
@@ -153,7 +208,7 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('id', 'updated_at', 'title', 'type', 'status', 'project', 'organisation', 'requester', 'assigned_to', 'comments', 'actions')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'project', 'requester', 'responsible', 'suggested_model', 'comments', 'actions')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -194,28 +249,12 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
             record.type.name
         )
     
-    def render_organisation(self, value, record):
-        """
-        Render organisation column with em dash for empty values.
-        """
-        if record.organisation:
-            return record.organisation.name
-        return format_html('<span class="text-muted">{}</span>', '—')
-    
     def render_requester(self, value, record):
         """
         Render requester column with em dash for empty values.
         """
         if record.requester:
             return record.requester.username
-        return format_html('<span class="text-muted">{}</span>', '—')
-    
-    def render_assigned_to(self, value, record):
-        """
-        Render assigned_to column with em dash for empty values.
-        """
-        if record.assigned_to:
-            return record.assigned_to.username
         return format_html('<span class="text-muted">{}</span>', '—')
 
     def render_comments(self, record):
@@ -283,20 +322,11 @@ class RelatedItemsTable(ItemListColumnsMixin, tables.Table):
         orderable=True,
         accessor='type__name'
     )
-    
-    # Assigned to column
-    assigned_to = tables.Column(
-        verbose_name='Assigned To',
-        orderable=True,
-        accessor='assigned_to__username',
-        attrs={'td': {'class': 'small'}},
-        empty_values=()
-    )
 
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('id', 'updated_at', 'title', 'type', 'status', 'assigned_to')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'responsible', 'suggested_model')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -336,14 +366,6 @@ class RelatedItemsTable(ItemListColumnsMixin, tables.Table):
             '<span class="badge bg-secondary">{}</span>',
             record.type.name
         )
-    
-    def render_assigned_to(self, value, record):
-        """
-        Render assigned_to column with em dash for empty values.
-        """
-        if record.assigned_to:
-            return record.assigned_to.username
-        return format_html('<span class="text-muted">{}</span>', '—')
 
 
 class EmbedItemTable(tables.Table):
@@ -499,29 +521,11 @@ class ReleaseItemsTable(ItemListColumnsMixin, tables.Table):
         orderable=True,
         accessor='type__name'
     )
-    
-    # Organisation column
-    organisation = tables.Column(
-        verbose_name='Organisation',
-        orderable=True,
-        accessor='organisation__name',
-        attrs={'td': {'class': 'small'}},
-        empty_values=()
-    )
-
-    # Assigned to column
-    assigned_to = tables.Column(
-        verbose_name='Assigned To',
-        orderable=True,
-        accessor='assigned_to__username',
-        attrs={'td': {'class': 'small'}},
-        empty_values=()
-    )
 
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('id', 'updated_at', 'title', 'type', 'status', 'organisation', 'assigned_to')
+        fields = ('id', 'updated_at', 'title', 'type', 'status', 'responsible', 'suggested_model')
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
@@ -561,22 +565,7 @@ class ReleaseItemsTable(ItemListColumnsMixin, tables.Table):
             '<span class="badge bg-secondary">{}</span>',
             record.type.name
         )
-    
-    def render_organisation(self, value, record):
-        """
-        Render organisation column with em dash for empty values.
-        """
-        if record.organisation:
-            return record.organisation.name
-        return format_html('<span class="text-muted">{}</span>', '—')
-    
-    def render_assigned_to(self, value, record):
-        """
-        Render assigned_to column with em dash for empty values.
-        """
-        if record.assigned_to:
-            return record.assigned_to.username
-        return format_html('<span class="text-muted">{}</span>', '—')
+
 
 
 class IssueBlueprintTable(tables.Table):

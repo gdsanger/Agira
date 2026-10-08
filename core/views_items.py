@@ -15,7 +15,7 @@ from django_filters.views import FilterView
 from django.conf import settings
 
 from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
-from .tables import ItemTable
+from .tables import ItemTable, LIST_INLINE_FIELDS, render_item_list_field_cell
 from .filters import ItemFilter, KanbanFilter
 from .services.workflow import ItemWorkflowGuard
 from .visibility import scope_items
@@ -63,7 +63,7 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         queryset = scope_items(
             Item.objects.filter(status=self.item_status), self.request.user
         ).select_related(
-            'project', 'type', 'organisation', 'requester', 'assigned_to'
+            'project', 'type', 'organisation', 'requester', 'assigned_to', 'responsible'
         ).annotate(comment_count=Count('comments'))
 
         return queryset
@@ -227,7 +227,7 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         ).exclude(
             status=ItemStatus.CLOSED
         ).select_related(
-            'project', 'type', 'organisation', 'requester', 'assigned_to'
+            'project', 'type', 'organisation', 'requester', 'assigned_to', 'responsible'
         ).annotate(comment_count=Count('comments'))
 
         return queryset
@@ -420,6 +420,47 @@ def item_list_status_update(request, item_id):
             'status_error': error,
             'status_saved': error is None,
         },
+        status=400 if error else 200,
+    )
+
+
+@login_required
+@require_POST
+def item_list_field_update(request, item_id):
+    """Inline-save ``responsible`` or ``suggested_model`` straight from a list row.
+
+    Same contract as :func:`item_list_status_update`: the change runs through the
+    shared inline field service (whitelist, validation, activity log), and the
+    re-rendered cell (``partials/item_list_field_cell.html``) is swapped back in -
+    200 on success, 400 with an error message on a rejected value, in both cases
+    rendered from the *persisted* value.
+
+    Only the two list columns are accepted here; every other field stays on the
+    DetailView endpoint ``item-update-field``. A newly set responsible gets the
+    same notification mail as on the DetailView.
+    """
+    from .services.item_field_update import apply_field_update, FieldUpdateError
+    from .views import _send_responsible_notification
+
+    item = get_object_or_404(Item, id=item_id)
+    field = (request.POST.get('field') or '').strip()
+    if field not in LIST_INLINE_FIELDS:
+        return HttpResponse('Field not editable in lists', status=400)
+
+    error = None
+    try:
+        result = apply_field_update(
+            item, field, request.POST.get('value', ''), actor=request.user
+        )
+    except FieldUpdateError as exc:
+        error = str(exc)
+        item.refresh_from_db()
+    else:
+        if field == 'responsible' and result.changed and result.new_value is not None:
+            _send_responsible_notification(item, result.new_value)
+
+    return HttpResponse(
+        render_item_list_field_cell(item, field, error=error, saved=error is None),
         status=400 if error else 200,
     )
 
