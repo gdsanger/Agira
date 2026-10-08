@@ -182,6 +182,13 @@ class ItemsReadyView(StatusItemListView):
     page_description = "Items ready to be released"
 
 
+class ItemsClosedView(StatusItemListView):
+    """Items Closed - finished items, for looking things up."""
+    item_status = ItemStatus.CLOSED
+    page_title = "Items - Closed"
+    page_description = "Closed items"
+
+
 class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
     """
     Base class for user-scoped Item list views (assigned_to, responsible).
@@ -502,6 +509,7 @@ def item_list_delete(request, item_id):
             ItemStatus.TESTING: ItemsTestingView,
             ItemStatus.REVIEW: ItemsReviewView,
             ItemStatus.READY_FOR_RELEASE: ItemsReadyView,
+            ItemStatus.CLOSED: ItemsClosedView,
         }
         view_class = view_class_map.get(item_status)
 
