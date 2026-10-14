@@ -17,10 +17,11 @@ from core.models import (
     ExternalIssueMapping,
     ExternalIssueKind,
     ClaudeQueueJob,
+    ClaudeQueueJobStatus,
     Activity,
     User,
 )
-from core.services.claude_queue.branch import DEFAULT_BASE_BRANCH
+from core.services.claude_queue.branch import DEFAULT_BASE_BRANCH, is_epic_branch
 from core.services.claude_queue.epic import (
     all_sub_issues_merged,
     ensure_epic_pr,
@@ -395,10 +396,10 @@ class GitHubService(IntegrationBase):
         commit first). Reuses the standard ``ExternalIssueMapping`` (Kind=PR)
         rather than a parallel tracking mechanism.
 
-        Draft is the default and the ``main``-targeting behaviour: a PR that a
-        human reviews and merges. ``draft=False`` is for sub-issue PRs against
-        an epic branch (#1076), which are merged by CI + auto-merge and would
-        never become mergeable as a draft.
+        Draft is the default: a half-finished run must never look
+        review-ready. The worker flips it to ready once the run is clean — for
+        ``main`` a human then reviews and merges, for an epic branch the worker
+        merges it itself on green CI.
 
         Args:
             item: Agira item the PR belongs to
@@ -604,8 +605,9 @@ class GitHubService(IntegrationBase):
         latest known state.
 
         Since #1076 the merge's *base* branch matters: a sub-issue merging into
-        its epic branch is done, but an epic itself is only done once its own
-        branch lands on ``main``. See ``_merge_completes_item``.
+        its epic branch is only *integrated* — it reaches Testing together
+        with its siblings when the epic PR lands on ``main``. See
+        ``_status_after_merge`` and ``_release_integrated_sub_issues``.
 
         Args:
             pull_request_data: The `pull_request` object from the webhook payload
@@ -691,44 +693,84 @@ class GitHubService(IntegrationBase):
 
         base_ref = ((pull_request_data.get('base') or {}).get('ref') or '')
 
-        if (
-            new_state == 'merged'
-            and item.status == ItemStatus.WORKING
-            and self._merge_completes_item(item, base_ref)
-        ):
-            from core.services.activity import ActivityService
-
-            old_item_status = item.status
-            item.status = ItemStatus.TESTING
-            item.save()
-            ActivityService().log_status_change(
-                item=item,
-                from_status=old_item_status,
-                to_status=ItemStatus.TESTING,
-            )
-            result['item_transitioned'] = True
+        if new_state == 'merged' and item.status == ItemStatus.WORKING:
+            to_status = self._status_after_merge(item, base_ref)
+            if to_status is not None:
+                self._transition_after_merge(item, to_status)
+                result['item_transitioned'] = True
 
         if new_state == 'merged':
+            if self._is_main(base_ref) and is_epic(item):
+                result['sub_issues_released'] = self._release_integrated_sub_issues(item)
             result['epic_pr_opened'] = self._maybe_open_epic_pr(item)
             result['epic_advanced'] = self._advance_epic_chain(item)
 
         return result
 
-    def _merge_completes_item(self, item: Item, base_ref: str) -> bool:
-        """Whether a merged PR finishes its item, i.e. moves it to Testing (#1076).
+    def apply_pr_state_from_github(self, item: Item, number: int) -> dict:
+        """Read PR ``number`` back from GitHub and apply it like a webhook event.
 
-        A sub-issue's PR merges into the epic branch, and that *is* the
-        sub-issue's completion — there is no separate per-layer test step,
-        because a single layer of a vertical slice cannot be run on its own.
-
-        An epic is different: it is a container whose branch collects the
-        layers, so a merge into anything other than ``main`` leaves it in
-        Working. Only its own epic → ``main`` PR (opened as a draft and merged
-        by hand after review) completes it.
+        Used by the queue worker right after it merged a sub-issue PR itself,
+        so the merge is recorded — status, PR description, RAG re-index, chain
+        nudge — without depending on the webhook arriving. The REST ``pulls``
+        object has the same shape as the webhook's ``pull_request`` payload, and
+        a later webhook delivery of the same merge is a no-op.
         """
-        if not base_ref or base_ref == DEFAULT_BASE_BRANCH:
-            return True
-        return not is_epic(item)
+        client = self._get_client()
+        owner, repo = self._get_repo_info(item)
+        return self.apply_pr_webhook_event(client.get_pr(owner, repo, number))
+
+    @staticmethod
+    def _is_main(base_ref: str) -> bool:
+        # An unknown base is treated as ``main`` — the pre-#1076 behaviour.
+        return not base_ref or base_ref == DEFAULT_BASE_BRANCH
+
+    def _status_after_merge(self, item: Item, base_ref: str) -> Optional[str]:
+        """The status a merged PR moves its Working item to, or None (#1076).
+
+        * ``main``: Testing, as before — single issues and the epic itself.
+        * An epic branch (``feature/*``): a sub-issue becomes *Integrated*, not
+          Testing. Its layer is in the epic, but nothing has reached ``main``
+          and nobody has reviewed it yet; it moves on with its siblings when
+          the epic PR merges.
+        * Any other branch: Testing, as before.
+
+        An epic stays Working on any merge but its own one into ``main``: it
+        is the container whose branch collects the layers.
+        """
+        if self._is_main(base_ref):
+            return ItemStatus.TESTING
+        if is_epic(item):
+            return None
+        if is_epic_branch(base_ref):
+            return ItemStatus.INTEGRATED
+        return ItemStatus.TESTING
+
+    def _transition_after_merge(self, item: Item, to_status: str) -> None:
+        from core.services.activity import ActivityService
+
+        old_item_status = item.status
+        item.status = to_status
+        item.save()
+        ActivityService().log_status_change(
+            item=item,
+            from_status=old_item_status,
+            to_status=to_status,
+        )
+
+    def _release_integrated_sub_issues(self, epic: Item) -> int:
+        """Move the epic's Integrated sub-issues to Testing (#1076).
+
+        Triggered by the epic PR landing on ``main``: that is the moment the
+        layers become real for everyone, together. Only Integrated children
+        move — one somebody already moved on by hand, or one that never made it
+        into the epic, is left where it is. Returns how many moved.
+        """
+        moved = 0
+        for sub_issue in epic.children.filter(status=ItemStatus.INTEGRATED):
+            self._transition_after_merge(sub_issue, ItemStatus.TESTING)
+            moved += 1
+        return moved
 
     def _maybe_open_epic_pr(self, item: Item) -> bool:
         """Open the final epic → ``main`` draft PR once the epic is complete.
@@ -744,7 +786,26 @@ class GitHubService(IntegrationBase):
         epic = item.parent
         if epic is None or not all_sub_issues_merged(epic):
             return False
+        if self._worker_owns_epic_pr(item):
+            return False
         return ensure_epic_pr(epic) is not None
+
+    @staticmethod
+    def _worker_owns_epic_pr(item: Item) -> bool:
+        """Whether the queue, not this webhook, opens the epic PR for ``item``.
+
+        It does whenever an epic node drives the chain, and while the worker is
+        still busy with ``item``'s run: in both cases the worker first brings
+        the epic branch up to date with ``main`` (stopping on a conflict) and
+        only then opens the epic PR. Opening it from here would race that.
+        """
+        from core.services.claude_queue.orchestration import active_epic_job_for
+
+        if active_epic_job_for(item) is not None:
+            return True
+        return ClaudeQueueJob.objects.filter(
+            item=item, status=ClaudeQueueJobStatus.RUNNING,
+        ).exists()
 
     def _advance_epic_chain(self, item: Item) -> bool:
         """Nudge the queue's epic chain now that a merge is confirmed (#1079).

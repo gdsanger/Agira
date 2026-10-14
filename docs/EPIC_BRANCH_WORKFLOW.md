@@ -1,5 +1,8 @@
 # Epic-Branch-Workflow (#1076)
 
+> Die verbindlichen Regeln stehen in [`CLAUDE.md`](../CLAUDE.md). Dieses
+> Dokument erklärt Hintergrund und Ablauf.
+
 Optionale Fähigkeit für fachlich zusammenhängende Issue-Ketten: Ein Parent-Issue
 („Epic") definiert einen langlebigen Branch, seine Sub-Issues zweigen davon ab
 statt von `main` und mergen einzeln wieder hinein. Nach `main` geht am Ende
@@ -43,9 +46,9 @@ ist eine Entwickler-Einschätzung, keine Systemregel.
 ```
 main
  └── feature/<epic-id>-<slug>          Epic-Branch (langlebig)
-      ├── fix/<sub-issue-1-slug>-<id>  → PR gegen feature/… , Squash-Auto-Merge
-      ├── fix/<sub-issue-2-slug>-<id>  → PR gegen feature/… , Squash-Auto-Merge
-      └── fix/<sub-issue-3-slug>-<id>  → PR gegen feature/… , Squash-Auto-Merge
+      ├── fix/<sub-issue-1-slug>-<id>  → Draft-PR gegen feature/… , Worker mergt (Squash)
+      ├── fix/<sub-issue-2-slug>-<id>  → Draft-PR gegen feature/… , Worker mergt (Squash)
+      └── fix/<sub-issue-3-slug>-<id>  → Draft-PR gegen feature/… , Worker mergt (Squash)
 
 feature/<epic-id>-<slug> → main        Epic-PR: Draft, manueller Review + Merge
 ```
@@ -91,37 +94,56 @@ auf einer Attrappe gebaut wurde.
    `main` in den Epic-Branch nach, damit die nächste Schicht auf dem aktuellsten
    Fundament startet.
 3. Der Sub-Issue-Branch wird vom Epic-Branch abgezweigt.
-4. Der PR wird gegen den Epic-Branch geöffnet — **kein Draft** — und
-   **Squash-Auto-Merge** wird scharf geschaltet.
+4. Der PR wird gegen den Epic-Branch geöffnet, **als Draft**, wie jeder PR.
 5. Claude implementiert und committet mit Agira-ID im Scope
    (`feat(#1234): …`), damit der Epic-PR commit-für-commit lesbar bleibt.
-6. GitHub mergt den PR selbstständig, sobald die Required Checks grün sind.
-7. Beim Merge wechselt das Sub-Issue auf `Testing`.
-8. Ist es das letzte Sub-Issue des Epics, wird automatisch der Epic-PR gegen
-   `main` als **Draft** angelegt.
+6. Ist der Lauf sauber, merged der **Worker** den PR selbst, deterministisch:
+   `gh pr ready` → `gh pr checks --watch --fail-fast` →
+   `gh pr merge --squash --delete-branch`. Vorher prüft er, dass der PR
+   wirklich auf den Epic-Branch zielt und keinen Konflikt meldet.
+7. Der Worker liest den gemergten PR sofort von GitHub zurück und verarbeitet
+   ihn wie der Webhook: Das Sub-Issue wechselt auf **`Integrated`**,
+   PR-Description und RAG-Index werden aktualisiert. Erst dann ist der Lauf
+   `Done` und das nächste Sub-Issue wird freigegeben.
+8. Beim letzten Sub-Issue merged der Worker zusätzlich `main` in den
+   Epic-Branch (bei Konflikt: Stopp) und legt dann den Epic-PR gegen `main`
+   als **Draft** an.
 
-## Auto-Merge-Gate
+## Merge-Gate zwischen den Schichten
 
 Weil ein einzelnes Sub-Issue nicht eigenständig testbar ist, gibt es zwischen den
-Schichten keinen sinnvollen Runtime-Test. Der Zwischen-Gate ist deshalb ehrlich
-auf zwei Signale reduziert:
+Schichten keinen sinnvollen Runtime-Test. Das Gate ist deshalb ehrlich auf
+das reduziert, was der Worker selbst prüfen kann:
 
-1. **Build/CI bleibt grün** (kompiliert, Lint, vorhandene Unit-Tests) —
-   verhindert, dass sich Schichten auf zerbrochenem Fundament stapeln.
-2. **Review-Pass blockiert nicht** — der einzige inhaltliche Qualitäts-Sensor pro
-   Sub-Issue. Er läuft in frischem Kontext und idealerweise mit einem *anderen*
-   Modell als dem, das den Code geschrieben hat: Autor und Reviewer im selben
-   Modell haben dieselben blinden Flecken.
+1. **Der Lauf war eindeutig erfolgreich**: nicht fehlgeschlagen, nicht
+   `Ggf. unvollständig`, kein leerer Diff.
+2. **CI ist grün** (kompiliert, Lint, vorhandene Unit-Tests). Sie verhindert,
+   dass sich Schichten auf zerbrochenem Fundament stapeln. **Keine Checks
+   zählen als Stopp, nicht als grün.** Der Worker wartet kurz, falls GitHub
+   die Checks nach dem letzten Push noch nicht registriert hat.
+3. **Der PR ist konfliktfrei mergebar.**
 
-Inhaltlich verifiziert wird die Scheibe als Ganzes — durch den manuellen
+Inhaltlich verifiziert wird die Scheibe als Ganzes, durch den manuellen
 Epic-Review vor `main`.
+
+### Warum der Worker merged und nicht GitHub-Auto-Merge
+
+`gh pr merge --auto` setzt Branch-Protection mit Pflicht-Checks auf dem
+Ziel-Branch voraus. Die `feature/*`-Branches sind bewusst ungeschützt, also
+scheiterte das Scharfschalten still, und die Kette wartete auf einen
+manuellen Merge. Der Worker merged jetzt selbst und hat dabei alle
+Informationen, um bei einem Problem anzuhalten statt zu raten.
 
 ## Statuslogik
 
-| Ereignis                              | Statuswechsel                     |
-|---------------------------------------|-----------------------------------|
-| Sub-Issue-PR → Epic-Branch gemergt    | Sub-Issue `Working` → `Testing`   |
-| Epic-PR → `main` gemergt              | Parent-Issue `Working` → `Testing`|
+| Ereignis                              | Statuswechsel                                            |
+|---------------------------------------|----------------------------------------------------------|
+| Sub-Issue-PR → Epic-Branch gemergt    | Sub-Issue `Working` → `Integrated`                        |
+| Epic-PR → `main` gemergt              | Epic `Working` → `Testing`, alle `Integrated`-Sub-Issues → `Testing` |
+
+`Integrated` heißt: Die Schicht ist im Epic-Branch, aber noch nicht auf `main`
+und noch nicht reviewt. Sub-Issues, die nie `Integrated` wurden, bleiben beim
+Epic-Merge, wo sie sind.
 
 Ein Merge in einen `feature/*`-Branch lässt ein Epic (ein Item mit Sub-Issues)
 bewusst in `Working` stehen: Der Container ist erst fertig, wenn sein eigener
@@ -130,9 +152,10 @@ Branch auf `main` gelandet ist.
 ## Repository-Voraussetzungen
 
 - Branch-Protection **nur** auf `main`; `feature/*` bleibt ungeschützt.
-- Auto-Merge im Repository aktiviert (`Settings → General → Allow auto-merge`).
 - Squash als Merge-Methode erlaubt.
-- CI-Workflows laufen auch für PRs gegen `feature/*`:
+- Die `gh`-Credentials des Worker-Users dürfen PRs mergen und Branches
+  löschen (persistent eingerichtet, nicht nur gecacht).
+- CI-Workflows laufen auch für PRs gegen `feature/*`, auch für Draft-PRs:
 
   ```yaml
   on:
@@ -140,9 +163,8 @@ Branch auf `main` gelandet ist.
       branches: [main, 'feature/**']
   ```
 
-Fehlt die Auto-Merge-Einstellung oder gibt es keine Required Checks, schlägt das
-Scharfschalten fehl und der Sub-Issue-PR wartet auf einen manuellen Merge. Das
-ist eine langsamere Kette, kein kaputter Job.
+Ein Repository **ohne CI** kann den Epic-Modus nicht automatisch
+durchlaufen: Der Worker stoppt am ersten Sub-Issue mit „Keine CI-Checks“.
 
 ## Orchestrierung über die Claude Queue (#1079)
 
@@ -191,9 +213,10 @@ Die Kette rückt **ausschließlich bei eindeutigem Erfolg** weiter:
 | Zustand des aktuellen Sub-Eintrags        | Kette                       |
 |-------------------------------------------|-----------------------------|
 | `Done`, nicht unsicher, PR gemergt        | nächsten Eintrag freigeben  |
-| `Done`, PR noch nicht gemergt             | warten (Auto-Merge läuft)   |
-| `Done` + **`Ggf. unvollständig`**         | **Halt**                    |
-| `Failed` / `Cancelled`                    | **Halt**                    |
+| `Done`, Merge noch nicht verbucht         | warten (Webhook/Rücklesen)  |
+| `Done` + **`Ggf. unvollständig`**         | **Halt** (PR bleibt Draft, wird nicht gemergt) |
+| `Failed` (auch: CI rot, keine Checks, Konflikt, Merge-Fehler) | **Halt** |
+| `Cancelled`                               | **Halt**                    |
 
 Der Grund ist derselbe wie beim Order-Gate: Rückt die Kette über einen
 halbfertigen Stand weiter, baut die nächste Schicht auf einem Fundament, das
@@ -204,7 +227,16 @@ nicht perfekt sein – im Zweifel hält sie an. Aus dem bisherigen Störgeräusc
 Ein Merge-Konflikt beim Sub→Epic-Merge ist kein Sonderfall: Der Sub-Run
 schlägt fehl, die Kette hält an wie bei jedem anderen Fehler.
 
+Bei jedem Halt schreibt der Worker den Grund an den Epic-Knoten und als
+Aktivität `epic.blocked` an das Epic-Item. Der Stopp ist damit dort sichtbar,
+wo man auf das Epic schaut, nicht nur im Worker-Log.
+
 ### Halt und Wiederaufnahme
+
+Sonderfall Abschluss: Lässt sich `main` nach dem letzten Sub-Issue nicht
+konfliktfrei in den Epic-Branch mergen, endet der Epic-Knoten als `Failed`.
+Ein Mensch löst den Konflikt im Epic-Branch und legt den Epic-PR von Hand an
+(`gh pr create --draft --base main --head feature/<epic-id>-<slug>`).
 
 Der Epic-Knoten zeigt „**Pausiert bei Sub-Issue #X (2/3)**" samt Grund; die
 restlichen Einträge bleiben sichtbar in Reihenfolge geblockt. Es gibt
@@ -235,5 +267,5 @@ statt des flachen Order-Felds.
 | `core/services/claude_queue/orchestration.py` | Kette aufbauen, Advancement-Regel, Halt-Zustände, Abschluss-Schritt |
 | `core/services/claude_queue/enqueue.py` | Epic-Knoten vs. Issue-Run, Wiederanhängen eines neu angestoßenen Sub-Runs |
 | `core/services/claude_queue/hint.py`   | Git-Workflow-Hinweis am Item (nennt den Base-Branch) |
-| `core/management/commands/run_claude_worker.py` | Epic-Branch anlegen/nachziehen, Start-Schritt des Epic-Knotens, Ketten-Sweep im Poll, PR-Ziel, Auto-Merge, Order-Gate beim Claim |
-| `core/services/github/service.py`      | Statuslogik beim Merge, Auslösen des Epic-PRs, Nudge an die Kette |
+| `core/management/commands/run_claude_worker.py` | Epic-Branch anlegen/nachziehen, Start-Schritt des Epic-Knotens, Ketten-Sweep im Poll, PR-Ziel, Merge der Sub-PRs (`_integrate_into_epic`), `main`-Sync vor dem Epic-PR, Order-Gate beim Claim |
+| `core/services/github/service.py`      | Statuslogik beim Merge (`Integrated`/`Testing`), Rücklesen eines gemergten PRs, Auslösen des Epic-PRs, Nudge an die Kette |

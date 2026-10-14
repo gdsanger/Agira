@@ -26,6 +26,7 @@ STATUS_COLORS = {
     'Inbox': '#2a78d6',
     'Backlog': '#eb6834',
     'Working': '#1baf7a',
+    'Integrated': '#7a869a',
     'Testing': '#eda100',
     'Review': '#e87ba4',
     'ReadyForRelease': '#008300',

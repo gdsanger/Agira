@@ -13,6 +13,7 @@ ITEM_STATUS_BADGE_CLASSES = {
     'Inbox': 'bg-info',
     'Backlog': 'bg-secondary',
     'Working': 'bg-warning',
+    'Integrated': 'bg-info text-dark',
     'Testing': 'bg-primary',
     'Review': 'bg-light text-dark',
     'ReadyForRelease': 'bg-success',

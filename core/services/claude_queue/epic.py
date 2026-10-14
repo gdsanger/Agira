@@ -6,8 +6,9 @@ of a single thing. Two consequences drive this module:
 
 **The epic is the unit of testability, not the sub-issue.** A data-model-only
 sub-issue cannot be run, so there is nothing to verify per layer. Sub-issue
-PRs therefore squash-merge into the epic branch on CI-green alone, and the
-one human review happens on the assembled epic before it reaches ``main``.
+PRs are therefore squash-merged into the epic branch by the worker on CI-green
+alone, and the one human review happens on the assembled epic before it
+reaches ``main``.
 
 **The order is not arbitrary.** Building the UI before its model exists is
 how an agent ends up inventing a mock for the missing foundation: CI goes
@@ -112,6 +113,20 @@ def next_sub_issue(epic):
         if not is_merged(sub_issue):
             return sub_issue
     return None
+
+
+def is_last_open_sub_issue(item) -> bool:
+    """True if every *other* sub-issue of ``item``'s epic has merged.
+
+    Asked right after ``item``'s own PR merged, before that merge is
+    necessarily recorded — hence ``item`` itself is left out of the check.
+    """
+    if item.parent_id is None:
+        return False
+    return all(
+        sub_issue.id == item.id or is_merged(sub_issue)
+        for sub_issue in ordered_sub_issues(item.parent)
+    )
 
 
 def all_sub_issues_merged(epic) -> bool:

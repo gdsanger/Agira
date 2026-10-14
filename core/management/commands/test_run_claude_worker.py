@@ -28,6 +28,7 @@ from core.management.commands.run_claude_worker import (
     DEFAULT_TIMEOUT_SECONDS,
 )
 from core.models import (
+    Activity,
     ClaudeCredentialSource,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
@@ -1948,12 +1949,14 @@ class EpicBranchAndPrTests(ClaudeWorkerTestBase):
         self.assertIn(['merge', '--abort'], calls)
         self.assertNotIn(['push', '-u', 'origin', self.epic_branch], calls)
 
-    def test_sub_issue_pr_targets_the_epic_branch_without_draft(self):
+    def test_sub_issue_pr_targets_the_epic_branch_as_a_draft(self):
+        # Draft like every other PR: a run that breaks off half-way must never
+        # leave a PR against the epic branch that could be merged.
         job = self._job(self.project_a, item=self.sub_issue)
         command = Command()
-        command._enable_auto_merge = lambda *a, **kw: None
 
-        with patch('core.services.github.service.GitHubService') as service_cls:
+        with patch('core.services.github.service.GitHubService') as service_cls, \
+                patch('core.management.commands.run_claude_worker.subprocess.run') as run:
             service = service_cls.return_value
             service.find_open_pr_for_branch.return_value = None
             service.create_draft_pr_for_item.return_value = _pr_mapping_stub()
@@ -1962,15 +1965,16 @@ class EpicBranchAndPrTests(ClaudeWorkerTestBase):
 
         kwargs = service.create_draft_pr_for_item.call_args.kwargs
         self.assertEqual(kwargs['base'], self.epic_branch)
-        self.assertFalse(kwargs['draft'])
+        self.assertTrue(kwargs['draft'])
+        # No GitHub auto-merge is armed any more.
+        run.assert_not_called()
 
-    def test_main_targeting_pr_stays_a_draft_without_auto_merge(self):
+    def test_main_targeting_pr_stays_a_draft(self):
         job = self._job(self.project_a, item=self._item(self.project_a))
         command = Command()
-        armed = []
-        command._enable_auto_merge = lambda *a, **kw: armed.append(a)
 
-        with patch('core.services.github.service.GitHubService') as service_cls:
+        with patch('core.services.github.service.GitHubService') as service_cls, \
+                patch('core.management.commands.run_claude_worker.subprocess.run') as run:
             service = service_cls.return_value
             service.find_open_pr_for_branch.return_value = None
             service.create_draft_pr_for_item.return_value = _pr_mapping_stub()
@@ -1980,30 +1984,7 @@ class EpicBranchAndPrTests(ClaudeWorkerTestBase):
         kwargs = service.create_draft_pr_for_item.call_args.kwargs
         self.assertEqual(kwargs['base'], 'main')
         self.assertTrue(kwargs['draft'])
-        self.assertEqual(armed, [])
-
-    def test_auto_merge_is_armed_with_squash_for_a_sub_issue_pr(self):
-        job = self._job(self.project_a, item=self.sub_issue)
-        command = Command()
-        command.stdout = StringIO()
-
-        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
-            run.return_value = subprocess.CompletedProcess([], 0, '', '')
-            command._enable_auto_merge(job, 77, '/tmp/repo')
-
-        self.assertEqual(
-            run.call_args.args[0],
-            ['gh', 'pr', 'merge', '77', '--squash', '--auto'],
-        )
-
-    def test_auto_merge_failure_does_not_raise(self):
-        job = self._job(self.project_a, item=self.sub_issue)
-        command = Command()
-        command.stdout = StringIO()
-
-        with patch('core.management.commands.run_claude_worker.subprocess.run') as run:
-            run.return_value = subprocess.CompletedProcess([], 1, '', 'auto-merge disabled')
-            command._enable_auto_merge(job, 77, '/tmp/repo')
+        run.assert_not_called()
 
     def test_pr_body_names_the_epic_and_the_order(self):
         job = self._job(self.project_a, item=self.sub_issue)
@@ -2146,9 +2127,302 @@ class EpicNodeProcessingTests(ClaudeWorkerTestBase):
                 patch.object(Command, '_create_branch_and_pr',
                              return_value=('fix/x-1', 'bootstrap-sha')), \
                 patch.object(Command, '_push_branch'), \
-                patch.object(Command, '_run_cli', return_value=_ok_result()):
+                patch.object(Command, '_run_cli', return_value=_ok_result()), \
+                patch.object(Command, '_merge_sub_pr', return_value=None), \
+                patch.object(Command, '_record_merge'), \
+                patch.object(Command, '_materialise_epic_branch'), \
+                patch('core.services.claude_queue.orchestration.ensure_epic_pr',
+                      return_value=None):
             call_command('run_claude_worker', '--once', '--skip-recovery', stdout=out)
 
         # Released by the sweep and then immediately claimed and run.
         entry = node.sub_jobs.get(item=self.data_model)
         self.assertEqual(entry.status, ClaudeQueueJobStatus.DONE)
+
+
+class FakeGh:
+    """Scripted stand-in for ``gh`` (and only ``gh``) behind ``subprocess.run``.
+
+    Records every call. Each sub-command answers with what the test set up;
+    the defaults describe a clean, green, mergeable draft PR.
+    """
+
+    def __init__(self, *, base, checks=(0, 'all checks passed', ''),
+                 merge=(0, '', ''), mergeable='MERGEABLE', state_after_merge='OPEN'):
+        self.base = base
+        self.checks = checks if isinstance(checks, list) else [checks]
+        self.merge = merge
+        self.mergeable = mergeable
+        self.state_after_merge = state_after_merge
+        self.calls = []
+        self.merged = False
+
+    def __call__(self, args, **kwargs):
+        assert args[0] == 'gh', f'unexpected command {args}'
+        self.calls.append(list(args))
+        sub = args[2]
+        if sub == 'view':
+            fields = args[args.index('--json') + 1]
+            if fields == 'state':
+                state = 'MERGED' if self.merged else self.state_after_merge
+                return self._done(args, 0, json.dumps({'state': state}))
+            return self._done(args, 0, json.dumps({
+                'state': 'OPEN', 'isDraft': True,
+                'baseRefName': self.base, 'mergeable': self.mergeable,
+            }))
+        if sub == 'ready':
+            return self._done(args, 0)
+        if sub == 'checks':
+            code, out, err = self.checks.pop(0) if len(self.checks) > 1 else self.checks[0]
+            return self._done(args, code, out, err)
+        if sub == 'merge':
+            code, out, err = self.merge
+            self.merged = code == 0
+            return self._done(args, code, out, err)
+        raise AssertionError(f'unexpected gh call {args}')
+
+    @staticmethod
+    def _done(args, code, out='', err=''):
+        return subprocess.CompletedProcess(args, code, out, err)
+
+    def subcommands(self):
+        return [call[2] for call in self.calls]
+
+
+class EpicAutoMergeTests(ClaudeWorkerTestBase):
+    """The worker merges a clean sub-issue PR into its epic branch itself.
+
+    ``gh`` is mocked; git is a recording fake. The Claude run, the checkout
+    and the PR bootstrap are stubbed — what is under test is everything after
+    a run has come back clean.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.epic = Item.objects.create(
+            project=self.project_a, title='Kundenportal', type=self.item_type,
+            status=ItemStatus.WORKING,
+        )
+        self.epic_branch = f'feature/{self.epic.id}-kundenportal'
+        self.first = self._sub_issue('Datenmodell', 10, ItemStatus.WORKING)
+        self.second = self._sub_issue('UI', 20, ItemStatus.BACKLOG)
+        self.node = ClaudeQueueJob.objects.create(
+            item=self.epic, project=self.project_a,
+            kind=ClaudeQueueJobKind.EPIC, status=ClaudeQueueJobStatus.ORCHESTRATING,
+        )
+        self.first_job = self._chain_entry(self.first, 10, ClaudeQueueJobStatus.RUNNING, pr=51)
+        self.second_job = self._chain_entry(self.second, 20, ClaudeQueueJobStatus.BLOCKED)
+        self.mapping = ExternalIssueMapping.objects.create(
+            item=self.first, github_id=7001, number=51, kind=ExternalIssueKind.PR,
+            state='open', html_url='https://github.com/acme/repo-a/pull/51',
+        )
+        self.git_calls = []
+
+    def _sub_issue(self, title, order, status):
+        return Item.objects.create(
+            project=self.project_a, title=title, type=self.item_type,
+            status=status, parent=self.epic, epic_order=order,
+        )
+
+    def _chain_entry(self, item, order, status, pr=None):
+        return ClaudeQueueJob.objects.create(
+            item=item, project=self.project_a, parent_job=self.node,
+            epic_order=order, status=status, pr_number=pr,
+        )
+
+    def _fake_git(self, conflict=False):
+        def fake_git(args, cwd):
+            self.git_calls.append(list(args))
+            if args[0] == 'ls-remote':
+                return f'sha\trefs/heads/{args[-1]}\n'
+            if conflict and args[:2] == ['merge', '--no-edit']:
+                raise RuntimeError('CONFLICT (content): Merge conflict in core/models.py')
+            return ''
+        return fake_git
+
+    def _github_pr(self):
+        """The REST ``pulls`` object GitHub returns after the merge."""
+        return {
+            'id': 7001, 'number': 51, 'state': 'closed', 'merged': True,
+            'merged_at': '2026-10-14T12:00:00Z', 'merge_commit_sha': 'abc123',
+            'html_url': 'https://github.com/acme/repo-a/pull/51',
+            'body': '## Zusammenfassung\nSchicht 1', 'base': {'ref': self.epic_branch},
+        }
+
+    def _run(self, job, gh, *, uncertain=None, conflict=False):
+        from unittest.mock import MagicMock
+
+        client = MagicMock()
+        client.get_pr.return_value = self._github_pr()
+        command = Command()
+        command.stdout = StringIO()
+        command._git = self._fake_git(conflict=conflict)
+        command._sleep = lambda seconds: None
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_create_branch_and_pr', return_value=('fix/x-1', 'sha')), \
+                patch.object(Command, '_commit_uncommitted_work'), \
+                patch.object(Command, '_push_branch'), \
+                patch.object(Command, '_is_empty_diff', return_value=False), \
+                patch.object(Command, '_detect_completion_uncertain', return_value=uncertain), \
+                patch.object(Command, '_update_pr_body'), \
+                patch.object(Command, '_run_cli', return_value=_ok_result()), \
+                patch('core.management.commands.run_claude_worker.subprocess.run', side_effect=gh), \
+                patch('core.services.github.service.GitHubService._get_client', return_value=client), \
+                patch('core.services.claude_queue.orchestration.ensure_epic_pr',
+                      return_value=_pr_mapping_stub(99)) as ensure:
+            command.process_job(job, timeout=30, idle_timeout=5)
+        self.ensure_epic_pr = ensure
+        job.refresh_from_db()
+        self.node.refresh_from_db()
+        return job
+
+    # --- green -------------------------------------------------------- #
+    def test_green_checks_merge_and_release_the_next_child(self):
+        gh = FakeGh(base=self.epic_branch)
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(gh.subcommands(), ['view', 'ready', 'checks', 'merge'])
+        self.assertIn(['gh', 'pr', 'ready', '51'], gh.calls)
+        self.assertIn(['gh', 'pr', 'checks', '51', '--watch', '--fail-fast'], gh.calls)
+        self.assertIn(['gh', 'pr', 'merge', '51', '--squash', '--delete-branch'], gh.calls)
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        # Recorded right away, without waiting for the webhook.
+        self.mapping.refresh_from_db()
+        self.assertEqual(self.mapping.state, 'merged')
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.status, ItemStatus.INTEGRATED)
+        self.assertIn('Schicht 1', self.first.pr_description)
+        # The next layer is released, the epic keeps orchestrating.
+        self.second_job.refresh_from_db()
+        self.assertEqual(self.second_job.status, ClaudeQueueJobStatus.QUEUED)
+        self.assertEqual(self.node.status, ClaudeQueueJobStatus.ORCHESTRATING)
+        # Not the last layer: no main sync, no epic PR yet.
+        self.assertNotIn(['merge', '--no-edit', 'origin/main'], self.git_calls)
+        self.ensure_epic_pr.assert_not_called()
+
+    def test_last_child_syncs_main_into_the_epic_branch_then_opens_the_epic_pr(self):
+        self.second_job.delete()
+        self.second.delete()
+        gh = FakeGh(base=self.epic_branch)
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertIn(['merge', '--no-edit', 'origin/main'], self.git_calls)
+        self.assertIn(['push', '-u', 'origin', self.epic_branch], self.git_calls)
+        self.ensure_epic_pr.assert_called_once()
+        self.assertEqual(self.node.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(self.node.pr_number, 99)
+
+    def test_main_conflict_before_the_epic_pr_stops_the_epic(self):
+        self.second_job.delete()
+        self.second.delete()
+        gh = FakeGh(base=self.epic_branch)
+
+        job = self._run(self.first_job, gh, conflict=True)
+
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertIn(['merge', '--abort'], self.git_calls)
+        self.ensure_epic_pr.assert_not_called()
+        self.assertEqual(self.node.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('konnte nicht mit', self.node.error_text)
+
+    # --- stops -------------------------------------------------------- #
+    def _assert_chain_stopped(self, job, reason_fragment):
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn(reason_fragment, job.error_text)
+        self.second_job.refresh_from_db()
+        self.assertEqual(self.second_job.status, ClaudeQueueJobStatus.BLOCKED)
+        self.assertTrue(self.node.epic_chain.is_halted)
+        self.assertIn(reason_fragment, self.node.error_text)
+        # Visible on the epic item itself, not only in the queue.
+        self.assertTrue(Activity.objects.filter(
+            verb='epic.blocked', target_object_id=str(self.epic.pk),
+        ).exists())
+        self.mapping.refresh_from_db()
+        self.assertEqual(self.mapping.state, 'open')
+
+    def test_red_checks_stop_the_chain_without_merging(self):
+        gh = FakeGh(base=self.epic_branch, checks=(1, 'X lint  fail', ''))
+
+        job = self._run(self.first_job, gh)
+
+        self.assertNotIn('merge', gh.subcommands())
+        self._assert_chain_stopped(job, 'nicht grün')
+
+    def test_merge_failure_stops_the_chain(self):
+        gh = FakeGh(base=self.epic_branch, merge=(1, '', 'Pull request is not mergeable'))
+
+        job = self._run(self.first_job, gh)
+
+        self._assert_chain_stopped(job, 'gh pr merge` fehlgeschlagen')
+
+    def test_conflicting_pr_stops_before_checks(self):
+        gh = FakeGh(base=self.epic_branch, mergeable='CONFLICTING')
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(gh.subcommands(), ['view'])
+        self._assert_chain_stopped(job, 'Merge-Konflikt')
+
+    def test_no_checks_at_all_stops_the_chain(self):
+        no_checks = (1, '', "no checks reported on the 'fix/x-1' branch")
+        gh = FakeGh(base=self.epic_branch, checks=no_checks)
+
+        job = self._run(self.first_job, gh)
+
+        self.assertNotIn('merge', gh.subcommands())
+        self._assert_chain_stopped(job, 'Keine CI-Checks')
+
+    def test_checks_that_appear_late_are_still_waited_for(self):
+        no_checks = (1, '', "no checks reported on the 'fix/x-1' branch")
+        gh = FakeGh(base=self.epic_branch, checks=[no_checks, (0, 'ok', '')])
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(gh.subcommands().count('checks'), 2)
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+
+    def test_merged_server_side_despite_failing_local_cleanup_counts_as_merged(self):
+        gh = FakeGh(base=self.epic_branch, merge=(1, '', 'could not delete local branch'),
+                    state_after_merge='MERGED')
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+
+    def test_uncertain_run_is_neither_readied_nor_merged(self):
+        gh = FakeGh(base=self.epic_branch)
+
+        job = self._run(self.first_job, gh, uncertain='Claude kündigt Hintergrund-Job an')
+
+        self.assertEqual(gh.calls, [])
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertTrue(job.completion_uncertain)
+        self.second_job.refresh_from_db()
+        self.assertEqual(self.second_job.status, ClaudeQueueJobStatus.BLOCKED)
+        self.assertTrue(self.node.epic_chain.is_halted)
+        self.assertIn('Ergebnis unklar', self.node.error_text)
+
+    def test_pr_with_unexpected_base_is_never_merged(self):
+        gh = FakeGh(base='main')
+
+        job = self._run(self.first_job, gh)
+
+        self.assertEqual(gh.subcommands(), ['view'])
+        self._assert_chain_stopped(job, 'statt auf den Epic-Branch')
+
+    # --- single issue ------------------------------------------------- #
+    def test_pr_against_main_is_only_readied_never_merged(self):
+        item = self._item(self.project_a, status=ItemStatus.WORKING)
+        job = self._job(self.project_a, item=item, status=ClaudeQueueJobStatus.RUNNING,
+                        pr_number=60)
+        gh = FakeGh(base='main')
+
+        job = self._run(job, gh)
+
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(gh.subcommands(), ['view', 'ready'])
+        item.refresh_from_db()
+        self.assertEqual(item.status, ItemStatus.WORKING)
