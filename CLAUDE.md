@@ -46,7 +46,8 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   Erst danach startet das nächste Sub-Issue, auf dem aktualisierten Epic-Branch.
   **Claude merged nie selbst** und ruft keinen der Befehle oben auf.
 - **Stopp statt Retry:** Rote oder fehlende CI-Checks, ein Merge-Konflikt, ein
-  als „Ggf. unvollständig“ (`completion_uncertain`) markierter Lauf oder ein
+  als „Ggf. unvollständig“ (`completion_uncertain`) markierter Lauf (auch:
+  Claude meldet `TESTS ROT`, siehe „Tests“) oder ein
   fehlgeschlagener Merge halten die Kette an. Das Epic wird in Agira sichtbar
   als blockiert markiert, mit Grund. Es gibt **keinen automatischen Retry**.
   Ein Mensch prüft den Fall und stößt das Sub-Issue neu an.
@@ -77,7 +78,14 @@ Merge in die Item-PR-Description übernommen und in Weaviate indexiert.
 
 - Ohne PostgreSQL: `python manage.py test <module> --settings=agira.test_settings`
   (SQLite in-memory, ohne Whitenoise-Manifest).
-- Vor einem Push mindestens die Tests der betroffenen Module laufen lassen.
+- Vor einem Push mindestens die Tests der betroffenen Module laufen lassen
+  und das Ergebnis im PR-Text unter „## Test-Hinweise“ dokumentieren.
+- **Rote Tests** (durch die Änderung rot oder nicht grün zu bekommen) werden
+  dort benannt, und die Schlussantwort endet mit einer eigenen Zeile
+  `TESTS ROT`. Der Worker wertet das als „Ggf. unvollständig“: Der PR bleibt
+  Draft, im Epic-Modus wird nicht gemergt und die Kette hält an.
+  Fehlschläge, die nachweislich schon auf dem Basis-Branch bestehen, werden
+  genannt, gelten aber nicht als rot.
   Im Epic-Umfeld sind das u. a. `core.services.claude_queue`,
   `core.management.commands.test_run_claude_worker` und
   `core.test_github_pr_webhook`.

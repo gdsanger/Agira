@@ -694,6 +694,39 @@ class CompletionUncertainTests(ClaudeWorkerTestBase):
             )
             self.assertIn('Warten/Hintergrund', reason)
 
+    def _repo_with_a_commit(self, tmp_path):
+        bootstrap_sha = self._init_repo(tmp_path)
+        (Path(tmp_path) / 'feature.py').write_text('print("hi")\n')
+        subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'add feature'], cwd=tmp_path,
+                        check=True, capture_output=True)
+        return bootstrap_sha
+
+    def test_detect_completion_uncertain_flags_reported_red_tests(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._repo_with_a_commit(tmp_path)
+
+            reason = Command()._detect_completion_uncertain(
+                tmp_path, bootstrap_sha,
+                'Umgesetzt. test_foo schlägt noch fehl.\n\nTESTS ROT',
+            )
+            self.assertIn('rote Tests', reason)
+
+    def test_red_tests_marker_must_stand_on_its_own_line(self):
+        with tempfile.TemporaryDirectory() as tmp_path:
+            bootstrap_sha = self._repo_with_a_commit(tmp_path)
+            command = Command()
+
+            # Lower case on its own line still counts …
+            self.assertIsNotNone(command._detect_completion_uncertain(
+                tmp_path, bootstrap_sha, 'Fertig.\n  tests rot  ',
+            ))
+            # … a mention inside a sentence does not.
+            self.assertIsNone(command._detect_completion_uncertain(
+                tmp_path, bootstrap_sha,
+                'Alle Tests grün, kein Grund für TESTS ROT.',
+            ))
+
     def test_detect_completion_uncertain_none_for_a_clean_run(self):
         with tempfile.TemporaryDirectory() as tmp_path:
             bootstrap_sha = self._init_repo(tmp_path)
@@ -1341,6 +1374,12 @@ class BuildPromptAndEnvTests(ClaudeWorkerTestBase):
         self.assertIn('## Warum / Entscheidungen', prompt)
         self.assertIn('## Test-Hinweise', prompt)
         self.assertIn('nicht X, weil Y', prompt)
+
+    def test_prompt_asks_for_the_red_tests_marker(self):
+        prompt = Command()._build_prompt(self._item(self.project_a))
+
+        self.assertIn('`TESTS ROT`', prompt)
+        self.assertIn('## Test-Hinweise', prompt)
 
     def test_build_env_sets_pr_body_file(self):
         job = self._job(self.project_a)
