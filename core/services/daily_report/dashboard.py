@@ -24,6 +24,7 @@ STATUS_COLORS_DARK = {
     'Inbox': '#3987e5',
     'Backlog': '#d95926',
     'Working': '#199e70',
+    'Integrated': '#8c98ab',
     'Testing': '#c98500',
     'Review': '#d55181',
     'ReadyForRelease': '#008300',

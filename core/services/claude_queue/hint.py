@@ -27,10 +27,11 @@ def build_git_workflow_hint(
     """Render the git-workflow hint block for a branch and its base.
 
     The ``main``-based wording is unchanged from #833 (draft PR, merged by
-    hand). A sub-issue of an epic gets the epic wording instead: a normal —
-    not draft — PR against the epic branch that squash-auto-merges once CI and
-    the review pass agree, because what a human reviews is the assembled epic,
-    not the single layer.
+    hand). A sub-issue of an epic gets the epic wording instead: a draft PR
+    against the epic branch that the *worker* squash-merges once CI is green,
+    because what a human reviews is the assembled epic, not the single layer.
+    Claude itself never merges — the hint says so, since it ends up in the
+    prompt.
     """
     if base_branch == DEFAULT_BASE_BRANCH:
         detail = (
@@ -39,9 +40,10 @@ def build_git_workflow_hint(
         )
     else:
         detail = (
-            f"Branch `{branch_name}` vom Epic-Branch `{base_branch}`, PR gegen "
-            f"`{base_branch}` (kein Draft, Squash-Auto-Merge), keine direkten "
-            f"Commits auf `{base_branch}` oder `{DEFAULT_BASE_BRANCH}`."
+            f"Branch `{branch_name}` vom Epic-Branch `{base_branch}`, Draft-PR "
+            f"gegen `{base_branch}`; nach grüner CI mergt der Worker per Squash "
+            f"(nicht selbst mergen). Keine direkten Commits auf `{base_branch}` "
+            f"oder `{DEFAULT_BASE_BRANCH}`."
         )
     return f"{GIT_WORKFLOW_HINT_MARKER}\n---\n**Git-Workflow:** {detail}"
 

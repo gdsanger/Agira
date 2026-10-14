@@ -360,12 +360,13 @@ class EpicMergeWebhookTestCase(TestCase):
             base=self.epic_branch,
         ))
 
-    def test_sub_issue_merged_into_epic_branch_moves_to_testing(self):
+    def test_sub_issue_merged_into_epic_branch_moves_to_integrated(self):
         with patch('core.services.github.service.ensure_epic_pr') as ensure:
             self._merge_sub_issue(self.data_model)
 
+        # In the epic branch, not yet on main: Integrated, not Testing.
         self.data_model.refresh_from_db()
-        self.assertEqual(self.data_model.status, ItemStatus.TESTING)
+        self.assertEqual(self.data_model.status, ItemStatus.INTEGRATED)
         # The epic itself is only a container — it stays in Working.
         self.epic.refresh_from_db()
         self.assertEqual(self.epic.status, ItemStatus.WORKING)
@@ -404,6 +405,62 @@ class EpicMergeWebhookTestCase(TestCase):
 
         self.epic.refresh_from_db()
         self.assertEqual(self.epic.status, ItemStatus.TESTING)
+
+    def test_epic_pr_merged_into_main_moves_integrated_sub_issues_to_testing(self):
+        with patch('core.services.github.service.ensure_epic_pr'):
+            self._merge_sub_issue(self.data_model)
+        # A sibling that never made it into the epic branch stays where it is.
+        self.ui.status = ItemStatus.BACKLOG
+        self.ui.save(update_fields=['status'])
+        mapping = ExternalIssueMapping.objects.create(
+            item=self.epic,
+            github_id=7102,
+            number=62,
+            kind=ExternalIssueKind.PR,
+            state='open',
+            html_url='https://github.com/testowner/testrepo/pull/62',
+        )
+
+        response = self._post(pr_payload(
+            github_id=mapping.github_id, number=mapping.number,
+            merged=True, state='closed', base='main',
+        ))
+
+        self.assertEqual(response.json()['sub_issues_released'], 1)
+        self.data_model.refresh_from_db()
+        self.assertEqual(self.data_model.status, ItemStatus.TESTING)
+        self.ui.refresh_from_db()
+        self.assertEqual(self.ui.status, ItemStatus.BACKLOG)
+        self.epic.refresh_from_db()
+        self.assertEqual(self.epic.status, ItemStatus.TESTING)
+
+    def test_sub_issue_merge_still_captures_pr_description(self):
+        self._post(pr_payload(
+            github_id=self.data_model.mapping.github_id,
+            number=self.data_model.mapping.number,
+            merged=True, state='closed', base=self.epic_branch,
+            body='## Zusammenfassung\nSchicht 1',
+        ))
+
+        self.data_model.mapping.refresh_from_db()
+        self.assertIn('Schicht 1', self.data_model.mapping.pr_body)
+        self.data_model.refresh_from_db()
+        self.assertIn('Schicht 1', self.data_model.pr_description)
+
+    def test_merge_while_the_worker_still_runs_the_item_opens_no_epic_pr(self):
+        from core.models import ClaudeQueueJob, ClaudeQueueJobStatus
+
+        with patch('core.services.github.service.ensure_epic_pr') as ensure:
+            self._merge_sub_issue(self.data_model)
+            # The worker merged the last layer itself and is now syncing the
+            # epic branch with main; the epic PR is its to open, not ours.
+            ClaudeQueueJob.objects.create(
+                item=self.ui, project=self.project,
+                status=ClaudeQueueJobStatus.RUNNING,
+            )
+            self._merge_sub_issue(self.ui)
+
+        ensure.assert_not_called()
 
     def test_last_sub_issue_merge_opens_the_final_epic_pr(self):
         with patch('core.services.github.service.ensure_epic_pr') as ensure:
@@ -493,6 +550,15 @@ class EpicChainWebhookNudgeTests(EpicMergeWebhookTestCase):
         self.assertEqual(self.second.status, ClaudeQueueJobStatus.BLOCKED)
         self.assertTrue(self.node.epic_chain.is_halted)
 
+    def test_last_sub_issue_merge_opens_the_final_epic_pr(self):
+        # With an epic node the chain opens the epic PR (after the worker's
+        # main sync), never the webhook directly.
+        with patch('core.services.github.service.ensure_epic_pr') as ensure:
+            self._merge_sub_issue(self.data_model)
+            self._merge_sub_issue(self.ui)
+
+        ensure.assert_not_called()
+
     def test_a_broken_chain_never_fails_the_webhook(self):
         with patch(
             'core.services.claude_queue.orchestration.advance_epic_for_item',
@@ -502,4 +568,4 @@ class EpicChainWebhookNudgeTests(EpicMergeWebhookTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.data_model.refresh_from_db()
-        self.assertEqual(self.data_model.status, ItemStatus.TESTING)
+        self.assertEqual(self.data_model.status, ItemStatus.INTEGRATED)

@@ -361,6 +361,7 @@ class ItemsKanbanView(LoginRequiredMixin, FilterView):
             ItemStatus.INBOX,
             ItemStatus.BACKLOG,
             ItemStatus.WORKING,
+            ItemStatus.INTEGRATED,
             ItemStatus.TESTING,
             ItemStatus.REVIEW,
             ItemStatus.READY_FOR_RELEASE,

@@ -103,8 +103,9 @@ class GitWorkflowHintTestCase(EpicTestBase):
         epic_branch = build_epic_branch_name(self.epic)
         self.assertIn(GIT_WORKFLOW_HINT_MARKER, self.data_model.description)
         self.assertIn(f'vom Epic-Branch `{epic_branch}`', self.data_model.description)
-        self.assertIn(f'PR gegen `{epic_branch}`', self.data_model.description)
-        self.assertNotIn('Draft-PR', self.data_model.description)
+        self.assertIn(f'Draft-PR gegen `{epic_branch}`', self.data_model.description)
+        self.assertIn('mergt der Worker', self.data_model.description)
+        self.assertIn('nicht selbst mergen', self.data_model.description)
 
     def test_item_without_parent_keeps_the_main_based_hint(self):
         standalone = self._item('Standalone')

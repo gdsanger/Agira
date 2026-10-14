@@ -22,7 +22,10 @@ worker's contract — one item per run — is untouched; the hierarchy is
 structure *around* single runs, not a new kind of run.
 
 **Advancement happens only on unambiguous success**: ``done``, not flagged
-uncertain, and the sub-issue's PR actually merged. Everything else halts the
+uncertain, and the sub-issue's PR actually merged. The merge itself is done by
+the worker right after the run (``gh pr ready`` → ``gh pr checks --watch`` →
+``gh pr merge --squash``), deterministically and not by Claude; the run only
+reaches ``done`` once that merge went through. Everything else halts the
 chain. That includes the soft case, and that is the point — a chain that
 advances over a half-finished layer puts the next layer on a foundation that
 may be a mock, which is exactly the failure #1076 exists to prevent. The
@@ -48,6 +51,7 @@ from core.models import (
     ItemStatus,
 )
 from core.services.claude_queue.epic import (
+    all_sub_issues_merged,
     ensure_epic_pr,
     is_merged,
     ordered_sub_issues,
@@ -62,7 +66,7 @@ logger = logging.getLogger(__name__)
 SUB_SUCCESS = 'success'          # done, not flagged, PR merged → advance
 SUB_PENDING = 'pending'          # queued/running/parked → nothing to decide yet
 SUB_BLOCKED = 'blocked'          # not released yet → the next one to release
-SUB_WAITING_MERGE = 'waiting_merge'  # done and clean, but the PR has not landed
+SUB_WAITING_MERGE = 'waiting_merge'  # done and clean, merge not recorded yet
 SUB_HALTED = 'halted'            # failed/cancelled/uncertain → chain stops here
 
 # Chain-level outcomes of one advancement attempt, returned for logging/tests.
@@ -105,8 +109,8 @@ def sub_job_state(job) -> str:
     ``done`` splits three ways on purpose. Flagged uncertain is a halt: the
     heuristic saw the run talk about waiting, backgrounding or asking a
     question, and a chain must not build on that. Clean but unmerged is not a
-    halt — the sub PR squash-auto-merges once CI agrees, so this is the normal
-    gap of a few minutes between "Claude finished" and "the layer landed".
+    halt: the worker has merged the PR before marking the run done, and only
+    the bookkeeping (REST read-back or webhook) has not caught up yet.
     """
     if job.status == ClaudeQueueJobStatus.BLOCKED:
         return SUB_BLOCKED
@@ -403,6 +407,70 @@ def _finish_epic(epic_job, *, actor=None) -> str:
     ])
     epic_job.transition_to(ClaudeQueueJobStatus.DONE, actor=actor)
     return ADVANCE_FINISHED
+
+
+def after_sub_integrated(item, *, actor=None) -> str:
+    """Move on once the worker merged ``item``'s PR into its epic branch.
+
+    With an epic node the chain decides (release the next layer, or finish
+    with the epic PR). Without one — a sub-issue handed off on its own — there
+    is no chain to advance, but the epic PR is still owed once every layer is
+    in. Either way this runs *after* the worker has brought the epic branch up
+    to date with ``main``, which is why the PR merge webhook leaves the epic
+    PR to this path while the run is still in flight.
+    """
+    epic_job = active_epic_job_for(item)
+    if epic_job is not None:
+        return advance_epic(epic_job, actor=actor)
+    epic = item.parent
+    if epic is not None and all_sub_issues_merged(epic):
+        ensure_epic_pr(epic, actor=actor)
+        return ADVANCE_FINISHED
+    return ADVANCE_INACTIVE
+
+
+def block_epic(epic_job, reason, *, fail=False, actor=None):
+    """Mark ``epic_job`` as blocked, visibly and with its reason. No retry.
+
+    The reason goes onto the node (queue view) and into the epic item's
+    activity stream, so the stop is visible where the epic is looked at, not
+    only in the worker log. ``fail`` ends the node for stops the chain itself
+    cannot express — a sub-entry that halted already pauses the chain on its
+    own, but e.g. a ``main`` conflict after the last layer would otherwise let
+    the next sweep open the epic PR on a stale branch.
+    """
+    from core.services.activity import ActivityService
+
+    _record_epic_error(epic_job, reason)
+    if fail and epic_job.status == ClaudeQueueJobStatus.ORCHESTRATING:
+        epic_job.transition_to(ClaudeQueueJobStatus.FAILED, actor=actor)
+    ActivityService().log(
+        verb='epic.blocked',
+        target=epic_job.item,
+        actor=actor,
+        summary=f'Epic blockiert: {reason}',
+    )
+
+
+def block_epic_for_sub(job, reason, *, fail=False, actor=None):
+    """Block the epic ``job`` (a sub-issue run) belongs to — see :func:`block_epic`.
+
+    A sub-issue handed off without an epic node has no node to mark; its epic
+    item still gets the activity entry so the stop is not silent.
+    """
+    from core.services.activity import ActivityService
+
+    epic_job = job.parent_job or active_epic_job_for(job.item)
+    if epic_job is not None and epic_job.is_epic_node:
+        block_epic(epic_job, reason, fail=fail, actor=actor)
+        return
+    if job.item.parent_id is not None:
+        ActivityService().log(
+            verb='epic.blocked',
+            target=job.item.parent,
+            actor=actor,
+            summary=f'Epic blockiert: {reason}',
+        )
 
 
 def _fail_epic(epic_job, message, *, actor=None):

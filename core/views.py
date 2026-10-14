@@ -180,7 +180,7 @@ def dashboard(request):
         'inbox_count': items.filter(status=ItemStatus.INBOX).count(),
         'backlog_count': items.filter(status=ItemStatus.BACKLOG).count(),
         'in_progress_count': items.filter(
-            status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+            status__in=[ItemStatus.WORKING, ItemStatus.INTEGRATED, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
         ).count(),
         # "Closed" is the actual switch to Closed (status history), not the
         # last edit of an already closed item.
@@ -10162,7 +10162,7 @@ def dashboard_in_progress_items(request):
     """HTMX partial for in-progress items list."""
     items = scope_items(
         Item.objects.filter(
-            status__in=[ItemStatus.WORKING, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
+            status__in=[ItemStatus.WORKING, ItemStatus.INTEGRATED, ItemStatus.TESTING, ItemStatus.READY_FOR_RELEASE]
         ),
         request.user,
     ).select_related(

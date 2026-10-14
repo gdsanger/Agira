@@ -10,14 +10,19 @@ rows and runs them end-to-end:
    empty commit, push, then a PR via the existing ``GitHubService`` infra. The
    PR reference (number/url/github-id) is written to the job and to an
    ``ExternalIssueMapping`` (Kind=PR) *before* Claude runs, so it is
-   deterministic regardless of what Claude reports. The base is ``main`` and
-   the PR a draft for a standalone item; for a sub-issue of an epic (#1076) it
-   is the parent's epic branch and the PR is opened ready-for-review with
-   squash auto-merge armed.
+   deterministic regardless of what Claude reports. The PR is always opened as
+   a draft. Its base is ``main`` for a standalone item and the parent's epic
+   branch for a sub-issue of an epic (#1076).
 3. Run Claude Code headless (``--output-format stream-json``) in the checkout,
    parsing the event stream line-by-line to advance ``progress_text`` live and
    to persist ``session_id`` / ``num_turns`` / ``total_cost_usd`` from the final
    ``result`` event.
+4. Finish the PR. Against ``main``: mark it ready, a human reviews and merges.
+   Against an epic branch: the worker merges it itself, deterministically —
+   ``gh pr ready`` → ``gh pr checks --watch --fail-fast`` →
+   ``gh pr merge --squash --delete-branch`` — and only then is the run done
+   and the next layer of the epic released. Red checks, a conflict, an
+   uncertain run or a failed merge stop the chain instead (no retry).
 
 The #831 frame — claiming, one-running-job-per-repo concurrency, timeout and
 crash recovery — is unchanged; this command fills the seam that used to run a
@@ -82,6 +87,7 @@ from core.models import (
 )
 from core.services.claude_queue.branch import (
     DEFAULT_BASE_BRANCH,
+    is_epic_branch,
     resolve_base_branch,
 )
 from core.services.claude_queue.credentials import (
@@ -103,6 +109,18 @@ DEFAULT_TIMEOUT_SECONDS = 60 * 60
 # stream silence — but a truly stuck run still needs a nudge. Paused while a
 # tool call is in flight: a long foreground test run is silent by nature.
 DEFAULT_IDLE_TIMEOUT_SECONDS = 5 * 60
+
+# Upper bound for ``gh pr checks --watch`` on a sub-issue PR before the worker
+# gives up and stops the epic chain. Generous: this is CI wall-clock time, and
+# the job's own budget only covers the Claude run.
+CHECKS_TIMEOUT_SECONDS = 45 * 60
+
+# Right after the final push / ``gh pr ready`` GitHub may not have registered
+# any check run yet, and ``gh pr checks`` then reports "no checks". Ask again a
+# few times before concluding the repo really has no CI — not a retry of a
+# failure, just waiting for the checks to exist.
+NO_CHECKS_ATTEMPTS = 4
+NO_CHECKS_WAIT_SECONDS = 20
 
 # After a watchdog SIGINT, give Claude this long to emit its final result event
 # and exit cleanly before escalating to SIGKILL.
@@ -652,6 +670,7 @@ class Command(BaseCommand):
             job, summary=result.get('result_text'), pr_body_file=pr_body_file,
             uncertain_reason=uncertain_reason,
         )
+        base = resolve_base_branch(job.item)
         if uncertain_reason:
             # #1115: a completion-uncertain run must not *look* like a clean
             # success. The up-front PR is opened as a draft precisely so a
@@ -660,12 +679,21 @@ class Command(BaseCommand):
             # headless-blocked run indistinguishable from a done one at the PR
             # level. So keep it a draft: the DONE+completion_uncertain job stays
             # flagged in the queue, and the PR stays visibly unfinished on GitHub
-            # until a human has looked at it.
+            # until a human has looked at it. In an epic it is also never
+            # merged: the chain stops here and the epic says why.
             job.transition_to(ClaudeQueueJobStatus.DONE)
+            if is_epic_branch(base):
+                self._block_epic(
+                    job,
+                    f"Sub-Issue #{job.item_id}: Ergebnis unklar – PR #{job.pr_number} "
+                    f"bleibt Draft, Kette angehalten ({uncertain_reason})",
+                )
             self.stdout.write(self.style.WARNING(
                 f"Job #{job.pk} done, but completion uncertain — PR left as draft "
                 f"for manual review: {uncertain_reason}"
             ))
+        elif is_epic_branch(base):
+            self._integrate_into_epic(job, repo_dir, base)
         else:
             # Work is done and clean: flip the up-front draft PR to ready for
             # review (#1114) so no manual `gh pr ready` is needed before the
@@ -848,12 +876,11 @@ class Command(BaseCommand):
     def _open_pr(self, job, branch, repo_dir, base=DEFAULT_BASE_BRANCH):
         """Open the PR and record it on the job + ExternalIssueMapping.
 
-        A PR against ``main`` is a **draft** merged by hand, as before. A
-        sub-issue PR against an epic branch is opened ready-for-review with
-        squash auto-merge armed instead (#1076): a single layer is not
-        independently testable, so waiting for a human between layers would
-        stall the chain for no gained signal — CI plus the review pass are the
-        gate, and the human review happens once on the assembled epic.
+        Always a **draft**, whatever the base: a run that breaks off half-way
+        must never leave a PR that reads as finished — and against an epic
+        branch, never one that could be merged. What happens to the PR once
+        the run is clean depends on the base (see ``_process_job_inner``):
+        ``main`` waits for a human, an epic branch is merged by the worker.
 
         A retried job reuses the exact same deterministic branch name as its
         earlier attempt (``_branch_name`` is keyed on the item, not the job),
@@ -868,7 +895,6 @@ class Command(BaseCommand):
         from core.services.github.service import GitHubService
 
         service = GitHubService()
-        draft = base == DEFAULT_BASE_BRANCH
 
         mapping = self._find_existing_pr(job, branch, service)
         reused = mapping is not None
@@ -881,7 +907,7 @@ class Command(BaseCommand):
                     base=base,
                     title=job.item.title,
                     body=self._pr_body(job, base),
-                    draft=draft,
+                    draft=True,
                 )
             except Exception as exc:  # noqa: BLE001 — a retry may hit an already-open PR
                 logger.warning(
@@ -898,38 +924,195 @@ class Command(BaseCommand):
                 reused = True
 
         self._apply_pr_mapping(job, mapping, reused=reused)
-        if not draft:
-            self._enable_auto_merge(job, mapping.number, repo_dir)
 
-    def _enable_auto_merge(self, job, pr_number, repo_dir):
-        """Arm squash auto-merge on a sub-issue PR (#1076).
+    # ------------------------------------------------------------------ #
+    # Epic integration (worker merges sub-issue PRs itself)
+    # ------------------------------------------------------------------ #
+    def _integrate_into_epic(self, job, repo_dir, base):
+        """Merge a clean sub-issue PR into its epic branch, then release the chain.
 
-        Squash so the epic PR stays reviewable commit-for-commit: one commit
-        per sub-issue, carrying its Agira id. GitHub then merges the PR by
-        itself once the required checks pass — that is the whole point, since
-        the chain has to keep moving overnight without a human in the loop.
+        Done here, deterministically, and not by Claude: a merge is a
+        decision on facts (base, checks, mergeability) the worker can read for
+        itself, and the next layer must not start until it really happened.
+        Not GitHub auto-merge either — that needs branch protection with
+        required checks on ``feature/*``, which the epic branches deliberately
+        do not have.
 
-        Best-effort: if the repo has neither auto-merge enabled nor required
-        checks configured, the call fails and the PR simply waits for a manual
-        merge. That is a slower chain, not a broken job.
+        The job stays ``running`` until everything below is through, which is
+        what keeps the merge webhook and the poll sweep from releasing the
+        next layer, or opening the epic PR, while the worker is still at it.
+
+        Any stop — red or missing checks, a conflict, a failed merge — fails
+        the job with the reason, which halts the chain and marks the epic
+        blocked. There is no retry: a human looks first.
         """
+        from core.services.claude_queue.epic import is_last_open_sub_issue
+        from core.services.claude_queue.orchestration import after_sub_integrated
+
+        error = self._merge_sub_pr(job, repo_dir, base)
+        if error:
+            self._fail_job(job, error=f"Integration in {base} gestoppt: {error}")
+            self.stdout.write(self.style.ERROR(
+                f"Job #{job.pk} not integrated: {error}"
+            ))
+            return
+
+        self._save_progress(job, f"PR #{job.pr_number} in {base} gemergt")
+        self._record_merge(job)
+
+        if is_last_open_sub_issue(job.item):
+            # Last layer: bring the epic branch up to date with main *before*
+            # the epic PR exists, so the one human review sees what will
+            # actually land. A conflict needs a human, so it ends the epic.
+            try:
+                self._git(['fetch', 'origin', '--prune'], cwd=repo_dir)
+                self._materialise_epic_branch(job, repo_dir, base)
+            except RuntimeError as exc:
+                job.transition_to(ClaudeQueueJobStatus.DONE)
+                self._block_epic(
+                    job, f"Epic-PR nicht angelegt: {exc}", fail=True,
+                )
+                return
+
+        job.transition_to(ClaudeQueueJobStatus.DONE)
+        self.stdout.write(self.style.SUCCESS(
+            f"Job #{job.pk} done, PR #{job.pr_number} merged into {base}"
+        ))
         try:
-            proc = subprocess.run(
-                ['gh', 'pr', 'merge', str(pr_number), '--squash', '--auto'],
-                cwd=repo_dir, capture_output=True, text=True, timeout=60,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            logger.warning("Auto-merge call failed for job #%s: %s", job.pk, exc)
-            return
+            after_sub_integrated(job.item)
+        except Exception:  # noqa: BLE001 — the next poll sweep advances anyway
+            logger.exception("Advancing the epic after job #%s failed", job.pk)
 
+    def _merge_sub_pr(self, job, repo_dir, base):
+        """``gh pr ready`` → ``gh pr checks --watch`` → ``gh pr merge``.
+
+        Returns None once the PR is merged, otherwise a short, user-facing
+        reason why it was not. Idempotent: a PR found already merged (e.g. a
+        recovered run) counts as merged.
+        """
+        pr = job.pr_number
+        if not pr:
+            return "Kein PR am Job hinterlegt."
+
+        info, err = self._gh_json(
+            ['pr', 'view', str(pr), '--json', 'state,isDraft,baseRefName,mergeable'],
+            repo_dir,
+        )
+        if err:
+            return f"PR #{pr} konnte nicht gelesen werden: {err}"
+        if info.get('baseRefName') != base:
+            # Never merge on an assumption: only a PR that really targets the
+            # epic branch is the worker's to merge.
+            return (
+                f"PR #{pr} zielt auf '{info.get('baseRefName')}' statt auf "
+                f"den Epic-Branch '{base}'."
+            )
+        if info.get('state') == 'MERGED':
+            return None
+        if info.get('state') != 'OPEN':
+            return f"PR #{pr} ist nicht offen ({info.get('state')})."
+        if info.get('mergeable') == 'CONFLICTING':
+            return f"Merge-Konflikt: PR #{pr} lässt sich nicht konfliktfrei in '{base}' mergen."
+
+        if info.get('isDraft'):
+            proc = self._gh(['pr', 'ready', str(pr)], repo_dir)
+            if proc.returncode != 0:
+                return f"`gh pr ready` fehlgeschlagen: {self._gh_message(proc)}"
+
+        error = self._wait_for_checks(job, repo_dir, pr)
+        if error:
+            return error
+
+        self._save_progress(job, f"CI grün – merge PR #{pr} in {base}")
+        proc = self._gh(['pr', 'merge', str(pr), '--squash', '--delete-branch'], repo_dir)
         if proc.returncode != 0:
-            logger.warning(
-                "Could not enable auto-merge on PR #%s (job #%s): %s",
-                pr_number, job.pk, (proc.stderr or proc.stdout).strip(),
-            )
-            return
+            # gh merges on the server first and cleans up the local branch
+            # afterwards; a failed cleanup must not read as a failed merge.
+            info, _ = self._gh_json(['pr', 'view', str(pr), '--json', 'state'], repo_dir)
+            if info.get('state') != 'MERGED':
+                return f"`gh pr merge` fehlgeschlagen: {self._gh_message(proc)}"
+        return None
 
-        self.stdout.write(f"  Auto-merge (squash) armed on PR #{pr_number}")
+    def _wait_for_checks(self, job, repo_dir, pr):
+        """Block until PR ``pr``'s checks finished. None if green, else the reason.
+
+        No checks at all is a stop, not a pass: CI is the only gate between
+        the layers of an epic, and a merge without it would stack the next
+        layer on something nobody has built.
+        """
+        self._save_progress(job, f"Warte auf CI-Checks von PR #{pr}")
+        for attempt in range(NO_CHECKS_ATTEMPTS):
+            try:
+                proc = self._gh(
+                    ['pr', 'checks', str(pr), '--watch', '--fail-fast'],
+                    repo_dir, timeout=CHECKS_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                return (
+                    f"CI-Checks von PR #{pr} nach {CHECKS_TIMEOUT_SECONDS // 60} "
+                    f"Minuten nicht abgeschlossen."
+                )
+            if proc.returncode == 0:
+                return None
+            message = self._gh_message(proc)
+            if 'no checks reported' not in message.lower():
+                return f"CI-Checks von PR #{pr} nicht grün: {message}"
+            if attempt + 1 < NO_CHECKS_ATTEMPTS:
+                self._sleep(NO_CHECKS_WAIT_SECONDS)
+        return (
+            f"Keine CI-Checks an PR #{pr} – ohne grüne Checks wird nicht "
+            f"automatisch gemergt."
+        )
+
+    def _record_merge(self, job):
+        """Record the merge now instead of waiting for the webhook.
+
+        Same processing as the webhook (Integrated status, PR description,
+        RAG re-index); the webhook arriving later is a no-op. Best-effort: if
+        GitHub cannot be read right now, the webhook still delivers it.
+        """
+        from core.services.github.service import GitHubService
+
+        try:
+            GitHubService().apply_pr_state_from_github(job.item, job.pr_number)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Could not record the merge of PR #%s (job #%s) yet: %s",
+                job.pr_number, job.pk, exc,
+            )
+
+    def _gh(self, args, repo_dir, timeout=60):
+        """Run a ``gh`` command in the checkout. Raises only on timeout."""
+        try:
+            return subprocess.run(
+                ['gh', *args], cwd=repo_dir, capture_output=True, text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise
+        except (OSError, subprocess.SubprocessError) as exc:
+            return subprocess.CompletedProcess(['gh', *args], 1, '', str(exc))
+
+    def _gh_json(self, args, repo_dir):
+        """Run a ``gh … --json`` read. Returns ``(data, error)``."""
+        try:
+            proc = self._gh(args, repo_dir)
+        except subprocess.TimeoutExpired:
+            return {}, 'Zeitüberschreitung'
+        if proc.returncode != 0:
+            return {}, self._gh_message(proc)
+        try:
+            return json.loads(proc.stdout or '{}'), None
+        except json.JSONDecodeError as exc:
+            return {}, f'Antwort nicht lesbar: {exc}'
+
+    @staticmethod
+    def _gh_message(proc, limit=500):
+        text = (proc.stderr or '').strip() or (proc.stdout or '').strip()
+        return text[-limit:] or f'Exit-Code {proc.returncode}'
+
+    def _sleep(self, seconds):
+        time.sleep(seconds)
 
     def _mark_pr_ready(self, job, repo_dir):
         """Flip the job's draft PR to *ready for review* once the work is done (#1114).
@@ -943,14 +1126,15 @@ class Command(BaseCommand):
         Guarded and idempotent, so retries and non-draft PRs are safe no-ops:
         - skips when the job has no recorded PR at all,
         - reads the PR first and only flips it when it is *still an open draft*.
-          A sub-issue PR is opened ready-for-review already (see ``_open_pr``),
-          and a re-run finds the PR already ready — both short-circuit here
-          instead of erroring on ``gh pr ready``.
+          A re-run finds the PR already ready and short-circuits here instead
+          of erroring on ``gh pr ready``.
 
-        Best-effort, mirroring ``_enable_auto_merge``: a failed flip is logged
-        but never fails an otherwise-successful job. Uses the ``gh`` CLI like the
-        auto-merge/PR-fallback paths — the draft→ready transition is a GraphQL
-        mutation the REST layer used elsewhere cannot express.
+        Best-effort: a failed flip is logged but never fails an
+        otherwise-successful job — for ``main`` a human merges anyway. (An
+        epic-branch PR goes through ``_integrate_into_epic`` instead, where a
+        failed flip does stop the chain.) Uses the ``gh`` CLI like the
+        PR-fallback path — the draft→ready transition is a GraphQL mutation the
+        REST layer used elsewhere cannot express.
         """
         pr_number = job.pr_number
         if not pr_number:
@@ -1089,7 +1273,8 @@ class Command(BaseCommand):
             lines += [
                 f"Epic: #{item.parent_id} — Sub-Issue {position} "
                 f"(Order {item.epic_order})",
-                f"Target: `{base}` (Epic-Branch, Squash-Auto-Merge)",
+                f"Target: `{base}` (Epic-Branch – der Worker mergt nach "
+                f"grüner CI per Squash)",
             ]
         return '\n'.join(lines)
 
@@ -1764,6 +1949,22 @@ class Command(BaseCommand):
             # Already terminal (e.g. cancelled meanwhile) — just persist the note.
             job.save(update_fields=['error_text'])
         self._release_item(job)
+        if job.item.parent_id is not None and not job.is_epic_node:
+            # A failed layer halts its chain on its own (the epic node reads
+            # the sub-entry's status); this makes the stop visible on the epic.
+            self._block_epic(
+                job, f"Sub-Issue #{job.item_id} fehlgeschlagen: {error}",
+            )
+
+    def _block_epic(self, job, reason, *, fail=False):
+        """Mark the epic of sub-issue run ``job`` blocked. Never fails the caller."""
+        from core.services.claude_queue.orchestration import block_epic_for_sub
+
+        try:
+            block_epic_for_sub(job, reason, fail=fail)
+        except Exception:  # noqa: BLE001 — the job outcome is already recorded
+            logger.exception("Could not mark the epic of job #%s blocked", job.pk)
+        self.stdout.write(self.style.WARNING(f"  Epic blocked: {reason}"))
 
     def _release_item(self, job):
         """Don't let the item starve in ``Working`` after a failed job.

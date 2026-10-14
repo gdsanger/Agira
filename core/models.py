@@ -81,6 +81,11 @@ class ItemStatus(models.TextChoices):
     INBOX = 'Inbox', _('📥 Inbox')
     BACKLOG = 'Backlog', _('📋 Backlog')
     WORKING = 'Working', _('🚧 Working')
+    # A sub-issue of an epic whose PR the worker has merged into the epic
+    # branch, but which has not reached ``main`` yet. It moves on to Testing
+    # together with its siblings when the epic PR to ``main`` merges — the
+    # epic is the unit that is reviewed and tested, not the single layer.
+    INTEGRATED = 'Integrated', _('🔗 Integrated')
     # The stored values 'Testing' and 'Review' are kept for compatibility (REST,
     # MCP, mail mappings, status history, search index); only the labels
     # changed. 'Testing' means "implemented — nothing left for the developer
@@ -98,8 +103,13 @@ class ItemStatus(models.TextChoices):
 
         Review ("Clarification") is excluded: it only marks an item for
         coordination/questions and must never be wired to a mail trigger.
+        Integrated is excluded too: it is an internal step of the epic
+        workflow, not something anyone outside the developer acts on.
         """
-        return [choice for choice in cls.choices if choice[0] != cls.REVIEW]
+        return [
+            choice for choice in cls.choices
+            if choice[0] not in (cls.REVIEW, cls.INTEGRATED)
+        ]
 
 
 class RelationType(models.TextChoices):
