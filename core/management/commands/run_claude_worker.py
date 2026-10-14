@@ -107,6 +107,21 @@ DEFAULT_IDLE_TIMEOUT_SECONDS = 5 * 60
 # and exit cleanly before escalating to SIGKILL.
 INTERRUPT_GRACE_SECONDS = 30
 
+# Headless runs must stay strictly in the foreground. Claude Code can park a
+# long command (typically a full test run) in a background task, or schedule a
+# wakeup/cron, and end its turn to "pick it up later" — but in ``-p`` mode the
+# process then exits and nobody is left listening, so the test result is lost.
+# These variables switch that machinery off for the child process.
+FOREGROUND_ONLY_ENV = {
+    'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
+    'CLAUDE_CODE_DISABLE_CRON': '1',
+}
+
+# Margin kept between a single Bash call's timeout and the stream watchdog, so
+# a long foreground command is ended by Bash (Claude sees the timeout and can
+# react) before the watchdog interrupts the whole run.
+BASH_TIMEOUT_MARGIN_SECONDS = 30
+
 # Default poll interval for daemon mode.
 DEFAULT_INTERVAL_SECONDS = 5
 
@@ -197,6 +212,18 @@ BACKGROUND_MARKERS = (
     'lass es mich wissen',
     'should i proceed',
     'soll ich fortfahren',
+)
+
+# Headless counterpart to FOREGROUND_ONLY_ENV: even with backgrounding off,
+# Claude must not end its turn announcing it will "come back later" — there is
+# no later in a ``-p`` run. Long suites are better narrowed than parked.
+FOREGROUND_INSTRUCTIONS = (
+    "Du läufst headless: Sobald du deine Antwort beendest, endet der Prozess "
+    "und niemand wartet auf Hintergrundprozesse. Führe deshalb alle Befehle "
+    "(insbesondere Tests) im Vordergrund aus und warte ihr Ergebnis ab, bevor "
+    "du fortfährst. Plane keine Wakeups und beende nie mit „ich melde mich, "
+    "wenn …“. Ist die volle Test-Suite zu lang, führe gezielt die Tests der "
+    "betroffenen Module aus und nenne das Ergebnis im PR-Body."
 )
 
 # Commit-message convention (#1076). Sub-issue PRs squash-merge into the epic
@@ -1275,7 +1302,9 @@ class Command(BaseCommand):
         wall-clock budget is exhausted.
         """
         args = self._build_claude_args(job)
-        env = self._build_env(job, pr_body_file, auth_mode=auth_mode)
+        env = self._build_env(
+            job, pr_body_file, auth_mode=auth_mode, idle_timeout=idle_timeout,
+        )
 
         proc = subprocess.Popen(
             args,
@@ -1315,7 +1344,8 @@ class Command(BaseCommand):
             '--dangerously-skip-permissions',
         ]
 
-    def _build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.OAUTH):
+    def _build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.OAUTH,
+                   idle_timeout=DEFAULT_IDLE_TIMEOUT_SECONDS):
         """Build the child environment for one Claude run, per ``auth_mode``.
 
         The CLI's credential precedence is *process-local*: inside a single
@@ -1329,11 +1359,22 @@ class Command(BaseCommand):
         goes on *that* user's subscription or API account. Handing it over via
         the environment rather than a CLI flag is also the safer channel: argv
         is visible to every process via ``ps``, the environment is not.
+
+        Background tasks and cron/wakeups are disabled (``FOREGROUND_ONLY_ENV``)
+        and the Bash timeout is aligned with the stream watchdog: with
+        backgrounding off, a long command blocks in the foreground, so its
+        timeout must end it before ``idle_timeout`` would kill the whole run.
         """
+        bash_timeout_ms = str(
+            max(idle_timeout - BASH_TIMEOUT_MARGIN_SECONDS, 60) * 1000
+        )
         env = dict(
             os.environ,
             CLAUDE_QUEUE_JOB_ID=str(job.pk),
             PR_BODY_FILE=str(pr_body_file),
+            BASH_DEFAULT_TIMEOUT_MS=bash_timeout_ms,
+            BASH_MAX_TIMEOUT_MS=bash_timeout_ms,
+            **FOREGROUND_ONLY_ENV,
         )
         # Start from a clean slate so nothing inherited decides the auth for us.
         for name in ALL_AUTH_ENV_VARS:
@@ -1528,6 +1569,7 @@ class Command(BaseCommand):
             "Implement the change in this repository. Make focused edits and "
             "commit them to the current branch with git. Do not push."
         )
+        parts.append(FOREGROUND_INSTRUCTIONS)
         parts.append(COMMIT_MESSAGE_INSTRUCTIONS.format(item_id=item.id))
         parts += ['', PR_BODY_FILE_INSTRUCTIONS]
         return '\n'.join(parts)

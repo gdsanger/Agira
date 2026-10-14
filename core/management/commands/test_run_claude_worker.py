@@ -1349,6 +1349,25 @@ class BuildPromptAndEnvTests(ClaudeWorkerTestBase):
 
         self.assertEqual(env['PR_BODY_FILE'], str(pr_body_file))
 
+    def test_build_env_keeps_claude_in_the_foreground(self):
+        job = self._job(self.project_a)
+        pr_body_file = Path(tempfile.gettempdir()) / 'claude-pr-body-test.md'
+
+        env = Command()._build_env(job, pr_body_file, idle_timeout=300)
+
+        self.assertEqual(env['CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'], '1')
+        self.assertEqual(env['CLAUDE_CODE_DISABLE_CRON'], '1')
+        # A foreground Bash call must time out before the stream watchdog.
+        self.assertEqual(env['BASH_DEFAULT_TIMEOUT_MS'], '270000')
+        self.assertEqual(env['BASH_MAX_TIMEOUT_MS'], '270000')
+
+    def test_build_prompt_forbids_background_work(self):
+        item = self._job(self.project_a).item
+
+        prompt = Command()._build_prompt(item)
+
+        self.assertIn('im Vordergrund', prompt)
+
     def test_allowed_tools_includes_write(self):
         from core.management.commands.run_claude_worker import ALLOWED_TOOLS
         self.assertIn('Write', ALLOWED_TOOLS.split(','))
