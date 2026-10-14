@@ -116,7 +116,10 @@ Schichten keinen sinnvollen Runtime-Test. Das Gate ist deshalb ehrlich auf
 das reduziert, was der Worker selbst prüfen kann:
 
 1. **Der Lauf war eindeutig erfolgreich**: nicht fehlgeschlagen, nicht
-   `Ggf. unvollständig`, kein leerer Diff.
+   `Ggf. unvollständig`, kein leerer Diff. Die Unit-Tests führt Claude im
+   Lauf selbst aus und dokumentiert sie im PR. Meldet es rote Tests (Zeile
+   `TESTS ROT`), gilt der Lauf als `Ggf. unvollständig` und wird nicht
+   gemergt.
 2. **CI ist grün** (kompiliert, Lint, vorhandene Unit-Tests). Sie verhindert,
    dass sich Schichten auf zerbrochenem Fundament stapeln. **Keine Checks
    zählen als Stopp, nicht als grün.** Der Worker wartet kurz, falls GitHub

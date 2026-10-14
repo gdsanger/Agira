@@ -240,6 +240,23 @@ FOREGROUND_INSTRUCTIONS = (
     "betroffenen Module aus und nenne das Ergebnis im PR-Body."
 )
 
+# Fixed line Claude puts on its own in its final answer when tests it ran are
+# red. Claude reports its own test results (see CLAUDE.md); this line is how
+# that report reaches the worker in a form it can act on without parsing prose:
+# the run is flagged "Ggf. unvollständig", so its PR stays a draft and an epic
+# chain stops instead of merging a red layer.
+TESTS_RED_MARKER = 'TESTS ROT'
+TESTS_RED_LINE = re.compile(rf'^\s*{TESTS_RED_MARKER}\s*$', re.IGNORECASE | re.MULTILINE)
+
+TEST_RESULT_INSTRUCTIONS = (
+    "Führe die Tests der betroffenen Module aus und dokumentiere das Ergebnis "
+    "unter „## Test-Hinweise“. Schlagen Tests fehl, die durch deine Änderung "
+    "rot sind oder die du nicht grün bekommst, nenne sie dort und beende deine "
+    f"Schlussantwort mit einer eigenen Zeile `{TESTS_RED_MARKER}`. Fehlschläge, "
+    "die nachweislich schon auf dem Basis-Branch bestehen, nennst du ebenfalls, "
+    "sie gelten aber nicht als rot."
+)
+
 # Commit-message convention (#1076). Sub-issue PRs squash-merge into the epic
 # branch, so each sub-issue becomes exactly one commit on it — and that commit's
 # subject is all the final epic PR shows for a whole layer. Carrying the Agira id
@@ -1418,19 +1435,25 @@ class Command(BaseCommand):
         instead. That pause is signal, not a defect to paper over, so it must
         stay visible instead of being flattened into a plain "Done".
 
-        Two independent checks, outcome first because it is the reliable one:
+        Three independent checks, outcome first because it is the reliable one:
 
         1. Outcome: is the branch's diff against the bootstrap commit empty? An
            empty PR is a strong "nothing really landed" signal regardless of
            what Claude's text claims.
-        2. Prose: does the final result text contain a background/wait/ask
+        2. Test report: did Claude end with the ``TESTS ROT`` line? Claude runs
+           and documents the tests itself; red ones must not be merged into an
+           epic or marked review-ready.
+        3. Prose: does the final result text contain a background/wait/ask
            marker? Catches cases the outcome check misses (partial commits plus
            an open question).
 
-        Returns ``None`` when neither signal fires.
+        Returns ``None`` when no signal fires.
         """
         if self._is_empty_diff(repo_dir, bootstrap_sha):
             return "Leerer PR: keine Änderungen über den Start-Commit hinaus."
+
+        if TESTS_RED_LINE.search(result_text or ''):
+            return "Claude meldet rote Tests (siehe „Test-Hinweise“ im PR)."
 
         marker = self._find_background_marker(result_text)
         if marker:
@@ -1749,6 +1772,7 @@ class Command(BaseCommand):
             "commit them to the current branch with git. Do not push."
         )
         parts.append(FOREGROUND_INSTRUCTIONS)
+        parts.append(TEST_RESULT_INSTRUCTIONS)
         parts.append(COMMIT_MESSAGE_INSTRUCTIONS.format(item_id=item.id))
         parts += ['', PR_BODY_FILE_INSTRUCTIONS]
         return '\n'.join(parts)
