@@ -100,7 +100,8 @@ DEFAULT_TIMEOUT_SECONDS = 60 * 60
 # Watchdog: if no stream event arrives for this long, SIGINT the Claude process.
 # A known stdout-buffering bug means the stream can fall silent while Claude is
 # still alive, so "done" is decided by process exit + result event — not by
-# stream silence — but a truly stuck run still needs a nudge.
+# stream silence — but a truly stuck run still needs a nudge. Paused while a
+# tool call is in flight: a long foreground test run is silent by nature.
 DEFAULT_IDLE_TIMEOUT_SECONDS = 5 * 60
 
 # After a watchdog SIGINT, give Claude this long to emit its final result event
@@ -116,11 +117,6 @@ FOREGROUND_ONLY_ENV = {
     'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
     'CLAUDE_CODE_DISABLE_CRON': '1',
 }
-
-# Margin kept between a single Bash call's timeout and the stream watchdog, so
-# a long foreground command is ended by Bash (Claude sees the timeout and can
-# react) before the watchdog interrupts the whole run.
-BASH_TIMEOUT_MARGIN_SECONDS = 30
 
 # Default poll interval for daemon mode.
 DEFAULT_INTERVAL_SECONDS = 5
@@ -1302,9 +1298,8 @@ class Command(BaseCommand):
         wall-clock budget is exhausted.
         """
         args = self._build_claude_args(job)
-        env = self._build_env(
-            job, pr_body_file, auth_mode=auth_mode, idle_timeout=idle_timeout,
-        )
+        env = self._build_env(job, pr_body_file, auth_mode=auth_mode, timeout=timeout)
+        self._tools_in_flight = set()
 
         proc = subprocess.Popen(
             args,
@@ -1345,7 +1340,7 @@ class Command(BaseCommand):
         ]
 
     def _build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.OAUTH,
-                   idle_timeout=DEFAULT_IDLE_TIMEOUT_SECONDS):
+                   timeout=DEFAULT_TIMEOUT_SECONDS):
         """Build the child environment for one Claude run, per ``auth_mode``.
 
         The CLI's credential precedence is *process-local*: inside a single
@@ -1360,14 +1355,13 @@ class Command(BaseCommand):
         the environment rather than a CLI flag is also the safer channel: argv
         is visible to every process via ``ps``, the environment is not.
 
-        Background tasks and cron/wakeups are disabled (``FOREGROUND_ONLY_ENV``)
-        and the Bash timeout is aligned with the stream watchdog: with
-        backgrounding off, a long command blocks in the foreground, so its
-        timeout must end it before ``idle_timeout`` would kill the whole run.
+        Background tasks and cron/wakeups are disabled (``FOREGROUND_ONLY_ENV``).
+        With backgrounding off, a long command blocks in the foreground, so a
+        single Bash call may use the job's whole wall-clock budget instead of
+        the CLI's 2/10-minute defaults (which would otherwise kill a long test
+        run). The idle watchdog is paused meanwhile (see ``_iter_events``).
         """
-        bash_timeout_ms = str(
-            max(idle_timeout - BASH_TIMEOUT_MARGIN_SECONDS, 60) * 1000
-        )
+        bash_timeout_ms = str(timeout * 1000)
         env = dict(
             os.environ,
             CLAUDE_QUEUE_JOB_ID=str(job.pk),
@@ -1581,6 +1575,11 @@ class Command(BaseCommand):
         grants a short grace period for the final result event; a second idle
         window escalates to a timeout. "Done" is process EOF, never mere stream
         silence.
+
+        While a tool call is in flight (``_tools_in_flight``, maintained by
+        ``_consume_stream``) silence is expected — a foreground test run emits
+        nothing until it ends — so the watchdog waits and only the wall-clock
+        budget applies.
         """
         deadline = time.monotonic() + timeout
         interrupted = False
@@ -1604,6 +1603,8 @@ class Command(BaseCommand):
             # No output within the idle window.
             if proc.poll() is not None:
                 break  # process already exited; drain done
+            if getattr(self, '_tools_in_flight', None) and not interrupted:
+                continue  # a long foreground tool call; let it finish
             if not interrupted:
                 logger.warning(
                     "No Claude event for %ss; sending SIGINT (watchdog).",
@@ -1651,9 +1652,12 @@ class Command(BaseCommand):
                     extra_fields=['session_id'],
                 )
             elif etype == 'assistant':
+                self._track_tool_calls(event)
                 step = self._describe_assistant(event)
                 if step:
                     self._save_progress(job, step)
+            elif etype == 'user':
+                self._track_tool_calls(event)
             elif etype == 'result':
                 result['saw_result'] = True
                 result['is_error'] = bool(event.get('is_error'))
@@ -1673,6 +1677,17 @@ class Command(BaseCommand):
                 )
 
         return result
+
+    def _track_tool_calls(self, event):
+        """Keep ``_tools_in_flight`` in step with tool_use/tool_result blocks."""
+        in_flight = self.__dict__.setdefault('_tools_in_flight', set())
+        for block in (event.get('message') or {}).get('content') or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'tool_use' and block.get('id'):
+                in_flight.add(block['id'])
+            elif block.get('type') == 'tool_result':
+                in_flight.discard(block.get('tool_use_id'))
 
     def _describe_assistant(self, event):
         """Turn an assistant event into a short 'current step' line."""
