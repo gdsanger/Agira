@@ -1349,6 +1349,68 @@ class BuildPromptAndEnvTests(ClaudeWorkerTestBase):
 
         self.assertEqual(env['PR_BODY_FILE'], str(pr_body_file))
 
+    def test_build_env_keeps_claude_in_the_foreground(self):
+        job = self._job(self.project_a)
+        pr_body_file = Path(tempfile.gettempdir()) / 'claude-pr-body-test.md'
+
+        env = Command()._build_env(job, pr_body_file, timeout=5400)
+
+        self.assertEqual(env['CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'], '1')
+        self.assertEqual(env['CLAUDE_CODE_DISABLE_CRON'], '1')
+        # A single foreground Bash call may use the whole job budget.
+        self.assertEqual(env['BASH_DEFAULT_TIMEOUT_MS'], '5400000')
+        self.assertEqual(env['BASH_MAX_TIMEOUT_MS'], '5400000')
+
+    def test_track_tool_calls_follows_tool_use_and_result(self):
+        cmd = Command()
+        cmd._track_tool_calls({'message': {'content': [
+            {'type': 'tool_use', 'id': 'tu_1', 'name': 'Bash', 'input': {}},
+        ]}})
+        self.assertEqual(cmd._tools_in_flight, {'tu_1'})
+
+        cmd._track_tool_calls({'message': {'content': [
+            {'type': 'tool_result', 'tool_use_id': 'tu_1', 'content': 'ok'},
+        ]}})
+        self.assertEqual(cmd._tools_in_flight, set())
+
+    def test_build_prompt_forbids_background_work(self):
+        item = self._job(self.project_a).item
+
+        prompt = Command()._build_prompt(item)
+
+        self.assertIn('im Vordergrund', prompt)
+
+    def test_idle_watchdog_waits_while_a_tool_call_is_in_flight(self):
+        """A silent foreground tool call must not trip the idle watchdog."""
+        import sys
+        script = (
+            "import json, time\n"
+            "def emit(e): print(json.dumps(e), flush=True)\n"
+            "emit({'type': 'assistant', 'message': {'content': ["
+            "{'type': 'tool_use', 'id': 'tu_1', 'name': 'Bash', "
+            "'input': {'command': 'pytest'}}]}})\n"
+            "time.sleep(3)\n"
+            "emit({'type': 'user', 'message': {'content': ["
+            "{'type': 'tool_result', 'tool_use_id': 'tu_1', 'content': 'ok'}]}})\n"
+            "emit({'type': 'result', 'result': 'done', 'num_turns': 2})\n"
+        )
+        job = self._job(self.project_a)
+        cmd = Command()
+        cmd._tools_in_flight = set()
+        proc = subprocess.Popen(
+            [sys.executable, '-c', script],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+        )
+        with patch.object(cmd, '_signal') as signal_mock:
+            result = cmd._consume_stream(
+                job, cmd._iter_events(proc, timeout=30, idle_timeout=1),
+            )
+        proc.wait()
+
+        signal_mock.assert_not_called()
+        self.assertTrue(result['saw_result'])
+        self.assertEqual(cmd._tools_in_flight, set())
+
     def test_allowed_tools_includes_write(self):
         from core.management.commands.run_claude_worker import ALLOWED_TOOLS
         self.assertIn('Write', ALLOWED_TOOLS.split(','))
