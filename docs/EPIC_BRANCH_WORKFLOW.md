@@ -158,7 +158,7 @@ Branch auf `main` gelandet ist.
 - Squash als Merge-Methode erlaubt.
 - Der GitHub-Token aus der Agira-Konfiguration darf PRs mergen und Branches
   löschen. Der Worker nutzt ihn für **alles**: Clone, REST und `gh` (als
-  `GH_TOKEN`, mit explizitem `--repo`). Ein `gh auth login` auf dem Server
+  `GH_TOKEN`, das Repo explizit als `GH_REPO`). Ein `gh auth login` auf dem Server
   spielt keine Rolle. Bei einem Fine-grained PAT: Contents und Pull requests
   read/write, Checks und Commit statuses read.
 - CI-Workflows laufen auch für PRs gegen `feature/*`, auch für Draft-PRs:

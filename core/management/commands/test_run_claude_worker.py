@@ -321,7 +321,8 @@ class MarkPrReadyTests(ClaudeWorkerTestBase):
         self.assertEqual(run.call_count, 2)
         view_cmd, ready_cmd = run.call_args_list[0][0][0], run.call_args_list[1][0][0]
         self.assertEqual(view_cmd[:3], ['gh', 'pr', 'view'])
-        self.assertEqual(ready_cmd, ['gh', 'pr', 'ready', '42', '--repo', 'acme/repo-a'])
+        self.assertEqual(ready_cmd, ['gh', 'pr', 'ready', '42'])
+        self.assertEqual(run.call_args_list[1].kwargs['env']['GH_REPO'], 'acme/repo-a')
         job.refresh_from_db()
         self.assertIn('Ready for review', job.progress_text)
 
@@ -2324,10 +2325,9 @@ class EpicAutoMergeTests(ClaudeWorkerTestBase):
         job = self._run(self.first_job, gh)
 
         self.assertEqual(gh.subcommands(), ['view', 'ready', 'checks', 'merge'])
-        repo = ['--repo', 'acme/repo-a']
-        self.assertIn(['gh', 'pr', 'ready', '51', *repo], gh.calls)
-        self.assertIn(['gh', 'pr', 'checks', '51', '--watch', '--fail-fast', *repo], gh.calls)
-        self.assertIn(['gh', 'pr', 'merge', '51', '--squash', '--delete-branch', *repo], gh.calls)
+        self.assertIn(['gh', 'pr', 'ready', '51'], gh.calls)
+        self.assertIn(['gh', 'pr', 'checks', '51', '--watch', '--fail-fast'], gh.calls)
+        self.assertIn(['gh', 'pr', 'merge', '51', '--squash', '--delete-branch'], gh.calls)
         self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
         # Recorded right away, without waiting for the webhook.
         self.mapping.refresh_from_db()
@@ -2356,8 +2356,8 @@ class EpicAutoMergeTests(ClaudeWorkerTestBase):
         self._run(self.first_job, gh)
 
         self.assertTrue(gh.calls)
-        for call, env in zip(gh.calls, gh.envs):
-            self.assertEqual(call[-2:], ['--repo', 'acme/repo-a'])
+        for env in gh.envs:
+            self.assertEqual(env['GH_REPO'], 'acme/repo-a')
             self.assertEqual(env['GH_TOKEN'], 'agira-token')
 
     def test_last_child_syncs_main_into_the_epic_branch_then_opens_the_epic_pr(self):

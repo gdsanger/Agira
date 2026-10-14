@@ -1103,35 +1103,34 @@ class Command(BaseCommand):
                 job.pr_number, job.pk, exc,
             )
 
-    def _gh_command(self, job, args):
-        """``gh`` argv for ``job``'s repo, named explicitly with ``--repo``.
+    def _gh_env(self, job):
+        """Environment for a ``gh`` call on ``job``'s repo.
 
-        Never left to gh's guess from the checkout's git remotes: the repo is
-        the project's ``github_owner``/``github_repo``, the same one the PR was
-        created in via the REST API.
+        * ``GH_TOKEN``: the same token clone and REST already use. Without it
+          ``gh`` falls back to whatever account happens to be logged in on the
+          host (``gh auth login``) — a second credential that may not even see
+          the repo (e.g. an organisation that has not approved the GitHub CLI
+          app), so a PR exists via REST yet ``gh pr view`` answers "Could not
+          resolve to a Repository".
+        * ``GH_REPO``: the project's ``github_owner``/``github_repo``, the repo
+          the PR was created in — never gh's guess from the checkout's git
+          remotes. Passed via the environment rather than ``--repo`` so the
+          project's configured values never become part of a command line.
         """
         project = job.project
-        return ['gh', *args, '--repo', f'{project.github_owner}/{project.github_repo}']
-
-    def _gh_env(self):
-        """Environment for ``gh``: the same token clone and REST already use.
-
-        Without this ``gh`` falls back to whatever account happens to be
-        logged in on the host (``gh auth login``) — a second credential that
-        may not even see the repo (e.g. an organisation that has not approved
-        the GitHub CLI app), so PR #40 exists via REST yet ``gh pr view 40``
-        answers "Could not resolve to a Repository".
-        """
+        env = dict(os.environ, GH_REPO=f'{project.github_owner}/{project.github_repo}')
         token = self._github_token()
-        return dict(os.environ, GH_TOKEN=token) if token else None
+        if token:
+            env['GH_TOKEN'] = token
+        return env
 
     def _gh(self, job, args, repo_dir, timeout=60):
         """Run a ``gh`` command for ``job``'s repo. Raises only on timeout."""
-        command = self._gh_command(job, args)
+        command = ['gh', *args]
         try:
             return subprocess.run(
                 command, cwd=repo_dir, capture_output=True, text=True,
-                timeout=timeout, env=self._gh_env(),
+                timeout=timeout, env=self._gh_env(job),
             )
         except subprocess.TimeoutExpired:
             raise
@@ -1187,9 +1186,9 @@ class Command(BaseCommand):
 
         try:
             proc = subprocess.run(
-                self._gh_command(job, ['pr', 'view', str(pr_number), '--json', 'state,isDraft']),
+                ['gh', 'pr', 'view', str(pr_number), '--json', 'state,isDraft'],
                 cwd=repo_dir, capture_output=True, text=True, timeout=60,
-                env=self._gh_env(),
+                env=self._gh_env(job),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("PR status lookup failed for job #%s: %s", job.pk, exc)
@@ -1216,9 +1215,9 @@ class Command(BaseCommand):
 
         try:
             proc = subprocess.run(
-                self._gh_command(job, ['pr', 'ready', str(pr_number)]),
+                ['gh', 'pr', 'ready', str(pr_number)],
                 cwd=repo_dir, capture_output=True, text=True, timeout=60,
-                env=self._gh_env(),
+                env=self._gh_env(job),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Mark-ready call failed for job #%s: %s", job.pk, exc)
@@ -1271,12 +1270,10 @@ class Command(BaseCommand):
 
         try:
             proc = subprocess.run(
-                self._gh_command(job, [
-                    'pr', 'list', '--head', branch,
-                    '--state', 'all', '--json', 'number,url,id', '--limit', '1',
-                ]),
+                ['gh', 'pr', 'list', '--head', branch,
+                 '--state', 'all', '--json', 'number,url,id', '--limit', '1'],
                 cwd=repo_dir, capture_output=True, text=True, timeout=60,
-                env=self._gh_env(),
+                env=self._gh_env(job),
             )
             if proc.returncode != 0:
                 logger.warning("gh pr list failed: %s", proc.stderr.strip())
