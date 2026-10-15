@@ -272,6 +272,8 @@ def release_sub_job(job, *, actor=None):
 
     The git-workflow hint and the Working transition happen *here* rather than
     when the chain was built, so both describe something that is true now.
+    The run is also pinned to the epic's user (the one who started it), so it
+    uses their Claude credential.
 
     A sub-issue closed since the chain was planned stops the chain instead of
     being worked anyway — somebody decided that layer is not wanted, and
@@ -292,6 +294,12 @@ def release_sub_job(job, *, actor=None):
         if ensure_git_workflow_hint(item):
             item.save()
         ItemWorkflowGuard().transition(item, ItemStatus.WORKING, actor=actor)
+        epic_user_id = job.parent_job.auth_user_id if job.parent_job_id else None
+        if epic_user_id and job.auth_user_id != epic_user_id:
+            # Chains planned before the epic's user was carried down picked
+            # the sub-issue's responsible instead; correct it before the run.
+            job.auth_user_id = epic_user_id
+            job.save(update_fields=['auth_user'])
         job.transition_to(ClaudeQueueJobStatus.QUEUED, actor=actor)
     return job
 
