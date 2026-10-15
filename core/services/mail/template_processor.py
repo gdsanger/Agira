@@ -13,34 +13,6 @@ if TYPE_CHECKING:
     from core.models import Item, MailTemplate
 
 
-def _build_sub_issues(item: "Item") -> tuple:
-    """
-    Build the collected sub-issue summary of an epic.
-
-    Returns (html, plain). Both are empty strings for items without sub-issues.
-    Sub-issues are listed in epic order (ties by id), like the epic workflow
-    processes them. User-provided data is HTML-escaped; the solution
-    description is converted from Markdown like in the item itself.
-    """
-    children = list(item.children.select_related('type').order_by('epic_order', 'id'))
-    if not children:
-        return '', ''
-
-    entries = []
-    for child in children:
-        entry = (
-            f"<li><strong>{html.escape(child.title or '')}</strong> "
-            f"({html.escape(child.get_status_display() or '')})"
-        )
-        if child.solution_description:
-            entry += convert_markdown_to_html(child.solution_description)
-        entries.append(entry + "</li>")
-
-    html_list = "<ul>" + "".join(entries) + "</ul>"
-    plain = "; ".join(child.title or '' for child in children)
-    return html_list, plain
-
-
 def process_template(template: "MailTemplate", item: "Item") -> dict:
     """
     Process a mail template by replacing template variables with item data.
@@ -70,9 +42,6 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     - {{ issue.assigned_to }} - Assigned user name (or empty if not set)
     - {{ issue.organisation }} - Requester's primary organisation name (or empty if not set)
     - {{ issue.solution_release }} - Solution release info with name, version and date (or empty if not set)
-    - {{ issue.sub_issues }} - Collected list of the sub-issues (measures) of an epic with title, status
-      and solution description (or empty if the item has no sub-issues). Lets one mail per epic
-      replace one mail per sub-issue.
     
     Args:
         template: MailTemplate instance with subject and message containing variables
@@ -124,8 +93,6 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
     solution_description_html = convert_markdown_to_html(item.solution_description or '')
     solution_description_plain = strip_html_tags(solution_description_html)
     
-    sub_issues_html, sub_issues_plain = _build_sub_issues(item)
-
     # Replacements for message body (HTML content)
     message_replacements = {
         '{{ issue.title }}': html.escape(item.title or ''),
@@ -143,7 +110,6 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
         '{{ issue.assigned_to }}': html.escape(item.assigned_to.name if item.assigned_to else ''),
         '{{ issue.organisation }}': html.escape(requester_org),
         '{{ issue.solution_release }}': html.escape(solution_release_info),
-        '{{ issue.sub_issues }}': sub_issues_html,
     }
     
     # Replacements for subject (plain text - no HTML tags)
@@ -161,7 +127,6 @@ def process_template(template: "MailTemplate", item: "Item") -> dict:
         '{{ issue.assigned_to }}': html.escape(item.assigned_to.name if item.assigned_to else ''),
         '{{ issue.organisation }}': html.escape(requester_org),
         '{{ issue.solution_release }}': html.escape(solution_release_info),
-        '{{ issue.sub_issues }}': html.escape(sub_issues_plain),
     }
     
     # Process subject with plain text replacements
