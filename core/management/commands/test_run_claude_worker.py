@@ -322,6 +322,7 @@ class MarkPrReadyTests(ClaudeWorkerTestBase):
         view_cmd, ready_cmd = run.call_args_list[0][0][0], run.call_args_list[1][0][0]
         self.assertEqual(view_cmd[:3], ['gh', 'pr', 'view'])
         self.assertEqual(ready_cmd, ['gh', 'pr', 'ready', '42'])
+        self.assertEqual(run.call_args_list[1].kwargs['env']['GH_REPO'], 'acme/repo-a')
         job.refresh_from_db()
         self.assertIn('Ready for review', job.progress_text)
 
@@ -2194,11 +2195,13 @@ class FakeGh:
         self.mergeable = mergeable
         self.state_after_merge = state_after_merge
         self.calls = []
+        self.envs = []
         self.merged = False
 
     def __call__(self, args, **kwargs):
         assert args[0] == 'gh', f'unexpected command {args}'
         self.calls.append(list(args))
+        self.envs.append(kwargs.get('env'))
         sub = args[2]
         if sub == 'view':
             fields = args[args.index('--json') + 1]
@@ -2339,6 +2342,23 @@ class EpicAutoMergeTests(ClaudeWorkerTestBase):
         # Not the last layer: no main sync, no epic PR yet.
         self.assertNotIn(['merge', '--no-edit', 'origin/main'], self.git_calls)
         self.ensure_epic_pr.assert_not_called()
+
+    def test_gh_uses_the_agira_token_and_names_the_repo(self):
+        # Same credential as clone and REST — never whatever account happens
+        # to be logged in to gh on the host (which may not see the repo).
+        from core.models import GitHubConfiguration
+
+        config = GitHubConfiguration.load()
+        config.github_token = 'agira-token'
+        config.save()
+        gh = FakeGh(base=self.epic_branch)
+
+        self._run(self.first_job, gh)
+
+        self.assertTrue(gh.calls)
+        for env in gh.envs:
+            self.assertEqual(env['GH_REPO'], 'acme/repo-a')
+            self.assertEqual(env['GH_TOKEN'], 'agira-token')
 
     def test_last_child_syncs_main_into_the_epic_branch_then_opens_the_epic_pr(self):
         self.second_job.delete()

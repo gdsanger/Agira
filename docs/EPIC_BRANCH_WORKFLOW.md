@@ -156,8 +156,11 @@ Branch auf `main` gelandet ist.
 
 - Branch-Protection **nur** auf `main`; `feature/*` bleibt ungeschützt.
 - Squash als Merge-Methode erlaubt.
-- Die `gh`-Credentials des Worker-Users dürfen PRs mergen und Branches
-  löschen (persistent eingerichtet, nicht nur gecacht).
+- Der GitHub-Token aus der Agira-Konfiguration darf PRs mergen und Branches
+  löschen. Der Worker nutzt ihn für **alles**: Clone, REST und `gh` (als
+  `GH_TOKEN`, das Repo explizit als `GH_REPO`). Ein `gh auth login` auf dem Server
+  spielt keine Rolle. Bei einem Fine-grained PAT: Contents und Pull requests
+  read/write, Checks und Commit statuses read.
 - CI-Workflows laufen auch für PRs gegen `feature/*`, auch für Draft-PRs:
 
   ```yaml
