@@ -100,15 +100,61 @@ hierarchy while pagination and per-row polling stay exactly as they were.
     </td>
     <td class="text-nowrap"><small class="text-muted">{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
     <td class="text-nowrap" onclick="event.stopPropagation();">
-        {% if job.is_deletable %}
-        <button type="button" class="btn btn-outline-danger btn-sm"
-                hx-post="{% url 'claude-queue-job-delete' job.id %}"
-                hx-target="closest tr"
-                hx-swap="outerHTML swap:1s"
-                hx-confirm="Job #{{ job.id }} endgültig löschen?"
-                hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
-            <i class="bi bi-trash"></i>
-        </button>
+        {% if job.can_record_merge or job.can_mark_done or job.can_requeue or job.is_deletable %}
+        <div class="dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown"
+                    data-bs-strategy="fixed" aria-expanded="false" title="Aktionen">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                {% if job.can_record_merge %}
+                <li>
+                    <button type="button" class="dropdown-item"
+                            hx-post="{% url 'claude-queue-job-record-merge' job.id %}"
+                            hx-target="closest tr" hx-swap="outerHTML"
+                            hx-confirm="Merge von PR #{{ job.pr_number }} von GitHub abgleichen und hinterlegen?"
+                            hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                        <i class="bi bi-git me-2"></i>Merge hinterlegen
+                    </button>
+                </li>
+                {% endif %}
+                {% if job.can_mark_done %}
+                <li>
+                    <button type="button" class="dropdown-item"
+                            hx-post="{% url 'claude-queue-job-mark-done' job.id %}"
+                            hx-target="closest tr" hx-swap="outerHTML"
+                            hx-confirm="Job #{{ job.id }} manuell auf Done setzen?"
+                            hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                        <i class="bi bi-check-circle me-2"></i>Auf Done setzen
+                    </button>
+                </li>
+                {% endif %}
+                {% if job.can_requeue %}
+                <li>
+                    <button type="button" class="dropdown-item"
+                            hx-post="{% url 'claude-queue-job-requeue' job.id %}"
+                            hx-target="closest tr" hx-swap="outerHTML"
+                            hx-confirm="Job #{{ job.id }} zurück in die Queue stellen? Er wird im nächsten Lauf erneut bearbeitet."
+                            hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                        <i class="bi bi-arrow-repeat me-2"></i>Neu starten (Queue)
+                    </button>
+                </li>
+                {% endif %}
+                {% if job.is_deletable %}
+                {% if job.can_record_merge or job.can_mark_done or job.can_requeue %}<li><hr class="dropdown-divider"></li>{% endif %}
+                <li>
+                    <button type="button" class="dropdown-item text-danger"
+                            hx-post="{% url 'claude-queue-job-delete' job.id %}"
+                            hx-target="closest tr"
+                            hx-swap="outerHTML swap:1s"
+                            hx-confirm="Job #{{ job.id }} endgültig löschen?"
+                            hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                        <i class="bi bi-trash me-2"></i>Löschen
+                    </button>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
         {% endif %}
     </td>
 </tr>

@@ -1022,6 +1022,83 @@ def claude_queue_job_delete(request, job_id):
     return response
 
 
+def _claude_queue_action_response(request, job):
+    """Row re-render for the list, HX-Redirect to the list-less detail page otherwise."""
+    if request.GET.get('redirect'):
+        response = HttpResponse()
+        response['HX-Redirect'] = reverse('claude-queue-job-detail', args=[job.id])
+        return response
+    return render(request, 'partials/claude_queue_job_row.html', {
+        'job': job,
+        'active_statuses': _CLAUDE_QUEUE_ACTIVE_STATUSES,
+        'disable_row_polling': True,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def claude_queue_job_mark_done(request, job_id):
+    """Manually set a hanging-but-finished job to Done."""
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    if not job.can_mark_done:
+        return HttpResponse(
+            f"Job #{job.id} has status '{job.get_status_display()}' and cannot be set to Done.",
+            status=400,
+        )
+    job.force_status(ClaudeQueueJobStatus.DONE, actor=request.user)
+    return _claude_queue_action_response(request, job)
+
+
+@login_required
+@require_http_methods(["POST"])
+def claude_queue_job_requeue(request, job_id):
+    """Put a hanging job back to Queued so the worker picks it up again."""
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    if not job.can_requeue:
+        return HttpResponse(
+            f"Job #{job.id} has status '{job.get_status_display()}' and cannot be requeued.",
+            status=400,
+        )
+    job.force_status(ClaudeQueueJobStatus.QUEUED, actor=request.user)
+    return _claude_queue_action_response(request, job)
+
+
+@login_required
+@require_http_methods(["POST"])
+def claude_queue_job_record_merge(request, job_id):
+    """Record a PR merge by hand when GitHub's webhook never arrived.
+
+    Reads the PR back from GitHub and applies it exactly like the webhook would
+    (item status, PR description, RAG index, epic chain). Refuses when GitHub
+    does not report the PR as merged, so nothing is recorded that did not happen.
+    """
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    if not job.pr_number:
+        return HttpResponse(f"Job #{job.id} has no PR.", status=400)
+
+    from core.services.github.service import GitHubService
+
+    try:
+        result = GitHubService().apply_pr_state_from_github(job.item, job.pr_number)
+    except Exception as exc:  # noqa: BLE001 — surfaced to the user as a toast
+        logger.exception("Manual merge record failed for job #%s", job.id)
+        return HttpResponse(f"GitHub-Abfrage fehlgeschlagen: {exc}", status=502)
+
+    if not result.get('matched'):
+        return HttpResponse(
+            f"Kein PR-Mapping für PR #{job.pr_number} gefunden – Merge nicht hinterlegt.",
+            status=400,
+        )
+    if result.get('new_state') != 'merged':
+        return HttpResponse(
+            f"PR #{job.pr_number} ist auf GitHub nicht gemergt (Status: {result.get('new_state')}).",
+            status=400,
+        )
+
+    job.refresh_from_db()
+    return _claude_queue_action_response(request, job)
+
+
 @login_required
 def item_lookup(request, item_id):
     """
