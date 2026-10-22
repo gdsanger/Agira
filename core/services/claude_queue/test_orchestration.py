@@ -21,6 +21,8 @@ from core.models import (
     ItemStatus,
     ItemType,
     Project,
+    User,
+    UserRole,
 )
 from core.services.claude_queue.enqueue import (
     SubIssueOutsideEpic,
@@ -521,3 +523,47 @@ class SubIssueReleaseOrderTests(OrchestrationTestBase):
         # data_model merged, logic not — so logic is the pending predecessor.
         self.assertIn(f'#{self.logic.id}', reason)
         self.assertNotIn(f'#{self.data_model.id}', reason)
+
+
+class EpicCredentialTests(OrchestrationTestBase):
+    """Every sub-run of an epic is billed to whoever started the epic.
+
+    The worker builds the chain without an interactive actor; without carrying
+    the epic's user down, the sub-runs fell back to the sub-issue's responsible
+    — or to no user at all, i.e. the host login ("Not logged in").
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.starter = User.objects.create_user(
+            username='starter', email='s@example.com', password='x', name='Starter',
+        )
+        self.other = User.objects.create_user(
+            username='other', email='o@example.com', password='x', name='Other',
+            role=UserRole.AGENT,
+        )
+        self.data_model.responsible = self.other
+        self.data_model.save(update_fields=['responsible'])
+
+    def test_chain_built_by_the_worker_runs_on_the_epic_starter(self):
+        node, _ = enqueue_epic_for_claude(self.epic, actor=self.starter)
+        node.transition_to(ClaudeQueueJobStatus.RUNNING)
+
+        start_epic(node)  # as the worker calls it: no actor
+
+        for entry in node.sub_jobs.all():
+            self.assertEqual(entry.auth_user, self.starter)
+
+    def test_release_repins_an_entry_planned_with_another_user(self):
+        node = self._epic_node()
+        node.auth_user = self.starter
+        node.save(update_fields=['auth_user'])
+        entry = self._entry(node, self.data_model)
+        entry.auth_user = self.other
+        entry.save(update_fields=['auth_user'])
+
+        advance_epic(node)
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, ClaudeQueueJobStatus.QUEUED)
+        self.assertEqual(entry.auth_user, self.starter)

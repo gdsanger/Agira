@@ -213,7 +213,12 @@ def create_sub_issue_job(sub_issue: Item, epic_job: ClaudeQueueJob, *, actor=Non
     is created and fails at its own release, where the message is about it.
     """
     auth_mode = _resolve_auth_mode(sub_issue)
-    auth_user = resolve_credential_user(sub_issue, actor=actor)
+    # The whole chain runs on the credential of whoever started the epic: they
+    # pressed the button, so it is their quota. The worker builds the chain
+    # without an interactive actor, and falling back to the sub-issue's
+    # responsible/assignee would silently move the runs to somebody else's
+    # account — or to none at all ("Not logged in").
+    auth_user = resolve_credential_user(sub_issue, actor=actor or epic_job.auth_user)
     try:
         model = _resolve_model(sub_issue)
     except InvalidClaudeModel:
