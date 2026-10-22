@@ -507,6 +507,87 @@ class ClaudeQueueViewsTestCase(TestCase):
         for job in (self._queued_job(), self._running_job()):
             self.assertFalse(job.is_deletable)
 
+    # ---- manual actions (mark done / requeue / record merge) -----------
+
+    def test_mark_done_running_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.post(reverse('claude-queue-job-mark-done', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertIsNotNone(job.finished_at)
+
+    def test_mark_done_rejects_done_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        response = self.client.post(reverse('claude-queue-job-mark-done', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+
+    def test_mark_done_requires_post(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        response = self.client.get(reverse('claude-queue-job-mark-done', args=[job.id]))
+        self.assertEqual(response.status_code, 405)
+
+    def test_requeue_running_job_resets_worker_state(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._running_job()
+        job.worker_host, job.worker_pid = 'host', 123
+        job.error_text = 'boom'
+        job.completion_uncertain = True
+        job.save()
+        response = self.client.post(reverse('claude-queue-job-requeue', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.QUEUED)
+        self.assertIsNone(job.worker_pid)
+        self.assertIsNone(job.worker_host)
+        self.assertIsNone(job.started_at)
+        self.assertEqual(job.error_text, '')
+        self.assertFalse(job.completion_uncertain)
+
+    def test_requeue_rejects_queued_job(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._queued_job()
+        response = self.client.post(reverse('claude-queue-job-requeue', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+
+    def test_record_merge_without_pr_is_rejected(self):
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        job.pr_number = None
+        job.save()
+        response = self.client.post(reverse('claude-queue-job-record-merge', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+
+    def test_record_merge_applies_github_state(self):
+        from unittest import mock
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        job.pr_number = 7
+        job.save()
+        with mock.patch(
+            'core.services.github.service.GitHubService.apply_pr_state_from_github',
+            return_value={'matched': True, 'new_state': 'merged'},
+        ) as apply:
+            response = self.client.post(reverse('claude-queue-job-record-merge', args=[job.id]))
+        self.assertEqual(response.status_code, 200)
+        apply.assert_called_once_with(job.item, 7)
+
+    def test_record_merge_rejects_unmerged_pr(self):
+        from unittest import mock
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        job.pr_number = 7
+        job.save()
+        with mock.patch(
+            'core.services.github.service.GitHubService.apply_pr_state_from_github',
+            return_value={'matched': True, 'new_state': 'open'},
+        ):
+            response = self.client.post(reverse('claude-queue-job-record-merge', args=[job.id]))
+        self.assertEqual(response.status_code, 400)
+
     # ---- delete --------------------------------------------------------
 
     def test_delete_requires_authentication(self):

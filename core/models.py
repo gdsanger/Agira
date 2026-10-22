@@ -2376,6 +2376,74 @@ class ClaudeQueueJob(models.Model):
         """True if this job is in a terminal state and safe to delete."""
         return self.status in self._DELETABLE_STATUSES
 
+    # Manual interventions from the queue list (stuck / hanging jobs). They
+    # deliberately bypass ``_TRANSITIONS``: those model what the worker may do,
+    # while these are a human correcting a state the worker never got to settle.
+    _MARK_DONE_STATUSES = frozenset({
+        ClaudeQueueJobStatus.QUEUED,
+        ClaudeQueueJobStatus.RUNNING,
+        ClaudeQueueJobStatus.WAITING_LIMIT,
+        ClaudeQueueJobStatus.ORCHESTRATING,
+        ClaudeQueueJobStatus.FAILED,
+    })
+    _REQUEUE_STATUSES = frozenset({
+        ClaudeQueueJobStatus.RUNNING,
+        ClaudeQueueJobStatus.WAITING_LIMIT,
+        ClaudeQueueJobStatus.FAILED,
+        ClaudeQueueJobStatus.CANCELLED,
+        ClaudeQueueJobStatus.DONE,
+    })
+
+    @property
+    def can_mark_done(self):
+        """True if a human may force this job to Done."""
+        return self.status in self._MARK_DONE_STATUSES
+
+    @property
+    def can_requeue(self):
+        """True if a human may put this job back to Queued (issue runs only)."""
+        return not self.is_epic_node and self.status in self._REQUEUE_STATUSES
+
+    @property
+    def can_record_merge(self):
+        """True if the job has a PR whose merge is not recorded yet."""
+        return bool(self.pr_number) and self.pr_state != 'merged'
+
+    def force_status(self, new_status, actor=None):
+        """Set ``new_status`` by hand, outside the worker's state machine."""
+        from core.services.activity import ActivityService
+
+        new_status = ClaudeQueueJobStatus(new_status)
+        old_status = ClaudeQueueJobStatus(self.status)
+        if new_status == old_status:
+            return self
+
+        self.status = new_status
+        if new_status == ClaudeQueueJobStatus.DONE:
+            self.finished_at = self.finished_at or timezone.now()
+            self.error_text = ''
+        elif new_status == ClaudeQueueJobStatus.QUEUED:
+            # Fresh start: drop everything the previous attempt left behind so
+            # the job is claimable and no longer looks owned, failed or uncertain.
+            self.started_at = None
+            self.finished_at = None
+            self.worker_host = None
+            self.worker_pid = None
+            self.limit_reset_at = None
+            self.error_text = ''
+            self.progress_text = ''
+            self.completion_uncertain = False
+            self.completion_uncertain_reason = ''
+        self.save()
+
+        ActivityService().log(
+            verb='claudequeuejob.status_changed',
+            target=self.item,
+            actor=actor,
+            summary=f"Claude queue job #{self.pk}: {old_status.label} → {new_status.label} (manuell)",
+        )
+        return self
+
     @property
     def is_epic_node(self):
         """True if this entry orchestrates an epic chain instead of running Claude."""
