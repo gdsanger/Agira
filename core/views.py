@@ -1080,9 +1080,12 @@ def claude_queue_job_record_merge(request, job_id):
 
     try:
         result = GitHubService().apply_pr_state_from_github(job.item, job.pr_number)
-    except Exception as exc:  # noqa: BLE001 — surfaced to the user as a toast
+    except Exception:  # noqa: BLE001 — details stay in the log, not in the response
         logger.exception("Manual merge record failed for job #%s", job.id)
-        return HttpResponse(f"GitHub-Abfrage fehlgeschlagen: {exc}", status=502)
+        return HttpResponse(
+            "GitHub-Abfrage fehlgeschlagen – Details stehen im Server-Log.",
+            status=502,
+        )
 
     if not result.get('matched'):
         return HttpResponse(
