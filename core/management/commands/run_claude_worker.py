@@ -99,6 +99,7 @@ from core.services.claude_queue.credentials import (
     resolve_claude_credential,
 )
 from core.services.claude_queue.epic import can_start, sub_issue_position
+from core.services.claude_queue.review_apply import apply_review_result
 from core.services.claude_queue.review import (
     build_review_prompt,
     parse_review_verdict,
@@ -685,6 +686,16 @@ class Command(BaseCommand):
             job.completion_uncertain_reason = (
                 f"Review-Urteil nicht lesbar: {verdict.error}"
             )
+        job.save(update_fields=[
+            'review_report', 'review_verdict',
+            'completion_uncertain', 'completion_uncertain_reason',
+        ])
+        try:
+            apply_review_result(job)
+        except Exception:  # noqa: BLE001 — the verdict stays stored; a human takes over
+            logger.exception("Failed to apply review result for job #%s", job.pk)
+            job.completion_uncertain = True
+            job.completion_uncertain_reason = "Review-Ergebnis konnte nicht angewendet werden"
         job.transition_to(ClaudeQueueJobStatus.DONE)
         self.stdout.write(self.style.SUCCESS(
             f"Review job #{job.pk} done: {verdict.verdict}"
