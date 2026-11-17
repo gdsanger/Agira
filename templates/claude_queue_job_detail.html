@@ -76,8 +76,8 @@
                 über einen unklaren Stand hinweg.
             </div>
             {% elif job.error_text and job.status == 'orchestrating' %}
-            {# The next entry could not be released at all — a state the chain
-               itself cannot describe, since the entry is still merely blocked. #}
+            {% comment %}The next entry could not be released at all — a state the chain
+               itself cannot describe, since the entry is still merely blocked.{% endcomment %}
             <div class="alert alert-warning mb-0 rounded-0">
                 <i class="bi bi-exclamation-triangle"></i>
                 <strong>Freigabe nicht möglich.</strong> {{ job.error_text }}
