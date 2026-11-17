@@ -198,3 +198,63 @@ def parse_review_verdict(raw: Any) -> ReviewVerdict:
         return result
     except Exception as exc:  # defensive: the contract is "no exception"
         return _unclear(f'Urteil nicht lesbar: {exc}')
+
+
+# --------------------------------------------------------------------------- #
+# Review prompt
+# --------------------------------------------------------------------------- #
+
+# Upper bound for the diff embedded in the prompt; the checkout is available
+# to Claude for anything beyond it.
+MAX_DIFF_CHARS = 150_000
+
+REVIEW_RULES = """\
+## Regeln
+- Prüfe jedes Akzeptanzkriterium des Issues gegen den Code im Checkout (nur lesen).
+- Eine im PR-Text (insbesondere „Warum / Entscheidungen“) **begründete, bewusste Abweichung** ist keine Abweichung: Status `accepted_deviation`, in `evidence` mit Verweis auf die Begründung.
+- Eine **unbegründete** Lücke ist `not_met`.
+- Im Zweifel `not_met` statt `met`.
+- Verändere nichts: kein Schreiben, kein Commit, kein Push, kein PR.
+- Du läufst headless: Führe alle Befehle im Vordergrund aus; plane keine Wakeups.
+- Antworte ausschließlich mit **einem** JSON-Objekt nach diesem Schema, ohne Text davor oder danach:
+
+"""
+
+
+def strip_git_workflow_hint(text: str) -> str:
+    """Drop the queue's git-workflow hint (and anything after it) from a text."""
+    from core.services.claude_queue.hint import GIT_WORKFLOW_HINT_MARKER
+
+    text = text or ''
+    idx = text.find(GIT_WORKFLOW_HINT_MARKER)
+    if idx != -1:
+        text = text[:idx]
+    return text.strip()
+
+
+def build_review_prompt(item, pr_text: Optional[str] = None, diff: str = '') -> str:
+    """Build the read-only review prompt for ``item``.
+
+    ``pr_text`` defaults to ``item.pr_description``; ``diff`` is the PR diff
+    against its base (the epic branch for a sub-issue).
+    """
+    pr_text = (pr_text if pr_text is not None else item.pr_description) or ''
+    diff = diff or ''
+    if len(diff) > MAX_DIFF_CHARS:
+        diff = (
+            diff[:MAX_DIFF_CHARS]
+            + '\n[... Diff gekürzt – den Rest per `git diff` im Checkout lesen ...]'
+        )
+
+    parts = [f'# Review: {item.title}', '',
+             'Prüfe, ob die Umsetzung dieses Issues (Checkout im aktuellen '
+             'Verzeichnis) die Anforderungen erfüllt.', '']
+    description = strip_git_workflow_hint(item.description)
+    if description:
+        parts += ['## Issue-Beschreibung und Akzeptanzkriterien', description, '']
+    if item.solution_description:
+        parts += ['## Erwartete Lösung', item.solution_description.strip(), '']
+    parts += ['## PR-Text', pr_text.strip() or '(kein PR-Text vorhanden)', '']
+    parts += ['## Diff des PR', '```diff', diff.strip() or '(leer)', '```', '']
+    parts += [REVIEW_RULES + VERDICT_SCHEMA_EXAMPLE]
+    return '\n'.join(parts)
