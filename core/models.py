@@ -2480,6 +2480,15 @@ class ClaudeQueueJob(models.Model):
         return self.kind == ClaudeQueueJobKind.EPIC
 
     @property
+    def review_hint_count(self):
+        """Number of non-blocking (minor) findings of a passed review."""
+        if not self.is_review or self.review_verdict != ClaudeQueueReviewVerdict.PASS:
+            return 0
+        from core.services.claude_queue.review import parse_review_verdict
+
+        return len(parse_review_verdict(self.review_report).hints)
+
+    @property
     def is_review(self):
         """True if this entry is a review of an item's implementation."""
         return self.kind == ClaudeQueueJobKind.REVIEW

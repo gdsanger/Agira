@@ -32,8 +32,6 @@ from core.models import (
 from core.services.activity import ActivityService
 from core.services.claude_queue.review import (
     STATUS_ACCEPTED_DEVIATION,
-    STATUS_MET,
-    STATUS_NOT_MET,
     VERDICT_DEVIATIONS,
     VERDICT_PASS,
     VERDICT_UNCLEAR,
@@ -92,13 +90,11 @@ def _decide(job, verdict: ReviewVerdict, mapping) -> str:
     if verdict.is_unclear or job.completion_uncertain:
         return VERDICT_UNCLEAR
     if verdict.verdict == VERDICT_PASS:
-        # Only met / accepted_deviation criteria count as a pass.
-        if all(c.status in (STATUS_MET, STATUS_ACCEPTED_DEVIATION) for c in verdict.criteria):
-            return VERDICT_PASS
-        return VERDICT_UNCLEAR
+        # Only a blocking (major) finding prevents a pass; minor hints do not.
+        return VERDICT_UNCLEAR if verdict.deviations else VERDICT_PASS
     if verdict.verdict == VERDICT_DEVIATIONS:
-        # Guard: a follow-up needs at least one not_met criterion.
-        if not any(c.status == STATUS_NOT_MET for c in verdict.criteria):
+        # Guard: a follow-up needs at least one blocking (major) finding.
+        if not verdict.deviations:
             return VERDICT_UNCLEAR
         return VERDICT_DEVIATIONS if mapping is not None else VERDICT_UNCLEAR
     return VERDICT_UNCLEAR
@@ -192,6 +188,20 @@ def build_report(job, item, verdict: ReviewVerdict, decision: str, mapping,
             lines.append(
                 f'- **{d.title}**' + (f' ({d.criterion})' if d.criterion else '')
                 + (f': {d.description}' if d.description else '')
+            )
+        lines.append('')
+    if verdict.hints:
+        lines.append('### Hinweise (nicht blockierend)')
+        for d in verdict.hints:
+            evidence = next(
+                (c.evidence for c in verdict.criteria
+                 if c.evidence and d.criterion and c.text == d.criterion),
+                '',
+            )
+            lines.append(
+                f'- **{d.title}**' + (f' ({d.criterion})' if d.criterion else '')
+                + (f': {d.description}' if d.description else '')
+                + (f' – Beleg: {evidence}' if evidence else '')
             )
         lines.append('')
     if mapping is not None:

@@ -71,6 +71,15 @@ Optionaler, read-only Review eines Items im Status `Integrated` oder
   der Parser, wenn das Urteil nicht lesbar oder widersprüchlich ist.
 - **Der Worker wendet das Urteil an:** Bericht-Kommentar, Statuswechsel und
   Folge-Issue entstehen deterministisch im Worker, nicht durch Claude.
+- **Schweregrade:** Jeder Eintrag in `deviations` hat `severity` ∈ {`major`,
+  `minor`}. `major`: ein Kriterium ist fachlich nicht erreicht oder
+  Verhalten/Funktion fehlt. `minor`: formal, kosmetisch, rein dokumentarisch,
+  Widerspruch/Unschärfe in der Vorgabe selbst, Anregung. Fehlt `severity` oder
+  ist sie ungültig, gilt `major`. Das Review prüft Vollständigkeit und
+  Plausibilität, nicht fachliche Korrektheit zur Laufzeit. `deviations` gibt
+  es nur bei mindestens einem `major`-Befund zu einem `not_met`-Kriterium;
+  `minor`-Befunde sind Hinweise (`pass`, Bericht-Abschnitt „Hinweise (nicht
+  blockierend)“, kein Folge-Issue). Das Folge-Issue enthält nur `major`.
 - **Close nur bei `pass`** (→ `Closed`). `deviations` legt genau ein
   Folge-Issue an (Item bleibt unverändert), `unclear` lässt das Item
   unverändert und markiert den Job als „Ggf. unvollständig“.

@@ -38,7 +38,7 @@ DEVIATIONS = dict(
 )
 
 
-class ApplyReviewResultTests(TestCase):
+class ApplyReviewResultTestsBase(TestCase):
     def setUp(self):
         self.type = ItemType.objects.create(key='bug', name='Bug')
         self.project = Project.objects.create(name='P', github_owner='acme', github_repo='repo-a')
@@ -62,6 +62,9 @@ class ApplyReviewResultTests(TestCase):
 
     def _comments(self):
         return ItemComment.objects.filter(item=self.item)
+
+
+class ApplyReviewResultTests(ApplyReviewResultTestsBase):
 
     def test_pass_closes_item_with_comment_and_no_followup(self):
         self._pr()
@@ -102,7 +105,7 @@ class ApplyReviewResultTests(TestCase):
         self._pr()
         data = dict(DEVIATIONS)
         data['deviations'] = DEVIATIONS['deviations'] + [
-            {'title': 'Akzeptiert', 'description': 'x', 'criterion': 'B'},
+            {'title': 'Redundant', 'description': 'x', 'criterion': 'B'},
         ]
         res = apply_review_result(self._job(_verdict(**data)))
 
@@ -110,7 +113,7 @@ class ApplyReviewResultTests(TestCase):
         self.assertEqual(Item.objects.count(), 3)
         self.assertIn('A fehlt', res.followup.description)
         self.assertNotIn('### 2.', res.followup.description)
-        self.assertNotIn('Akzeptiert', res.comment.body)
+        self.assertNotIn('Redundant', res.comment.body)
 
     def test_pass_with_not_met_is_unclear_without_close_or_followup(self):
         self._pr()
@@ -202,3 +205,72 @@ class ApplyReviewResultTests(TestCase):
         apply_review_result(job)
         apply_review_result(job)
         self.assertEqual(self._comments().count(), 1)
+
+
+class ReviewSeverityTests(ApplyReviewResultTestsBase):
+    """Severity handling (major blocks, minor is a non-blocking hint)."""
+
+    # Case from PR #42: formal finding "no models.py" although the issue says
+    # the app has no models.
+    MODELS_MINOR = dict(
+        verdict='deviations',
+        criteria=[
+            {'text': 'A', 'status': 'not_met', 'evidence': 'apps/uisclient/'},
+            {'text': 'B', 'status': 'met', 'evidence': 'core/y.py:1'},
+        ],
+        deviations=[{
+            'title': 'models.py fehlt', 'description': 'Issue sagt selbst: keine Modelle',
+            'criterion': 'A', 'severity': 'minor',
+        }],
+    )
+
+    def test_only_minor_closes_with_hints_and_no_followup(self):
+        self._pr()
+        job = self._job(_verdict(**self.MODELS_MINOR))
+        res = apply_review_result(job)
+
+        self.assertEqual(res.outcome, 'closed')
+        self.assertIsNone(res.followup)
+        self.assertEqual(Item.objects.count(), 2)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.CLOSED)
+        self.assertIn('Hinweise (nicht blockierend)', res.comment.body)
+        self.assertIn('models.py fehlt', res.comment.body)
+        self.assertIn('apps/uisclient/', res.comment.body)
+        self.assertEqual(job.review_hint_count, 0)  # verdict not stored yet
+        job.review_verdict = 'pass'
+        self.assertEqual(job.review_hint_count, 1)
+
+    def test_major_creates_followup_with_only_major(self):
+        self._pr()
+        data = dict(self.MODELS_MINOR)
+        data['criteria'] = [
+            {'text': 'A', 'status': 'not_met', 'evidence': 'x'},
+            {'text': 'B', 'status': 'not_met', 'evidence': 'y'},
+        ]
+        data['deviations'] = self.MODELS_MINOR['deviations'] + [
+            {'title': 'B fehlt', 'description': 'd', 'criterion': 'B', 'severity': 'major'},
+        ]
+        res = apply_review_result(self._job(_verdict(**data)))
+
+        self.assertEqual(res.outcome, 'followup')
+        self.assertIn(PR_URL, res.followup.description)
+        self.assertIn('B fehlt', res.followup.description)
+        self.assertNotIn('models.py fehlt', res.followup.description)
+        self.assertIn('models.py fehlt', res.comment.body)
+
+    def test_missing_or_invalid_severity_counts_as_major(self):
+        for sev in (None, 'bogus'):
+            with self.subTest(sev=sev):
+                dev = {'title': 'A fehlt', 'description': 'd', 'criterion': 'A'}
+                if sev:
+                    dev['severity'] = sev
+                from core.services.claude_queue.review import parse_review_verdict
+                v = parse_review_verdict(_verdict(
+                    verdict='deviations',
+                    criteria=[{'text': 'A', 'status': 'not_met', 'evidence': ''}],
+                    deviations=[dev],
+                ))
+                self.assertEqual(v.verdict, 'deviations')
+                self.assertEqual(len(v.deviations), 1)
+                self.assertEqual(v.hints, [])
