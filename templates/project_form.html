@@ -76,6 +76,17 @@
                                    maxlength="255"
                                    placeholder="repository-name">
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="default_branch" class="form-label">Default Branch</label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="default_branch"
+                                   name="default_branch"
+                                   value="{% if project %}{{ project.default_branch }}{% else %}main{% endif %}"
+                                   maxlength="255"
+                                   placeholder="main">
+                            <div class="form-text">Basis für Claude-Queue-Branches und PRs (z. B. <code>main</code> oder <code>master</code>).</div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -18,6 +18,9 @@ Detail- und Hintergrunddoku zum Epic-Modus: `docs/EPIC_BRANCH_WORKFLOW.md`.
 ## Git-Workflow (Einzel-Issue – der Normalfall)
 
 1. Feature-Branch **von `main`**, niemals direkt auf `main` committen.
+   „`main`“ steht hier für den Trunk des Projekts: `Project.default_branch`
+   (Default `main`, z. B. `master` bei vielen .NET-Repos). Queue, Worker und
+   Hint lesen ihn von dort, nichts ist fest verdrahtet.
 2. PR gegen `main`, **immer als Draft** eröffnen.
 3. Wenn die Arbeit sauber fertig ist, wird der PR auf *ready for review*
    gesetzt. **Review und Merge nach `main` macht ein Mensch.**

@@ -14,6 +14,7 @@ base here is what would produce a PR against the wrong branch.
 
 from core.services.claude_queue.branch import (
     DEFAULT_BASE_BRANCH,
+    get_default_branch,
     build_branch_name,
     resolve_base_branch,
 )
@@ -23,6 +24,7 @@ GIT_WORKFLOW_HINT_MARKER = '<!-- claude-queue:git-workflow-hint -->'
 
 def build_git_workflow_hint(
     branch_name: str, base_branch: str = DEFAULT_BASE_BRANCH,
+    default_branch: str = DEFAULT_BASE_BRANCH,
 ) -> str:
     """Render the git-workflow hint block for a branch and its base.
 
@@ -33,17 +35,17 @@ def build_git_workflow_hint(
     Claude itself never merges — the hint says so, since it ends up in the
     prompt.
     """
-    if base_branch == DEFAULT_BASE_BRANCH:
+    if base_branch == default_branch:
         detail = (
-            f"Branch `{branch_name}` von `{DEFAULT_BASE_BRANCH}`, Draft-PR, "
-            f"keine direkten Commits auf `{DEFAULT_BASE_BRANCH}`."
+            f"Branch `{branch_name}` von `{default_branch}`, Draft-PR, "
+            f"keine direkten Commits auf `{default_branch}`."
         )
     else:
         detail = (
             f"Branch `{branch_name}` vom Epic-Branch `{base_branch}`, Draft-PR "
             f"gegen `{base_branch}`; nach grüner CI mergt der Worker per Squash "
             f"(nicht selbst mergen). Keine direkten Commits auf `{base_branch}` "
-            f"oder `{DEFAULT_BASE_BRANCH}`."
+            f"oder `{default_branch}`."
         )
     return f"{GIT_WORKFLOW_HINT_MARKER}\n---\n**Git-Workflow:** {detail}"
 
@@ -62,7 +64,8 @@ def ensure_git_workflow_hint(item) -> bool:
         return False
 
     hint = build_git_workflow_hint(
-        build_branch_name(item), resolve_base_branch(item)
+        build_branch_name(item), resolve_base_branch(item),
+        get_default_branch(getattr(item, 'project', None)),
     )
     separator = '\n\n' if description.strip() else ''
     item.description = f"{description.rstrip()}{separator}{hint}\n"
