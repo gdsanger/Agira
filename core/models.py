@@ -2171,6 +2171,14 @@ class ClaudeQueueJobKind(models.TextChoices):
     """
     ISSUE = 'issue', _('Issue run')
     EPIC = 'epic', _('Epic orchestration')
+    REVIEW = 'review', _('Review')
+
+
+class ClaudeQueueReviewVerdict(models.TextChoices):
+    """Outcome of a ``review`` job; empty on every other kind."""
+    PASS = 'pass', _('Pass')
+    DEVIATIONS = 'deviations', _('Deviations')
+    UNCLEAR = 'unclear', _('Unclear')
 
 
 # Runtime after which a still-running job is flagged in the UI as taking
@@ -2215,7 +2223,29 @@ class ClaudeQueueJob(models.Model):
         max_length=20,
         choices=ClaudeQueueJobKind.choices,
         default=ClaudeQueueJobKind.ISSUE,
-        help_text=_('Issue run (executes Claude) or epic node (orchestrates a chain of sub-entries)'),
+        help_text=_('Issue run (executes Claude), epic node (orchestrates a chain of sub-entries) or review'),
+    )
+    # --- Review result --------------------------------------------------- #
+    # Only filled for ``kind=review``; see core.services.claude_queue.review.
+    review_verdict = models.CharField(
+        max_length=20,
+        choices=ClaudeQueueReviewVerdict.choices,
+        blank=True,
+        default='',
+        help_text=_('Verdict of a review job; empty for non-review jobs'),
+    )
+    review_report = models.TextField(
+        blank=True,
+        default='',
+        help_text=_('Markdown report of a review job'),
+    )
+    review_followup_item = models.ForeignKey(
+        Item,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='review_source_jobs',
+        help_text=_('Follow-up item created from the review deviations, if any'),
     )
     parent_job = models.ForeignKey(
         'self',
@@ -2448,6 +2478,11 @@ class ClaudeQueueJob(models.Model):
     def is_epic_node(self):
         """True if this entry orchestrates an epic chain instead of running Claude."""
         return self.kind == ClaudeQueueJobKind.EPIC
+
+    @property
+    def is_review(self):
+        """True if this entry is a review of an item's implementation."""
+        return self.kind == ClaudeQueueJobKind.REVIEW
 
     @property
     def blocked_reason(self):
