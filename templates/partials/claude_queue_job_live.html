@@ -68,6 +68,14 @@ Expects `job` and `active_statuses` in context.
             {% if job.review_report %}
             <div class="markdown-viewer">{{ job.review_report|render_markdown }}</div>
             {% endif %}
+            {% if job.review_overridden_at %}
+            <div class="alert alert-dark mt-2 mb-0">
+                <i class="bi bi-shield-check"></i>
+                <strong>Überschrieben durch {{ job.review_overridden_by.name|default:job.review_overridden_by.username|default:"?" }}</strong>
+                ({{ job.review_overridden_at|date:"Y-m-d H:i" }}). Das Urteil oben ist der unveränderte Originalbefund.
+                <div class="mt-1"><strong>Begründung:</strong> {{ job.review_override_reason }}</div>
+            </div>
+            {% endif %}
             {% if job.review_followup_item_id %}
             <div class="mt-2">
                 <i class="bi bi-arrow-return-right"></i> Folge-Issue:

@@ -9,4 +9,8 @@
 <span class="badge bg-secondary"><i class="bi bi-question-circle"></i> Unklar</span>
 <small class="text-muted">manuelle Prüfung nötig</small>
 {% endif %}
+{% if job.review_overridden_at %}
+<span class="badge bg-dark" title="{{ job.review_override_reason }}"><i class="bi bi-shield-check"></i> Überschrieben durch {{ job.review_overridden_by.name|default:job.review_overridden_by.username|default:"?" }}</span>
+<small class="text-muted d-block">Begründung: {{ job.review_override_reason|truncatechars:80 }}</small>
+{% endif %}
 {% endif %}

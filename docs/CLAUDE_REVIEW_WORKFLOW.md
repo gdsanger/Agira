@@ -86,6 +86,33 @@ ist die PR-Text-Pflicht aus `CLAUDE.md` die Grundlage des Reviews.
 Akzeptierte Abweichungen erscheinen im Bericht und im Folge-Issue als
 „nicht erneut umsetzen“.
 
+## Befund überschreiben („Trotz Befunden schließen“)
+
+Ein Mensch kann das Ergebnis eines Reviews bewusst überschreiben. Das ist
+**nie** Sache von Claude oder dem Worker.
+
+- **Sichtbar** (Dropdown „Aktionen“ am Item) nur, wenn das Item nicht `Closed`
+  ist und der jüngste Review-Job (`kind=review`, Status `done`) das Urteil
+  `deviations` oder `unclear` hat und noch nicht überschrieben wurde.
+- **Pflicht-Begründung** (mindestens 10 Zeichen, serverseitig geprüft), sonst
+  keine Änderung. View: `POST items/<id>/review-override/`, CSRF-geschützt,
+  angemeldeter User.
+- **Service** `core.services.claude_queue.review_override.override_review`:
+  Item → `Closed` über den `ItemWorkflowGuard` (Status-History), interne
+  Notiz „Review-Befund überschrieben“ (`CommentKind.NOTE`) mit Begründung, User,
+  Zeitpunkt, Job-Nr., Urteil, PR-Link und ggf. Folge-Issue, Felder
+  `review_overridden_by` / `review_overridden_at` / `review_override_reason` am
+  Job sowie ein Activity-Eintrag (`claudequeuejob.review_overridden`).
+- **Folge-Issue:** Das Modal bietet „Folge-Issue ebenfalls schließen“ (Default
+  an), solange es offen und unbearbeitet ist. Befindet es sich in `Working`,
+  `Integrated`, `Testing` oder hat es einen PR, wird es nie automatisch
+  geschlossen (Hinweis im Modal). Geschlossen erhält es eine Notiz „Durch
+  Überschreiben des Review-Befunds erledigt“ mit der Begründung.
+- **Idempotent:** Ein zweiter Submit (Doppelklick) ändert nichts und erzeugt
+  weder zweiten Kommentar noch zweite Aktivität.
+- **Nachvollziehbar:** `review_verdict` und Bericht bleiben unverändert; Queue
+  und Job-Detail zeigen „Überschrieben durch <User>“ mit Begründung.
+
 ## Sicherheits-Defaults
 
 - Read-only: erlaubt sind `Read`, `Grep`, `Glob` und lesende Git-Befehle
