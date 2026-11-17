@@ -60,6 +60,24 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   **Epic-PR nach `main` als Draft** an. Review und Merge macht ein Mensch.
 - Einzel-Issues ohne Parent sind davon unberührt (siehe oben).
 
+## Review (Integrated/Implemented)
+
+Optionaler, read-only Review eines Items im Status `Integrated` oder
+`Testing` mit verknüpftem PR (Details: `docs/CLAUDE_REVIEW_WORKFLOW.md`).
+
+- **Read-only:** Claude liest nur (Dateien, lesende Git-Befehle) und ändert
+  weder Code noch Git-Stand noch **irgendetwas in Agira**. Er antwortet mit
+  genau einem JSON-Urteil (`pass` oder `deviations`); `unclear` erzeugt nur
+  der Parser, wenn das Urteil nicht lesbar oder widersprüchlich ist.
+- **Der Worker wendet das Urteil an:** Bericht-Kommentar, Statuswechsel und
+  Folge-Issue entstehen deterministisch im Worker, nicht durch Claude.
+- **Close nur bei `pass`** (→ `Closed`). `deviations` legt genau ein
+  Folge-Issue an (Item bleibt unverändert), `unclear` lässt das Item
+  unverändert und markiert den Job als „Ggf. unvollständig“.
+- **Bewusste, im PR begründete Abweichungen sind zulässig** und zählen als
+  `accepted_deviation`; unbegründete Lücken sind `not_met`. Grundlage ist
+  die PR-Text-Pflicht „## Warum / Entscheidungen“ (siehe „PR-Text“).
+
 ## Commits
 
 - Conventional Commits, mit Agira-ID im Scope, wenn es eine gibt:

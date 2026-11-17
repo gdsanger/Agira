@@ -2591,6 +2591,48 @@ class ReviewJobTests(ClaudeWorkerTestBase):
         self.assertEqual(job.review_verdict, 'unclear')
         self.assertEqual(job.review_report, 'kein json')
 
+    def test_end_to_end_pass_closes_item(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(result_text='Urteil:\n```json\n' + GOOD_VERDICT + '\n```'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.review_verdict, 'pass')
+        self.assertEqual(job.item.status, ItemStatus.CLOSED)
+        self.assertIsNone(job.review_followup_item)
+        self.assertFalse(job.completion_uncertain)
+
+    def test_end_to_end_deviations_create_followup_and_keep_item(self):
+        job = self._review_job()
+        verdict = json.dumps({
+            'verdict': 'deviations',
+            'summary': 'Lücke',
+            'criteria': [{'text': 'A', 'status': 'not_met', 'evidence': 'x.py:1'}],
+            'deviations': [{'title': 'A fehlt', 'description': 'Soll Z', 'criterion': 'A'}],
+        })
+        self._run(job, result=_ok_result(result_text=verdict))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(job.review_verdict, 'deviations')
+        self.assertEqual(job.item.status, ItemStatus.INTEGRATED)
+        followup = job.review_followup_item
+        self.assertIsNotNone(followup)
+        self.assertEqual(followup.status, ItemStatus.BACKLOG)
+        self.assertIn('A fehlt', followup.description)
+        self.assertIn('github.com/acme/repo-a/pull/7', followup.description)
+        self.assertEqual(job.item.comments.count(), 1)
+
+    def test_end_to_end_unclear_leaves_item_unchanged(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(result_text='kein json'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.review_verdict, 'unclear')
+        self.assertTrue(job.completion_uncertain)
+        self.assertEqual(job.item.status, ItemStatus.INTEGRATED)
+        self.assertIsNone(job.review_followup_item)
+        self.assertEqual(Item.objects.filter(project=self.project_a).count(), 1)
+
     def test_missing_pr_mapping_fails_clearly(self):
         job = self._review_job(with_pr=False)
         self._run(job)
