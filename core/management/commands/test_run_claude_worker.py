@@ -2485,3 +2485,194 @@ class EpicAutoMergeTests(ClaudeWorkerTestBase):
         self.assertEqual(gh.subcommands(), ['view', 'ready'])
         item.refresh_from_db()
         self.assertEqual(item.status, ItemStatus.WORKING)
+
+
+GOOD_VERDICT = json.dumps({
+    'verdict': 'pass',
+    'summary': 'ok',
+    'criteria': [{'text': 'A', 'status': 'met', 'evidence': 'x.py:1'}],
+    'deviations': [],
+})
+
+
+class ReviewJobTests(ClaudeWorkerTestBase):
+    """Review jobs: read-only checkout, verdict stored, no branch/commit/PR."""
+
+    def _review_job(self, with_pr=True, **mapping_kwargs):
+        item = self._item(self.project_a, status=ItemStatus.INTEGRATED)
+        item.description = 'Beschreibung\n- [ ] Kriterium A\n\n<!-- claude-queue:git-workflow-hint -->\n---\nHINT'
+        item.pr_description = 'Warum / Entscheidungen: bewusst anders'
+        item.save()
+        if with_pr:
+            ExternalIssueMapping.objects.create(
+                item=item, github_id=9001, number=7, kind=ExternalIssueKind.PR,
+                state='open', html_url='https://github.com/acme/repo-a/pull/7',
+                **mapping_kwargs,
+            )
+        self._job(self.project_a, item=item, kind=ClaudeQueueJobKind.REVIEW)
+        return Command().claim_next_job()
+
+    def _run(self, job, result=None, git=None):
+        result = result or _ok_result(result_text=GOOD_VERDICT)
+        git = git or (lambda args, cwd: 'diff-text')
+        calls = []
+
+        def fake_git(self_, args, cwd):
+            calls.append(list(args))
+            return git(args, cwd)
+
+        with patch.object(Command, '_prepare_checkout', return_value='/tmp/repo'), \
+                patch.object(Command, '_write_trust_settings'), \
+                patch.object(Command, '_git', fake_git), \
+                patch.object(Command, '_run_cli', return_value=result) as run_cli:
+            Command().process_job(job, timeout=30, idle_timeout=5)
+        self.git_calls = calls
+        self.run_cli = run_cli
+
+    def test_review_stores_verdict_and_leaves_item_status(self):
+        job = self._review_job()
+        self._run(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(job.review_verdict, 'pass')
+        self.assertEqual(job.review_report, GOOD_VERDICT)
+        self.assertFalse(job.completion_uncertain)
+        job.item.refresh_from_db()
+        # A clean pass is applied by the worker (Review 3/6): item is closed.
+        self.assertEqual(job.item.status, ItemStatus.CLOSED)
+        self.assertEqual(job.item.comments.count(), 1)
+
+    def test_review_creates_no_branch_commit_push_or_pr(self):
+        job = self._review_job()
+        with patch.object(Command, '_create_branch_and_pr') as create_pr, \
+                patch.object(Command, '_open_pr') as open_pr, \
+                patch.object(Command, '_push_branch') as push, \
+                patch.object(Command, '_commit_uncommitted_work') as commit:
+            self._run(job)
+
+        for mocked in (create_pr, open_pr, push, commit):
+            mocked.assert_not_called()
+        for args in self.git_calls:
+            self.assertNotIn(args[0], ('commit', 'push', 'branch'))
+            self.assertNotIn('-b', args)
+            self.assertNotIn('-B', args)
+        self.assertIn(['checkout', '--detach', 'FETCH_HEAD'], self.git_calls)
+        self.assertIn(['diff', 'origin/main...diff-text'], self.git_calls)
+
+    def test_merged_pr_checks_out_merge_commit(self):
+        job = self._review_job(merge_commit_sha='abc123')
+        self._run(job)
+
+        self.assertIn(['checkout', '--detach', 'abc123'], self.git_calls)
+        self.assertIn(['diff', 'abc123^1', 'abc123'], self.git_calls)
+
+    def test_prompt_has_issue_pr_text_and_diff_without_hint(self):
+        job = self._review_job()
+        self._run(job)
+
+        job.refresh_from_db()
+        from core.services.claude_queue.review import build_review_prompt
+        prompt = build_review_prompt(job.item, diff='DIFFBODY')
+        self.assertIn('Kriterium A', prompt)
+        self.assertIn('bewusst anders', prompt)
+        self.assertIn('DIFFBODY', prompt)
+        self.assertIn('accepted_deviation', prompt)
+        self.assertNotIn('git-workflow-hint', prompt)
+        self.assertNotIn('HINT', prompt)
+
+    def test_unparsable_result_is_done_but_uncertain_unclear(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(result_text='kein json'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertTrue(job.completion_uncertain)
+        self.assertEqual(job.review_verdict, 'unclear')
+        self.assertEqual(job.review_report, 'kein json')
+
+    def test_end_to_end_pass_closes_item(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(result_text='Urteil:\n```json\n' + GOOD_VERDICT + '\n```'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.review_verdict, 'pass')
+        self.assertEqual(job.item.status, ItemStatus.CLOSED)
+        self.assertIsNone(job.review_followup_item)
+        self.assertFalse(job.completion_uncertain)
+
+    def test_end_to_end_deviations_create_followup_and_keep_item(self):
+        job = self._review_job()
+        verdict = json.dumps({
+            'verdict': 'deviations',
+            'summary': 'Lücke',
+            'criteria': [{'text': 'A', 'status': 'not_met', 'evidence': 'x.py:1'}],
+            'deviations': [{'title': 'A fehlt', 'description': 'Soll Z', 'criterion': 'A'}],
+        })
+        self._run(job, result=_ok_result(result_text=verdict))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+        self.assertEqual(job.review_verdict, 'deviations')
+        self.assertEqual(job.item.status, ItemStatus.INTEGRATED)
+        followup = job.review_followup_item
+        self.assertIsNotNone(followup)
+        self.assertEqual(followup.status, ItemStatus.BACKLOG)
+        self.assertIn('A fehlt', followup.description)
+        self.assertIn('github.com/acme/repo-a/pull/7', followup.description)
+        self.assertEqual(job.item.comments.count(), 1)
+
+    def test_end_to_end_unclear_leaves_item_unchanged(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(result_text='kein json'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.review_verdict, 'unclear')
+        self.assertTrue(job.completion_uncertain)
+        self.assertEqual(job.item.status, ItemStatus.INTEGRATED)
+        self.assertIsNone(job.review_followup_item)
+        self.assertEqual(Item.objects.filter(project=self.project_a).count(), 1)
+
+    def test_missing_pr_mapping_fails_clearly(self):
+        job = self._review_job(with_pr=False)
+        self._run(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('PR-Mapping', job.error_text)
+        self.assertEqual(job.review_verdict, '')
+        self.run_cli.assert_not_called()
+
+    def test_failed_review_does_not_block_epic_or_touch_item(self):
+        job = self._review_job()
+        with patch.object(Command, '_block_epic') as block:
+            self._run(job, result=_ok_result(is_error=True, result_text='boom'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        block.assert_not_called()
+
+    def test_subscription_limit_parks_job(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(is_error=True, result_text='Usage limit reached'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.WAITING_LIMIT)
+
+    def test_auth_error_fails_job(self):
+        job = self._review_job()
+        self._run(job, result=_ok_result(is_error=True, result_text='Invalid API key'))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+
+    def test_review_cli_args_are_read_only(self):
+        job = self._review_job()
+        cmd = Command()
+        cmd._review_prompt = 'PROMPT'
+        args = cmd._build_claude_args(job)
+        self.assertNotIn('--dangerously-skip-permissions', args)
+        allowed = args[args.index('--allowedTools') + 1]
+        self.assertNotIn('Edit', allowed.split(','))
+        self.assertNotIn('Write', allowed.split(','))
+        self.assertIn('Edit', args[args.index('--disallowedTools') + 1])

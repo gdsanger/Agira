@@ -82,6 +82,9 @@ from core.models import (
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobStatus,
+    ClaudeQueueReviewVerdict,
+    ExternalIssueKind,
+    ExternalIssueMapping,
     ItemStatus,
     claude_cli_model_id,
 )
@@ -96,6 +99,11 @@ from core.services.claude_queue.credentials import (
     resolve_claude_credential,
 )
 from core.services.claude_queue.epic import can_start, sub_issue_position
+from core.services.claude_queue.review_apply import apply_review_result
+from core.services.claude_queue.review import (
+    build_review_prompt,
+    parse_review_verdict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +208,19 @@ AUTH_ERROR_MARKERS = (
 # PR_BODY_FILE (which lives outside the checkout, so Edit's "must already
 # exist with matching content" semantics don't fit), and drive git.
 ALLOWED_TOOLS = 'Read,Edit,Write,Bash(git*)'
+
+# A review run only reads: files and read-only git queries. Anything that
+# writes, commits or pushes is denied explicitly on top of not being allowed.
+REVIEW_ALLOWED_TOOLS = [
+    'Read', 'Grep', 'Glob',
+    'Bash(git diff*)', 'Bash(git log*)', 'Bash(git show*)',
+    'Bash(git status*)', 'Bash(git blame*)', 'Bash(git ls-files*)',
+]
+REVIEW_DENIED_TOOLS = [
+    'Edit', 'Write', 'NotebookEdit',
+    'Bash(git push*)', 'Bash(git commit*)', 'Bash(git checkout*)',
+    'Bash(git reset*)', 'Bash(git add*)', 'Bash(gh*)',
+]
 
 # Substrings (checked case-insensitively) in a run's final result text that
 # suggest Claude parked the work on a background/wait mechanism instead of
@@ -520,6 +541,9 @@ class Command(BaseCommand):
         if job.is_epic_node:
             self.process_epic_job(job)
             return
+        if job.is_review:
+            self.process_review_job(job, timeout, idle_timeout)
+            return
 
         pr_body_file = self._pr_body_file_path(job)
         self._init_pr_body_file(pr_body_file)
@@ -564,6 +588,149 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Epic node #{job.pk} orchestrating {branch} ({outcome})"
         ))
+
+    def process_review_job(self, job, timeout, idle_timeout=DEFAULT_IDLE_TIMEOUT_SECONDS):
+        """Review the implementation of ``job.item`` read-only (Review 2/6).
+
+        Checks out the PR state (merge commit if merged, else the PR head) in
+        the shared repo lane — no branch, commit, push or PR — and runs Claude
+        with read-only tools. The verdict is parsed and stored on the job;
+        *applying* it is a later layer. The item's status is never touched.
+        """
+        try:
+            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
+        except MissingClaudeCredential as exc:
+            self._fail_job(job, error=str(exc))
+            self.stdout.write(self.style.ERROR(
+                f"Review job #{job.pk} failed: missing Claude credential"
+            ))
+            return
+
+        item = job.item
+        mapping = self._review_pr_mapping(item)
+        if mapping is None:
+            self._fail_job(
+                job,
+                error=f"Kein PR-Mapping für Item #{item.id} gefunden – "
+                      f"Review nicht möglich.",
+            )
+            self.stdout.write(self.style.ERROR(
+                f"Review job #{job.pk} failed: no PR mapping"
+            ))
+            return
+
+        try:
+            repo_dir = self._prepare_checkout(job)
+            diff = self._checkout_pr_state(job, repo_dir, mapping)
+            self._write_trust_settings(
+                repo_dir, allow=REVIEW_ALLOWED_TOOLS, deny=REVIEW_DENIED_TOOLS,
+            )
+            job.pr_number = mapping.number
+            job.pr_url = mapping.html_url
+            job.save(update_fields=['pr_number', 'pr_url'])
+            self._review_prompt = build_review_prompt(
+                item, pr_text=item.pr_description or mapping.pr_body, diff=diff,
+            )
+            result = self._run_cli_with_auth(job, repo_dir, timeout, idle_timeout, None)
+        except _SubscriptionLimitWait as wait:
+            self._park_for_limit(job, wait)
+            return
+        except subprocess.TimeoutExpired:
+            self._fail_job(
+                job, error=f"Job exceeded the {timeout}s timeout and was terminated."
+            )
+            self.stdout.write(self.style.ERROR(
+                f"Review job #{job.pk} timed out after {timeout}s"
+            ))
+            return
+        except Exception as exc:  # noqa: BLE001 — any setup/launch failure is a job failure
+            logger.exception("Failed to run review for job #%s", job.pk)
+            self._fail_job(job, error=f"Worker error: {exc}")
+            self.stdout.write(self.style.ERROR(f"Review job #{job.pk} failed: {exc}"))
+            return
+        finally:
+            self._review_prompt = None
+
+        if self._is_auth_error(result):
+            self._fail_job(job, error=self._auth_error_message(result, job))
+            self.stdout.write(self.style.ERROR(
+                f"Review job #{job.pk} failed: authentication problem"
+            ))
+            return
+
+        if result.get('is_error') or result.get('returncode', 0) != 0:
+            detail = (
+                result.get('result_text')
+                or result.get('stderr')
+                or f"Claude exited with status {result.get('returncode')}."
+            ).strip()
+            self._fail_job(job, error=detail or "Claude reported an error.")
+            self.stdout.write(self.style.ERROR(f"Review job #{job.pk} failed"))
+            return
+
+        if not result.get('saw_result'):
+            self._fail_job(
+                job, error="Claude exited without emitting a final result event."
+            )
+            self.stdout.write(self.style.ERROR(
+                f"Review job #{job.pk} failed (no result event)"
+            ))
+            return
+
+        raw = result.get('result_text') or ''
+        verdict = parse_review_verdict(raw)
+        job.review_report = raw
+        job.review_verdict = verdict.verdict
+        if verdict.is_unclear:
+            job.completion_uncertain = True
+            job.completion_uncertain_reason = (
+                f"Review-Urteil nicht lesbar: {verdict.error}"
+            )
+        job.save(update_fields=[
+            'review_report', 'review_verdict',
+            'completion_uncertain', 'completion_uncertain_reason',
+        ])
+        try:
+            apply_review_result(job)
+        except Exception:  # noqa: BLE001 — the verdict stays stored; a human takes over
+            logger.exception("Failed to apply review result for job #%s", job.pk)
+            job.completion_uncertain = True
+            job.completion_uncertain_reason = "Review-Ergebnis konnte nicht angewendet werden"
+        job.transition_to(ClaudeQueueJobStatus.DONE)
+        self.stdout.write(self.style.SUCCESS(
+            f"Review job #{job.pk} done: {verdict.verdict}"
+        ))
+
+    @staticmethod
+    def _review_pr_mapping(item):
+        """The PR to review: the merged one if any, else the newest."""
+        mappings = list(
+            ExternalIssueMapping.objects.filter(item=item, kind=ExternalIssueKind.PR)
+            .order_by('-number')
+        )
+        for mapping in mappings:
+            if mapping.merge_commit_sha:
+                return mapping
+        return mappings[0] if mappings else None
+
+    def _checkout_pr_state(self, job, repo_dir, mapping):
+        """Detach the checkout at the PR state and return the PR diff.
+
+        Merged PR: the merge commit, diffed against its first parent. Open PR:
+        its head (fetched via ``refs/pull``), diffed against the base branch —
+        the epic branch for a sub-issue. Detached HEAD only: nothing here
+        creates a branch, a commit or a push.
+        """
+        sha = (mapping.merge_commit_sha or '').strip()
+        if sha:
+            self._git(['checkout', '--detach', sha], cwd=repo_dir)
+            return self._git(['diff', f'{sha}^1', sha], cwd=repo_dir)
+
+        self._git(['fetch', 'origin', f'pull/{mapping.number}/head'], cwd=repo_dir)
+        self._git(['checkout', '--detach', 'FETCH_HEAD'], cwd=repo_dir)
+        head = self._git(['rev-parse', 'HEAD'], cwd=repo_dir).strip()
+        base = resolve_base_branch(job.item)
+        return self._git(['diff', f'origin/{base}...{head}'], cwd=repo_dir)
 
     def advance_epics(self):
         """Let every orchestrating epic node act on what the queue now knows.
@@ -771,7 +938,7 @@ class Command(BaseCommand):
             return f"https://x-access-token:{token}@{host}/{owner}/{repo}.git"
         return f"https://{host}/{owner}/{repo}.git"
 
-    def _write_trust_settings(self, repo_dir):
+    def _write_trust_settings(self, repo_dir, allow=None, deny=None):
         """Write the Claude whitelist + trust flag into the *checkout*.
 
         These must live in the working checkout, not the app directory, so the
@@ -783,9 +950,11 @@ class Command(BaseCommand):
         payload = {
             'hasTrustDialogAccepted': True,
             'permissions': {
-                'allow': ['Read', 'Edit', 'Write', 'Bash(git*)'],
+                'allow': allow or ['Read', 'Edit', 'Write', 'Bash(git*)'],
             },
         }
+        if deny:
+            payload['permissions']['deny'] = deny
         settings_file.write_text(json.dumps(payload, indent=2))
 
     # ------------------------------------------------------------------ #
@@ -1568,6 +1737,18 @@ class Command(BaseCommand):
         here (#1082).
         """
         model = job.model or job.item.suggested_model
+        if job.is_review:
+            # Read-only: no --dangerously-skip-permissions; the checkout's
+            # settings allow only reading and deny writes/commits/pushes.
+            return [
+                settings.CLAUDE_CLI_BIN,
+                '-p', self._review_prompt,
+                '--model', claude_cli_model_id(model),
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--allowedTools', ','.join(REVIEW_ALLOWED_TOOLS),
+                '--disallowedTools', ','.join(REVIEW_DENIED_TOOLS),
+            ]
         return [
             settings.CLAUDE_CLI_BIN,
             '-p', self._build_prompt(job.item),
@@ -1603,11 +1784,12 @@ class Command(BaseCommand):
         env = dict(
             os.environ,
             CLAUDE_QUEUE_JOB_ID=str(job.pk),
-            PR_BODY_FILE=str(pr_body_file),
             BASH_DEFAULT_TIMEOUT_MS=bash_timeout_ms,
             BASH_MAX_TIMEOUT_MS=bash_timeout_ms,
             **FOREGROUND_ONLY_ENV,
         )
+        if pr_body_file:
+            env['PR_BODY_FILE'] = str(pr_body_file)
         # Start from a clean slate so nothing inherited decides the auth for us.
         for name in ALL_AUTH_ENV_VARS:
             env.pop(name, None)
@@ -2003,7 +2185,7 @@ class Command(BaseCommand):
             # Already terminal (e.g. cancelled meanwhile) — just persist the note.
             job.save(update_fields=['error_text'])
         self._release_item(job)
-        if job.item.parent_id is not None and not job.is_epic_node:
+        if job.item.parent_id is not None and not job.is_epic_node and not job.is_review:
             # A failed layer halts its chain on its own (the epic node reads
             # the sub-entry's status); this makes the stop visible on the epic.
             self._block_epic(

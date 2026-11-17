@@ -245,6 +245,13 @@
                     </button>
                 </li>
                 {% endif %}
+                {% if can_claude_review %}
+                <li>
+                    <button type="button" class="dropdown-item" onclick="reviewByClaude()">
+                        <i class="bi bi-search me-2"></i>Review durch Claude
+                    </button>
+                </li>
+                {% endif %}
                 {% endif %}
                 {# Status-independent: always available, same flow as the "Create GitHub Issue" button in the GitHub tab #}
                 <li>
@@ -1623,6 +1630,33 @@
                 showToast('error', 'Ein Fehler ist beim Übergeben an Claude aufgetreten.');
             });
         }
+    }
+
+    // Review durch Claude action: enqueues a read-only review job (#1287).
+    function reviewByClaude() {
+        {% if can_claude_review %}
+        if (!confirm('Review durch Claude Code starten? Das Item bleibt unverändert, ein Review-Job wird eingereiht.')) {
+            return;
+        }
+        fetch('{% url 'item-claude-review' item.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message || 'Review eingereiht.');
+            } else {
+                showToast('error', data.error || 'Review konnte nicht gestartet werden.');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ein Fehler ist beim Starten des Reviews aufgetreten.');
+        });
+        {% endif %}
     }
 
     // GitHub issue creation handler.

@@ -23,6 +23,7 @@ from core.models import (
     ClaudeQueueJobKind,
     ClaudeQueueJobModel,
     ClaudeQueueJobStatus,
+    ExternalIssueKind,
     Item,
     ItemStatus,
 )
@@ -63,6 +64,17 @@ class SubIssueOutsideEpic(ValueError):
     *does* advance the chain), or merge the predecessors first. The message is
     user-facing.
     """
+
+
+class ReviewNotAllowed(ValueError):
+    """The item cannot be handed to Claude for a review (#1286).
+
+    Raised for an item outside ``Integrated``/``Testing`` or without a linked
+    pull request. The message is user-facing.
+    """
+
+
+REVIEWABLE_STATUSES = (ItemStatus.INTEGRATED, ItemStatus.TESTING)
 
 
 def _resolve_model(item) -> str:
@@ -121,6 +133,8 @@ def enqueue_item_for_claude(
     with transaction.atomic():
         locked_item = Item.objects.select_for_update().get(pk=item.pk)
 
+        # A review job is not an implementation run (#1286); it must not make
+        # the item look "already enqueued".
         existing_job = ClaudeQueueJob.objects.filter(
             item=locked_item,
             status__in=[
@@ -128,7 +142,7 @@ def enqueue_item_for_claude(
                 ClaudeQueueJobStatus.QUEUED,
                 ClaudeQueueJobStatus.RUNNING,
             ],
-        ).order_by('-created_at').first()
+        ).exclude(kind=ClaudeQueueJobKind.REVIEW).order_by('-created_at').first()
         if existing_job is not None:
             return existing_job, False
 
@@ -192,6 +206,83 @@ def enqueue_item_for_claude(
         actor=actor,
         summary=(
             f'Enqueued for Claude Code (job #{job.pk}, model={model}, '
+            f'auth={auth_mode} via {who})'
+        ),
+    )
+    return job, True
+
+
+def enqueue_review_for_claude(
+    item: Item, actor=None, *, allow_api_key_fallback: bool = False,
+) -> tuple[ClaudeQueueJob, bool]:
+    """Enqueue a read-only ``review`` job for ``item`` (#1286).
+
+    Only items in ``Integrated`` (a sub-issue, reviewed against its own
+    sub-issue PR) or ``Testing`` (a single issue, or an epic reviewed as one
+    unit against the epic PR to ``main``) qualify, and the item must have a
+    linked PR. Unlike an implementation run this neither moves the item nor
+    touches its description (no git-workflow hint), and the job stays outside
+    the epic chain (``parent_job`` empty), so it never blocks or joins it.
+
+    Raises :class:`ReviewNotAllowed` for the status/PR guards (before anything
+    is created), and the credential/model errors of a normal enqueue.
+
+    Returns ``(job, created)``; ``created`` is False when an active review job
+    for the item already exists — that job is returned instead of a second one.
+    """
+    with transaction.atomic():
+        locked_item = Item.objects.select_for_update().get(pk=item.pk)
+
+        existing_job = ClaudeQueueJob.objects.filter(
+            item=locked_item,
+            kind=ClaudeQueueJobKind.REVIEW,
+            status__in=[
+                ClaudeQueueJobStatus.QUEUED,
+                ClaudeQueueJobStatus.RUNNING,
+                ClaudeQueueJobStatus.WAITING_LIMIT,
+            ],
+        ).order_by('-created_at').first()
+        if existing_job is not None:
+            return existing_job, False
+
+        if locked_item.status not in REVIEWABLE_STATUSES:
+            raise ReviewNotAllowed(
+                f'Ein Review ist nur für Items im Status „Integrated“ oder '
+                f'„Testing“ möglich. Item #{locked_item.id} hat den Status '
+                f'„{locked_item.status}“.'
+            )
+        if not locked_item.external_mappings.filter(
+            kind=ExternalIssueKind.PR,
+        ).exists():
+            raise ReviewNotAllowed(
+                f'Für Item #{locked_item.id} ist kein PR verknüpft – ohne PR '
+                f'gibt es nichts zu reviewen.'
+            )
+
+        auth_mode = _resolve_auth_mode(locked_item)
+        auth_user = resolve_credential_user(locked_item, actor=actor)
+        resolve_claude_credential(auth_user, auth_mode)
+        model = _resolve_model(locked_item)
+
+        job = ClaudeQueueJob.objects.create(
+            item=locked_item,
+            project=locked_item.project,
+            status=ClaudeQueueJobStatus.QUEUED,
+            kind=ClaudeQueueJobKind.REVIEW,
+            model=model,
+            auth_user=auth_user,
+            requested_auth_mode=auth_mode,
+            auth_mode=auth_mode,
+            allow_api_key_fallback=allow_api_key_fallback,
+        )
+
+    who = auth_user.username if auth_user else 'host'
+    ActivityService().log(
+        verb='item.claude_review_enqueued',
+        target=locked_item,
+        actor=actor,
+        summary=(
+            f'Review enqueued for Claude Code (job #{job.pk}, model={model}, '
             f'auth={auth_mode} via {who})'
         ),
     )
