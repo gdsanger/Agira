@@ -33,6 +33,7 @@ from core.services.activity import ActivityService
 from core.services.claude_queue.review import (
     STATUS_ACCEPTED_DEVIATION,
     STATUS_MET,
+    STATUS_NOT_MET,
     VERDICT_DEVIATIONS,
     VERDICT_PASS,
     VERDICT_UNCLEAR,
@@ -96,6 +97,9 @@ def _decide(job, verdict: ReviewVerdict, mapping) -> str:
             return VERDICT_PASS
         return VERDICT_UNCLEAR
     if verdict.verdict == VERDICT_DEVIATIONS:
+        # Guard: a follow-up needs at least one not_met criterion.
+        if not any(c.status == STATUS_NOT_MET for c in verdict.criteria):
+            return VERDICT_UNCLEAR
         return VERDICT_DEVIATIONS if mapping is not None else VERDICT_UNCLEAR
     return VERDICT_UNCLEAR
 

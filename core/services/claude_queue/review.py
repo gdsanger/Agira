@@ -167,18 +167,50 @@ def _validate(data: dict) -> ReviewVerdict:
             title=title, description=description.strip(), criterion=criterion.strip(),
         ))
 
-    has_not_met = any(c.status == STATUS_NOT_MET for c in criteria)
-    if verdict == VERDICT_PASS:
-        if has_not_met:
-            return _unclear('verdict "pass" widerspricht Kriterium mit Status not_met')
-        if deviations:
-            return _unclear('verdict "pass" widerspricht nicht-leerer deviations-Liste')
-    elif not deviations:
-        return _unclear('verdict "deviations" ohne Eintrag in deviations')
+    # The verdict is derived from the criteria; the model's ``verdict`` field
+    # and ``deviations`` list are supplementary information only.
+    not_met = [c for c in criteria if c.status == STATUS_NOT_MET]
+    if verdict == VERDICT_PASS and not_met:
+        return _unclear('verdict "pass" widerspricht Kriterium mit Status not_met')
+
+    # Deviations must refer to a criterion; those referring to a met /
+    # accepted_deviation criterion are redundant and dropped.
+    kept: List[Deviation] = []
+    for i, dev in enumerate(deviations):
+        crit = _match_criterion(dev.criterion, criteria)
+        if crit is None:
+            return _unclear(f'deviations[{i}] ist keinem Kriterium zuordenbar')
+        if crit.status == STATUS_NOT_MET:
+            kept.append(Deviation(
+                title=dev.title, description=dev.description, criterion=crit.text,
+            ))
+
+    # Every not_met criterion yields at least one deviation (the follow-up
+    # and report are built from these).
+    covered = {d.criterion for d in kept}
+    for c in not_met:
+        if c.text not in covered:
+            kept.append(Deviation(title=c.text, description=c.evidence, criterion=c.text))
 
     return ReviewVerdict(
-        verdict=verdict, summary=summary, criteria=criteria, deviations=deviations,
+        verdict=VERDICT_DEVIATIONS if not_met else VERDICT_PASS,
+        summary=summary, criteria=criteria, deviations=kept,
     )
+
+
+def _norm(text: str) -> str:
+    return ' '.join((text or '').split()).casefold()
+
+
+def _match_criterion(ref: str, criteria: List[CriterionResult]) -> Optional[CriterionResult]:
+    """Criterion a deviation refers to (normalised exact match), else ``None``."""
+    key = _norm(ref)
+    if not key:
+        return None
+    for c in criteria:
+        if _norm(c.text) == key:
+            return c
+    return None
 
 
 def parse_review_verdict(raw: Any) -> ReviewVerdict:
@@ -214,6 +246,8 @@ REVIEW_RULES = """\
 - Eine im PR-Text (insbesondere „Warum / Entscheidungen“) **begründete, bewusste Abweichung** ist keine Abweichung: Status `accepted_deviation`, in `evidence` mit Verweis auf die Begründung.
 - Eine **unbegründete** Lücke ist `not_met`.
 - Im Zweifel `not_met` statt `met`.
+- `deviations` enthält **ausschließlich** Kriterien mit Status `not_met` (`criterion` = exakter Text des Kriteriums). Im PR begründete, akzeptierte Abweichungen stehen nur in `criteria` (Status `accepted_deviation`) und **nicht** in `deviations`.
+- Das Urteil ergibt sich aus den Kriterien: `pass`, wenn kein Kriterium `not_met` ist, sonst `deviations`.
 - Verändere nichts: kein Schreiben, kein Commit, kein Push, kein PR.
 - Du läufst headless: Führe alle Befehle im Vordergrund aus; plane keine Wakeups.
 - Antworte ausschließlich mit **einem** JSON-Objekt nach diesem Schema, ohne Text davor oder danach:

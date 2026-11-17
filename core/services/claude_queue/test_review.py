@@ -85,9 +85,61 @@ class ParseReviewVerdictTests(SimpleTestCase):
         data = _verdict(deviations=[{'title': 'T'}])
         self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_UNCLEAR)
 
-    def test_deviations_without_entries_is_unclear(self):
+    def test_deviations_without_not_met_is_derived_pass(self):
+        # The verdict follows the criteria, not the model's verdict field.
         data = _verdict(verdict='deviations')
-        self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_UNCLEAR)
+        self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_PASS)
+
+    def test_redundant_deviation_on_accepted_criterion_is_dropped(self):
+        # Regression for job #597.
+        data = _verdict(
+            verdict='deviations',
+            deviations=[{'title': 'Abweichung', 'description': 'D', 'criterion': 'B'}],
+        )
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_PASS)
+        self.assertEqual(r.deviations, [])
+
+    def test_deviation_on_met_criterion_is_dropped(self):
+        data = _verdict(deviations=[{'title': 'T', 'criterion': ' a '}])
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_PASS)
+        self.assertEqual(r.deviations, [])
+
+    def test_deviation_without_matching_criterion_is_unclear(self):
+        for crit in ('', 'gibt es nicht'):
+            data = _verdict(deviations=[{'title': 'T', 'criterion': crit}])
+            self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_UNCLEAR)
+
+    def test_only_not_met_criteria_remain_as_deviations(self):
+        data = _verdict(
+            verdict='deviations',
+            criteria=[
+                {'text': 'A', 'status': 'not_met', 'evidence': 'x'},
+                {'text': 'B', 'status': 'accepted_deviation'},
+            ],
+            deviations=[
+                {'title': 'T-B', 'criterion': 'B'},
+                {'title': 'T-A', 'criterion': 'A'},
+            ],
+        )
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_DEVIATIONS)
+        self.assertEqual([d.title for d in r.deviations], ['T-A'])
+
+    def test_not_met_without_deviation_entry_is_synthesised(self):
+        data = _verdict(
+            verdict='deviations',
+            criteria=[{'text': 'A', 'status': 'not_met', 'evidence': 'x'}],
+        )
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_DEVIATIONS)
+        self.assertEqual(r.deviations[0].criterion, 'A')
+
+    def test_prompt_contains_deviations_rule(self):
+        from core.services.claude_queue.review import REVIEW_RULES
+        self.assertIn('ausschließlich', REVIEW_RULES)
+        self.assertIn('accepted_deviation', REVIEW_RULES)
 
 
 class ReviewJobModelTests(TestCase):

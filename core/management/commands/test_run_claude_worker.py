@@ -382,6 +382,19 @@ class MarkPrReadyTests(ClaudeWorkerTestBase):
 class SuccessfulRunMarksPrReadyTests(ProcessJobTests):
     """The completion path invokes the draft → ready flip on success (#1114)."""
 
+    def test_process_job_rejects_unknown_kind(self):
+        job = self._claimed_job(self.project_a)
+        job.kind = 'bogus'
+        with patch.object(Command, '_prepare_checkout') as prepare, \
+                patch.object(Command, '_create_branch_and_pr') as create_pr:
+            Command().process_job(job, timeout=30, idle_timeout=5)
+
+        prepare.assert_not_called()
+        create_pr.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, ClaudeQueueJobStatus.FAILED)
+        self.assertIn('Unbekannte Job-Art', job.error_text)
+
     def test_process_job_marks_pr_ready_on_success(self):
         job = self._claimed_job(self.project_a)
         with patch.object(Command, '_mark_pr_ready') as mark_ready:

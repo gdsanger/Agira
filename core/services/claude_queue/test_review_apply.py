@@ -82,6 +82,48 @@ class ApplyReviewResultTests(TestCase):
         self.assertIsNone(job.review_followup_item)
         self.assertTrue(Activity.objects.filter(verb='claudequeuejob.review_applied').exists())
 
+    def test_job_597_redundant_deviation_on_accepted_criterion_closes(self):
+        # All criteria met/accepted; the same accepted deviation is also
+        # (redundantly) listed in ``deviations`` -> pass, no follow-up.
+        self._pr()
+        job = self._job(_verdict(
+            verdict='deviations',
+            deviations=[{'title': 'Abweichung', 'description': 'D', 'criterion': 'B'}],
+        ))
+        res = apply_review_result(job)
+
+        self.assertEqual(res.outcome, 'closed')
+        self.assertIsNone(res.followup)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.CLOSED)
+        self.assertEqual(Item.objects.count(), 2)
+
+    def test_followup_lists_only_not_met_criteria(self):
+        self._pr()
+        data = dict(DEVIATIONS)
+        data['deviations'] = DEVIATIONS['deviations'] + [
+            {'title': 'Akzeptiert', 'description': 'x', 'criterion': 'B'},
+        ]
+        res = apply_review_result(self._job(_verdict(**data)))
+
+        self.assertEqual(res.outcome, 'followup')
+        self.assertEqual(Item.objects.count(), 3)
+        self.assertIn('A fehlt', res.followup.description)
+        self.assertNotIn('### 2.', res.followup.description)
+        self.assertNotIn('Akzeptiert', res.comment.body)
+
+    def test_pass_with_not_met_is_unclear_without_close_or_followup(self):
+        self._pr()
+        job = self._job(_verdict(
+            criteria=[{'text': 'A', 'status': 'not_met', 'evidence': ''}],
+        ))
+        res = apply_review_result(job)
+
+        self.assertEqual(res.outcome, 'manual')
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemStatus.INTEGRATED)
+        self.assertEqual(Item.objects.count(), 2)
+
     def test_deviations_create_single_self_contained_followup(self):
         self._pr()
         job = self._job(_verdict(**DEVIATIONS))

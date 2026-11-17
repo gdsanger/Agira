@@ -81,6 +81,7 @@ from core.models import (
     ClaudeCredentialSource,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
+    ClaudeQueueJobKind,
     ClaudeQueueJobStatus,
     ClaudeQueueReviewVerdict,
     ExternalIssueKind,
@@ -543,6 +544,17 @@ class Command(BaseCommand):
             return
         if job.is_review:
             self.process_review_job(job, timeout, idle_timeout)
+            return
+        if job.kind != ClaudeQueueJobKind.ISSUE:
+            # An outdated worker must not run an unknown kind as an issue run.
+            self._fail_job(
+                job,
+                error=f"Unbekannte Job-Art {job.kind!r} – Job wird abgelehnt "
+                      f"(Worker evtl. veraltet).",
+            )
+            self.stdout.write(self.style.ERROR(
+                f"Job #{job.pk} rejected: unknown kind {job.kind!r}"
+            ))
             return
 
         pr_body_file = self._pr_body_file_path(job)
