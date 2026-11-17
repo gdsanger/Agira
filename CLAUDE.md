@@ -50,7 +50,11 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   Claude meldet `TESTS ROT`, siehe „Tests“) oder ein
   fehlgeschlagener Merge halten die Kette an. Das Epic wird in Agira sichtbar
   als blockiert markiert, mit Grund. Es gibt **keinen automatischen Retry**.
-  Ein Mensch prüft den Fall und stößt das Sub-Issue neu an.
+  Ein Mensch prüft den Fall und stößt das Sub-Issue neu an – oder bestätigt
+  einen „Ggf. unvollständig“-Lauf in der Queue mit Pflicht-Begründung als
+  vollständig („Als vollständig bestätigen“); das merged nichts, die Kette
+  läuft danach normal weiter (gemergter PR → nächstes Sub-Issue, sonst
+  Warten auf den Merge).
 - **Status:** Merge eines Sub-Issues in den Epic-Branch → `Integrated`. Merge
   des Epic-PRs nach `main` → das Epic und alle `Integrated`-Sub-Issues auf
   `Testing`. PR-Description und RAG-Update laufen pro Sub-Issue-PR wie bei

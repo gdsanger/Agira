@@ -140,6 +140,7 @@ urlpatterns = [
     path('claude-queue/<int:job_id>/delete/', views.claude_queue_job_delete, name='claude-queue-job-delete'),
     path('claude-queue/<int:job_id>/mark-done/', views.claude_queue_job_mark_done, name='claude-queue-job-mark-done'),
     path('claude-queue/<int:job_id>/requeue/', views.claude_queue_job_requeue, name='claude-queue-job-requeue'),
+    path('claude-queue/<int:job_id>/confirm-complete/', views.claude_queue_job_confirm_complete, name='claude-queue-job-confirm-complete'),
     path('claude-queue/<int:job_id>/record-merge/', views.claude_queue_job_record_merge, name='claude-queue-job-record-merge'),
     path('changes/new/', views.change_create, name='change-create'),
     path('changes/<int:id>/', views.change_detail, name='change-detail'),

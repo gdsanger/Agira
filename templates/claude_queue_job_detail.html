@@ -34,6 +34,14 @@
                 {% endif %}
             </p>
         </div>
+        {% if job.can_confirm_complete %}
+        <button type="button" class="btn btn-outline-success me-2"
+                hx-post="{% url 'claude-queue-job-confirm-complete' job.id %}?redirect=1"
+                hx-vals='js:{reason: window.prompt("Begründung (mind. 10 Zeichen): Warum ist die Umsetzung vollständig?") || ""}'
+                hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+            <i class="bi bi-patch-check"></i> Als vollständig bestätigen
+        </button>
+        {% endif %}
         {% if job.is_deletable %}
         <button type="button" class="btn btn-outline-danger"
                 hx-post="{% url 'claude-queue-job-delete' job.id %}?redirect=1"

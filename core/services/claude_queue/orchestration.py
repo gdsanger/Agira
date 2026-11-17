@@ -348,6 +348,9 @@ def advance_epic(epic_job, *, actor=None) -> str:
 
     if state.current_state == SUB_HALTED:
         return ADVANCE_HALTED
+    # Waiting or running again (e.g. a halted run was confirmed complete): the
+    # stored block hint no longer applies.
+    _record_epic_error(epic_job, '')
     return ADVANCE_WAITING
 
 

@@ -2369,6 +2369,22 @@ class ClaudeQueueJob(models.Model):
         blank=True,
         help_text=_('Short reason the job was flagged as completion_uncertain'),
     )
+    # Set when a human reviewed an uncertain run and confirmed it complete
+    # (``confirm_complete``). The original reason stays in
+    # ``completion_uncertain_reason`` so it remains visible what was overridden.
+    completion_confirmed_reason = models.TextField(
+        blank=True,
+        help_text=_('Human justification for confirming an uncertain run as complete'),
+    )
+    completion_confirmed_by = models.ForeignKey(
+        'User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='confirmed_claude_queue_jobs',
+        help_text=_('User who confirmed the run as complete'),
+    )
+    completion_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     # Worker ownership — set atomically when a running-job is claimed, used for
     # crash recovery: a running job whose worker process is gone is an orphan.
@@ -2450,6 +2466,19 @@ class ClaudeQueueJob(models.Model):
         return self.status in self._MARK_DONE_STATUSES
 
     @property
+    def can_confirm_complete(self):
+        """True if a human may confirm this flagged run as complete."""
+        return (
+            not self.is_epic_node
+            and self.status == ClaudeQueueJobStatus.DONE
+            and self.completion_uncertain
+        )
+
+    @property
+    def is_completion_confirmed(self):
+        return self.completion_confirmed_at is not None
+
+    @property
     def can_requeue(self):
         """True if a human may put this job back to Queued (issue runs only)."""
         return not self.is_epic_node and self.status in self._REQUEUE_STATUSES
@@ -2484,6 +2513,9 @@ class ClaudeQueueJob(models.Model):
             self.progress_text = ''
             self.completion_uncertain = False
             self.completion_uncertain_reason = ''
+            self.completion_confirmed_reason = ''
+            self.completion_confirmed_by = None
+            self.completion_confirmed_at = None
         self.save()
 
         ActivityService().log(
