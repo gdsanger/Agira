@@ -2539,7 +2539,9 @@ class ReviewJobTests(ClaudeWorkerTestBase):
         self.assertEqual(job.review_report, GOOD_VERDICT)
         self.assertFalse(job.completion_uncertain)
         job.item.refresh_from_db()
-        self.assertEqual(job.item.status, ItemStatus.INTEGRATED)
+        # A clean pass is applied by the worker (Review 3/6): item is closed.
+        self.assertEqual(job.item.status, ItemStatus.CLOSED)
+        self.assertEqual(job.item.comments.count(), 1)
 
     def test_review_creates_no_branch_commit_push_or_pr(self):
         job = self._review_job()
