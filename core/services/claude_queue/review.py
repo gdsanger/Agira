@@ -198,6 +198,11 @@ def _validate(data: dict) -> ReviewVerdict:
     for i, dev in enumerate(deviations):
         crit = _match_criterion(dev.criterion, criteria)
         if crit is None:
+            if dev.severity == SEVERITY_MINOR:
+                # A non-blocking hint must not make the whole verdict unreadable
+                # just because the model paraphrased the criterion text.
+                hints.append(dev)
+                continue
             return _unclear(f'deviations[{i}] ist keinem Kriterium zuordenbar')
         resolved = Deviation(
             title=dev.title, description=dev.description, criterion=crit.text,
@@ -239,7 +244,13 @@ def _match_criterion(ref: str, criteria: List[CriterionResult]) -> Optional[Crit
     for c in criteria:
         if _norm(c.text) == key:
             return c
-    return None
+    # Lenient fallback: unambiguous containment (e.g. a truncated criterion).
+    partial = [
+        c for c in criteria
+        if min(len(key), len(_norm(c.text))) >= 12
+        and (key in _norm(c.text) or _norm(c.text) in key)
+    ]
+    return partial[0] if len(partial) == 1 else None
 
 
 def parse_review_verdict(raw: Any) -> ReviewVerdict:

@@ -111,6 +111,15 @@ class ParseReviewVerdictTests(SimpleTestCase):
             data = _verdict(deviations=[{'title': 'T', 'criterion': crit}])
             self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_UNCLEAR)
 
+    def test_minor_deviation_without_matching_criterion_becomes_hint(self):
+        data = _verdict(deviations=[
+            {'title': 'T', 'criterion': 'gibt es nicht', 'severity': 'minor'},
+        ])
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_PASS)
+        self.assertEqual(len(r.hints), 1)
+        self.assertEqual(r.deviations, [])
+
     def test_only_not_met_criteria_remain_as_deviations(self):
         data = _verdict(
             verdict='deviations',
