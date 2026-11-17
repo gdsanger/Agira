@@ -4,8 +4,10 @@ partials).
 """
 import json
 import re
+from pathlib import Path
 from decimal import Decimal
 
+from django.conf import settings
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.db.models import Max
@@ -788,3 +790,37 @@ class ClaudeQueueEpicHierarchyViewTests(TestCase):
             response, reverse('claude-queue-job-detail', args=[self.node.id]),
         )
         self.assertContains(response, 'Order 10')
+
+
+class ClaudeQueueTemplateCommentTests(TestCase):
+    """Template comments never leak into the rendered queue (#1293)."""
+
+    def test_no_multiline_brace_hash_comments_in_templates(self):
+        # Django's ``{# #}`` is single-line only; a multi-line one is output as text.
+        offenders = []
+        for path in Path(settings.BASE_DIR, 'templates').rglob('*.html'):
+            for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                if '{#' in line and '#}' not in line:
+                    offenders.append(f'{path}:{number}')
+        self.assertEqual(offenders, [])
+
+    def test_epic_node_row_with_error_text_has_no_comment_markers(self):
+        user = User.objects.create_user(
+            username='cmtuser', password='testpass123', email='cmt@example.com',
+        )
+        user.active = True
+        user.save()
+        client = Client()
+        client.login(username='cmtuser', password='testpass123')
+        project = Project.objects.create(name='Comment Project')
+        item_type = ItemType.objects.create(key='feature', name='Feature')
+        epic = Item.objects.create(title='Epic', project=project, type=item_type)
+        ClaudeQueueJob.objects.create(
+            item=epic, project=project, kind=ClaudeQueueJobKind.EPIC,
+            status=ClaudeQueueJobStatus.ORCHESTRATING,
+            error_text='Freigabe nicht möglich',
+        )
+        body = client.get(reverse('claude-queue-jobs')).content.decode()
+        self.assertIn('Freigabe nicht möglich', body)
+        self.assertNotIn('{#', body)
+        self.assertNotIn('#}', body)

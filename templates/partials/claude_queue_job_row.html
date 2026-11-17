@@ -56,8 +56,8 @@ hierarchy while pagination and per-row polling stay exactly as they were.
         </span>
         {% if chain.reason %}<br><small class="text-muted">{{ chain.reason|truncatechars:80 }}</small>{% endif %}
         {% endwith %}
-        {# A release the node could not carry out (e.g. a closed sub-issue): the
-           chain looks merely blocked, so the reason has to be said out loud. #}
+        {% comment %}A release the node could not carry out (e.g. a closed sub-issue): the
+           chain looks merely blocked, so the reason has to be said out loud.{% endcomment %}
         {% if job.error_text %}<br><small class="text-warning">{{ job.error_text|truncatechars:120 }}</small>{% endif %}
         {% elif job.status == 'blocked' %}
         <span class="text-muted" title="{{ job.blocked_reason }}"><i class="bi bi-lock"></i> {{ job.blocked_reason }}</span>
