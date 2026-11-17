@@ -20,8 +20,9 @@ obligation.
 
 from django.utils.text import slugify
 
-# The repository's protected trunk. The only branch a PR is never auto-merged
-# into, and the fallback base for every item without a parent.
+# Fallback trunk when a project has no ``default_branch`` configured. The real
+# trunk is per project (``Project.default_branch``, e.g. ``master`` for many
+# .NET repos) — use ``get_default_branch`` instead of this constant.
 DEFAULT_BASE_BRANCH = 'main'
 
 EPIC_BRANCH_PREFIX = 'feature/'
@@ -55,17 +56,27 @@ def build_epic_branch_name(item) -> str:
     return f"{EPIC_BRANCH_PREFIX}{item.id}"
 
 
+def get_default_branch(project) -> str:
+    """Return the project's trunk branch (``Project.default_branch``).
+
+    The trunk is the only branch a PR is never auto-merged into, and the base
+    of every item without a parent. Falls back to ``main`` if unset.
+    """
+    name = (getattr(project, 'default_branch', '') or '').strip()
+    return name or DEFAULT_BASE_BRANCH
+
+
 def resolve_base_branch(item) -> str:
     """Return the branch ``item``'s work branch is cut from and its PR targets.
 
     An item with a parent is a sub-issue: it branches off the parent's epic
     branch. An item without a parent keeps the pre-#1076 behaviour and
-    branches off ``main`` — the epic workflow is opted into by simply setting
+    branches off the project's trunk — the epic workflow is opted into by simply setting
     a parent, so a standalone or exploratory item is never dragged into it.
     """
     parent = getattr(item, 'parent', None)
     if parent is None:
-        return DEFAULT_BASE_BRANCH
+        return get_default_branch(getattr(item, 'project', None))
     return build_epic_branch_name(parent)
 
 

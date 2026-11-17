@@ -292,7 +292,8 @@ def project_create(request):
             description=request.POST.get('description', ''),
             status=request.POST.get('status', ProjectStatus.NEW),
             github_owner=request.POST.get('github_owner', ''),
-            github_repo=request.POST.get('github_repo', '')
+            github_repo=request.POST.get('github_repo', ''),
+            default_branch=request.POST.get('default_branch', '').strip() or 'main',
         )
         # Whoever creates a project obviously works on it, so assign them right
         # away (#1248) — otherwise the redirect below would land on a project
@@ -328,6 +329,9 @@ def project_edit(request, id):
         project.status = request.POST.get('status', project.status)
         project.github_owner = request.POST.get('github_owner', project.github_owner)
         project.github_repo = request.POST.get('github_repo', project.github_repo)
+        project.default_branch = (
+            request.POST.get('default_branch', project.default_branch).strip() or 'main'
+        )
         project.save()
         
         return JsonResponse({
@@ -5748,6 +5752,9 @@ def project_update(request, id):
         project.status = request.POST.get('status', project.status)
         project.github_owner = request.POST.get('github_owner', project.github_owner)
         project.github_repo = request.POST.get('github_repo', project.github_repo)
+        project.default_branch = (
+            request.POST.get('default_branch', project.default_branch).strip() or 'main'
+        )
         project.save()
         return JsonResponse({'success': True, 'message': 'Project updated successfully'})
     except Exception as e:

@@ -29,7 +29,7 @@ import logging
 
 from core.models import ExternalIssueKind, ExternalIssueMapping
 from core.services.claude_queue.branch import (
-    DEFAULT_BASE_BRANCH,
+    get_default_branch,
     build_epic_branch_name,
 )
 
@@ -142,7 +142,7 @@ def epic_pr_body(epic) -> str:
         '',
         'Sammelt die Sub-Issues dieses Epics, die einzeln in den Epic-Branch '
         'gemergt wurden. Bewusst als **Draft**: Review und Merge nach '
-        f'`{DEFAULT_BASE_BRANCH}` erfolgen manuell.',
+        f'`{get_default_branch(epic.project)}` erfolgen manuell.',
         '',
         '## Sub-Issues (in Reihenfolge)',
         '',
@@ -176,7 +176,7 @@ def ensure_epic_pr(epic, *, actor=None):
         return service.create_draft_pr_for_item(
             epic,
             branch_name=branch,
-            base=DEFAULT_BASE_BRANCH,
+            base=get_default_branch(epic.project),
             title=f"Epic #{epic.id}: {epic.title}",
             body=epic_pr_body(epic),
             actor=actor,

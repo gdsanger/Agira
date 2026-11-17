@@ -21,7 +21,7 @@ from core.models import (
     Activity,
     User,
 )
-from core.services.claude_queue.branch import DEFAULT_BASE_BRANCH, is_epic_branch
+from core.services.claude_queue.branch import get_default_branch, is_epic_branch
 from core.services.claude_queue.epic import (
     all_sub_issues_merged,
     ensure_epic_pr,
@@ -380,7 +380,7 @@ class GitHubService(IntegrationBase):
         item: Item,
         *,
         branch_name: str,
-        base: str = 'main',
+        base: Optional[str] = None,
         title: Optional[str] = None,
         body: Optional[str] = None,
         actor=None,
@@ -404,7 +404,7 @@ class GitHubService(IntegrationBase):
         Args:
             item: Agira item the PR belongs to
             branch_name: Head branch (already pushed), e.g. 'fix/item-42'
-            base: Base branch to target (default: 'main')
+            base: Base branch to target (default: the project's default branch)
             title: PR title (default: item.title)
             body: PR body (markdown)
             actor: User performing the action (optional)
@@ -423,6 +423,7 @@ class GitHubService(IntegrationBase):
         owner, repo = self._get_repo_info(item)
 
         pr_title = title or item.title
+        base = base or get_default_branch(item.project)
         github_pr = client.create_pull_request(
             owner=owner,
             repo=repo,
@@ -700,7 +701,7 @@ class GitHubService(IntegrationBase):
                 result['item_transitioned'] = True
 
         if new_state == 'merged':
-            if self._is_main(base_ref) and is_epic(item):
+            if self._is_main(item, base_ref) and is_epic(item):
                 result['sub_issues_released'] = self._release_integrated_sub_issues(item)
             result['epic_pr_opened'] = self._maybe_open_epic_pr(item)
             result['epic_advanced'] = self._advance_epic_chain(item)
@@ -721,9 +722,10 @@ class GitHubService(IntegrationBase):
         return self.apply_pr_webhook_event(client.get_pr(owner, repo, number))
 
     @staticmethod
-    def _is_main(base_ref: str) -> bool:
-        # An unknown base is treated as ``main`` — the pre-#1076 behaviour.
-        return not base_ref or base_ref == DEFAULT_BASE_BRANCH
+    def _is_main(item: Item, base_ref: str) -> bool:
+        # An unknown base is treated as the trunk — the pre-#1076 behaviour.
+        # The trunk is the project's default branch (``main``, ``master``, ...).
+        return not base_ref or base_ref == get_default_branch(item.project)
 
     def _status_after_merge(self, item: Item, base_ref: str) -> Optional[str]:
         """The status a merged PR moves its Working item to, or None (#1076).
@@ -738,7 +740,7 @@ class GitHubService(IntegrationBase):
         An epic stays Working on any merge but its own one into ``main``: it
         is the container whose branch collects the layers.
         """
-        if self._is_main(base_ref):
+        if self._is_main(item, base_ref):
             return ItemStatus.TESTING
         if is_epic(item):
             return None

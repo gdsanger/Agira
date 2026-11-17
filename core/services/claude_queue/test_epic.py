@@ -240,3 +240,22 @@ class EnsureEpicPrTestCase(EpicTestBase):
         self.assertLess(
             body.index(f'#{self.data_model.id}'), body.index(f'#{self.ui.id}'),
         )
+
+
+class DefaultBranchTests(TestCase):
+    """Per-project trunk (e.g. ``master`` for .NET repos) instead of hardcoded main."""
+
+    def test_resolve_base_branch_uses_project_default_branch(self):
+        from types import SimpleNamespace
+        from core.services.claude_queue.branch import (
+            get_default_branch, resolve_base_branch,
+        )
+        project = SimpleNamespace(default_branch='master')
+        item = SimpleNamespace(project=project, parent=None)
+        self.assertEqual(resolve_base_branch(item), 'master')
+        self.assertEqual(get_default_branch(SimpleNamespace(default_branch='')), 'main')
+
+    def test_hint_uses_trunk(self):
+        from core.services.claude_queue.hint import build_git_workflow_hint
+        hint = build_git_workflow_hint('fix/1-x', 'master', 'master')
+        self.assertIn('von `master`, Draft-PR', hint)

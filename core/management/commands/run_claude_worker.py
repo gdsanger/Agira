@@ -90,7 +90,7 @@ from core.models import (
     claude_cli_model_id,
 )
 from core.services.claude_queue.branch import (
-    DEFAULT_BASE_BRANCH,
+    get_default_branch,
     is_epic_branch,
     resolve_base_branch,
 )
@@ -904,7 +904,8 @@ class Command(BaseCommand):
     def _prepare_checkout(self, job):
         """Ensure a clean checkout of the project's repo under REPO_BASE_DIR.
 
-        Clones on first use, otherwise fetches and hard-resets to ``origin/main``
+        Clones on first use, otherwise fetches and hard-resets to the project's
+        default branch (``origin/<default_branch>``, ``main`` or e.g. ``master``)
         so each job starts from a known-clean base. Returns the checkout path.
         The worker edits here, never in the app directory.
         """
@@ -927,8 +928,9 @@ class Command(BaseCommand):
             self.stdout.write(f"  Cloning {project.github_owner}/{repo} …")
             self._git(['clone', clone_url, str(repo_dir)], cwd=str(base))
 
-        self._git(['checkout', 'main'], cwd=str(repo_dir))
-        self._git(['reset', '--hard', 'origin/main'], cwd=str(repo_dir))
+        trunk = get_default_branch(project)
+        self._git(['checkout', trunk], cwd=str(repo_dir))
+        self._git(['reset', '--hard', f'origin/{trunk}'], cwd=str(repo_dir))
         self._git(['clean', '-fd'], cwd=str(repo_dir))
         self._write_trust_settings(repo_dir)
         return str(repo_dir)
@@ -1018,7 +1020,7 @@ class Command(BaseCommand):
         Returns a *local* ref name, already checked out and current.
 
         For an item without a parent this is plain ``main`` — the checkout was
-        just hard-reset to ``origin/main``, so there is nothing to do and the
+        just hard-reset to ``origin/<default branch>``, so there is nothing to do and the
         pre-#1076 path is bit-for-bit unchanged.
 
         For a sub-issue it is the parent's epic branch, which is created here
@@ -1029,8 +1031,9 @@ class Command(BaseCommand):
         chain that may run for days.
         """
         base = resolve_base_branch(job.item)
-        if base == DEFAULT_BASE_BRANCH:
-            return DEFAULT_BASE_BRANCH
+        trunk = get_default_branch(job.project)
+        if base == trunk:
+            return trunk
         return self._materialise_epic_branch(job, repo_dir, base)
 
     def _materialise_epic_branch(self, job, repo_dir, base):
@@ -1041,11 +1044,12 @@ class Command(BaseCommand):
         branch to cut and no PR to open, it just has to make sure the branch
         its chain will target exists before releasing the first layer.
         """
+        trunk = get_default_branch(job.project)
         if self._remote_branch_exists(repo_dir, base):
             self._git(['checkout', '-B', base, f'origin/{base}'], cwd=repo_dir)
             try:
                 self._git(
-                    ['merge', '--no-edit', f'origin/{DEFAULT_BASE_BRANCH}'],
+                    ['merge', '--no-edit', f'origin/{trunk}'],
                     cwd=repo_dir,
                 )
             except RuntimeError as exc:
@@ -1055,12 +1059,12 @@ class Command(BaseCommand):
                 self._git(['merge', '--abort'], cwd=repo_dir)
                 raise RuntimeError(
                     f"Epic-Branch '{base}' konnte nicht mit "
-                    f"'{DEFAULT_BASE_BRANCH}' zusammengeführt werden: {exc}"
+                    f"'{trunk}' zusammengeführt werden: {exc}"
                 ) from exc
             self._save_progress(job, f"Epic-Branch {base} auf main-Stand gebracht")
         else:
             self._git(
-                ['checkout', '-B', base, f'origin/{DEFAULT_BASE_BRANCH}'],
+                ['checkout', '-B', base, f'origin/{trunk}'],
                 cwd=repo_dir,
             )
             self._save_progress(job, f"Epic-Branch {base} angelegt")
@@ -1075,7 +1079,7 @@ class Command(BaseCommand):
         )
         return bool(output.strip())
 
-    def _open_pr(self, job, branch, repo_dir, base=DEFAULT_BASE_BRANCH):
+    def _open_pr(self, job, branch, repo_dir, base=None):
         """Open the PR and record it on the job + ExternalIssueMapping.
 
         Always a **draft**, whatever the base: a run that breaks off half-way
@@ -1097,6 +1101,7 @@ class Command(BaseCommand):
         from core.services.github.service import GitHubService
 
         service = GitHubService()
+        base = base or get_default_branch(job.project)
 
         mapping = self._find_existing_pr(job, branch, service)
         reused = mapping is not None
@@ -1487,8 +1492,9 @@ class Command(BaseCommand):
         )
         return mapping
 
-    def _pr_body(self, job, base=DEFAULT_BASE_BRANCH):
+    def _pr_body(self, job, base=None):
         item = job.item
+        base = base or get_default_branch(job.project)
         lines = [
             "Automated PR opened by the Claude queue worker for "
             f"Agira item #{item.id}.",
@@ -1496,7 +1502,7 @@ class Command(BaseCommand):
             f"Model: {job.get_model_display()}",
             f"Job: #{job.pk}",
         ]
-        if base != DEFAULT_BASE_BRANCH:
+        if base != get_default_branch(job.project):
             position = sub_issue_position(item)
             lines += [
                 f"Epic: #{item.parent_id} — Sub-Issue {position} "

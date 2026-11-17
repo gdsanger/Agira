@@ -447,6 +447,13 @@ class Project(models.Model):
     description = models.TextField(blank=True)
     github_owner = models.CharField(max_length=255, blank=True)
     github_repo = models.CharField(max_length=255, blank=True)
+    # Trunk branch of the repository. Most repos use ``main``, but e.g. many
+    # .NET projects still use ``master``. The Claude queue/worker cuts work
+    # branches from it and targets PRs at it.
+    default_branch = models.CharField(
+        max_length=255, default='main', blank=True,
+        help_text=_('Default branch of the GitHub repository (e.g. main or master).'),
+    )
     clients = models.ManyToManyField(Organisation, blank=True, related_name='projects')
     # Which users this project is relevant for (#1248). Deliberately a plain
     # visibility filter, not a permission: it decides what the UserUI *offers*
