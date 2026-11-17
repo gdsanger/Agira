@@ -1051,6 +1051,31 @@ def claude_queue_job_mark_done(request, job_id):
 
 @login_required
 @require_http_methods(["POST"])
+def claude_queue_job_confirm_complete(request, job_id):
+    """Confirm a "Ggf. unvollständig" run as complete (mandatory justification).
+
+    Only flips the queue's own flag; merges nothing and touches nothing on
+    GitHub. A halted epic chain then continues via ``advance_epic``.
+    """
+    from core.services.claude_queue.confirm import ConfirmCompleteError, confirm_complete
+
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    try:
+        # Double click: the second request finds the flag gone and is a no-op.
+        if job.can_confirm_complete or job.is_completion_confirmed:
+            confirm_complete(job, request.user, request.POST.get('reason', ''))
+        else:
+            raise ConfirmCompleteError(
+                f"Job #{job.id} kann nicht als vollständig bestätigt werden."
+            )
+    except ConfirmCompleteError as exc:
+        return HttpResponse(str(exc), status=400)
+    job.refresh_from_db()
+    return _claude_queue_action_response(request, job)
+
+
+@login_required
+@require_http_methods(["POST"])
 def claude_queue_job_requeue(request, job_id):
     """Put a hanging job back to Queued so the worker picks it up again."""
     job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)

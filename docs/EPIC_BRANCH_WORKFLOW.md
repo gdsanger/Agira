@@ -251,6 +251,18 @@ prüft den Sub-Run und stößt ihn neu an – der neue Job hängt sich automatis
 dieselbe Kette (der Knoten liest je Sub-Issue immer den *neuesten* Eintrag), und
 nach eindeutigem Erfolg läuft die Kette von allein weiter.
 
+Ist ein als „Ggf. unvollständig“ markierter Lauf nach Prüfung **vollständig**,
+kann der Mensch ihn in der Queue (Aktionen der Job-Zeile oder Job-Detail) mit
+**„Als vollständig bestätigen“** freigeben – Pflicht-Begründung, mindestens
+10 Zeichen. Das setzt nur `completion_uncertain = False` (Original-Grund,
+Bestätiger, Zeitpunkt und Begründung bleiben am Job; Activity und interner
+Kommentar am Item) und stößt die Kette einmal direkt an. Ist der Sub-PR
+gemergt, gilt das Sub-Issue als erfolgreich und das nächste wird freigegeben;
+sonst wartet die Kette auf den Merge (kein Halt) – PR mergen, danach „Merge
+hinterlegen“. Die Aktion merged nichts und ändert nichts auf GitHub; der
+Blockade-Hinweis am Epic-Knoten wird gelöscht, sobald die Kette weiterläuft.
+Der Lauf wird dabei nicht wiederholt (kein Neustart, keine Kosten).
+
 ### Der flache Ablauf bleibt
 
 Ein Issue ohne Sub-Issues und ohne Parent wird wie vor #1079 enqueued:

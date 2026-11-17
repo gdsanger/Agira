@@ -34,6 +34,15 @@ Expects `job` and `active_statuses` in context.
         <p class="mb-0">No error detail was recorded.</p>
         {% endif %}
     </div>
+    {% elif job.is_completion_confirmed %}
+    <div class="alert alert-success" role="alert">
+        <h6 class="alert-heading"><i class="bi bi-patch-check"></i> Manuell bestätigt{% if job.completion_confirmed_by %} von {{ job.completion_confirmed_by.name }}{% endif %} am {{ job.completion_confirmed_at|date:"Y-m-d H:i" }}</h6>
+        <p class="mb-1">{{ job.completion_confirmed_reason }}</p>
+        {% if job.completion_uncertain_reason %}<p class="mb-0 small text-muted">Ursprünglicher Hinweis: {{ job.completion_uncertain_reason }}</p>{% endif %}
+        {% if job.pr_number and job.pr_state != 'merged' %}
+        <p class="mb-0 mt-2"><i class="bi bi-info-circle"></i> PR #{{ job.pr_number }} ist noch nicht gemergt: Die Epic-Kette wartet auf den Merge. Bitte PR mergen, danach „Merge hinterlegen“.</p>
+        {% endif %}
+    </div>
     {% elif job.completion_uncertain %}
     <div class="alert alert-warning" role="alert">
         <h6 class="alert-heading"><i class="bi bi-exclamation-circle"></i> Möglicherweise unvollständig</h6>

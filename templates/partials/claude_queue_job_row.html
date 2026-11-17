@@ -65,6 +65,10 @@ hierarchy while pagination and per-row polling stay exactly as they were.
         <span class="text-danger" title="{{ job.error_text }}">
             <i class="bi bi-exclamation-triangle"></i> {{ job.error_text|truncatechars:80 }}
         </span>
+        {% elif job.is_completion_confirmed %}
+        <span class="text-success" title="{{ job.completion_confirmed_reason }}">
+            <i class="bi bi-patch-check"></i> Manuell bestätigt{% if job.completion_confirmed_by %} von {{ job.completion_confirmed_by.name }}{% endif %} am {{ job.completion_confirmed_at|date:"Y-m-d H:i" }}
+        </span>
         {% elif job.completion_uncertain %}
         <span class="text-warning" title="{{ job.completion_uncertain_reason }}">
             <i class="bi bi-exclamation-circle"></i> {{ job.completion_uncertain_reason|truncatechars:80 }}
@@ -101,7 +105,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
     </td>
     <td class="text-nowrap"><small class="text-muted">{{ job.created_at|date:"Y-m-d H:i" }}</small></td>
     <td class="text-nowrap" onclick="event.stopPropagation();">
-        {% if job.can_record_merge or job.can_mark_done or job.can_requeue or job.is_deletable %}
+        {% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue or job.is_deletable %}
         <div class="dropdown">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown"
                     data-bs-strategy="fixed" aria-expanded="false" title="Aktionen">
@@ -130,6 +134,17 @@ hierarchy while pagination and per-row polling stay exactly as they were.
                     </button>
                 </li>
                 {% endif %}
+                {% if job.can_confirm_complete %}
+                <li>
+                    <button type="button" class="dropdown-item"
+                            hx-post="{% url 'claude-queue-job-confirm-complete' job.id %}"
+                            hx-target="closest tr" hx-swap="outerHTML"
+                            hx-vals='js:{reason: window.prompt("Begründung (mind. 10 Zeichen): Warum ist die Umsetzung vollständig?") || ""}'
+                            hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                        <i class="bi bi-patch-check me-2"></i>Als vollständig bestätigen
+                    </button>
+                </li>
+                {% endif %}
                 {% if job.can_requeue %}
                 <li>
                     <button type="button" class="dropdown-item"
@@ -142,7 +157,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
                 </li>
                 {% endif %}
                 {% if job.is_deletable %}
-                {% if job.can_record_merge or job.can_mark_done or job.can_requeue %}<li><hr class="dropdown-divider"></li>{% endif %}
+                {% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue %}<li><hr class="dropdown-divider"></li>{% endif %}
                 <li>
                     <button type="button" class="dropdown-item text-danger"
                             hx-post="{% url 'claude-queue-job-delete' job.id %}"
