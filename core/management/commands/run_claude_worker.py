@@ -1717,18 +1717,29 @@ class Command(BaseCommand):
         wall-clock budget is exhausted.
         """
         args = self._build_claude_args(job)
+        prompt = self._build_job_prompt(job)
         env = self._build_env(job, pr_body_file, auth_mode=auth_mode, timeout=timeout)
         self._tools_in_flight = set()
 
+        # The prompt goes via stdin, not argv: a review prompt embeds the whole
+        # PR diff and a single argv entry is capped at ~128 KB on Linux
+        # (``[Errno 7] Argument list too long``). ``claude -p`` reads stdin
+        # when no prompt argument is given.
         proc = subprocess.Popen(
             args,
             cwd=repo_dir,
             env=env,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError) as exc:
+            logger.warning("Writing prompt to claude stdin failed: %s", exc)
         try:
             result = self._consume_stream(
                 job, self._iter_events(proc, timeout, idle_timeout)
@@ -1741,8 +1752,17 @@ class Command(BaseCommand):
         result['returncode'] = proc.wait()
         return result
 
+    def _build_job_prompt(self, job):
+        """The prompt text for ``job`` (fed to the CLI via stdin, see ``_run_cli``)."""
+        if job.is_review:
+            return self._review_prompt
+        return self._build_prompt(job.item)
+
     def _build_claude_args(self, job):
         """Assemble the headless Claude Code command line.
+
+        The prompt is deliberately *not* part of argv (size limit, see
+        ``_run_cli``); ``-p`` without a value makes the CLI read stdin.
 
         The job's model is a stored slug (``opus-5``), not something the CLI
         understands — it is translated to a concrete ``--model`` identifier
@@ -1754,7 +1774,7 @@ class Command(BaseCommand):
             # settings allow only reading and deny writes/commits/pushes.
             return [
                 settings.CLAUDE_CLI_BIN,
-                '-p', self._review_prompt,
+                '-p',
                 '--model', claude_cli_model_id(model),
                 '--output-format', 'stream-json',
                 '--verbose',
@@ -1763,7 +1783,7 @@ class Command(BaseCommand):
             ]
         return [
             settings.CLAUDE_CLI_BIN,
-            '-p', self._build_prompt(job.item),
+            '-p',
             '--model', claude_cli_model_id(model),
             '--output-format', 'stream-json',
             '--verbose',

@@ -2685,6 +2685,9 @@ class ReviewJobTests(ClaudeWorkerTestBase):
         cmd._review_prompt = 'PROMPT'
         args = cmd._build_claude_args(job)
         self.assertNotIn('--dangerously-skip-permissions', args)
+        # The (possibly huge) prompt travels via stdin, never argv (E2BIG).
+        self.assertNotIn('PROMPT', args)
+        self.assertEqual(cmd._build_job_prompt(job), 'PROMPT')
         allowed = args[args.index('--allowedTools') + 1]
         self.assertNotIn('Edit', allowed.split(','))
         self.assertNotIn('Write', allowed.split(','))
