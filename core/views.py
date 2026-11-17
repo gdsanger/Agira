@@ -1242,6 +1242,10 @@ def item_detail(request, item_id):
         'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         'claude_queue_jobs': claude_queue_jobs,
         'claude_total_cost': claude_total_cost,
+        'can_claude_review': (
+            item.status in (ItemStatus.INTEGRATED, ItemStatus.TESTING)
+            and item.external_mappings.filter(kind=ExternalIssueKind.PR).exists()
+        ),
     }
     return render(request, 'item_detail.html', context)
 

@@ -1,0 +1,12 @@
+{% comment %}Kind ("Review") and verdict badges of a review job. Expects `job` in context.{% endcomment %}
+{% if job.is_review %}
+<span class="badge bg-info text-dark" title="Read-only Review der Umsetzung"><i class="bi bi-search"></i> Review</span>
+{% if job.review_verdict == 'pass' %}
+<span class="badge bg-success"><i class="bi bi-check-circle"></i> Pass</span>
+{% elif job.review_verdict == 'deviations' %}
+<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Abweichungen</span>
+{% elif job.review_verdict == 'unclear' %}
+<span class="badge bg-secondary"><i class="bi bi-question-circle"></i> Unklar</span>
+<small class="text-muted">manuelle Prüfung nötig</small>
+{% endif %}
+{% endif %}
