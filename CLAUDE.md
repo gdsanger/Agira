@@ -83,6 +83,11 @@ Optionaler, read-only Review eines Items im Status `Integrated` oder
 - **Close nur bei `pass`** (→ `Closed`). `deviations` legt genau ein
   Folge-Issue an (Item bleibt unverändert), `unclear` lässt das Item
   unverändert und markiert den Job als „Ggf. unvollständig“.
+- **Menschliches Überschreiben:** Ein Mensch kann ein Item trotz `deviations`/
+  `unclear` über „Trotz Befunden schließen“ mit Pflicht-Begründung auf `Closed`
+  setzen (Service `override_review`). Das Urteil am Job bleibt unverändert, die
+  Begründung steht als interne Notiz am Item und am Job. **Claude und der Worker
+  tun das nie selbst.**
 - **Bewusste, im PR begründete Abweichungen sind zulässig** und zählen als
   `accepted_deviation`; unbegründete Lücken sind `not_met`. Grundlage ist
   die PR-Text-Pflicht „## Warum / Entscheidungen“ (siehe „PR-Text“).

@@ -252,6 +252,13 @@
                     </button>
                 </li>
                 {% endif %}
+                {% if can_review_override %}
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#reviewOverrideModal">
+                        <i class="bi bi-shield-check me-2"></i>Trotz Befunden schließen
+                    </button>
+                </li>
+                {% endif %}
                 {% endif %}
                 {# Status-independent: always available, same flow as the "Create GitHub Issue" button in the GitHub tab #}
                 <li>
@@ -1659,6 +1666,34 @@
         {% endif %}
     }
 
+    // Review override (#1291): POST once, the submit button is disabled against double clicks.
+    {% if can_review_override %}
+    document.getElementById('reviewOverrideForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const submit = document.getElementById('reviewOverrideSubmit');
+        submit.disabled = true;
+        fetch('{% url 'item-review-override' item.id %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': this.querySelector('[name=csrfmiddlewaretoken]').value},
+            body: new FormData(this),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                window.location.reload();
+            } else {
+                showToast('error', data.error || 'Überschreiben fehlgeschlagen.');
+                submit.disabled = false;
+            }
+        })
+        .catch(() => {
+            showToast('error', 'Ein Fehler ist beim Überschreiben aufgetreten.');
+            submit.disabled = false;
+        });
+    });
+    {% endif %}
+
     // GitHub issue creation handler.
     // Shared single source of truth for the "Create GitHub Issue" button in the
     // GitHub tab (partials/item_github_tab.html) and the "An GitHub übergeben"
@@ -2506,6 +2541,48 @@
         </div>
     </div>
 </div>
+
+{% if can_review_override %}
+<!-- Review override modal (#1291) -->
+<div class="modal fade" id="reviewOverrideModal" tabindex="-1" aria-labelledby="reviewOverrideModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reviewOverrideModalLabel">Trotz Befunden schließen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="reviewOverrideForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <small>Das Review (Job #{{ review_override_job.pk }}) hat das Urteil <strong>{{ review_override_job.review_verdict }}</strong> ergeben. Das Item wird trotzdem auf <em>Closed</em> gesetzt; die Begründung wird als interne Notiz dokumentiert.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="reviewOverrideReason" class="form-label">Begründung (Pflicht, mindestens 10 Zeichen)</label>
+                        <textarea class="form-control" id="reviewOverrideReason" name="reason" rows="4" minlength="10" required></textarea>
+                    </div>
+                    {% if review_override_followup_closable %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="reviewOverrideCloseFollowup" name="close_followup" value="1" checked>
+                        <label class="form-check-label" for="reviewOverrideCloseFollowup">
+                            Folge-Issue ebenfalls schließen (<a href="{% url 'item-detail' review_override_followup.pk %}">#{{ review_override_followup.pk }}</a>)
+                        </label>
+                    </div>
+                    {% elif review_override_followup_in_progress %}
+                    <div class="alert alert-info mb-0">
+                        <small>Das Folge-Issue <a href="{% url 'item-detail' review_override_followup.pk %}">#{{ review_override_followup.pk }}</a> ist bereits in Arbeit und wird nicht automatisch geschlossen.</small>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-warning" id="reviewOverrideSubmit">Trotz Befunden schließen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Assign Responsible Modal -->
 <div class="modal fade" id="assignResponsibleModal" tabindex="-1" aria-labelledby="assignResponsibleModalLabel" aria-hidden="true">

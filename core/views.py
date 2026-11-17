@@ -1246,8 +1246,31 @@ def item_detail(request, item_id):
             item.status in (ItemStatus.INTEGRATED, ItemStatus.TESTING)
             and item.external_mappings.filter(kind=ExternalIssueKind.PR).exists()
         ),
+        **_review_override_context(item),
     }
     return render(request, 'item_detail.html', context)
+
+
+def _review_override_context(item):
+    """Template context for the "Trotz Befunden schließen" action (#1291)."""
+    from core.services.claude_queue.review_override import (
+        FOLLOWUP_CLOSABLE,
+        FOLLOWUP_IN_PROGRESS,
+        followup_state,
+        overridable_review_job,
+    )
+
+    job = overridable_review_job(item)
+    if job is None:
+        return {'can_review_override': False}
+    state = followup_state(job)
+    return {
+        'can_review_override': True,
+        'review_override_job': job,
+        'review_override_followup': job.review_followup_item,
+        'review_override_followup_closable': state == FOLLOWUP_CLOSABLE,
+        'review_override_followup_in_progress': state == FOLLOWUP_IN_PROGRESS,
+    }
 
 
 def _parent_item_choices(item, user):
@@ -1414,6 +1437,43 @@ def item_claude_review(request, item_id):
         'success': True,
         'message': f'Review enqueued for Claude Code (job #{job.pk}).',
         'job_id': job.pk,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def item_review_override(request, item_id):
+    """
+    "Trotz Befunden schließen" action - a human overrides a Claude review
+    finding (deviations/unclear) and closes the item with a mandatory reason (#1291).
+    """
+    from core.services.claude_queue.review_override import (
+        ReviewOverrideError,
+        override_review,
+    )
+
+    item = get_object_or_404(Item, id=item_id)
+    reason = request.POST.get('reason', '')
+    close_followup = request.POST.get('close_followup', '') in ('1', 'true', 'on')
+
+    try:
+        result = override_review(item, request.user, reason, close_followup=close_followup)
+    except ReviewOverrideError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"Error overriding review for item {item_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+    if result.outcome == 'already_overridden':
+        return JsonResponse({
+            'success': True,
+            'message': 'Review-Befund wurde bereits überschrieben.',
+            'no_change': True,
+        })
+    return JsonResponse({
+        'success': True,
+        'message': 'Review-Befund überschrieben, Item geschlossen.',
+        'followup_closed': result.followup_closed,
     })
 
 

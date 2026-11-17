@@ -2247,6 +2247,26 @@ class ClaudeQueueJob(models.Model):
         related_name='review_source_jobs',
         help_text=_('Follow-up item created from the review deviations, if any'),
     )
+    # Human override of the verdict (#1291): the verdict itself stays untouched
+    # so the original finding remains traceable.
+    review_overridden_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='overridden_review_jobs',
+        help_text=_('User who closed the item despite the review findings'),
+    )
+    review_overridden_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_('When the review finding was overridden'),
+    )
+    review_override_reason = models.TextField(
+        blank=True,
+        default='',
+        help_text=_('Reason given for closing the item despite the review findings'),
+    )
     parent_job = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
