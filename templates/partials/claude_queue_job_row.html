@@ -39,6 +39,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
     <td>{{ job.project.name }}</td>
     <td>
         {% include 'partials/claude_queue_status_badge.html' %}
+        {% include 'partials/claude_queue_review_badges.html' %}
         {% if job.is_long_running %}
         <span class="badge bg-warning text-dark" title="Läuft seit {{ job.started_at|date:'Y-m-d H:i' }}">
             <i class="bi bi-hourglass-split"></i> Dauert länger als gewöhnlich

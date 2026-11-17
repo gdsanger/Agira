@@ -60,6 +60,24 @@ Expects `job` and `active_statuses` in context.
     </div>
     {% endif %}
 
+    {% if job.is_review and job.review_verdict %}
+    <div class="mb-3">
+        <label class="text-muted small text-uppercase">Review-Ergebnis</label>
+        <div class="p-3 rounded border">
+            <div class="mb-2">{% include 'partials/claude_queue_review_badges.html' %}</div>
+            {% if job.review_report %}
+            <div class="markdown-viewer">{{ job.review_report|render_markdown }}</div>
+            {% endif %}
+            {% if job.review_followup_item_id %}
+            <div class="mt-2">
+                <i class="bi bi-arrow-return-right"></i> Folge-Issue:
+                <a href="{% url 'item-detail' job.review_followup_item_id %}">#{{ job.review_followup_item_id }} {{ job.review_followup_item.title }}</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if job.status == 'done' or job.status == 'failed' or job.status == 'cancelled' %}
     <div class="row g-3">
         <div class="col-md-4">

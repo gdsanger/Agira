@@ -19,6 +19,9 @@
             <p class="text-muted mb-0">
                 <a href="{% url 'item-detail' job.item.id %}">Item #{{ job.item.id }}</a>
                 &middot; {{ job.project.name }}
+                {% if job.is_review %}
+                &middot; Review
+                {% endif %}
                 {% if job.is_epic_node %}
                 &middot; Epic-Knoten (setzt selbst nichts um)
                 {% else %}
