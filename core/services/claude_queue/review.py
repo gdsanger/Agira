@@ -10,9 +10,14 @@ Claude is asked to answer a review with one JSON object::
          "evidence": "file:line or PR hint"}
       ],
       "deviations": [
-        {"title": "...", "description": "...", "criterion": "..."}
+        {"title": "...", "description": "...", "criterion": "...",
+         "severity": "major" | "minor"}
       ]
     }
+
+``major`` findings block (verdict ``deviations``); ``minor`` findings are
+non-blocking hints (verdict ``pass``). A missing or invalid ``severity``
+counts as ``major``.
 
 ``unclear`` is never produced by Claude: it is the parser's own result for
 anything it cannot trust (no JSON, malformed JSON, schema violations or a
@@ -38,6 +43,10 @@ STATUS_NOT_MET = 'not_met'
 STATUS_ACCEPTED_DEVIATION = 'accepted_deviation'
 CRITERION_STATUSES = (STATUS_MET, STATUS_NOT_MET, STATUS_ACCEPTED_DEVIATION)
 
+SEVERITY_MAJOR = 'major'
+SEVERITY_MINOR = 'minor'
+SEVERITIES = (SEVERITY_MAJOR, SEVERITY_MINOR)
+
 # Shown to Claude in the review prompt.
 VERDICT_SCHEMA_EXAMPLE = """{
   "verdict": "pass | deviations",
@@ -47,7 +56,8 @@ VERDICT_SCHEMA_EXAMPLE = """{
      "evidence": "file:line or PR hint"}
   ],
   "deviations": [
-    {"title": "...", "description": "...", "criterion": "affected criterion"}
+    {"title": "...", "description": "...", "criterion": "affected criterion",
+     "severity": "major | minor"}
   ]
 }"""
 
@@ -64,6 +74,7 @@ class Deviation:
     title: str
     description: str = ''
     criterion: str = ''
+    severity: str = SEVERITY_MAJOR
 
 
 @dataclass
@@ -71,7 +82,10 @@ class ReviewVerdict:
     verdict: str
     summary: str = ''
     criteria: List[CriterionResult] = field(default_factory=list)
+    # Blocking (major) findings only; they drive the follow-up item.
     deviations: List[Deviation] = field(default_factory=list)
+    # Non-blocking (minor) findings; reported but never block the close.
+    hints: List[Deviation] = field(default_factory=list)
     # Why the result is ``unclear``; empty for a valid verdict.
     error: str = ''
 
@@ -163,38 +177,53 @@ def _validate(data: dict) -> ReviewVerdict:
         criterion = d.get('criterion', '')
         if not isinstance(description, str) or not isinstance(criterion, str):
             return _unclear(f'deviations[{i}] hat ungültige Felder')
+        severity = d.get('severity')
+        if severity not in SEVERITIES:
+            severity = SEVERITY_MAJOR  # safe default
         deviations.append(Deviation(
             title=title, description=description.strip(), criterion=criterion.strip(),
+            severity=severity,
         ))
 
-    # The verdict is derived from the criteria; the model's ``verdict`` field
-    # and ``deviations`` list are supplementary information only.
+    # The verdict is derived from the criteria and the severity of the
+    # findings; the model's ``verdict`` field is supplementary information only.
+    # Only a ``major`` finding on a ``not_met`` criterion blocks.
     not_met = [c for c in criteria if c.status == STATUS_NOT_MET]
-    if verdict == VERDICT_PASS and not_met:
-        return _unclear('verdict "pass" widerspricht Kriterium mit Status not_met')
 
-    # Deviations must refer to a criterion; those referring to a met /
-    # accepted_deviation criterion are redundant and dropped.
-    kept: List[Deviation] = []
+    # Deviations must refer to a criterion. ``major`` ones referring to a met /
+    # accepted_deviation criterion are redundant and dropped; ``minor`` ones are
+    # kept as hints whatever the criterion's status.
+    major: List[Deviation] = []
+    hints: List[Deviation] = []
     for i, dev in enumerate(deviations):
         crit = _match_criterion(dev.criterion, criteria)
         if crit is None:
             return _unclear(f'deviations[{i}] ist keinem Kriterium zuordenbar')
-        if crit.status == STATUS_NOT_MET:
-            kept.append(Deviation(
-                title=dev.title, description=dev.description, criterion=crit.text,
-            ))
+        resolved = Deviation(
+            title=dev.title, description=dev.description, criterion=crit.text,
+            severity=dev.severity,
+        )
+        if dev.severity == SEVERITY_MINOR:
+            hints.append(resolved)
+        elif crit.status == STATUS_NOT_MET:
+            major.append(resolved)
 
-    # Every not_met criterion yields at least one deviation (the follow-up
-    # and report are built from these).
-    covered = {d.criterion for d in kept}
+    # A not_met criterion without any finding yields a (major) deviation; one
+    # that only has minor findings is carried by those hints.
+    covered = {d.criterion for d in major} | {d.criterion for d in hints}
     for c in not_met:
         if c.text not in covered:
-            kept.append(Deviation(title=c.text, description=c.evidence, criterion=c.text))
+            major.append(Deviation(
+                title=c.text, description=c.evidence, criterion=c.text,
+                severity=SEVERITY_MAJOR,
+            ))
+
+    if verdict == VERDICT_PASS and major:
+        return _unclear('verdict "pass" widerspricht Kriterium mit Status not_met')
 
     return ReviewVerdict(
-        verdict=VERDICT_DEVIATIONS if not_met else VERDICT_PASS,
-        summary=summary, criteria=criteria, deviations=kept,
+        verdict=VERDICT_DEVIATIONS if major else VERDICT_PASS,
+        summary=summary, criteria=criteria, deviations=major, hints=hints,
     )
 
 
@@ -246,8 +275,14 @@ REVIEW_RULES = """\
 - Eine im PR-Text (insbesondere „Warum / Entscheidungen“) **begründete, bewusste Abweichung** ist keine Abweichung: Status `accepted_deviation`, in `evidence` mit Verweis auf die Begründung.
 - Eine **unbegründete** Lücke ist `not_met`.
 - Im Zweifel `not_met` statt `met`.
-- `deviations` enthält **ausschließlich** Kriterien mit Status `not_met` (`criterion` = exakter Text des Kriteriums). Im PR begründete, akzeptierte Abweichungen stehen nur in `criteria` (Status `accepted_deviation`) und **nicht** in `deviations`.
-- Das Urteil ergibt sich aus den Kriterien: `pass`, wenn kein Kriterium `not_met` ist, sonst `deviations`.
+- Dieses Review prüft **Vollständigkeit und Plausibilität** der Umsetzung, nicht die fachliche Korrektheit zur Laufzeit (der fachliche Test findet später statt).
+- Jeder Eintrag in `deviations` bezieht sich auf ein Kriterium (`criterion` = exakter Text des Kriteriums) und hat eine `severity`:
+  - `major`: ein Kriterium ist fachlich nicht erreicht oder Verhalten/Funktion fehlt. Beispiel: ein geforderter Endpunkt fehlt.
+  - `minor`: formal, kosmetisch, rein dokumentarisch, Widerspruch/Unschärfe in der Vorgabe selbst oder eine Anregung zur Verbesserung. Beispiel: eine Datei fehlt, obwohl das Issue selbst sagt, dass der Bereich diese gar nicht kennt; ein fehlender Docstring.
+  - Bei Zweifel zwischen `major` und `minor`: `major`, außer die Vorgabe widerspricht sich selbst oder der Befund ist rein formal.
+  - Fehlt `severity` oder ist sie ungültig, gilt der Eintrag als `major`.
+- Im PR begründete, akzeptierte Abweichungen stehen nur in `criteria` (Status `accepted_deviation`) und **nicht** in `deviations`.
+- Das Urteil ergibt sich aus den Befunden: `deviations`, wenn mindestens ein `major`-Befund zu einem `not_met`-Kriterium existiert, sonst `pass`. Nur `minor`-Befunde ergeben `pass` mit Hinweisen (nicht blockierend, kein Folge-Issue).
 - Verändere nichts: kein Schreiben, kein Commit, kein Push, kein PR.
 - Du läufst headless: Führe alle Befehle im Vordergrund aus; plane keine Wakeups.
 - Antworte ausschließlich mit **einem** JSON-Objekt nach diesem Schema, ohne Text davor oder danach:

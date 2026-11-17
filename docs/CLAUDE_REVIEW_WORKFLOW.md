@@ -40,19 +40,41 @@ Urteil; **angewendet wird es vom Worker**, nicht von Claude.
      "evidence": "Datei:Zeile oder PR-Hinweis"}
   ],
   "deviations": [
-    {"title": "...", "description": "...", "criterion": "betroffenes Kriterium"}
+    {"title": "...", "description": "...", "criterion": "betroffenes Kriterium",
+     "severity": "major | minor"}
   ]
 }
 ```
 
 | Urteil       | Bedingung                                                        | Wirkung durch den Worker                                  |
 |--------------|------------------------------------------------------------------|-----------------------------------------------------------|
-| `pass`       | alle Kriterien `met`/`accepted_deviation`, `deviations` leer      | Bericht-Kommentar, Item → `Closed`                        |
-| `deviations` | mindestens eine Abweichung, PR-Verweis am Item vorhanden          | Bericht-Kommentar, genau ein Folge-Issue, Item unverändert |
+| `pass`       | kein `major`-Befund zu einem `not_met`-Kriterium (ggf. `minor`-Hinweise) | Bericht-Kommentar (ggf. „Hinweise (nicht blockierend)“), Item → `Closed`, kein Folge-Issue |
+| `deviations` | mindestens ein `major`-Befund, PR-Verweis am Item vorhanden       | Bericht-Kommentar, genau ein Folge-Issue nur mit den `major`-Befunden, Item unverändert |
 | `unclear`    | alles andere (nur der Parser/Worker erzeugt es, nie Claude)       | Bericht-Kommentar, Item unverändert, Job „Ggf. unvollständig“ |
 
 Widersprüche (z. B. `pass` mit `not_met`-Kriterium oder `deviations` ohne
 Eintrag) sind ebenfalls `unclear`. **Geschlossen wird nur bei `pass`.**
+
+## Schweregrade (`severity`)
+
+Das Review prüft **Vollständigkeit und Plausibilität**, nicht die fachliche
+Korrektheit zur Laufzeit (der fachliche Test findet später statt). Jeder
+Eintrag in `deviations` hat eine `severity`:
+
+- `major`: ein Kriterium ist fachlich nicht erreicht oder Verhalten/Funktion
+  fehlt.
+- `minor`: formal, kosmetisch, rein dokumentarisch, Widerspruch/Unschärfe in
+  der Vorgabe selbst, Anregung zur Verbesserung.
+- Bei Zweifel zwischen `major` und `minor`: `major`, außer die Vorgabe
+  widerspricht sich selbst oder der Befund ist rein formal.
+- Fehlt `severity` oder ist sie ungültig, gilt der Eintrag als `major`.
+
+`deviations` ergibt sich nur, wenn mindestens ein `major`-Befund zu einem
+`not_met`-Kriterium existiert. `minor`-Befunde sind Hinweise: Urteil `pass`,
+Item → `Closed`, **kein** Folge-Issue; der Bericht enthält den Abschnitt
+„Hinweise (nicht blockierend)“ mit Beleg. Das Folge-Issue bei `deviations`
+enthält nur die `major`-Befunde. In Job-Detail und Queue-Zeile zeigt ein
+Badge „Pass (n Hinweise)“ die Hinweise an.
 
 ## Bewusste Abweichungen
 
