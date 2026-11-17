@@ -1373,6 +1373,48 @@ def item_take_over_responsible(request, item_id):
 
 @login_required
 @require_http_methods(["POST"])
+def item_claude_review(request, item_id):
+    """
+    "Review durch Claude" action - enqueues a read-only review job (#1286).
+
+    Only for items in Integrated/Testing with a linked PR. Does not change the
+    item's status or description. An already active review job is returned
+    instead of creating a second one.
+    """
+    from core.services.claude_queue.credentials import MissingClaudeCredential
+    from core.services.claude_queue.enqueue import (
+        InvalidClaudeModel,
+        ReviewNotAllowed,
+        enqueue_review_for_claude,
+    )
+
+    item = get_object_or_404(Item, id=item_id)
+
+    try:
+        job, created = enqueue_review_for_claude(item, actor=request.user)
+    except (MissingClaudeCredential, InvalidClaudeModel, ReviewNotAllowed) as e:
+        # User-fixable, not server errors; report verbatim.
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"Error enqueueing review for item {item_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+    if not created:
+        return JsonResponse({
+            'success': True,
+            'message': f'Item already has an active Claude review (job #{job.pk}).',
+            'no_change': True,
+            'job_id': job.pk,
+        })
+    return JsonResponse({
+        'success': True,
+        'message': f'Review enqueued for Claude Code (job #{job.pk}).',
+        'job_id': job.pk,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
 def item_claude_enqueue(request, item_id):
     """
     "An Claude übergeben" action - enqueues the item for the Claude queue.
