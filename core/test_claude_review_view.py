@@ -108,3 +108,62 @@ class ItemClaudeReviewViewTestCase(TestCase):
         )
         second = self._post().json()
         self.assertNotEqual(second['job_id'], first['job_id'])
+
+
+class ItemsClaudeReviewBulkViewTestCase(TestCase):
+    """Bulk review from the list views."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='bulkuser', password='testpass123', email='bulk@example.com',
+        )
+        self.user.name = 'Bulk User'
+        self.user.active = True
+        self.user.save()
+        self.client.login(username='bulkuser', password='testpass123')
+        self.project = Project.objects.create(name='Bulk Project')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+        self.url = reverse('items-claude-review-bulk')
+
+    def _item(self, status, with_pr=True, n=[0]):
+        item = Item.objects.create(
+            title='Item', project=self.project, type=self.item_type, status=status,
+        )
+        if with_pr:
+            n[0] += 1
+            ExternalIssueMapping.objects.create(
+                item=item, github_id=5000 + n[0], number=n[0],
+                kind=ExternalIssueKind.PR, state='open',
+                html_url=f'https://github.com/o/r/pull/{n[0]}',
+            )
+        return item
+
+    def test_requires_post(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_empty_selection_rejected(self):
+        self.assertEqual(self.client.post(self.url).status_code, 400)
+
+    def test_mixed_batch_reports_per_item(self):
+        ok = self._item(ItemStatus.TESTING)
+        dup = self._item(ItemStatus.INTEGRATED)
+        bad_status = self._item(ItemStatus.BACKLOG)
+        no_pr = self._item(ItemStatus.TESTING, with_pr=False)
+        self.client.post(self.url, {'item_ids': [dup.id]})
+        response = self.client.post(
+            self.url,
+            {'item_ids': [ok.id, dup.id, bad_status.id, no_pr.id, 999999, 'x']},
+        )
+        data = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data['success'])
+        self.assertEqual([e['item_id'] for e in data['enqueued']], [ok.id])
+        self.assertEqual([e['item_id'] for e in data['existing']], [dup.id])
+        self.assertEqual(
+            sorted(f['item_id'] for f in data['failed']),
+            sorted([bad_status.id, no_pr.id, 999999]),
+        )
+        self.assertEqual(
+            ClaudeQueueJob.objects.filter(kind=ClaudeQueueJobKind.REVIEW).count(), 2,
+        )

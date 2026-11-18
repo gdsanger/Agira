@@ -149,6 +149,17 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
     Table for displaying Item list with sortable columns.
     """
 
+    # Multi-select checkbox (bulk actions such as "Review durch Claude")
+    selection = tables.CheckBoxColumn(
+        accessor='pk',
+        orderable=False,
+        attrs={
+            'th__input': {'class': 'form-check-input item-select-all', 'title': 'Alle auswählen'},
+            'td__input': {'class': 'form-check-input item-select'},
+            'th': {'style': 'width: 40px;'},
+        },
+    )
+
     # Updated at column
     updated_at = tables.DateTimeColumn(
         verbose_name='Updated',
@@ -157,21 +168,21 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
             'td': {'class': 'text-muted small'},
         }
     )
-    
+
     # Title column with link to detail view
     title = tables.Column(
         verbose_name='Title',
         orderable=True,
         attrs={'td': {'class': 'item-title-cell'}}
     )
-    
+
     # Type column
     type = tables.Column(
         verbose_name='Type',
         orderable=True,
         accessor='type__name'
     )
-    
+
     # Project column
     project = tables.Column(
         verbose_name='Project',
@@ -209,7 +220,8 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
     class Meta:
         model = Item
         template_name = 'django_tables2/bootstrap5.html'
-        fields = ('id', 'updated_at', 'title', 'type', 'status', 'project', 'requester', 'responsible', 'suggested_model', 'comments', 'actions')
+        fields = ('selection', 'id', 'updated_at', 'title', 'type', 'status', 'project', 'requester', 'responsible', 'suggested_model', 'comments', 'actions')
+        sequence = fields
         attrs = {
             'class': 'table table-hover',
             'thead': {'class': 'table-light'}
