@@ -272,6 +272,13 @@ OPENAI_REQUIRE_USER_CREDENTIALS = os.getenv(
     'OPENAI_REQUIRE_USER_CREDENTIALS', 'false'
 ).strip().lower() in ('1', 'true', 'yes', 'on')
 
+# Codex CLI (#1298): executable for the headless `codex exec` run and the
+# isolated CODEX_HOME (an existing ~/.codex/auth.json from a ChatGPT login could
+# otherwise override the API key we inject). Empty CODEX_HOME = a directory
+# under REPO_BASE_DIR.
+CODEX_CLI_BIN = os.getenv('CODEX_CLI_BIN', 'codex')
+CODEX_HOME = os.getenv('CODEX_HOME_DIR', '')
+
 # Cache configuration
 # Using LocMemCache for simplicity and performance
 # In production, consider Redis or Memcached for multi-server deployments

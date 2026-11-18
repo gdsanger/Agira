@@ -2,11 +2,13 @@
 
 from core.services.claude_queue.providers.base import AgentProvider
 from core.services.claude_queue.providers.claude import ClaudeProvider
+from core.services.claude_queue.providers.codex import CodexProvider
 
 DEFAULT_PROVIDER = 'claude'
 
 PROVIDERS = {
     ClaudeProvider.name: ClaudeProvider,
+    CodexProvider.name: CodexProvider,
 }
 
 
@@ -18,4 +20,4 @@ def get_provider(name=DEFAULT_PROVIDER):
         raise ValueError(f"Unbekannter Provider {name!r}") from None
 
 
-__all__ = ['AgentProvider', 'ClaudeProvider', 'DEFAULT_PROVIDER', 'PROVIDERS', 'get_provider']
+__all__ = ['AgentProvider', 'ClaudeProvider', 'CodexProvider', 'DEFAULT_PROVIDER', 'PROVIDERS', 'get_provider']
