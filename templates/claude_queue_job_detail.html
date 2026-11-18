@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Claude Queue Job #{{ job.id }} - Agira{% endblock %}
+{% block title %}Agent Queue Job #{{ job.id }} - Agira{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -8,7 +8,7 @@
         <div>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="{% url 'claude-queue-jobs' %}">Claude Queue</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'claude-queue-jobs' %}">Agent Queue</a></li>
                     <li class="breadcrumb-item active" aria-current="page">Job #{{ job.id }}</li>
                 </ol>
             </nav>
@@ -142,10 +142,13 @@
                     <dt class="col-5 text-muted">Session</dt>
                     <dd class="col-7 text-break"><small>{{ job.session_id|default:"—" }}</small></dd>
 
+                    <dt class="col-5 text-muted">Provider</dt>
+                    <dd class="col-7">{% include 'partials/claude_queue_provider_badge.html' %}</dd>
+
                     <dt class="col-5 text-muted">Auth-Modus</dt>
                     <dd class="col-7">
                         {% if job.auth_mode == 'api_key' %}
-                        <span class="badge bg-warning text-dark">API (Pay-per-use)</span>
+                        <span class="badge bg-warning text-dark">API (Pay-per-use{% if job.provider == 'openai' %}, OpenAI{% endif %})</span>
                         {% else %}
                         <span class="badge bg-success">ABO</span>
                         {% endif %}

@@ -927,7 +927,7 @@ class Item(models.Model):
     intern = models.BooleanField(default=False)
     suggested_model = models.CharField(
         max_length=20,
-        choices=ClaudeQueueJobModel.choices,
+        choices=AGENT_MODEL_CHOICES,
         default=ClaudeQueueJobModel.SONNET,
         help_text=_('AI-suggested Claude model for automated processing. A suggestion, not a gate — overridable in the UI.'),
     )
@@ -2512,8 +2512,8 @@ class ClaudeQueueJob(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        verbose_name = 'Claude Queue Job'
-        verbose_name_plural = 'Claude Queue Jobs'
+        verbose_name = 'Agent Queue Job'
+        verbose_name_plural = 'Agent Queue Jobs'
         indexes = [
             models.Index(fields=['project', 'status']),
             models.Index(fields=['status', 'created_at']),

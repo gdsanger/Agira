@@ -1,0 +1,3 @@
+{% comment %}Provider + model badge for a ClaudeQueueJob (#1300). Expects `job` in context.{% endcomment %}
+<span class="badge {% if job.provider == 'openai' %}bg-dark{% else %}bg-warning text-dark{% endif %}" title="{{ job.get_provider_display }}">{{ job.get_provider_display }}</span>
+<span class="badge bg-light text-dark border" title="Modell">{{ job.get_model_display }}</span>

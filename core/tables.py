@@ -5,7 +5,7 @@ import django_tables2 as tables
 from django.template.loader import render_to_string
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import ClaudeQueueJobModel, Item, ItemStatus, Release, User, UserRole
+from .models import AGENT_MODEL_CHOICES, Item, ItemStatus, Release, User, UserRole
 
 
 # Badge colours for the read-only status rendering (customer portal).
@@ -60,7 +60,7 @@ def render_item_list_field_cell(item, field, agents=None, error=None, saved=Fals
             choices.insert(0, (current, item.responsible.name))
         allow_empty = True
     elif field == 'suggested_model':
-        choices = ClaudeQueueJobModel.choices
+        choices = AGENT_MODEL_CHOICES
         current = item.suggested_model or ''
         allow_empty = False
     else:

@@ -302,6 +302,34 @@ class CustomGPTItemsAPITest(TestCase):
         self.open_item.refresh_from_db()
         self.assertEqual(self.open_item.solution_description, 'Restarted the worker.')
 
+    def test_update_item_sets_agent_provider_fields(self):
+        """PATCH .../items/{id} sets provider and model fields (#1300)."""
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps({
+                'implementation_provider': 'openai',
+                'review_provider': 'claude',
+                'suggested_model': 'gpt-5-codex-mini',
+            }),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data['implementation_provider'], 'openai')
+        self.assertEqual(data['review_provider'], 'claude')
+        self.open_item.refresh_from_db()
+        self.assertEqual(self.open_item.suggested_model, 'gpt-5-codex-mini')
+
+    def test_update_item_rejects_invalid_provider(self):
+        response = self.client.patch(
+            f'/api/customgpt/items/{self.open_item.id}',
+            data=json.dumps({'implementation_provider': 'nope'}),
+            content_type='application/json',
+            **self.headers
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_update_item_sets_pr_description(self):
         """Test PATCH .../items/{id} writes the 'PR-Description' field."""
         response = self.client.patch(

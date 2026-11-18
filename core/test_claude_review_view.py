@@ -37,7 +37,8 @@ class ItemClaudeReviewViewTestCase(TestCase):
     def _item(self, status, **kw):
         return Item.objects.create(
             title='Item', description='Original description.',
-            project=self.project, type=self.item_type, status=status, **kw,
+            project=self.project, type=self.item_type, status=status,
+            review_provider='claude', **kw,
         )
 
     def _pr(self, item, number):
@@ -129,6 +130,7 @@ class ItemsClaudeReviewBulkViewTestCase(TestCase):
     def _item(self, status, with_pr=True, n=[0]):
         item = Item.objects.create(
             title='Item', project=self.project, type=self.item_type, status=status,
+            review_provider='claude',
         )
         if with_pr:
             n[0] += 1
