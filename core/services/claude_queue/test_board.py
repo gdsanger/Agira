@@ -40,6 +40,9 @@ class BoardStateTests(TestCase):
             b.derive_board_state(self.job(pr_number=1, pr_state='open')), b.MERGE_MISSING)
         self.assertEqual(
             b.derive_board_state(self.job(pr_number=1, pr_state='merged')), b.DONE)
+        # PR closed without a merge: nothing left to merge.
+        self.assertEqual(
+            b.derive_board_state(self.job(pr_number=1, pr_state='closed')), b.DONE)
         self.assertEqual(
             b.derive_board_state(self.job(completion_uncertain=True, pr_number=1)), b.UNCERTAIN)
         confirmed = self.job(completion_uncertain=True, pr_number=1,

@@ -51,6 +51,7 @@
     {% if job.pr_url and job.pr_state != 'merged' or job.pr_url and not job.is_review %}
     <div>
         <a href="{{ job.pr_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation();"><i class="bi bi-git"></i> PR #{{ job.pr_number }}</a>
+        {% if job.pr_state == 'closed' and not job.is_review %}<small class="text-muted">ohne Merge geschlossen</small>{% endif %}
         {% if job.pr_state %}<span class="badge {% if job.pr_state == 'merged' %}bg-success{% elif job.pr_state == 'closed' %}bg-secondary{% else %}bg-info text-dark{% endif %}">{{ job.pr_state }}</span>{% endif %}
     </div>
     {% endif %}
