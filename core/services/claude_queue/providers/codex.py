@@ -32,6 +32,7 @@ from django.utils import timezone
 
 from core.models import ClaudeCredentialSource, ClaudeQueueJobAuthMode, openai_cli_model_id
 from core.services.claude_queue.credentials import resolve_openai_credential
+from core.services.claude_queue.review import VERDICT_JSON_SCHEMA
 from core.services.claude_queue.providers.base import AgentProvider, save_progress
 
 DEFAULT_TIMEOUT_SECONDS = 60 * 60
@@ -120,7 +121,12 @@ class CodexProvider(AgentProvider):
             '-m', model,
         ]
         if job.is_review:
-            args += ['-s', 'read-only', '-c', 'approval_policy=never']
+            schema_file, message_file = self._review_files(job)
+            args += [
+                '-s', 'read-only', '-c', 'approval_policy=never',
+                '--output-schema', str(schema_file),
+                '--output-last-message', str(message_file),
+            ]
         else:
             args += ['--dangerously-bypass-approvals-and-sandbox']
         args.append('-')
@@ -128,6 +134,38 @@ class CodexProvider(AgentProvider):
 
     def model_id(self, slug):
         return openai_cli_model_id(slug)
+
+    # -- review verdict channel ------------------------------------------ #
+    def _review_dir(self, job):
+        return self._codex_home() / 'review' / str(job.pk)
+
+    def _review_files(self, job):
+        """Schema and last-message file of a review run (outside the checkout).
+
+        They live under ``CODEX_HOME`` so the read-only review never needs a
+        writable checkout and nothing lands in the repo. The schema is
+        (re)written on every call; a stale answer file is removed so a failed
+        run can never be mistaken for a verdict.
+        """
+        directory = self._review_dir(job)
+        directory.mkdir(parents=True, exist_ok=True)
+        schema_file = directory / 'verdict.schema.json'
+        message_file = directory / 'last-message.json'
+        schema_file.write_text(json.dumps(VERDICT_JSON_SCHEMA))
+        message_file.unlink(missing_ok=True)
+        return schema_file, message_file
+
+    def review_raw_answer(self, job, result):
+        """Verdict from ``--output-last-message``; else the stream's last message.
+
+        Whatever comes back is still validated by ``parse_review_verdict``: a
+        schema violation or unreadable text ends up as ``unclear``.
+        """
+        try:
+            text = (self._review_dir(job) / 'last-message.json').read_text().strip()
+        except OSError:
+            text = ''
+        return text or (result.get('result_text') or '')
 
     # -- environment ----------------------------------------------------- #
     def build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.API_KEY,

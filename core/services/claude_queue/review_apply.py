@@ -1,6 +1,6 @@
 """Apply a stored review verdict deterministically (Review 3/6).
 
-Claude only produces the verdict; this module — run by the worker — writes the
+The review agent only produces the verdict; this module — run by the worker — writes the
 report comment, closes the item on ``pass`` and files exactly one follow-up
 item on ``deviations``. The follow-up deliberately points at the *GitHub PR*
 (not at the Agira item): Claude Code and GitHub Copilot cannot read Agira, so
@@ -150,6 +150,19 @@ def build_followup_description(item, verdict: ReviewVerdict, mapping, pr_text: s
     return '\n'.join(lines).strip() + '\n'
 
 
+def _judge_label(job) -> str:
+    """``Provider (Modell)`` of the run that produced the verdict."""
+    from core.services.claude_queue.providers import get_provider
+
+    provider = getattr(job, 'provider', '') or 'claude'
+    try:
+        model = get_provider(provider).display_model(job)
+    except Exception:  # noqa: BLE001 — a label must never break the report
+        model = getattr(job, 'model', '') or ''
+    name = {'openai': 'OpenAI Codex'}.get(provider, 'Claude')
+    return f'{name} ({model})' if model else name
+
+
 def build_report(job, item, verdict: ReviewVerdict, decision: str, mapping,
                  followup: Optional[Item], pr_deviation_note: str = '') -> str:
     """Markdown report for the review comment (starts with the idempotency marker)."""
@@ -160,8 +173,11 @@ def build_report(job, item, verdict: ReviewVerdict, decision: str, mapping,
         VERDICT_UNCLEAR: 'unclear',
     }[decision]
     lines = [MARKER_TEMPLATE.format(job_id=job.pk),
-             f'## Claude-Review – Job #{job.pk} ({when})', '',
+             f'## Review – Job #{job.pk} ({when})', '',
              f'**Urteil:** {label}', '']
+    judge = _judge_label(job)
+    if judge:
+        lines += [f'**Geurteilt von:** {judge}', '']
     if decision == VERDICT_UNCLEAR:
         reason = verdict.error or job.completion_uncertain_reason or ''
         if verdict.verdict == VERDICT_DEVIATIONS and mapping is None:
@@ -257,7 +273,7 @@ def apply_review_result(job) -> ReviewApplyResult:
             author=None,
             visibility=CommentVisibility.INTERNAL,
             kind=CommentKind.AI_GENERATED,
-            subject='Claude-Review',
+            subject='Review',
             body=build_report(job, item, verdict, decision, mapping, followup),
         )
 
