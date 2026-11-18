@@ -146,16 +146,19 @@
             <button type="button" class="btn btn-outline-secondary bulk-set" data-field="assigned_to" data-source="bulk-assigned" data-label="Assigned To" disabled>Zuweisen</button>
         </div>
 
-        <div class="input-group input-group-sm" style="width: auto;">
-            <input type="number" min="1" id="bulk-parent" class="form-control form-control-sm" placeholder="Parent-ID (leer = entfernen)" style="width: 14rem;" aria-label="Parent Item ID">
+        <div class="input-group input-group-sm position-relative" style="width: auto;">
+            <input type="text" id="bulk-parent-search" class="form-control form-control-sm" autocomplete="off"
+                   placeholder="Epic/Parent suchen (Titel oder ID)" style="width: 18rem;" aria-label="Parent Item suchen">
+            <input type="hidden" id="bulk-parent" value="">
             <button type="button" class="btn btn-outline-secondary bulk-set" data-field="parent" data-source="bulk-parent" data-label="Parent Item" disabled>Parent setzen</button>
+            <div id="bulk-parent-results" class="list-group position-absolute shadow-sm d-none" style="top: 100%; left: 0; width: 28rem; z-index: 1050; max-height: 18rem; overflow-y: auto;"></div>
         </div>
 
         <button type="button" id="items-bulk-review" class="btn btn-sm btn-outline-primary" disabled>
             <i class="bi bi-robot"></i> Review durch Claude
         </button>
     </div>
-    <small class="text-muted">Review nur für Items in „Integrated“/„Testing“ mit verknüpftem PR. Parent muss im selben Projekt liegen und darf nicht geschlossen sein.</small>
+    <small class="text-muted">Review nur für Items in „Integrated“/„Testing“ mit verknüpftem PR. Parent muss im selben Projekt liegen und darf nicht geschlossen sein; Suchfeld leeren = Parent entfernen.</small>
 </div>
 
 <!-- List Container for HTMX refresh -->
@@ -184,6 +187,7 @@
 <script>
 (function () {
     const bulkUrl = '{% url "items-claude-review-bulk" %}';
+    const parentSearchUrl = '{% url "items-parent-search" %}';
     const fieldUrl = '{% url "items-bulk-field" %}';
     const btn = document.getElementById('items-bulk-review');
     const countEl = document.getElementById('items-bulk-count');
@@ -213,6 +217,58 @@
         }
     });
     document.body.addEventListener('htmx:afterSwap', refresh);
+
+    // Autocomplete for the parent/epic field.
+    (function () {
+        const search = document.getElementById('bulk-parent-search');
+        const hidden = document.getElementById('bulk-parent');
+        const box = document.getElementById('bulk-parent-results');
+        let timer = null, seq = 0;
+
+        function hide() { box.classList.add('d-none'); box.innerHTML = ''; }
+
+        function render(results) {
+            box.innerHTML = '';
+            if (!results.length) {
+                const empty = document.createElement('div');
+                empty.className = 'list-group-item small text-muted';
+                empty.textContent = 'Keine Treffer';
+                box.appendChild(empty);
+            }
+            results.forEach(function (r) {
+                const a = document.createElement('button');
+                a.type = 'button';
+                a.className = 'list-group-item list-group-item-action small';
+                const label = '#' + r.id + ' ' + r.title;
+                a.textContent = label + '  ·  ' + r.project + ' · ' + r.status +
+                    (r.children ? ' · Epic (' + r.children + ')' : '');
+                a.addEventListener('click', function () {
+                    hidden.value = r.id;
+                    search.value = label;
+                    hide();
+                });
+                box.appendChild(a);
+            });
+            box.classList.remove('d-none');
+        }
+
+        search.addEventListener('input', function () {
+            hidden.value = '';  // typing invalidates the previous pick; empty = "remove parent"
+            clearTimeout(timer);
+            const q = search.value.trim();
+            if (!q) { hide(); return; }
+            timer = setTimeout(function () {
+                const mine = ++seq;
+                fetch(parentSearchUrl + '?q=' + encodeURIComponent(q))
+                    .then(r => r.json())
+                    .then(d => { if (mine === seq) render(d.results || []); })
+                    .catch(hide);
+            }, 250);
+        });
+        document.addEventListener('click', function (e) {
+            if (!box.contains(e.target) && e.target !== search) hide();
+        });
+    })();
 
     function post(url, fields, ids) {
         const body = new FormData();
@@ -255,7 +311,12 @@
             if (!ids.length) return;
             const input = document.getElementById(b.dataset.source);
             const value = input.value.trim();
-            const shown = input.tagName === 'SELECT' ? input.options[input.selectedIndex].text : (value || 'leer');
+            if (b.dataset.field === 'parent' && !value && document.getElementById('bulk-parent-search').value.trim()) {
+                alert('Bitte einen Treffer aus der Liste auswählen (oder das Suchfeld leeren, um den Parent zu entfernen).');
+                return;
+            }
+            const shown = input.tagName === 'SELECT' ? input.options[input.selectedIndex].text
+                : (b.dataset.field === 'parent' ? (value ? document.getElementById('bulk-parent-search').value : 'kein Parent') : (value || 'leer'));
             if (!confirm(b.dataset.label + ' → „' + shown + '“ für ' + ids.length + ' Item(s) setzen?')) return;
             document.querySelectorAll('#items-bulk-bar .bulk-set').forEach(x => { x.disabled = true; });
             post(fieldUrl, {field: b.dataset.field, value: value}, ids)

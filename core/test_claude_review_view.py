@@ -200,13 +200,19 @@ class ItemsBulkFieldUpdateViewTestCase(TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_assign_user_and_clear(self):
+        from core.models import UserRole
+        agent = User.objects.create_user(username='agent0', password='x', email='a0@example.com')
+        agent.name = 'Agent Zero'
+        agent.role = UserRole.AGENT
+        agent.active = True
+        agent.save()
         a, b = self._item(), self._item()
         r = self.client.post(self.url, {
-            'field': 'assigned_to', 'value': self.user.id, 'item_ids': [a.id, b.id],
+            'field': 'assigned_to', 'value': agent.id, 'item_ids': [a.id, b.id],
         })
         self.assertEqual(len(r.json()['updated']), 2)
         a.refresh_from_db()
-        self.assertEqual(a.assigned_to, self.user)
+        self.assertEqual(a.assigned_to, agent)
         self.client.post(self.url, {'field': 'assigned_to', 'value': '', 'item_ids': [a.id]})
         a.refresh_from_db()
         self.assertIsNone(a.assigned_to)
@@ -233,3 +239,76 @@ class ItemsBulkFieldUpdateViewTestCase(TestCase):
         self.assertEqual(sorted(f['item_id'] for f in data['failed']), sorted([other.id, parent.id]))
         ok.refresh_from_db()
         self.assertEqual(ok.parent, parent)
+
+    def test_assigned_to_only_accepts_active_agents(self):
+        from core.models import UserRole
+        item = self._item()
+        agent = User.objects.create_user(username='agent1', password='x', email='a@example.com')
+        agent.name = 'Agent One'
+        agent.role = UserRole.AGENT
+        agent.active = True
+        agent.save()
+        r = self.client.post(self.url, {'field': 'assigned_to', 'value': self.user.id, 'item_ids': [item.id]})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post(self.url, {'field': 'assigned_to', 'value': 'abc', 'item_ids': [item.id]})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post(self.url, {'field': 'assigned_to', 'value': agent.id, 'item_ids': [item.id]})
+        self.assertEqual(r.status_code, 200)
+        item.refresh_from_db()
+        self.assertEqual(item.assigned_to, agent)
+
+    def test_list_offers_only_agents(self):
+        from core.models import UserRole
+        agent = User.objects.create_user(username='agent2', password='x', email='b@example.com')
+        agent.name = 'Agent Two'
+        agent.role = UserRole.AGENT
+        agent.active = True
+        agent.save()
+        from core.views_items import bulk_action_context
+        users = list(bulk_action_context()['bulk_users'])
+        self.assertIn(agent, users)
+        self.assertNotIn(self.user, users)
+
+
+class ItemsParentSearchViewTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='searcher', password='testpass123', email='s@example.com')
+        self.user.name = 'Searcher'
+        self.user.active = True
+        self.user.save()
+        self.client.login(username='searcher', password='testpass123')
+        self.project = Project.objects.create(name='SP')
+        self.project.members.add(self.user)
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+        self.url = reverse('items-parent-search')
+
+    def _item(self, title, status=ItemStatus.BACKLOG, parent=None, project=None):
+        return Item.objects.create(
+            title=title, project=project or self.project, type=self.item_type,
+            status=status, parent=parent,
+        )
+
+    def test_requires_login_and_get(self):
+        self.assertEqual(self.client.post(self.url).status_code, 405)
+        self.client.logout()
+        self.assertNotEqual(self.client.get(self.url, {'q': 'x'}).status_code, 200)
+
+    def test_empty_query_returns_nothing(self):
+        self.assertEqual(self.client.get(self.url).json()['results'], [])
+
+    def test_matches_title_and_id_excludes_closed_and_prefers_epics(self):
+        plain = self._item('Login Fehler')
+        epic = self._item('Login Umbau')
+        self._item('Kind', parent=epic)
+        self._item('Login alt', status=ItemStatus.CLOSED)
+        results = self.client.get(self.url, {'q': 'login'}).json()['results']
+        self.assertEqual([r['id'] for r in results], [epic.id, plain.id])
+        self.assertEqual(results[0]['children'], 1)
+        by_id = self.client.get(self.url, {'q': f'#{plain.id}'}).json()['results']
+        self.assertEqual([r['id'] for r in by_id], [plain.id])
+
+    def test_respects_project_visibility(self):
+        other = Project.objects.create(name='Fremd')
+        self._item('Login geheim', project=other)
+        self.assertEqual(self.client.get(self.url, {'q': 'geheim'}).json()['results'], [])

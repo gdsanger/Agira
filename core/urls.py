@@ -73,6 +73,7 @@ urlpatterns = [
     path('items/<int:item_id>/field/', views.item_update_field, name='item-update-field'),
     path('items/<int:item_id>/take-over-responsible/', views.item_take_over_responsible, name='item-take-over-responsible'),
     path('items/<int:item_id>/claude-enqueue/', views.item_claude_enqueue, name='item-claude-enqueue'),
+    path('items/parent-search/', views_items.items_parent_search, name='items-parent-search'),
     path('items/bulk-field/', views_items.items_bulk_field_update, name='items-bulk-field'),
     path('items/claude-review-bulk/', views.items_claude_review_bulk, name='items-claude-review-bulk'),
     path('items/<int:item_id>/claude-review/',views.item_claude_review, name='item-claude-review'),
