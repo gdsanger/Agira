@@ -60,7 +60,7 @@ class AgentQueueUiTestCase(TestCase):
         self.assertNotContains(response, 'Claude Queue')
 
     def test_job_detail_says_agent_queue(self):
-        job = self.job(self.item(), 'openai', model='gpt-5-codex')
+        job = self.job(self.item(), 'openai', model='gpt-6.2-sol')
         response = self.client.get(reverse('claude-queue-job-detail', args=[job.id]))
         self.assertContains(response, 'Agent Queue')
         self.assertNotContains(response, 'Claude Queue')
@@ -68,15 +68,15 @@ class AgentQueueUiTestCase(TestCase):
     # --- Queue list: badge + filter ---------------------------------------- #
 
     def test_rows_show_provider_and_model_badge(self):
-        self.job(self.item(), 'openai', model='gpt-5-codex')
+        self.job(self.item(), 'openai', model='gpt-6.2-sol')
         self.job(self.item(), 'claude', model='opus-5')
         response = self.client.get(reverse('claude-queue-jobs'))
         self.assertContains(response, 'OpenAI Codex')
-        self.assertContains(response, 'GPT-5 Codex')
+        self.assertContains(response, 'GPT-6.2 Sol')
         self.assertContains(response, 'Claude Code')
 
     def test_provider_filter(self):
-        oa = self.job(self.item(), 'openai', model='gpt-5-codex')
+        oa = self.job(self.item(), 'openai', model='gpt-6.2-sol')
         cl = self.job(self.item(), 'claude')
         response = self.client.get(reverse('claude-queue-jobs'), {'provider': 'openai'})
         self.assertEqual([j.pk for j in response.context['jobs']], [oa.pk])
@@ -85,7 +85,7 @@ class AgentQueueUiTestCase(TestCase):
         self.assertEqual({j.pk for j in response.context['jobs']}, {oa.pk, cl.pk})
 
     def test_openai_job_shows_api_auth_badge(self):
-        job = self.job(self.item(), 'openai', model='gpt-5-codex', auth_mode='api_key')
+        job = self.job(self.item(), 'openai', model='gpt-6.2-sol', auth_mode='api_key')
         response = self.client.get(reverse('claude-queue-job-row', args=[job.id]))
         self.assertContains(response, 'OpenAI-API-Key')
 
@@ -103,10 +103,10 @@ class AgentQueueUiTestCase(TestCase):
         self.assertContains(response, 'Automatik (aktuell: OpenAI Codex)')
 
     def test_detail_model_select_matches_provider(self):
-        item = self.item(implementation_provider='openai', suggested_model='gpt-5-codex')
+        item = self.item(implementation_provider='openai', suggested_model='gpt-6.2-sol')
         response = self.client.get(reverse('item-detail', args=[item.id]))
         values = [v for v, _ in response.context['suggested_model_choices']]
-        self.assertEqual(values, ['gpt-5-codex', 'gpt-5-codex-mini'])
+        self.assertEqual(values, ['gpt-6.2-sol', 'gpt-6.2-astra'])
 
     def test_review_buttons_hidden_outside_review_states(self):
         response = self.client.get(reverse('item-detail', args=[self.item().id]))
@@ -183,7 +183,7 @@ class AgentQueueUiTestCase(TestCase):
         self.assertEqual(response['HX-Refresh'], 'true')
         item.refresh_from_db()
         self.assertEqual(item.implementation_provider, 'openai')
-        self.assertEqual(item.suggested_model, 'gpt-5-codex')
+        self.assertEqual(item.suggested_model, 'gpt-6.2-sol')
 
     def test_inline_review_provider_accepts_automatic_and_rejects_garbage(self):
         item = self.item(review_provider='claude')
@@ -201,8 +201,8 @@ class AgentQueueUiTestCase(TestCase):
         item = self.item(implementation_provider='openai')
         response = self.client.post(
             reverse('item-update-field', args=[item.id]),
-            {'field': 'suggested_model', 'value': 'gpt-5-codex-mini'},
+            {'field': 'suggested_model', 'value': 'gpt-6.2-astra'},
         )
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
-        self.assertEqual(item.suggested_model, 'gpt-5-codex-mini')
+        self.assertEqual(item.suggested_model, 'gpt-6.2-astra')

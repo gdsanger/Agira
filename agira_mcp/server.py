@@ -241,7 +241,7 @@ def update_item(
     (``claude`` | ``openai``, or an empty string for "automatic" = the other
     provider than the implementation) selects the reviewer. ``suggested_model``
     is the model slug and must fit the provider (e.g. ``sonnet``, ``opus-5-5``
-    for Claude; ``gpt-5-codex``, ``gpt-5-codex-mini`` for OpenAI).
+    for Claude; ``gpt-6.2-sol``, ``gpt-6.2-astra`` for OpenAI).
     """
     payload = {
         k: v

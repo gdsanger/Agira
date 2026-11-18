@@ -146,4 +146,4 @@ Datenmodell für den zweiten Provider der Agent-Queue:
   `OPENAI_REQUIRE_USER_CREDENTIALS=true` ist nur der persönliche Key erlaubt.
 - `suggested_model` / Classifier: providerabhängig. Der Sonnet/Opus-Classifier
   kennt nur Claude-Modelle und läuft nur für `claude`; bei `openai` liefert
-  `suggest_model` ohne Haiku-Aufruf das Default-Codex-Modell (`gpt-5-codex`).
+  `suggest_model` ohne Haiku-Aufruf das Default-Codex-Modell (`gpt-6.2-sol`).

@@ -98,7 +98,7 @@ class ReviewEnqueueProviderTests(ProviderTestBase):
         job, created = enqueue_review_for_claude(item)
         self.assertTrue(created)
         self.assertEqual(job.provider, OPENAI)
-        self.assertEqual(job.model, 'gpt-5-codex')
+        self.assertEqual(job.model, 'gpt-6.2-sol')
         self.assertEqual(job.auth_mode, ClaudeQueueJobAuthMode.API_KEY)
 
     def test_openai_implementation_gets_claude_review(self):
@@ -115,8 +115,8 @@ class ReviewEnqueueProviderTests(ProviderTestBase):
         self.assertEqual(enqueue_review_for_claude(item, provider=OPENAI)[0].provider, OPENAI)
 
     def test_model_follows_provider(self):
-        item = self.make_item(suggested_model='gpt-5-codex-mini')
-        self.assertEqual(enqueue_review_for_claude(item, provider=OPENAI)[0].model, 'gpt-5-codex-mini')
+        item = self.make_item(suggested_model='gpt-6.2-astra')
+        self.assertEqual(enqueue_review_for_claude(item, provider=OPENAI)[0].model, 'gpt-6.2-astra')
         ClaudeQueueJob.objects.all().delete()
         self.assertEqual(enqueue_review_for_claude(item, provider=CLAUDE)[0].model, 'sonnet')
 
@@ -152,7 +152,7 @@ class ImplementationEnqueueProviderTests(ProviderTestBase):
         job, _ = enqueue_item_for_claude(item, provider=OPENAI)
         item.refresh_from_db()
         self.assertEqual(job.provider, OPENAI)
-        self.assertEqual(job.model, 'gpt-5-codex')
+        self.assertEqual(job.model, 'gpt-6.2-sol')
         self.assertEqual(job.auth_mode, ClaudeQueueJobAuthMode.API_KEY)
         self.assertFalse(job.allow_api_key_fallback)
         self.assertEqual(item.implementation_provider, OPENAI)
