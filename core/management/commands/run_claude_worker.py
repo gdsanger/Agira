@@ -581,6 +581,7 @@ class Command(BaseCommand):
             job.save(update_fields=['pr_number', 'pr_url'])
             self._review_prompt = build_review_prompt(
                 item, pr_text=item.pr_description or mapping.pr_body, diff=diff,
+                checks=self._pr_checks_summary(job, repo_dir, mapping.number),
             )
             result = self._run_cli_with_auth(job, repo_dir, timeout, idle_timeout, None)
         except _SubscriptionLimitWait as wait:
@@ -651,6 +652,27 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Review job #{job.pk} done: {verdict.verdict}"
         ))
+
+    def _pr_checks_summary(self, job, repo_dir, pr):
+        """One line per CI check of PR ``pr`` (``name: state``); '' if unavailable.
+
+        Best effort and display only: ``gh pr checks`` exits non-zero for
+        failing/pending checks but still prints the JSON, so the exit code is
+        ignored. Never fails the review.
+        """
+        try:
+            proc = self._gh(
+                job, ['pr', 'checks', str(pr), '--json', 'name,bucket'], repo_dir,
+            )
+            data = json.loads(proc.stdout or '[]')
+            labels = {'pass': 'grün', 'fail': 'ROT', 'pending': 'läuft', 'skipping': 'übersprungen', 'cancel': 'abgebrochen'}
+            return '\n'.join(
+                f"- {c.get('name', '?')}: {labels.get(c.get('bucket'), c.get('bucket') or '?')}"
+                for c in data if isinstance(c, dict)
+            )
+        except Exception:  # noqa: BLE001 — optional context only
+            logger.warning("Could not read CI checks of PR #%s", pr, exc_info=True)
+            return ''
 
     @staticmethod
     def _review_pr_mapping(item):

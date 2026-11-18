@@ -2661,6 +2661,19 @@ class ReviewJobTests(ClaudeWorkerTestBase):
         self.assertNotIn('git-workflow-hint', prompt)
         self.assertNotIn('HINT', prompt)
 
+    def test_prompt_has_ci_status_and_missing_proof_rule(self):
+        job = self._review_job()
+        self._run(job)
+
+        job.refresh_from_db()
+        from core.services.claude_queue.review import build_review_prompt
+        prompt = build_review_prompt(
+            job.item, diff='D', checks='- test: grün',
+        )
+        self.assertIn('## CI-Status des PR', prompt)
+        self.assertIn('- test: grün', prompt)
+        self.assertIn('keine Abweichung', prompt)
+
     def test_unparsable_result_is_done_but_uncertain_unclear(self):
         job = self._review_job()
         self._run(job, result=_ok_result(result_text='kein json'))
