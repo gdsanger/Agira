@@ -859,6 +859,37 @@ def _claude_queue_dashboard_context():
     }
 
 
+# Finished jobs older than this drop off the board (they stay in the list view).
+# Anything that still needs a human (active, merge missing, uncertain) is always
+# shown, however old.
+_CLAUDE_QUEUE_BOARD_WINDOW_DAYS = 14
+
+
+def _claude_queue_board(jobs):
+    """Group the (already project/provider-filtered) jobs into board columns."""
+    from datetime import timedelta
+    from core.services.claude_queue.board import build_board
+
+    since = timezone.now() - timedelta(days=_CLAUDE_QUEUE_BOARD_WINDOW_DAYS)
+    needs_attention = (
+        Q(status__in=[
+            ClaudeQueueJobStatus.BLOCKED, ClaudeQueueJobStatus.QUEUED,
+            ClaudeQueueJobStatus.RUNNING, ClaudeQueueJobStatus.ORCHESTRATING,
+            ClaudeQueueJobStatus.WAITING_LIMIT,
+        ])
+        | Q(status=ClaudeQueueJobStatus.DONE, completion_uncertain=True,
+            completion_confirmed_at__isnull=True)
+        | (Q(status=ClaudeQueueJobStatus.DONE, pr_number__isnull=False,
+              kind__in=['issue', 'epic']) & ~Q(pr_state='merged'))
+        | Q(status=ClaudeQueueJobStatus.DONE, kind='review',
+            review_verdict__in=['deviations', 'unclear'],
+            review_overridden_at__isnull=True)
+    )
+    recent = jobs.filter(Q(created_at__gte=since) | Q(finished_at__gte=since) | needs_attention)
+    # Newest activity first inside a column.
+    return build_board(recent.order_by('-created_at', '-id'))
+
+
 @login_required
 def claude_queue_jobs(request):
     """List view of all Claude queue jobs with project/status filters.
@@ -910,10 +941,17 @@ def claude_queue_jobs(request):
     else:
         provider_filter = ''
 
+    view_mode = 'list' if request.GET.get('view') == 'list' or status_filter else 'board'
+    board = None
+    if view_mode == 'board':
+        board = _claude_queue_board(jobs)
+
     paginator = Paginator(jobs, 20)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
     context = {
+        'view_mode': view_mode,
+        'board': board,
         'jobs': page_obj,
         'page_obj': page_obj,
         'projects': visible_projects_for(request.user),

@@ -33,6 +33,15 @@
 <!-- Filter Bar -->
 <div class="mb-4">
     <form method="get" action="{% url 'claude-queue-jobs' %}" class="row g-3">
+        <div class="col-auto">
+            <div class="btn-group" role="group" aria-label="Ansicht">
+                <a class="btn btn-outline-primary {% if view_mode == 'board' %}active{% endif %}"
+                   href="?{% if selected_project %}project={{ selected_project }}&{% endif %}{% if selected_provider %}provider={{ selected_provider }}{% endif %}"><i class="bi bi-kanban"></i> Board</a>
+                <a class="btn btn-outline-primary {% if view_mode == 'list' %}active{% endif %}"
+                   href="?view=list{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}"><i class="bi bi-list-ul"></i> Liste</a>
+            </div>
+        </div>
+        {% if view_mode == 'list' %}<input type="hidden" name="view" value="list">{% endif %}
         <div class="col-md-3">
             <select name="project" class="form-select">
                 <option value="">All Projects</option>
@@ -43,6 +52,7 @@
                 {% endfor %}
             </select>
         </div>
+        {% if view_mode == 'list' %}
         <div class="col-md-2">
             <select name="status" class="form-select">
                 <option value="">All Statuses</option>
@@ -53,6 +63,7 @@
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
         <div class="col-md-2">
             <select name="provider" class="form-select">
                 <option value="">All Providers</option>
