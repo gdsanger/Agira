@@ -887,7 +887,9 @@ def _claude_queue_board(jobs):
     )
     recent = jobs.filter(Q(created_at__gte=since) | Q(finished_at__gte=since) | needs_attention)
     # Newest activity first inside a column.
-    return build_board(recent.order_by('-created_at', '-id'))
+    return build_board(
+        recent.select_related('review_followup_item').order_by('-created_at', '-id')
+    )
 
 
 @login_required

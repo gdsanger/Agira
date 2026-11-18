@@ -45,10 +45,10 @@ Expects `jobs`/`page_obj`, `selected_project`, `selected_status` and
                 <ul class="pagination justify-content-center">
                     {% if page_obj.has_previous %}
                     <li class="page-item">
-                        <a class="page-link" href="?page=1{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}">First</a>
+                        <a class="page-link" href="?page=1{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}&view=list">First</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}">Previous</a>
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}&view=list">Previous</a>
                     </li>
                     {% endif %}
 
@@ -60,10 +60,10 @@ Expects `jobs`/`page_obj`, `selected_project`, `selected_status` and
 
                     {% if page_obj.has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}">Next</a>
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}&view=list">Next</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}">Last</a>
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_project %}&project={{ selected_project }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_provider %}&provider={{ selected_provider }}{% endif %}&view=list">Last</a>
                     </li>
                     {% endif %}
                 </ul>
