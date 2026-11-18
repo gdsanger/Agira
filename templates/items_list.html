@@ -123,12 +123,39 @@
 </div>
 
 <!-- Bulk actions (selection via checkbox column) -->
-<div id="items-bulk-bar" class="d-flex align-items-center gap-2 mb-2">
-    <button type="button" id="items-bulk-review" class="btn btn-sm btn-outline-primary" disabled>
-        <i class="bi bi-robot"></i> Review durch Claude
-        (<span id="items-bulk-count">0</span>)
-    </button>
-    <small class="text-muted">Nur Items in „Integrated“/„Testing“ mit verknüpftem PR können gereviewt werden.</small>
+<div id="items-bulk-bar" class="card card-body py-2 mb-2">
+    <div class="d-flex flex-wrap align-items-center gap-3">
+        <span class="text-muted small"><span id="items-bulk-count">0</span> ausgewählt</span>
+
+        <div class="input-group input-group-sm" style="width: auto;">
+            <select id="bulk-model" class="form-select form-select-sm" aria-label="Suggested Model">
+                {% for value, label in bulk_model_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn btn-outline-secondary bulk-set" data-field="suggested_model" data-source="bulk-model" data-label="Suggested Model" disabled>Model setzen</button>
+        </div>
+
+        <div class="input-group input-group-sm" style="width: auto;">
+            <select id="bulk-assigned" class="form-select form-select-sm" aria-label="Assigned To">
+                <option value="">— niemand —</option>
+                {% for u in bulk_users %}
+                <option value="{{ u.id }}">{{ u.name|default:u.username }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn btn-outline-secondary bulk-set" data-field="assigned_to" data-source="bulk-assigned" data-label="Assigned To" disabled>Zuweisen</button>
+        </div>
+
+        <div class="input-group input-group-sm" style="width: auto;">
+            <input type="number" min="1" id="bulk-parent" class="form-control form-control-sm" placeholder="Parent-ID (leer = entfernen)" style="width: 14rem;" aria-label="Parent Item ID">
+            <button type="button" class="btn btn-outline-secondary bulk-set" data-field="parent" data-source="bulk-parent" data-label="Parent Item" disabled>Parent setzen</button>
+        </div>
+
+        <button type="button" id="items-bulk-review" class="btn btn-sm btn-outline-primary" disabled>
+            <i class="bi bi-robot"></i> Review durch Claude
+        </button>
+    </div>
+    <small class="text-muted">Review nur für Items in „Integrated“/„Testing“ mit verknüpftem PR. Parent muss im selben Projekt liegen und darf nicht geschlossen sein.</small>
 </div>
 
 <!-- List Container for HTMX refresh -->
@@ -157,6 +184,7 @@
 <script>
 (function () {
     const bulkUrl = '{% url "items-claude-review-bulk" %}';
+    const fieldUrl = '{% url "items-bulk-field" %}';
     const btn = document.getElementById('items-bulk-review');
     const countEl = document.getElementById('items-bulk-count');
 
@@ -167,6 +195,7 @@
         const n = selected().length;
         countEl.textContent = n;
         btn.disabled = n === 0;
+        document.querySelectorAll('#items-bulk-bar .bulk-set').forEach(b => { b.disabled = n === 0; });
         const all = document.querySelector('#items-list-container input.item-select-all');
         if (all) {
             all.checked = n > 0 && n === boxes().length;
@@ -185,6 +214,29 @@
     });
     document.body.addEventListener('htmx:afterSwap', refresh);
 
+    function post(url, fields, ids) {
+        const body = new FormData();
+        ids.forEach(id => body.append('item_ids', id));
+        Object.keys(fields).forEach(k => body.append(k, fields[k]));
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
+            body: body,
+        }).then(r => r.json());
+    }
+
+    function report(data, reload) {
+        let msg = data.message || data.error || 'Fertig.';
+        const failed = data.failed || [];
+        if (failed.length) {
+            msg += '\n\n' + failed.map(f => '#' + f.item_id + ': ' + f.error).join('\n');
+        }
+        alert(msg);
+        if (reload) { window.location.reload(); return; }
+        boxes().forEach(b => { b.checked = false; });
+        refresh();
+    }
+
     btn.addEventListener('click', function () {
         const ids = selected().map(b => b.value);
         if (!ids.length) return;
@@ -192,31 +244,23 @@
                      ' Item(s) starten? Die Items bleiben unverändert, Review-Jobs werden eingereiht.')) {
             return;
         }
-        const body = new FormData();
-        ids.forEach(id => body.append('item_ids', id));
         btn.disabled = true;
-        fetch(bulkUrl, {
-            method: 'POST',
-            headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
-            body: body,
-        })
-        .then(r => r.json())
-        .then(data => {
-            let msg = data.message || data.error || 'Fertig.';
-            if (data.failed && data.failed.length) {
-                msg += '\n\n' + data.failed.map(f => '#' + f.item_id + ': ' + f.error).join('\n');
-            }
-            if (typeof showToast === 'function' && !(data.failed && data.failed.length)) {
-                showToast(data.success ? 'success' : 'error', msg);
-            } else {
-                alert(msg);
-            }
-            boxes().forEach(b => { b.checked = false; });
-            refresh();
-        })
-        .catch(() => {
-            alert('Ein Fehler ist beim Einreihen der Reviews aufgetreten.');
-            refresh();
+        post(bulkUrl, {}, ids).then(d => report(d, false))
+            .catch(() => { alert('Ein Fehler ist beim Einreihen der Reviews aufgetreten.'); refresh(); });
+    });
+
+    document.querySelectorAll('#items-bulk-bar .bulk-set').forEach(function (b) {
+        b.addEventListener('click', function () {
+            const ids = selected().map(x => x.value);
+            if (!ids.length) return;
+            const input = document.getElementById(b.dataset.source);
+            const value = input.value.trim();
+            const shown = input.tagName === 'SELECT' ? input.options[input.selectedIndex].text : (value || 'leer');
+            if (!confirm(b.dataset.label + ' → „' + shown + '“ für ' + ids.length + ' Item(s) setzen?')) return;
+            document.querySelectorAll('#items-bulk-bar .bulk-set').forEach(x => { x.disabled = true; });
+            post(fieldUrl, {field: b.dataset.field, value: value}, ids)
+                .then(d => report(d, true))
+                .catch(() => { alert('Ein Fehler ist beim Speichern aufgetreten.'); refresh(); });
         });
     });
 })();

@@ -167,3 +167,69 @@ class ItemsClaudeReviewBulkViewTestCase(TestCase):
         self.assertEqual(
             ClaudeQueueJob.objects.filter(kind=ClaudeQueueJobKind.REVIEW).count(), 2,
         )
+
+
+class ItemsBulkFieldUpdateViewTestCase(TestCase):
+    """Bulk assignment of suggested_model / assigned_to / parent from the lists."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='fielduser', password='testpass123', email='f@example.com',
+        )
+        self.user.name = 'Field User'
+        self.user.active = True
+        self.user.save()
+        self.client.login(username='fielduser', password='testpass123')
+        self.project = Project.objects.create(name='P1')
+        self.other_project = Project.objects.create(name='P2')
+        self.item_type = ItemType.objects.create(key='bug', name='Bug')
+        self.url = reverse('items-bulk-field')
+
+    def _item(self, project=None, status=ItemStatus.BACKLOG):
+        return Item.objects.create(
+            title='I', project=project or self.project, type=self.item_type, status=status,
+        )
+
+    def test_requires_post_and_valid_field(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        item = self._item()
+        r = self.client.post(self.url, {'field': 'status', 'value': 'Closed', 'item_ids': [item.id]})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post(self.url, {'field': 'parent', 'value': ''})
+        self.assertEqual(r.status_code, 400)
+
+    def test_assign_user_and_clear(self):
+        a, b = self._item(), self._item()
+        r = self.client.post(self.url, {
+            'field': 'assigned_to', 'value': self.user.id, 'item_ids': [a.id, b.id],
+        })
+        self.assertEqual(len(r.json()['updated']), 2)
+        a.refresh_from_db()
+        self.assertEqual(a.assigned_to, self.user)
+        self.client.post(self.url, {'field': 'assigned_to', 'value': '', 'item_ids': [a.id]})
+        a.refresh_from_db()
+        self.assertIsNone(a.assigned_to)
+
+    def test_suggested_model(self):
+        item = self._item()
+        r = self.client.post(self.url, {
+            'field': 'suggested_model', 'value': 'opus-5-5', 'item_ids': [item.id],
+        })
+        self.assertTrue(r.json()['success'], r.json())
+        item.refresh_from_db()
+        self.assertEqual(item.suggested_model, 'opus-5-5')
+
+    def test_parent_reports_per_item_failures(self):
+        parent = self._item()
+        ok = self._item()
+        other = self._item(project=self.other_project)
+        r = self.client.post(self.url, {
+            'field': 'parent', 'value': parent.id,
+            'item_ids': [ok.id, other.id, parent.id],
+        })
+        data = r.json()
+        self.assertEqual(data['updated'], [ok.id])
+        self.assertEqual(sorted(f['item_id'] for f in data['failed']), sorted([other.id, parent.id]))
+        ok.refresh_from_db()
+        self.assertEqual(ok.parent, parent)

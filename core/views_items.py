@@ -6,8 +6,9 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.views.generic import ListView
 from django.views.decorators.http import require_POST
+import logging
 from django.shortcuts import get_object_or_404, render
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.db.models import Count
 from django_tables2 import SingleTableMixin
 from django_tables2.config import RequestConfig
@@ -16,9 +17,86 @@ from django.conf import settings
 
 from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
 from .tables import ItemTable, LIST_INLINE_FIELDS, render_item_list_field_cell
+from .models import ClaudeQueueJobModel
 from .filters import ItemFilter, KanbanFilter
 from .services.workflow import ItemWorkflowGuard
 from .visibility import scope_items
+
+
+logger = logging.getLogger(__name__)
+
+# Fields the list action bar may set on many items at once (#bulk-actions).
+BULK_FIELDS = ('suggested_model', 'assigned_to', 'parent')
+
+
+def bulk_action_context():
+    """Choices for the bulk action bar of the item lists."""
+    return {
+        'bulk_model_choices': ClaudeQueueJobModel.choices,
+        'bulk_users': User.objects.filter(active=True).order_by('username'),
+    }
+
+
+@login_required
+@require_POST
+def items_bulk_field_update(request):
+    """Set one whitelisted field (suggested_model / assigned_to / parent) on many items.
+
+    Runs every item through the shared inline field service, so validation and
+    activity logging are identical to the single-item edit. A rejected item
+    (e.g. parent in another project) is reported but never aborts the batch.
+    An empty ``value`` clears assigned_to / parent.
+    """
+    from .services.item_field_update import apply_field_update, FieldUpdateError
+
+    field = (request.POST.get('field') or '').strip()
+    if field not in BULK_FIELDS:
+        return JsonResponse({'success': False, 'error': 'Feld nicht erlaubt.'}, status=400)
+
+    item_ids = []
+    for raw in request.POST.getlist('item_ids'):
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value not in item_ids:
+            item_ids.append(value)
+    if not item_ids:
+        return JsonResponse({'success': False, 'error': 'Keine Items ausgewählt.'}, status=400)
+
+    value = request.POST.get('value', '')
+    items = {i.id: i for i in Item.objects.filter(id__in=item_ids)}
+    updated, unchanged, failed = [], [], []
+    for item_id in item_ids:
+        item = items.get(item_id)
+        if item is None:
+            failed.append({'item_id': item_id, 'error': 'Item nicht gefunden.'})
+            continue
+        try:
+            result = apply_field_update(item, field, value, actor=request.user)
+        except FieldUpdateError as exc:
+            failed.append({'item_id': item_id, 'error': str(exc)})
+        except Exception:
+            logger.exception('Bulk update of %s failed for item %s', field, item_id)
+            failed.append({
+                'item_id': item_id,
+                'error': 'Unerwarteter Fehler (Details im Server-Log).',
+            })
+        else:
+            (updated if result.changed else unchanged).append(item_id)
+
+    parts = [f'{len(updated)} geändert']
+    if unchanged:
+        parts.append(f'{len(unchanged)} unverändert')
+    if failed:
+        parts.append(f'{len(failed)} nicht möglich')
+    return JsonResponse({
+        'success': bool(updated or unchanged),
+        'message': ', '.join(parts) + '.',
+        'updated': updated,
+        'unchanged': unchanged,
+        'failed': failed,
+    })
 
 
 class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
@@ -75,6 +153,7 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         context = super().get_context_data(**kwargs)
         
         # Add page title and description
+        context.update(bulk_action_context())
         context['page_title'] = self.page_title
         context['page_description'] = self.page_description
         
@@ -246,6 +325,7 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         context = super().get_context_data(**kwargs)
 
         # Add page title and description
+        context.update(bulk_action_context())
         context['page_title'] = self.page_title
         context['page_description'] = self.page_description
 
