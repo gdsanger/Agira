@@ -62,7 +62,7 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   fehlgeschlagener Merge halten die Kette an. Das Epic wird in Agira sichtbar
   als blockiert markiert, mit Grund. Es gibt **keinen automatischen Retry**.
   Ein Mensch prüft den Fall und stößt das Sub-Issue neu an – oder bestätigt
-  einen „Ggf. unvollständig“-Lauf in der Queue mit Pflicht-Begründung als
+  einen „Ggf. unvollständig“-Lauf in der Queue (Begründung optional) als
   vollständig („Als vollständig bestätigen“); das merged nichts, die Kette
   läuft danach normal weiter (gemergter PR → nächstes Sub-Issue, sonst
   Warten auf den Merge).

@@ -1,5 +1,7 @@
 """Tests for the derived board state of queue jobs."""
 
+from unittest.mock import PropertyMock, patch
+
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -91,6 +93,16 @@ class BoardStateTests(TestCase):
         self.assertFalse(self.job(review_verdict='pass', **rv).can_override_review)
         self.assertFalse(self.job().can_override_review)
 
+    def test_acknowledged_hints_move_review_to_done(self):
+        job = self.job(kind=ClaudeQueueJobKind.REVIEW, review_verdict='pass')
+        with patch.object(ClaudeQueueJob, 'review_hint_count', new_callable=PropertyMock,
+                          return_value=2):
+            self.assertTrue(job.can_acknowledge_hints)
+            self.assertEqual(b.derive_board_state(job), b.REVIEW_PASS_HINTS)
+            job.review_hints_acknowledged_at = timezone.now()
+            self.assertFalse(job.can_acknowledge_hints)
+            self.assertEqual(b.derive_board_state(job), b.DONE)
+
     def test_build_board_caps_finished_columns_only(self):
         jobs = [self.job() for _ in range(4)] + [self.job(status=S.QUEUED) for _ in range(4)]
         board = b.build_board(jobs, cap=2)
@@ -141,3 +153,50 @@ class BoardViewTests(TestCase):
         r = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(r, '?page=2')
         self.assertContains(r, '&view=list">Next')
+
+
+class AcknowledgeHintsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='u', password='pw', email='u@e.com')
+        self.user.name = 'U'
+        self.user.active = True
+        self.user.role = 'Agent'
+        self.user.save()
+        self.client.login(username='u', password='pw')
+        self.project = Project.objects.create(name='P')
+        t = ItemType.objects.create(key='bug', name='Bug')
+        self.item = Item.objects.create(title='I', description='d', project=self.project, type=t)
+        self.job = ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project, status=S.DONE,
+            kind=ClaudeQueueJobKind.REVIEW, review_verdict='pass')
+
+    def test_acknowledge_is_idempotent_and_logged_once(self):
+        from core.models import Activity
+        from core.services.claude_queue.ack_hints import acknowledge_hints
+        url = reverse('claude-queue-job-ack-hints', args=[self.job.pk])
+        with patch.object(ClaudeQueueJob, 'review_hint_count', new_callable=PropertyMock,
+                          return_value=1):
+            self.assertEqual(self.client.post(url).status_code, 200)
+            self.assertEqual(self.client.post(url).status_code, 200)
+            self.job.refresh_from_db()
+            self.assertIsNotNone(self.job.review_hints_acknowledged_at)
+            self.assertEqual(self.job.review_hints_acknowledged_by, self.user)
+            self.assertFalse(acknowledge_hints(self.job, self.user))
+        self.assertEqual(
+            Activity.objects.filter(verb='claudequeuejob.review_hints_acknowledged').count(), 1)
+
+    def test_review_without_hints_is_refused(self):
+        url = reverse('claude-queue-job-ack-hints', args=[self.job.pk])
+        self.assertEqual(self.client.post(url).status_code, 400)
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.review_hints_acknowledged_at)
+
+    def test_menu_offers_merge_for_review_with_open_pr_and_ack_for_hints(self):
+        self.job.pr_number = 7
+        self.job.pr_state = 'open'
+        self.job.save()
+        with patch.object(ClaudeQueueJob, 'review_hint_count', new_callable=PropertyMock,
+                          return_value=1):
+            r = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(r, 'Merge hinterlegen')
+        self.assertContains(r, 'Hinweise gelesen')

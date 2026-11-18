@@ -1129,6 +1129,20 @@ def claude_queue_job_confirm_complete(request, job_id):
 
 @login_required
 @require_http_methods(["POST"])
+def claude_queue_job_ack_hints(request, job_id):
+    """Mark the hints of a passed review as read (moves it to "Erledigt")."""
+    from core.services.claude_queue.ack_hints import AcknowledgeHintsError, acknowledge_hints
+
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    try:
+        acknowledge_hints(job, request.user)
+    except AcknowledgeHintsError as exc:
+        return HttpResponse(str(exc), status=400)
+    return _claude_queue_action_response(request, job)
+
+
+@login_required
+@require_http_methods(["POST"])
 def claude_queue_job_requeue(request, job_id):
     """Put a hanging job back to Queued so the worker picks it up again."""
     job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
@@ -1139,6 +1153,42 @@ def claude_queue_job_requeue(request, job_id):
         )
     job.force_status(ClaudeQueueJobStatus.QUEUED, actor=request.user)
     return _claude_queue_action_response(request, job)
+
+
+def _record_merge_failure_text(exc, job):
+    """A fixed, user-facing reason for a failed merge lookup.
+
+    Picked by exception type only — never the exception text — so the toast says
+    *what kind* of problem it is (token, repo config, PR unknown, ...) without
+    echoing internals. The full traceback stays in the server log.
+    """
+    from core.services.integrations.errors import (
+        IntegrationAuthError,
+        IntegrationDisabled,
+        IntegrationNotConfigured,
+        IntegrationPermanentError,
+        IntegrationRateLimited,
+        IntegrationTemporaryError,
+    )
+
+    if isinstance(exc, IntegrationDisabled):
+        return "GitHub-Integration ist deaktiviert."
+    if isinstance(exc, IntegrationNotConfigured):
+        return "GitHub ist nicht konfiguriert (Token fehlt)."
+    if isinstance(exc, IntegrationAuthError):
+        return "GitHub verweigert den Zugriff – Token und Berechtigungen prüfen."
+    if isinstance(exc, IntegrationRateLimited):
+        return "GitHub-Rate-Limit erreicht – später erneut versuchen."
+    if isinstance(exc, IntegrationPermanentError):
+        return (
+            f"GitHub kennt PR #{job.pr_number} nicht – Repository-Angabe am Projekt "
+            "und PR-Nummer prüfen."
+        )
+    if isinstance(exc, IntegrationTemporaryError):
+        return "GitHub ist nicht erreichbar – später erneut versuchen."
+    if isinstance(exc, ValueError):
+        return "Am Projekt ist kein GitHub-Repository hinterlegt."
+    return "Merge-Abgleich fehlgeschlagen – Details stehen im Server-Log."
 
 
 @login_required
@@ -1158,12 +1208,9 @@ def claude_queue_job_record_merge(request, job_id):
 
     try:
         result = GitHubService().apply_pr_state_from_github(job.item, job.pr_number)
-    except Exception:  # noqa: BLE001 — details stay in the log, not in the response
+    except Exception as exc:  # noqa: BLE001 — details stay in the log, not in the response
         logger.exception("Manual merge record failed for job #%s", job.id)
-        return HttpResponse(
-            "GitHub-Abfrage fehlgeschlagen – Details stehen im Server-Log.",
-            status=502,
-        )
+        return HttpResponse(_record_merge_failure_text(exc, job), status=502)
 
     if not result.get('matched'):
         return HttpResponse(

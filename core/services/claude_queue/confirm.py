@@ -21,11 +21,8 @@ from core.services.activity import ActivityService
 
 logger = logging.getLogger(__name__)
 
-MIN_REASON_LENGTH = 10
-
-
 class ConfirmCompleteError(ValueError):
-    """The run cannot be confirmed (wrong state or missing justification)."""
+    """The run cannot be confirmed (wrong state)."""
 
 
 def confirm_complete(job, user, reason) -> bool:
@@ -35,11 +32,10 @@ def confirm_complete(job, user, reason) -> bool:
     once and writes one comment and one activity. The original
     ``completion_uncertain_reason`` is kept.
     """
+    # The justification is optional: a flagged run is usually a false alarm of
+    # the heuristic that reads the agent's output, so asking for a text every
+    # time only slows the review down. A given reason is still recorded.
     reason = (reason or '').strip()
-    if len(reason) < MIN_REASON_LENGTH:
-        raise ConfirmCompleteError(
-            f'Begründung erforderlich (mindestens {MIN_REASON_LENGTH} Zeichen).'
-        )
 
     with transaction.atomic():
         locked = ClaudeQueueJob.objects.select_for_update().select_related(
@@ -68,7 +64,10 @@ def confirm_complete(job, user, reason) -> bool:
             verb='claudequeuejob.completion_confirmed',
             target=item,
             actor=user if getattr(user, 'pk', None) else None,
-            summary=f'Claude queue job #{locked.pk} manuell als vollständig bestätigt: {reason}',
+            summary=(
+                f'Claude queue job #{locked.pk} manuell als vollständig bestätigt'
+                + (f': {reason}' if reason else '')
+            ),
         )
         pr = (
             f'[PR #{locked.pr_number}]({locked.pr_url})' if locked.pr_url
@@ -83,8 +82,8 @@ def confirm_complete(job, user, reason) -> bool:
             body=(
                 f'Job #{locked.pk} („Ggf. unvollständig“) wurde manuell als '
                 f'vollständig bestätigt.\n\n'
-                f'**Begründung:** {reason}\n\n'
-                f'**Ursprünglicher Hinweis:** {original}\n\n'
+                + (f'**Begründung:** {reason}\n\n' if reason else '')
+                + f'**Ursprünglicher Hinweis:** {original}\n\n'
                 f'**PR:** {pr}'
             ),
         )

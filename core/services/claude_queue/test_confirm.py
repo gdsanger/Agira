@@ -43,13 +43,13 @@ class ConfirmCompleteTests(OrchestrationTestBase):
         other = self._entry(self.node, self.logic)
         self.assertFalse(other.can_confirm_complete)
 
-    def test_reason_is_mandatory_and_nothing_changes(self):
-        for reason in ('', '   ', 'kurz'):
-            with self.assertRaises(ConfirmCompleteError):
-                confirm_complete(self.entry, self.user, reason)
+    def test_reason_is_optional(self):
+        self.assertTrue(confirm_complete(self.entry, self.user, ''))
         self.entry.refresh_from_db()
-        self.assertTrue(self.entry.completion_uncertain)
-        self.assertFalse(ItemComment.objects.filter(item=self.data_model).exists())
+        self.assertFalse(self.entry.completion_uncertain)
+        self.assertEqual(self.entry.completion_confirmed_reason, '')
+        comment = ItemComment.objects.get(item=self.data_model)
+        self.assertNotIn('Begründung', comment.body)
 
     def test_merged_pr_chain_continues_and_documents(self):
         confirm_complete(self.entry, self.user, REASON)
@@ -95,11 +95,10 @@ class ConfirmCompleteTests(OrchestrationTestBase):
         with self.assertRaises(ConfirmCompleteError):
             confirm_complete(self.node, self.user, REASON)
 
-    def test_view_requires_reason_and_confirms_once(self):
+    def test_view_confirms_once_without_reason(self):
         self.client.force_login(self.user)
         url = reverse('claude-queue-job-confirm-complete', args=[self.entry.pk])
-        self.assertEqual(self.client.post(url, {'reason': 'x'}).status_code, 400)
-        self.assertEqual(self.client.post(url, {'reason': REASON}).status_code, 200)
+        self.assertEqual(self.client.post(url).status_code, 200)
         self.assertEqual(self.client.post(url, {'reason': REASON}).status_code, 200)
         self.assertEqual(ItemComment.objects.filter(item=self.data_model).count(), 1)
         self.assertEqual(self.client.get(url).status_code, 405)
