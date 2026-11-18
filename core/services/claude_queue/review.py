@@ -345,6 +345,7 @@ REVIEW_RULES = """\
 - Eine **unbegründete** Lücke ist `not_met`.
 - Im Zweifel `not_met` statt `met`.
 - Dieses Review prüft **Vollständigkeit und Plausibilität** der Umsetzung, nicht die fachliche Korrektheit zur Laufzeit (der fachliche Test findet später statt).
+- **Ein fehlender Build-, Test- oder Laufzeit-Nachweis ist für sich allein keine Abweichung.** Du hast einen schreibgeschützten Checkout und in der Regel keine Toolchain (z. B. kein `dotnet`): Dass du etwas nicht ausführen kannst, ist kein Befund. Ist der Code plausibel richtig und lässt sich ein Kriterium aus Diff/Checkout belegen, ist es `met`. Als Build-/Test-Beleg gilt der Abschnitt „CI-Status des PR“ (grün = gebaut und getestet). Nur wenn Code oder Diff das Verhalten tatsächlich nicht herstellen, oder die CI rot ist, ist es `not_met`; ein bloßer Wunsch nach zusätzlichem Nachweis höchstens ein `minor`-Hinweis.
 - Jeder Eintrag in `deviations` bezieht sich auf ein Kriterium (`criterion` = exakter Text des Kriteriums) und hat eine `severity`:
   - `major`: ein Kriterium ist fachlich nicht erreicht oder Verhalten/Funktion fehlt. Beispiel: ein geforderter Endpunkt fehlt.
   - `minor`: formal, kosmetisch, rein dokumentarisch, Widerspruch/Unschärfe in der Vorgabe selbst oder eine Anregung zur Verbesserung. Beispiel: eine Datei fehlt, obwohl das Issue selbst sagt, dass der Bereich diese gar nicht kennt; ein fehlender Docstring.
@@ -370,11 +371,14 @@ def strip_git_workflow_hint(text: str) -> str:
     return text.strip()
 
 
-def build_review_prompt(item, pr_text: Optional[str] = None, diff: str = '') -> str:
+def build_review_prompt(
+    item, pr_text: Optional[str] = None, diff: str = '', checks: str = '',
+) -> str:
     """Build the read-only review prompt for ``item``.
 
     ``pr_text`` defaults to ``item.pr_description``; ``diff`` is the PR diff
-    against its base (the epic branch for a sub-issue).
+    against its base (the epic branch for a sub-issue). ``checks`` is a short
+    plain-text summary of the PR's CI checks (empty when unknown).
     """
     pr_text = (pr_text if pr_text is not None else item.pr_description) or ''
     diff = diff or ''
@@ -393,6 +397,8 @@ def build_review_prompt(item, pr_text: Optional[str] = None, diff: str = '') -> 
     if item.solution_description:
         parts += ['## Erwartete Lösung', item.solution_description.strip(), '']
     parts += ['## PR-Text', pr_text.strip() or '(kein PR-Text vorhanden)', '']
+    parts += ['## CI-Status des PR',
+              checks.strip() or '(unbekannt – kein Beleg, aber auch kein Befund)', '']
     parts += ['## Diff des PR', '```diff', diff.strip() or '(leer)', '```', '']
     parts += [REVIEW_RULES + VERDICT_SCHEMA_EXAMPLE]
     return '\n'.join(parts)

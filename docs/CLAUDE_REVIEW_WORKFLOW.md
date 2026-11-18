@@ -59,7 +59,15 @@ Eintrag) sind ebenfalls `unclear`. **Geschlossen wird nur bei `pass`.**
 
 Das Review prüft **Vollständigkeit und Plausibilität**, nicht die fachliche
 Korrektheit zur Laufzeit (der fachliche Test findet später statt). Jeder
-Eintrag in `deviations` hat eine `severity`:
+Eintrag in `deviations` hat eine `severity`.
+
+**Fehlender Nachweis ist keine Abweichung:** Der Review-Checkout ist read-only
+und hat meist keine Toolchain. Ein nicht ausführbarer Build/Test/Start ist für
+sich kein Befund. Als Build-/Test-Beleg dient der **CI-Status des PR**, den der
+Worker (`gh pr checks`) in den Prompt schreibt: grün = gebaut und getestet,
+rot = `not_met`. Ein bloßer Wunsch nach mehr Nachweis ist höchstens `minor`.
+
+Severities:
 
 - `major`: ein Kriterium ist fachlich nicht erreicht oder Verhalten/Funktion
   fehlt.
