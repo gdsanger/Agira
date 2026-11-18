@@ -36,7 +36,7 @@ Mit `OPENAI_REQUIRE_USER_CREDENTIALS=true` ist nur der persönliche Key erlaubt.
 
 - **Umsetzung:** `Item.implementation_provider` (Default `claude`) bzw. der
   Button „Umsetzung durch …“; die Wahl wird am Item gemerkt. Das Modell kommt aus
-  den OpenAI-Modellen (`OpenAIQueueJobModel`, Default `gpt-5-codex`); ein Modell
+  den OpenAI-Modellen (`OpenAIQueueJobModel`, Default `gpt-6.2-sol`); ein Modell
   des anderen Providers wird durch den Default ersetzt.
 - **Review:** `Item.review_provider`; leer = der **andere** Provider als bei der
   letzten sauberen Umsetzung (`provider_rule.effective_review_provider`). Details

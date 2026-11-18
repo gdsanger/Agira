@@ -41,7 +41,7 @@ from core.services.claude_queue.provider_rule import effective_review_provider
 from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
 
 DEFAULT_CLAUDE_MODEL = ClaudeQueueJobModel.SONNET
-DEFAULT_OPENAI_MODEL = OpenAIQueueJobModel.GPT_5_CODEX
+DEFAULT_OPENAI_MODEL = OpenAIQueueJobModel.GPT_6_2_SOL
 
 
 class InvalidClaudeModel(ValueError):

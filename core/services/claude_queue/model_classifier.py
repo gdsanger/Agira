@@ -137,5 +137,5 @@ def suggest_model(item, classifier: Optional['ModelClassifierService'] = None) -
     item). Picking the mini model is a manual UI decision.
     """
     if getattr(item, 'implementation_provider', None) == AgentProvider.OPENAI:
-        return OpenAIQueueJobModel.GPT_5_CODEX
+        return OpenAIQueueJobModel.GPT_6_2_SOL
     return (classifier or ModelClassifierService()).classify(item)

@@ -824,17 +824,19 @@ class OpenAIQueueJobModel(models.TextChoices):
 
     Same idea as ``ClaudeQueueJobModel``: the stored value is a stable slug,
     ``OPENAI_CLI_MODEL_IDS`` translates it to ``codex exec -m``. IDs are the
-    ones named in docs/CODEX_CLI_SPIKE.md (section 10); they change often, so
-    adding one is a choices entry plus a mapping line.
+    ones the API key of the worker host actually lists (``GET /v1/models``, see
+    docs/CODEX_CLI_SPIKE.md, 9.2): a slug the key does not know makes the run
+    fail with "does not exist or you do not have access to it". They change
+    often, so adding one is a choices entry plus a mapping line.
     """
-    GPT_5_CODEX = 'gpt-5-codex', _('GPT-5 Codex')
-    GPT_5_CODEX_MINI = 'gpt-5-codex-mini', _('GPT-5 Codex Mini')
+    GPT_6_2_SOL = 'gpt-6.2-sol', _('GPT-6.2 Sol')
+    GPT_6_2_ASTRA = 'gpt-6.2-astra', _('GPT-6.2 Astra')
 
 
 # Display slug -> identifier handed to `codex exec -m`.
 OPENAI_CLI_MODEL_IDS = {
-    OpenAIQueueJobModel.GPT_5_CODEX: 'gpt-5-codex',
-    OpenAIQueueJobModel.GPT_5_CODEX_MINI: 'gpt-5-codex-mini',
+    OpenAIQueueJobModel.GPT_6_2_SOL: 'gpt-6.2-sol',
+    OpenAIQueueJobModel.GPT_6_2_ASTRA: 'gpt-6.2-astra',
 }
 
 
@@ -845,7 +847,7 @@ def openai_cli_model_id(value) -> str:
     through verbatim (same reasoning as ``claude_cli_model_id``).
     """
     return OPENAI_CLI_MODEL_IDS.get(
-        value, OPENAI_CLI_MODEL_IDS[OpenAIQueueJobModel.GPT_5_CODEX]
+        value, OPENAI_CLI_MODEL_IDS[OpenAIQueueJobModel.GPT_6_2_SOL]
     )
 
 

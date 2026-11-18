@@ -309,7 +309,7 @@ class CustomGPTItemsAPITest(TestCase):
             data=json.dumps({
                 'implementation_provider': 'openai',
                 'review_provider': 'claude',
-                'suggested_model': 'gpt-5-codex-mini',
+                'suggested_model': 'gpt-6.2-astra',
             }),
             content_type='application/json',
             **self.headers
@@ -319,7 +319,7 @@ class CustomGPTItemsAPITest(TestCase):
         self.assertEqual(data['implementation_provider'], 'openai')
         self.assertEqual(data['review_provider'], 'claude')
         self.open_item.refresh_from_db()
-        self.assertEqual(self.open_item.suggested_model, 'gpt-5-codex-mini')
+        self.assertEqual(self.open_item.suggested_model, 'gpt-6.2-astra')
 
     def test_update_item_rejects_invalid_provider(self):
         response = self.client.patch(

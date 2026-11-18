@@ -105,5 +105,5 @@ class CodexReviewTests(CodexProviderBase):
     def test_report_names_provider_and_model(self):
         v = parse_review_verdict(_answer())
         report = build_report(self.job, self.item, v, VERDICT_PASS, None, None)
-        self.assertIn('OpenAI Codex (gpt-5-codex-mini)', report)
+        self.assertIn('OpenAI Codex (gpt-6.2-astra)', report)
         self.assertIn('## Review – Job', report)

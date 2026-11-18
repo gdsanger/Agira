@@ -51,7 +51,7 @@ class CodexProviderBase(TestCase):
         self.user = User.objects.create(username='u', name='U', email='u@x.de')
         self.job = ClaudeQueueJob.objects.create(
             item=self.item, project=self.project, provider=AgentProvider.OPENAI,
-            model='gpt-5-codex-mini', auth_user=self.user,
+            model='gpt-6.2-astra', auth_user=self.user,
         )
 
 
@@ -63,7 +63,7 @@ class RegistryAndArgsTests(CodexProviderBase):
     def test_implementation_args(self):
         args = self.provider.build_args(self.job)
         self.assertEqual(args[:3], ['codex', 'exec', '--json'])
-        self.assertEqual(args[args.index('-m') + 1], 'gpt-5-codex-mini')
+        self.assertEqual(args[args.index('-m') + 1], 'gpt-6.2-astra')
         self.assertIn('--dangerously-bypass-approvals-and-sandbox', args)
         self.assertEqual(args[-1], '-')  # prompt via stdin
 
@@ -217,7 +217,7 @@ class ErrorClassificationTests(CodexProviderBase):
         return {'is_error': True, 'result_text': text, 'stderr': '', 'returncode': 1, **kw}
 
     def test_rate_limit_with_relative_reset(self):
-        result = self._err('Rate limit reached for gpt-5-codex. Please try again in 6m30s.')
+        result = self._err('Rate limit reached for gpt-6.2-sol. Please try again in 6m30s.')
         self.assertTrue(self.provider.is_limit_error(result))
         self.assertFalse(self.provider.is_auth_error(result))
         reset = self.provider.parse_limit_reset(result)

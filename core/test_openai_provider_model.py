@@ -45,7 +45,7 @@ class ProviderDefaultsTests(TestCase):
     def test_job_accepts_openai_model(self):
         job = ClaudeQueueJob.objects.create(
             item=self.item, project=self.project,
-            provider=AgentProvider.OPENAI, model=OpenAIQueueJobModel.GPT_5_CODEX,
+            provider=AgentProvider.OPENAI, model=OpenAIQueueJobModel.GPT_6_2_SOL,
         )
         job.full_clean()
 
@@ -56,15 +56,15 @@ class ModelMappingTests(TestCase):
             self.assertTrue(openai_cli_model_id(m.value))
 
     def test_unknown_slug_falls_back(self):
-        self.assertEqual(openai_cli_model_id('nope'), 'gpt-5-codex')
-        self.assertEqual(openai_cli_model_id(''), 'gpt-5-codex')
+        self.assertEqual(openai_cli_model_id('nope'), 'gpt-6.2-sol')
+        self.assertEqual(openai_cli_model_id(''), 'gpt-6.2-sol')
 
     def test_provider_is_unambiguous(self):
         claude = {m.value for m in ClaudeQueueJobModel}
         openai = {m.value for m in OpenAIQueueJobModel}
         self.assertFalse(claude & openai)
         self.assertEqual(provider_for_model('sonnet'), AgentProvider.CLAUDE)
-        self.assertEqual(provider_for_model('gpt-5-codex'), AgentProvider.OPENAI)
+        self.assertEqual(provider_for_model('gpt-6.2-sol'), AgentProvider.OPENAI)
         self.assertIsNone(provider_for_model('x'))
 
     def test_models_for_provider(self):
@@ -161,7 +161,7 @@ class SuggestModelProviderTests(TestCase):
             implementation_provider=AgentProvider.OPENAI,
         )
         classifier = Mock()
-        self.assertEqual(suggest_model(item, classifier), OpenAIQueueJobModel.GPT_5_CODEX)
+        self.assertEqual(suggest_model(item, classifier), OpenAIQueueJobModel.GPT_6_2_SOL)
         classifier.classify.assert_not_called()
 
     def test_claude_uses_classifier(self):
@@ -169,3 +169,28 @@ class SuggestModelProviderTests(TestCase):
         classifier = Mock()
         classifier.classify.return_value = ClaudeQueueJobModel.OPUS_4_8
         self.assertEqual(suggest_model(item, classifier), ClaudeQueueJobModel.OPUS_4_8)
+
+
+class OldOpenAIModelSlugMigrationTests(TestCase):
+    """0092 moves rows with the first (unavailable) model slugs to the default."""
+
+    def test_old_slugs_are_remapped_on_items_and_jobs(self):
+        from django.apps import apps
+        from importlib import import_module
+
+        migration = import_module('core.migrations.0092_openai_models_available_on_key')
+        project = Project.objects.create(name='P')
+        item_type = ItemType.objects.create(key='task', name='Task')
+        old = Item.objects.create(title='old', project=project, type=item_type)
+        keep = Item.objects.create(title='keep', project=project, type=item_type)
+        Item.objects.filter(pk=old.pk).update(suggested_model='gpt-5-codex-mini')
+        Item.objects.filter(pk=keep.pk).update(suggested_model='opus-5')
+        job = ClaudeQueueJob.objects.create(item=old, project=project)
+        ClaudeQueueJob.objects.filter(pk=job.pk).update(model='gpt-5-codex')
+
+        migration.remap_old_openai_models(apps, None)
+
+        old.refresh_from_db(); keep.refresh_from_db(); job.refresh_from_db()
+        self.assertEqual(old.suggested_model, 'gpt-6.2-sol')
+        self.assertEqual(keep.suggested_model, 'opus-5')
+        self.assertEqual(job.model, 'gpt-6.2-sol')
