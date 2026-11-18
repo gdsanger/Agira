@@ -223,7 +223,7 @@
                 </a>
                 <a href="{% url 'claude-queue-jobs' %}" class="sidebar-link {% if 'claude-queue' in request.resolver_match.url_name %}active{% endif %}">
                     <i class="bi bi-robot sidebar-icon"></i>
-                    <span class="sidebar-text">Claude Queue</span>
+                    <span class="sidebar-text">Agent Queue</span>
                 </a>
                 <a href="{% url 'system-analytics' %}" class="sidebar-link {% if request.resolver_match.url_name == 'system-analytics' %}active{% endif %}">
                     <i class="bi bi-graph-up-arrow sidebar-icon"></i>

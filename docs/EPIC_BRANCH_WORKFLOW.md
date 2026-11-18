@@ -270,6 +270,18 @@ Ein Issue ohne Sub-Issues und ohne Parent wird wie vor #1079 enqueued:
 kann weiterhin von Hand an Claude übergeben werden, ohne dass ein Epic-Knoten
 existiert – dann greift nur das Order-Gate aus #1076.
 
+## Provider im Epic (Claude / OpenAI Codex)
+
+Die Kette ist providerunabhängig. Branch vom Epic-Branch, Draft-PR, Gate und
+Merge durch den Worker sowie alle Stopps (rote oder fehlende Checks, Konflikt,
+`TESTS ROT`, `completion_uncertain`, fehlgeschlagener Merge) greifen für Claude-
+und Codex-Läufe gleich; der Provider bestimmt nur, welche CLI die Schicht
+umsetzt. Der Epic-Knoten legt den Provider der Kette fest, einen einzelnen Lauf
+kann man von Hand mit anderem Provider neu anstoßen. Abgesichert durch
+`EpicAutoMergeTests` (`test_chain_runs_through_with_alternating_providers`,
+`test_stops_apply_to_every_provider`). Einrichtung:
+[`OPENAI_PROVIDER_SETUP.md`](OPENAI_PROVIDER_SETUP.md).
+
 ## Abgrenzung
 
 Nicht Teil des Modells: Stacked PRs, Rebase-basierte Kettenpflege früherer

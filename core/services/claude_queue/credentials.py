@@ -183,3 +183,67 @@ def resolve_claude_credential(user, auth_mode) -> ClaudeCredential:
         auth_mode=auth_mode, env_var=env_var, value='',
         source=ClaudeCredentialSource.HOST_LOGIN, user=user,
     )
+
+
+# --- OpenAI / Codex (#1297) ------------------------------------------------ #
+
+OPENAI_ENV_VAR = 'OPENAI_API_KEY'
+
+
+@dataclass(frozen=True)
+class OpenAICredential:
+    """The resolved OpenAI API key for one run."""
+
+    env_var: str
+    value: str
+    source: str
+    user: Optional[User] = None
+
+    @property
+    def is_personal(self) -> bool:
+        return self.source == ClaudeCredentialSource.USER
+
+
+class MissingOpenAICredential(RuntimeError):
+    """No usable OpenAI API key; the message is user-facing."""
+
+
+def require_user_openai_credentials() -> bool:
+    """Whether an OpenAI job must run on the personal key of its user."""
+    return bool(getattr(settings, 'OPENAI_REQUIRE_USER_CREDENTIALS', False))
+
+
+def resolve_openai_credential(user) -> OpenAICredential:
+    """Resolve the OpenAI API key for one run of ``user``.
+
+    Precedence like :func:`resolve_claude_credential`: personal key, then —
+    unless :func:`require_user_openai_credentials` forbids it — the host-wide
+    ``OPENAI_API_KEY`` (settings, then environment). There is no keyless
+    fallback: unlike ``claude login``, an OpenAI run without a key is not served.
+    """
+    personal = user.openai_credential_for() if user is not None else ''
+    if personal:
+        return OpenAICredential(
+            env_var=OPENAI_ENV_VAR, value=personal,
+            source=ClaudeCredentialSource.USER, user=user,
+        )
+
+    if user is not None and require_user_openai_credentials():
+        raise MissingOpenAICredential(
+            f"Kein persönlicher OpenAI-API-Key für {user.name} ({user.username}) "
+            f"hinterlegt. Den Key unter „User Settings“ hinterlegen."
+        )
+
+    shared = (
+        getattr(settings, OPENAI_ENV_VAR, '') or os.environ.get(OPENAI_ENV_VAR, '') or ''
+    ).strip()
+    if shared:
+        return OpenAICredential(
+            env_var=OPENAI_ENV_VAR, value=shared,
+            source=ClaudeCredentialSource.SHARED, user=user,
+        )
+
+    raise MissingOpenAICredential(
+        'Provider OpenAI gewählt, aber weder ein persönlicher OpenAI-API-Key '
+        'noch OPENAI_API_KEY auf dem Host konfiguriert.'
+    )

@@ -1,7 +1,16 @@
-# Codex-CLI Spike (Epic „OpenAI als zweiter Provider“, Item 1295)
+# Codex-CLI-Spike (Epic #1294, Sub-Issue #1295)
 
-Ergebnis des Spikes zu Sub-Issue 1/7. Grundlage für 3/7 (Datenmodell), 4/7
-(Codex-Provider Umsetzung) und 5/7 (Codex-Provider Review).
+Prüft die Annahmen des Epics „OpenAI Codex als zweiter Provider der Agent-Queue“
+gegen die echte Codex-CLI. Kein Produktivcode. Grundlage für 4/7 (Codex-Provider
+Umsetzung) und 5/7 (Codex-Provider Review).
+
+## Status dieses Dokuments
+
+Die Abschnitte 1–8 sind **gemessen** (manuell auf einem Host mit CLI und
+API-Key). Die frühere Fassung dieses Dokuments (Annahmen und Messprotokoll, aus
+einem headless Worker-Lauf ohne CLI/Node/Key) ist in Abschnitt 9 für die
+**noch offenen Punkte** erhalten. Dort gelten weiterhin nur **Annahmen**; sie
+sind nicht verifiziert und dürfen von 4/5 nicht als gesichert behandelt werden.
 
 Alles hier ist **gemessen** auf dem Test-Host (Ubuntu 24.04.5 LTS, Kernel
 6.8.0, VMware-VM, Node v20.20.2, npm 10.8.2) mit **`codex-cli 0.170.0`**,
@@ -188,32 +197,168 @@ Env für beide: `CODEX_API_KEY=<Key des Job-Users oder host-weit>`, kein
 `OPENAI_API_KEY`. Arbeitsverzeichnis wie bei Claude per `cwd` des Subprozesses
 (die CLI-Option `-C` wurde nicht getestet).
 
-## 9. Offen (nicht getestet, nur Annahmen)
+## Worker-Seite (Ist, aus dem Repo – verifiziert)
 
-- **Limit-/Rate-Limit-Fehler:** Text und ob eine Reset-Zeit geliefert wird,
-  nicht beobachtet. Marker und Park-Logik (`WAITING_LIMIT`) erst nach echtem
-  Fall festlegen.
-- **SIGINT/Watchdog:** Verhalten bei Abbruch (Grace-Zeit, finales Event) nicht
-  getestet.
-- **`--output-schema` / `--output-last-message`:** Existenz und Verhalten in
-  0.170.0 nicht geprüft. Bis dahin Fallback `parse_review_verdict` auf der
-  letzten `agent_message`.
-- **`AGENTS.md`:** Wird sie gelesen, genügt ein Symlink auf `CLAUDE.md`? Nicht
-  getestet.
-- **Modellflag und Modellliste:** `-m` und konkrete Modell-IDs für 3/7 nicht
-  getestet (beobachtet nur das Standardmodell `gpt-6.2-sol`).
-- **Netzwerk in der Sandbox** (z. B. Paketinstallation, Tests mit Netz) und ein
-  echter Django-Testlauf in `workspace-write` nicht getestet. Push und `gh`
-  laufen über den Worker außerhalb der Sandbox.
-- **Weitere Item-Typen** im Stream (Datei-Änderungen, MCP, Reasoning).
+Der Claude-Pfad in `core/management/commands/run_claude_worker.py` setzt voraus:
+
+- Prozess mit stdout-Eventstrom (`--output-format stream-json`), Zeile = JSON.
+- Idle-Watchdog: ohne Event → ein `SIGINT`, dann `INTERRUPT_GRACE_SECONDS = 30`
+  für ein finales Result-Event; zweiter Idle → Kill.
+- Usage-Limit-Erkennung per Substring-Liste (`usage limit`, `rate_limit`, …) mit
+  Backoff bis zum Reset; separate Substrings für kaputte Credentials.
+- Prompt-Weitergabe, Arbeitsverzeichnis = Checkout, Git/`gh` durch Claude selbst
+  (Commit, Push, PR-Draft); Merge macht der Worker.
+
+## 9. Noch offen: Messprotokoll (Annahmen, nicht verifiziert)
+
+Pro Punkt die Annahme aus der früheren Fassung und das, was noch zu messen ist. Vorbereitung wie in Abschnitt 3; der Key kommt als `CODEX_API_KEY` (Abschnitt 5).
+
+### 9.1 Weitere Flags
+
+Annahme: `codex exec` liest den Prompt von stdin, wenn das Prompt-Argument `-`
+ist oder fehlt; relevante Flags: `-m/--model`, `-s/--sandbox
+{read-only|workspace-write|danger-full-access}`, `--json` (JSONL auf stdout),
+`-o/--output-last-message <file>`, `--output-schema <file>`,
+`-C/--cd <dir>`, `--skip-git-repo-check`, `-c key=value` (Config-Override),
+`--ephemeral`. Fortschritt/Logs gehen auf stderr, nur das Ergebnis auf stdout.
+
+```bash
+echo "Lege Datei x.txt mit Inhalt hi an" | codex exec --json -s workspace-write -C . - \
+  > events.jsonl 2> stderr.log; echo "exit=$?"
+```
+
+Beobachtet: _offen_ (Flags aus `codex exec --help` kopieren; prüfen, ob `-` nötig
+ist; ob `--json` stderr-Ausgaben unterdrückt).
+
+### 9.2 Sandbox: Netzwerk, Push, Tests
+
+Annahmen für `workspace-write`: Schreiben nur im Arbeitsverzeichnis (+ tmp);
+`.git` ist je nach Version **schreibgeschützt** → `git commit` scheitert eventuell;
+Netzwerk standardmäßig **aus** (→ `git push`, `gh`, `pip install` scheitern);
+Konfigurierbar über `-c sandbox_workspace_write.network_access=true`. Der
+Worker-Flow (Commit/Push/`gh pr create`) wäre damit ohne Anpassung nicht
+lauffähig. Alternative `--dangerously-bypass-approvals-and-sandbox` (`--yolo`):
+volle Rechte; nur in einem externen Container/VM-Isolat vertretbar, dort aber
+einfachste Variante. Alternative C: Codex nur Code ändern lassen, Commit/Push/PR
+macht der Worker (Abweichung vom Claude-Pfad, aber robust).
+
+Zu messen (je Ergebnis + Fehlertext):
+
+| Test (in `workspace-write`) | Beobachtet |
+|---|---|
+| Datei schreiben im Repo | **beobachtet:** funktioniert (mit `bubblewrap` + AppArmor-Profil, Abschnitt 2) |
+| `git add && git commit` | **beobachtet:** `.git` schreibgeschützt, `git add` scheitert; mit `writable_roots` auf `.git` gelingt der Commit (Abschnitt 6) |
+| `git push` | _offen_ |
+| `gh pr list` / `gh auth status` | _offen_ |
+| `python manage.py test … --settings=agira.test_settings` (SQLite) | _offen_ |
+| `pip install`/DNS | _offen_ |
+| Gleiche Tests mit `network_access=true` | _offen_ |
+| Gleiche Tests mit `--dangerously-bypass-approvals-and-sandbox` | _offen_ |
+
+Auf Linux zusätzlich prüfen: Landlock/seccomp verfügbar im Worker-Container
+(Sandbox kann in Containern ohne Rechte fehlschlagen).
+Approvals: headless muss `approval_policy=never` greifen (`exec` ist
+nicht-interaktiv; mit `-c approval_policy=never` absichern).
+
+### 9.3 Read-only Review mit Diff und Schema
+
+Annahme: `--sandbox read-only` erlaubt Dateilesen und lesende Git-Befehle
+(`git log/diff/show`), verbietet Schreiben. Zu prüfen: `git status` (schreibt
+ggf. Index-Lock → Fehler?), `gh pr view` (Netzwerk!), Schreibversuch wird
+abgelehnt und im Event-Strom sichtbar. Review-Urteil als JSON per
+`--output-schema` erzwingen (strukturiertes `pass|deviations`).
+
+Beobachtet: _offen_.
+
+### 9.4 AGENTS.md
+
+Annahme: Codex liest `AGENTS.md` im Repo-Root (und Unterverzeichnissen, auch
+`~/.codex/AGENTS.md`); `CLAUDE.md` wird **nicht** gelesen. Symlink
+`AGENTS.md -> CLAUDE.md` sollte funktionieren (Git speichert Symlinks; auf
+Windows-Checkouts problematisch). Es gibt ein Größenlimit (`project_doc_max_bytes`,
+Default 32 KiB) – `CLAUDE.md` ist derzeit deutlich kleiner, prüfen.
+Test: Marker-Regel in AGENTS.md („Antworte immer mit dem Wort BANANE“) und
+Symlink-Variante einzeln ausprobieren.
+
+Beobachtet: _offen_.
+
+### 9.5 Limit-/Rate-Limit-Fehler
+
+Annahme: API-Key-Betrieb liefert HTTP 429 (`rate_limit_exceeded`,
+`insufficient_quota`) mit Text à la „Rate limit reached … Please try again in
+1.2s“; **kein Reset-Zeitstempel wie bei Claude-Subscription-Limits**, höchstens
+eine relative Wartezeit im Text; bei ChatGPT-Login (Plan-Limits) andere Texte
+(„You've hit your usage limit … try again at …“). `insufficient_quota`
+(Guthaben leer) ist kein temporäres Limit → eigener Fall, kein Backoff-Retry.
+CLI retryt 429 intern mehrfach, bevor sie fehlschlägt.
+
+Beobachtet: _offen_. Praktisch: Limit mit sehr niedrigem Projekt-Limit oder
+Parallel-Last provozieren, Text + Event + Exit-Code festhalten.
+
+### 9.6 Exit-Codes und SIGINT
+
+Annahme: Exit 0 bei Erfolg, ≠0 bei Fehler (Auth, Netz, `turn.failed`). Bei
+SIGINT beendet sich die CLI ohne garantiertes finales Event; evtl. Exit 130.
+Zu messen: SIGINT mitten im Lauf (`kill -INT`): Exit-Code, kommt ein
+`turn.failed`/Abschluss-Event, bleiben Kindprozesse (Tests, git) übrig
+(Prozessgruppe!), wie lange dauert das Beenden (Grace 30 s ausreichend?), wird
+`-o last.json` trotzdem geschrieben (wohl nicht).
+
+Beobachtet: _offen_.
+
+### 9.7 Modelle
+
+Annahme (unsicher, Stand Wissen): Coding-Modelle der GPT-5-Codex-Linie
+(`gpt-5-codex`, spätere Nachfolger `gpt-5.x-codex`), kleines/billiges Modell für
+leichte Aufgaben (`gpt-5-codex-mini`/`-mini`); Reasoning-Aufwand per
+`-c model_reasoning_effort=low|medium|high`. IDs ändern sich oft → Auswahl in
+Agira konfigurierbar halten, nicht hart verdrahten. Zu messen: Welche IDs akzeptiert
+der verwendete Key (`codex exec -m <id> "ping"`), Fehlertext bei unbekanntem
+Modell.
+
+Beobachtet: _offen_.
+
+### 9.8 Vorläufige Argumentlisten der früheren Fassung (zu verifizieren)
+
+Die in Abschnitt 8 genannten, gemessenen Listen haben Vorrang; diese hier enthalten zusätzlich ungetestete Flags.
+
+Umsetzung:
+
+```
+codex exec --json -m <model> -C <checkout> \
+  -s workspace-write -c approval_policy=never \
+  -c sandbox_workspace_write.network_access=true \
+  -o <tmp>/last_message.txt -        # Prompt via stdin
+```
+(Falls `.git` read-only bleibt: Commit/Push/PR im Worker oder
+`--dangerously-bypass-approvals-and-sandbox` in isolierter Umgebung.)
+
+Review (read-only):
+
+```
+codex exec --json -m <model> -C <checkout> \
+  -s read-only -c approval_policy=never \
+  --output-schema <review_schema.json> -o <tmp>/verdict.json -
+```
+
+Env: `CODEX_API_KEY`, `CODEX_HOME=<pro Worker>`.
 
 ## 10. Hinweise an die Folge-Issues
 
-- **3/7:** Key-Feld und Env-Name `CODEX_API_KEY`; Modellliste erst nach einem
-  Test von `-m` und der verfügbaren Modelle füllen.
+Aus den Messungen (Abschnitte 1–8):
+
+- **3/7 (bereits auf `main`):** Env-Name des Keys ist `CODEX_API_KEY`;
+  `OPENAI_API_KEY` wirkt bei `codex exec` nicht. Modellliste erst nach Test von
+  `-m` und den verfügbaren Modellen (9.7) füllen.
 - **4/7:** Worker committet für Codex (Abschnitt 6); Parser nach Abschnitt 4;
   Auth-Fehler früh erkennen (Abschnitt 5); `OPENAI_API_KEY` aus der Env
   entfernen.
-- **5/7:** `--output-schema` zuerst prüfen; sonst `parse_review_verdict`.
+- **5/7:** `--output-schema` zuerst prüfen (9.3); sonst `parse_review_verdict`
+  auf der letzten `agent_message`.
 - **7/7 (Einrichtungsdoku):** `bubblewrap` und AppArmor-Profil für Ubuntu 24.04,
-  `PATH`/Pfad zu `codex` für den Worker.
+  `PATH` bzw. Pfad zu `codex` für den Worker.
+
+Risiken aus der früheren Fassung, die **weiter offen** sind (Messungen in
+Abschnitt 9): Netzwerk in der Sandbox, kein Reset-Zeitpunkt bei Limits
+(`insufficient_quota` separat behandeln), SIGINT/Grace-Zeit und Prozessgruppen,
+`AGENTS.md`-Symlink.

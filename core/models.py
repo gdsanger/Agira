@@ -272,6 +272,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         max_length=500, blank=True, default='',
         help_text=_('Personal Anthropic API key — runs jobs pay-per-use on this user\'s account'),
     )
+    # Personal OpenAI API key for the Codex provider (#1297). Same handling as
+    # claude_api_key: encrypted at rest, write-only in the UI, not in the admin.
+    openai_api_key = EncryptedCharField(
+        max_length=500, blank=True, default='',
+        help_text=_('Personal OpenAI API key — runs Codex jobs pay-per-use on this user\'s account'),
+    )
 
     # Per-user token used by the Agira MCP server to attribute actions
     # (e.g. set as `responsible` on items created via Claude). Not a login credential.
@@ -418,6 +424,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         if auth_mode == ClaudeQueueJobAuthMode.API_KEY:
             return (self.claude_api_key or '').strip()
         return (self.claude_oauth_token or '').strip()
+
+    def has_openai_api_key(self):
+        """True if this user has a personal OpenAI API key stored."""
+        return bool(self.openai_api_key and self.openai_api_key.strip())
+
+    def openai_credential_for(self):
+        """Return this user's OpenAI API key, or '' if not stored."""
+        return (self.openai_api_key or '').strip()
 
 
 class UserOrganisation(models.Model):
@@ -805,6 +819,64 @@ def claude_cli_model_id(value) -> str:
     )
 
 
+class OpenAIQueueJobModel(models.TextChoices):
+    """OpenAI (Codex CLI) models available for queue jobs (#1297).
+
+    Same idea as ``ClaudeQueueJobModel``: the stored value is a stable slug,
+    ``OPENAI_CLI_MODEL_IDS`` translates it to ``codex exec -m``. IDs are the
+    ones named in docs/CODEX_CLI_SPIKE.md (section 10); they change often, so
+    adding one is a choices entry plus a mapping line.
+    """
+    GPT_5_CODEX = 'gpt-5-codex', _('GPT-5 Codex')
+    GPT_5_CODEX_MINI = 'gpt-5-codex-mini', _('GPT-5 Codex Mini')
+
+
+# Display slug -> identifier handed to `codex exec -m`.
+OPENAI_CLI_MODEL_IDS = {
+    OpenAIQueueJobModel.GPT_5_CODEX: 'gpt-5-codex',
+    OpenAIQueueJobModel.GPT_5_CODEX_MINI: 'gpt-5-codex-mini',
+}
+
+
+def openai_cli_model_id(value) -> str:
+    """Translate a stored ``OpenAIQueueJobModel`` slug into a CLI ``-m`` value.
+
+    Unknown or empty values fall back to the default Codex model, never passed
+    through verbatim (same reasoning as ``claude_cli_model_id``).
+    """
+    return OPENAI_CLI_MODEL_IDS.get(
+        value, OPENAI_CLI_MODEL_IDS[OpenAIQueueJobModel.GPT_5_CODEX]
+    )
+
+
+class AgentProvider(models.TextChoices):
+    """Which coding-agent CLI runs a job (#1297)."""
+    CLAUDE = 'claude', _('Claude Code')
+    OPENAI = 'openai', _('OpenAI Codex')
+
+
+# Model slug -> provider. Slugs are unique across providers, so the provider of
+# a stored ``ClaudeQueueJob.model`` is unambiguous.
+MODEL_PROVIDERS = {
+    **{m.value: AgentProvider.CLAUDE for m in ClaudeQueueJobModel},
+    **{m.value: AgentProvider.OPENAI for m in OpenAIQueueJobModel},
+}
+
+AGENT_MODEL_CHOICES = list(ClaudeQueueJobModel.choices) + list(OpenAIQueueJobModel.choices)
+
+
+def provider_for_model(value):
+    """Provider owning model slug ``value``; ``None`` if unknown."""
+    return MODEL_PROVIDERS.get(value)
+
+
+def models_for_provider(provider):
+    """Model choices (value, label) offered for ``provider``."""
+    if provider == AgentProvider.OPENAI:
+        return list(OpenAIQueueJobModel.choices)
+    return list(ClaudeQueueJobModel.choices)
+
+
 class ClaudeQueueJobAuthMode(models.TextChoices):
     """How a Claude Code run authenticates.
 
@@ -855,9 +927,25 @@ class Item(models.Model):
     intern = models.BooleanField(default=False)
     suggested_model = models.CharField(
         max_length=20,
-        choices=ClaudeQueueJobModel.choices,
+        choices=AGENT_MODEL_CHOICES,
         default=ClaudeQueueJobModel.SONNET,
         help_text=_('AI-suggested Claude model for automated processing. A suggestion, not a gate — overridable in the UI.'),
+    )
+    # Provider selection (#1297). ``implementation_provider`` drives the code run;
+    # ``review_provider`` blank = automatic ("the other one than the
+    # implementation", resolved when the review is enqueued).
+    implementation_provider = models.CharField(
+        max_length=20,
+        choices=AgentProvider.choices,
+        default=AgentProvider.CLAUDE,
+        help_text=_('Coding agent that implements this item'),
+    )
+    review_provider = models.CharField(
+        max_length=20,
+        choices=AgentProvider.choices,
+        blank=True,
+        default='',
+        help_text=_('Coding agent for the review; empty = automatic (the one that did not implement)'),
     )
     # Which credential a Claude run for this item is billed to (#1083). Default
     # is the subscription: the quota is already paid for, so pay-per-use has to
@@ -2214,9 +2302,15 @@ class ClaudeQueueJob(models.Model):
         choices=ClaudeQueueJobStatus.choices,
         default=ClaudeQueueJobStatus.QUEUED,
     )
+    provider = models.CharField(
+        max_length=20,
+        choices=AgentProvider.choices,
+        default=AgentProvider.CLAUDE,
+        help_text=_('Provider that actually ran (or will run) the job; for review jobs the review provider'),
+    )
     model = models.CharField(
         max_length=20,
-        choices=ClaudeQueueJobModel.choices,
+        choices=AGENT_MODEL_CHOICES,
         default=ClaudeQueueJobModel.SONNET,
     )
 
@@ -2359,6 +2453,11 @@ class ClaudeQueueJob(models.Model):
     session_id = models.CharField(max_length=255, null=True, blank=True)
     num_turns = models.IntegerField(null=True, blank=True)
     total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    # Token usage of a run (#1298). Codex reports tokens but no USD cost, so for
+    # ``provider=openai`` these are filled while ``total_cost_usd`` stays empty.
+    input_tokens = models.IntegerField(null=True, blank=True)
+    cached_input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
 
     # Live progress / diagnostics
     progress_text = models.TextField(blank=True, help_text=_('Current step, advanced by the worker — basis for the live view'))
@@ -2413,8 +2512,8 @@ class ClaudeQueueJob(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        verbose_name = 'Claude Queue Job'
-        verbose_name_plural = 'Claude Queue Jobs'
+        verbose_name = 'Agent Queue Job'
+        verbose_name_plural = 'Agent Queue Jobs'
         indexes = [
             models.Index(fields=['project', 'status']),
             models.Index(fields=['status', 'created_at']),

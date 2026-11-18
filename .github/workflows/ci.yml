@@ -1,0 +1,43 @@
+name: CI
+
+# Läuft auf JEDEM Pull Request – bewusst ohne Branch-Filter, damit auch
+# Sub-Issue-PRs gegen Epic-Branches (feature/*) Checks bekommen. Der
+# Claude-Queue-Worker merged dort nur bei grünen Checks (siehe CLAUDE.md).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+      - name: Django-Systemcheck
+        run: python manage.py check --settings=agira.test_settings
+      - name: Migrationen vollständig?
+        run: python manage.py makemigrations --check --dry-run --settings=agira.test_settings
+      # Die Gesamtsuite ist ohne PostgreSQL/Weaviate nicht grün (Altlasten);
+      # hier laufen die Module, die als stabil gelten. Liste bei Bedarf erweitern.
+      - name: Tests (stabile Module)
+        run: >
+          python manage.py test
+          core.services.claude_queue
+          core.management.commands.test_run_claude_worker
+          core.test_github_pr_webhook
+          --settings=agira.test_settings

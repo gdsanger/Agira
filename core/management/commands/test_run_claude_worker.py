@@ -2485,6 +2485,73 @@ class EpicAutoMergeTests(ClaudeWorkerTestBase):
         self.assertEqual(gh.subcommands(), ['view'])
         self._assert_chain_stopped(job, 'statt auf den Epic-Branch')
 
+    # --- mixed providers ---------------------------------------------- #
+    def _set_providers(self, first, second):
+        self.first_job.provider = first
+        self.first_job.save(update_fields=['provider'])
+        self.second_job.provider = second
+        self.second_job.save(update_fields=['provider'])
+
+    def _reset_chain(self):
+        self.git_calls = []
+        self.first_job.status = ClaudeQueueJobStatus.RUNNING
+        self.first_job.completion_uncertain = False
+        self.first_job.error_text = ''
+        self.first_job.save(update_fields=['status', 'completion_uncertain', 'error_text'])
+        self.second_job.status = ClaudeQueueJobStatus.BLOCKED
+        self.second_job.save(update_fields=['status'])
+        self.node.status = ClaudeQueueJobStatus.ORCHESTRATING
+        self.node.error_text = ''
+        self.node.save(update_fields=['status', 'error_text'])
+        self.mapping.state = 'open'
+        self.mapping.save(update_fields=['state'])
+
+    @override_settings(OPENAI_API_KEY='sk-test')
+    def test_chain_runs_through_with_alternating_providers(self):
+        # The gate, the merge and the release of the next layer do not depend
+        # on which agent produced the layer.
+        for first, second in (('claude', 'openai'), ('openai', 'claude')):
+            with self.subTest(first=first, second=second):
+                self._reset_chain()
+                self._set_providers(first, second)
+                gh = FakeGh(base=self.epic_branch)
+
+                job = self._run(self.first_job, gh)
+
+                self.assertEqual(job.provider, first)
+                self.assertEqual(job.status, ClaudeQueueJobStatus.DONE)
+                self.assertEqual(gh.subcommands(), ['view', 'ready', 'checks', 'merge'])
+                self.second_job.refresh_from_db()
+                self.assertEqual(self.second_job.status, ClaudeQueueJobStatus.QUEUED)
+                self.assertEqual(self.second_job.provider, second)
+                self.assertEqual(self.node.status, ClaudeQueueJobStatus.ORCHESTRATING)
+
+    @override_settings(OPENAI_API_KEY='sk-test')
+    def test_stops_apply_to_every_provider(self):
+        stops = {
+            'red checks': dict(
+                gh=dict(checks=(1, 'X lint  fail', '')), uncertain=None,
+                reason='nicht grün',
+            ),
+            'tests red / uncertain': dict(
+                gh={}, uncertain='Agent meldet TESTS ROT', reason='Ergebnis unklar',
+            ),
+        }
+        for provider in ('claude', 'openai'):
+            for name, stop in stops.items():
+                with self.subTest(provider=provider, stop=name):
+                    self._reset_chain()
+                    self._set_providers(provider, 'claude')
+                    gh = FakeGh(base=self.epic_branch, **stop['gh'])
+
+                    self._run(self.first_job, gh, uncertain=stop['uncertain'])
+
+                    self.assertNotIn('merge', gh.subcommands())
+                    self.second_job.refresh_from_db()
+                    self.assertEqual(self.second_job.status, ClaudeQueueJobStatus.BLOCKED)
+                    self.assertTrue(self.node.epic_chain.is_halted)
+                    self.assertIn(stop['reason'], self.node.error_text)
+
     # --- single issue ------------------------------------------------- #
     def test_pr_against_main_is_only_readied_never_merged(self):
         item = self._item(self.project_a, status=ItemStatus.WORKING)

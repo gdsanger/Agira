@@ -236,19 +236,33 @@
                 {% if item.status != 'Closed' %}
                 <li>
                     {# An item with sub-issues is handed over as an epic chain, not as a single run (#1079). #}
-                    <button type="button" class="dropdown-item" onclick="enqueueToClaude()">
+                    <button type="button" class="dropdown-item" onclick="enqueueToAgent('claude')">
                         {% if item.children.exists %}
-                        <i class="bi bi-diagram-3 me-2"></i>Epic an Claude übergeben
+                        <i class="bi bi-diagram-3 me-2"></i>Epic: Umsetzung durch Claude
                         {% else %}
-                        <i class="bi bi-robot me-2"></i>An Claude übergeben
+                        <i class="bi bi-robot me-2"></i>Umsetzung durch Claude
+                        {% endif %}
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item" onclick="enqueueToAgent('openai')">
+                        {% if item.children.exists %}
+                        <i class="bi bi-diagram-3 me-2"></i>Epic: Umsetzung durch OpenAI
+                        {% else %}
+                        <i class="bi bi-robot me-2"></i>Umsetzung durch OpenAI
                         {% endif %}
                     </button>
                 </li>
                 {% endif %}
                 {% if can_claude_review %}
                 <li>
-                    <button type="button" class="dropdown-item" onclick="reviewByClaude()">
+                    <button type="button" class="dropdown-item" onclick="reviewByAgent('claude')">
                         <i class="bi bi-search me-2"></i>Review durch Claude
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item" onclick="reviewByAgent('openai')">
+                        <i class="bi bi-search me-2"></i>Review durch OpenAI
                     </button>
                 </li>
                 {% endif %}
@@ -871,6 +885,38 @@
                             <div id="field-feedback-type" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
+                            <strong>Umsetzung:</strong>
+                            <select class="form-select form-select-sm mt-1"
+                                    name="value"
+                                    hx-post="{% url 'item-update-field' item.id %}"
+                                    hx-vals='{"field": "implementation_provider"}'
+                                    hx-trigger="change"
+                                    hx-target="#field-feedback-implementation_provider"
+                                    hx-swap="innerHTML">
+                                {% for value, display in agent_provider_choices %}
+                                <option value="{{ value }}" {% if item.implementation_provider == value %}selected{% endif %}>{{ display }}</option>
+                                {% endfor %}
+                            </select>
+                            <div id="field-feedback-implementation_provider" class="mt-1"></div>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Review:</strong>
+                            <select class="form-select form-select-sm mt-1"
+                                    name="value"
+                                    hx-post="{% url 'item-update-field' item.id %}"
+                                    hx-vals='{"field": "review_provider"}'
+                                    hx-trigger="change"
+                                    hx-target="#field-feedback-review_provider"
+                                    hx-swap="innerHTML">
+                                <option value="" {% if not item.review_provider %}selected{% endif %}>Automatik (aktuell: {{ effective_review_provider_label }})</option>
+                                {% for value, display in agent_provider_choices %}
+                                <option value="{{ value }}" {% if item.review_provider == value %}selected{% endif %}>{{ display }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Automatik = der jeweils andere Provider als bei der Umsetzung.</div>
+                            <div id="field-feedback-review_provider" class="mt-1"></div>
+                        </div>
+                        <div class="mb-3">
                             <strong>Suggested Model:</strong>
                             <select class="form-select form-select-sm mt-1"
                                     name="value"
@@ -886,7 +932,7 @@
                             <div id="field-feedback-suggested_model" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
-                            <strong>Auth-Modus:</strong>
+                            <strong>Auth-Modus (Claude):</strong>
                             <select class="form-select form-select-sm mt-1"
                                     name="value"
                                     hx-post="{% url 'item-update-field' item.id %}"
@@ -898,7 +944,7 @@
                                 <option value="{{ value }}" {% if item.claude_auth_mode == value %}selected{% endif %}>{{ display }}</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">Abo (Standard) oder Pay-per-use-API-Key — jeweils vom Credential des zuständigen Benutzers.</div>
+                            <div class="form-text">Nur für Claude-Jobs: Abo (Standard) oder Pay-per-use-API-Key — jeweils vom Credential des zuständigen Benutzers. OpenAI-Jobs laufen immer mit API-Key.</div>
                             <div id="field-feedback-claude_auth_mode" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
@@ -986,10 +1032,10 @@
                             <div id="field-feedback-release" class="mt-1"></div>
                         </div>
                         <div class="mb-3">
-                            <strong>Claude-Kosten:</strong>
+                            <strong>Claude-Kosten (Agent Queue):</strong>
                             <div>
                                 {% if claude_total_cost is not None %}
-                                    <span title="Summe der Claude-Code-Kostenschätzung (API-Listenpreis) über alle Claude-Queue-Läufe/PRs dieses Items — keine abgerechnete Zahl.">
+                                    <span title="Summe der Claude-Code-Kostenschätzung (API-Listenpreis) über alle Claude-Läufe der Agent Queue (PRs) dieses Items — keine abgerechnete Zahl.">
                                         ${{ claude_total_cost|floatformat:4 }}
                                     </span>
                                     <span class="text-muted small">(geschätzt, API-Listenpreis)</span>
@@ -1023,7 +1069,7 @@
                                                 Job #{{ job.id }}
                                                 {% endif %}
                                             </td>
-                                            <td>{{ job.get_model_display }}</td>
+                                            <td>{{ job.get_provider_display }} · {{ job.get_model_display }}</td>
                                             <td>{{ job.num_turns|default:"—" }}</td>
                                             <td>{% if job.total_cost_usd is not None %}${{ job.total_cost_usd|floatformat:4 }}{% else %}—{% endif %}</td>
                                         </tr>
@@ -1602,57 +1648,55 @@
         }
     }
 
-    // An Claude übergeben action. An item with sub-issues starts an epic chain
+    // Umsetzung durch Claude/OpenAI. An item with sub-issues starts an epic chain
     // instead of a single run (#1079) — the wording says which one you get.
-    function enqueueToClaude() {
+    const AGENT_LABELS = {claude: 'Claude Code', openai: 'OpenAI Codex'};
+
+    function postProvider(url, provider) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value},
+            body: new URLSearchParams({provider: provider}),
+        }).then(response => response.json());
+    }
+
+    function enqueueToAgent(provider) {
+        const agent = AGENT_LABELS[provider];
         {% if item.children.exists %}
-        const confirmText = 'Epic an Claude Code übergeben? Die Sub-Issues werden in '
+        const confirmText = 'Epic an ' + agent + ' übergeben? Die Sub-Issues werden in '
             + 'Reihenfolge (Epic-Order) abgearbeitet – das nächste startet erst nach '
             + 'eindeutigem Erfolg des vorherigen.';
         {% else %}
-        const confirmText = 'An Claude Code übergeben? Das Item wird auf "Working" gesetzt und ein Job eingereiht.';
+        const confirmText = 'Umsetzung durch ' + agent + ' starten? Das Item wird auf "Working" gesetzt und ein Job eingereiht.';
         {% endif %}
         if (confirm(confirmText)) {
-            fetch('{% url 'item-claude-enqueue' item.id %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                    'Content-Type': 'application/json',
-                },
-            })
-            .then(response => response.json())
+            postProvider('{% url 'item-claude-enqueue' item.id %}', provider)
             .then(data => {
                 if (data.success) {
-                    showToast('success', data.message || 'An Claude Code übergeben.');
+                    showToast('success', data.message || 'An ' + agent + ' übergeben.');
                     if (!data.no_change) {
                         setTimeout(() => {
                             window.location.reload();
                         }, 1000);
                     }
                 } else {
-                    showToast('error', data.error || 'Übergabe an Claude fehlgeschlagen.');
+                    showToast('error', data.error || 'Übergabe an ' + agent + ' fehlgeschlagen.');
                 }
             })
             .catch(error => {
-                showToast('error', 'Ein Fehler ist beim Übergeben an Claude aufgetreten.');
+                showToast('error', 'Ein Fehler ist beim Übergeben an ' + agent + ' aufgetreten.');
             });
         }
     }
 
-    // Review durch Claude action: enqueues a read-only review job (#1287).
-    function reviewByClaude() {
+    // Review durch Claude/OpenAI: enqueues a read-only review job (#1287, #1300).
+    function reviewByAgent(provider) {
         {% if can_claude_review %}
-        if (!confirm('Review durch Claude Code starten? Das Item bleibt unverändert, ein Review-Job wird eingereiht.')) {
+        const agent = AGENT_LABELS[provider];
+        if (!confirm('Review durch ' + agent + ' starten? Das Item bleibt unverändert, ein Review-Job wird eingereiht.')) {
             return;
         }
-        fetch('{% url 'item-claude-review' item.id %}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Content-Type': 'application/json',
-            },
-        })
-        .then(response => response.json())
+        postProvider('{% url 'item-claude-review' item.id %}', provider)
         .then(data => {
             if (data.success) {
                 showToast('success', data.message || 'Review eingereiht.');

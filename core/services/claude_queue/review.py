@@ -1,6 +1,6 @@
 """Verdict schema and strict parser for ``review`` queue jobs.
 
-Claude is asked to answer a review with one JSON object::
+The review agent (Claude or Codex) is asked to answer with one JSON object::
 
     {
       "verdict": "pass" | "deviations",
@@ -19,7 +19,7 @@ Claude is asked to answer a review with one JSON object::
 non-blocking hints (verdict ``pass``). A missing or invalid ``severity``
 counts as ``major``.
 
-``unclear`` is never produced by Claude: it is the parser's own result for
+``unclear`` is never produced by the agent: it is the parser's own result for
 anything it cannot trust (no JSON, malformed JSON, schema violations or a
 verdict that contradicts the criteria). The parser never raises — a review
 that cannot be read must end up as ``unclear`` for a human, not as a crash
@@ -47,7 +47,7 @@ SEVERITY_MAJOR = 'major'
 SEVERITY_MINOR = 'minor'
 SEVERITIES = (SEVERITY_MAJOR, SEVERITY_MINOR)
 
-# Shown to Claude in the review prompt.
+# Shown to the agent in the review prompt.
 VERDICT_SCHEMA_EXAMPLE = """{
   "verdict": "pass | deviations",
   "summary": "short text",
@@ -60,6 +60,36 @@ VERDICT_SCHEMA_EXAMPLE = """{
      "severity": "major | minor"}
   ]
 }"""
+
+
+def _object_schema(properties: dict) -> dict:
+    # Strict structured-output mode (Codex ``--output-schema``) demands every
+    # property listed in ``required`` and ``additionalProperties: false``.
+    return {
+        'type': 'object',
+        'properties': properties,
+        'required': list(properties),
+        'additionalProperties': False,
+    }
+
+
+# JSON Schema of the verdict for ``codex exec --output-schema``. The agent can
+# only ever answer ``pass | deviations``; ``unclear`` stays the parser's own.
+VERDICT_JSON_SCHEMA = _object_schema({
+    'verdict': {'type': 'string', 'enum': list(CLAUDE_VERDICTS)},
+    'summary': {'type': 'string'},
+    'criteria': {'type': 'array', 'items': _object_schema({
+        'text': {'type': 'string'},
+        'status': {'type': 'string', 'enum': list(CRITERION_STATUSES)},
+        'evidence': {'type': 'string'},
+    })},
+    'deviations': {'type': 'array', 'items': _object_schema({
+        'title': {'type': 'string'},
+        'description': {'type': 'string'},
+        'criterion': {'type': 'string'},
+        'severity': {'type': 'string', 'enum': list(SEVERITIES)},
+    })},
+})
 
 
 @dataclass
@@ -250,11 +280,39 @@ def _match_criterion(ref: str, criteria: List[CriterionResult]) -> Optional[Crit
         if min(len(key), len(_norm(c.text))) >= 12
         and (key in _norm(c.text) or _norm(c.text) in key)
     ]
-    return partial[0] if len(partial) == 1 else None
+    if len(partial) == 1:
+        return partial[0]
+    if partial:
+        return None
+    # Last resort: the model paraphrased the criterion (e.g. "inklusive" for
+    # "inkl.", dropped a prefix). Pick the criterion sharing most words, but
+    # only if it is clearly the best one.
+    ref_tokens = _tokens(key)
+    if len(ref_tokens) < 3:
+        return None
+    scored = sorted(
+        ((len(ref_tokens & _tokens(_norm(c.text))) / len(ref_tokens), idx)
+         for idx, c in enumerate(criteria)),
+        reverse=True,
+    )
+    best_score, best_idx = scored[0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if best_score >= _FUZZY_MIN_SCORE and best_score - runner_up >= _FUZZY_MIN_MARGIN:
+        return criteria[best_idx]
+    return None
+
+
+_FUZZY_MIN_SCORE = 0.6
+_FUZZY_MIN_MARGIN = 0.15
+_TOKEN_RE = re.compile(r'\w{3,}', re.UNICODE)
+
+
+def _tokens(normalised: str) -> set:
+    return set(_TOKEN_RE.findall(normalised))
 
 
 def parse_review_verdict(raw: Any) -> ReviewVerdict:
-    """Parse Claude's answer into a :class:`ReviewVerdict`; never raises."""
+    """Parse the agent's answer into a :class:`ReviewVerdict`; never raises."""
     if not isinstance(raw, str) or not raw.strip():
         return _unclear('Leere Antwort')
     try:
@@ -277,7 +335,7 @@ def parse_review_verdict(raw: Any) -> ReviewVerdict:
 # --------------------------------------------------------------------------- #
 
 # Upper bound for the diff embedded in the prompt; the checkout is available
-# to Claude for anything beyond it.
+# to the agent for anything beyond it.
 MAX_DIFF_CHARS = 150_000
 
 REVIEW_RULES = """\

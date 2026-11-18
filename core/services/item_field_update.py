@@ -30,7 +30,9 @@ from django.db.models import Model
 
 from core.models import (
     ClaudeQueueJobAuthMode,
-    ClaudeQueueJobModel,
+    AGENT_MODEL_CHOICES,
+    MODEL_PROVIDERS,
+    AgentProvider,
     Item,
     ItemStatus,
     ItemType,
@@ -177,19 +179,41 @@ def _resolve_release(_item: Item, raw: str) -> Optional[Release]:
 
 
 def _resolve_suggested_model(_item: Item, raw: str) -> str:
-    """Resolve the manually overridable Claude-queue model suggestion (#1072).
+    """Resolve the manually overridable agent-queue model suggestion (#1072).
 
-    Only the existing field choices (``ClaudeQueueJobModel``) are
-    accepted; there is no inline "Auto-detect", so no classifier logic runs on
-    this path.
+    Only the existing field choices (Claude and OpenAI models) are accepted;
+    there is no inline "Auto-detect", so no classifier logic runs on this path.
     """
     value = (raw or "").strip()
-    if value not in ClaudeQueueJobModel.values:
+    if value not in MODEL_PROVIDERS:
         raise FieldUpdateError("Ungültiges Modell.")
     return value
 
 
-_SUGGESTED_MODEL_LABELS = dict(ClaudeQueueJobModel.choices)
+_SUGGESTED_MODEL_LABELS = dict(AGENT_MODEL_CHOICES)
+
+
+def _resolve_implementation_provider(_item: Item, raw: str) -> str:
+    """Resolve which coding agent implements the item (#1300)."""
+    value = (raw or "").strip()
+    if value not in AgentProvider.values:
+        raise FieldUpdateError("Ungültiger Provider.")
+    return value
+
+
+def _resolve_review_provider(_item: Item, raw: str) -> str:
+    """Resolve the review provider; empty = automatic (#1300)."""
+    value = (raw or "").strip()
+    if value and value not in AgentProvider.values:
+        raise FieldUpdateError("Ungültiger Provider.")
+    return value
+
+
+_PROVIDER_LABELS = dict(AgentProvider.choices)
+
+
+def _provider_display(value: Any) -> str:
+    return _PROVIDER_LABELS.get(value, value) if value else "Automatisch"
 
 
 def _suggested_model_display(value: Any) -> str:
@@ -263,6 +287,14 @@ FIELD_SPECS: dict[str, FieldSpec] = {
     "suggested_model": FieldSpec(
         "suggested_model", "text", _resolve_suggested_model,
         display=_suggested_model_display, label="Suggested Model",
+    ),
+    "implementation_provider": FieldSpec(
+        "implementation_provider", "text", _resolve_implementation_provider,
+        display=_provider_display, label="Umsetzung durch",
+    ),
+    "review_provider": FieldSpec(
+        "review_provider", "text", _resolve_review_provider,
+        display=_provider_display, label="Review durch",
     ),
     "claude_auth_mode": FieldSpec(
         "claude_auth_mode", "text", _resolve_claude_auth_mode,

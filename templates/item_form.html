@@ -289,27 +289,66 @@
                     </select>
                 </div>
 
+                <!-- Provider (#1300) -->
+                <div class="mb-3">
+                    <label for="implementation_provider" class="form-label">Umsetzung durch</label>
+                    <select class="form-select" id="implementation_provider" name="implementation_provider" form="itemForm">
+                        {% for value, display in agent_provider_choices %}
+                        <option value="{{ value }}" {% if item and item.implementation_provider == value %}selected{% endif %}>{{ display }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="review_provider" class="form-label">Review durch</label>
+                    <select class="form-select" id="review_provider" name="review_provider" form="itemForm">
+                        <option value="" {% if not item or not item.review_provider %}selected{% endif %}>Automatik{% if effective_review_provider_label %} (aktuell: {{ effective_review_provider_label }}){% endif %}</option>
+                        {% for value, display in agent_provider_choices %}
+                        <option value="{{ value }}" {% if item and item.review_provider == value %}selected{% endif %}>{{ display }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">Automatik = der jeweils andere Provider als bei der Umsetzung.</small>
+                </div>
+
                 <!-- Suggested Model (#834) -->
                 <div class="mb-3">
                     <label for="suggested_model" class="form-label">Suggested Model</label>
                     <select class="form-select" id="suggested_model" name="suggested_model" form="itemForm">
                         <option value="" {% if not item %}selected{% endif %}>Auto-detect</option>
-                        {% for value, display in suggested_model_choices %}
-                        <option value="{{ value }}" {% if item and item.suggested_model == value %}selected{% endif %}>{{ display }}</option>
+                        {% for value, display, provider in agent_model_options %}
+                        <option value="{{ value }}" data-provider="{{ provider }}" {% if item and item.suggested_model == value %}selected{% endif %}>{{ display }}</option>
                         {% endfor %}
                     </select>
-                    <small class="form-text text-muted">Used by the Claude queue (#833). A suggestion, not a gate — pick "Auto-detect" to let the classifier decide.</small>
+                    <small class="form-text text-muted">Used by the agent queue (#833). Es werden nur Modelle des gewählten Umsetzungs-Providers angeboten. A suggestion, not a gate — pick "Auto-detect" to let the classifier decide.</small>
                 </div>
+                <script>
+                    (function () {
+                        const provider = document.getElementById('implementation_provider');
+                        const model = document.getElementById('suggested_model');
+                        if (!provider || !model) return;
+                        function filterModels() {
+                            Array.from(model.options).forEach(function (opt) {
+                                const p = opt.dataset.provider;
+                                const hide = !!p && p !== provider.value;
+                                opt.hidden = hide;
+                                opt.disabled = hide;
+                            });
+                            const sel = model.selectedOptions[0];
+                            if (sel && sel.disabled) model.value = '';
+                        }
+                        provider.addEventListener('change', filterModels);
+                        filterModels();
+                    })();
+                </script>
 
                 <!-- Auth-Modus (#1083) -->
                 <div class="mb-3">
-                    <label for="claude_auth_mode" class="form-label">Auth-Modus</label>
+                    <label for="claude_auth_mode" class="form-label">Auth-Modus (Claude)</label>
                     <select class="form-select" id="claude_auth_mode" name="claude_auth_mode" form="itemForm">
                         {% for value, display in claude_auth_mode_choices %}
                         <option value="{{ value }}" {% if item and item.claude_auth_mode == value %}selected{% endif %}>{{ display }}</option>
                         {% endfor %}
                     </select>
-                    <small class="form-text text-muted">Womit Claude-Jobs zu diesem Issue laufen: Abo (Standard, bereits bezahltes Kontingent) oder Anthropic-API-Key (Pay-per-use). Es zählt immer das Credential des zuständigen Benutzers.</small>
+                    <small class="form-text text-muted">Womit Claude-Jobs zu diesem Issue laufen (OpenAI-Jobs nutzen immer den OpenAI-API-Key): Abo (Standard, bereits bezahltes Kontingent) oder Anthropic-API-Key (Pay-per-use). Es zählt immer das Credential des zuständigen Benutzers.</small>
                 </div>
 
                 <!-- Organisation -->

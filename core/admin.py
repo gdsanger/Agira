@@ -284,6 +284,7 @@ class ItemAdmin(admin.ModelAdmin):
         ('Description', {'fields': ('description', 'solution_description', 'pr_description')}),
         ('Relationships', {'fields': ('parent', 'epic_order', 'nodes', 'changes')}),
         ('Assignment', {'fields': ('organisation', 'requester', 'assigned_to', 'solution_release')}),
+        ('Agent', {'fields': ('implementation_provider', 'review_provider')}),
         ('Metadata', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
     
@@ -664,15 +665,15 @@ class AIJobsHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(ClaudeQueueJob)
 class ClaudeQueueJobAdmin(admin.ModelAdmin):
-    list_display = ['id', 'created_at', 'project', 'item', 'kind', 'status', 'parent_job', 'epic_order', 'model', 'auth_mode', 'auth_user', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
-    list_filter = ['kind', 'status', 'model', 'auth_mode', 'auth_credential_source', 'allow_api_key_fallback', 'project', 'pr_state']
+    list_display = ['id', 'created_at', 'project', 'item', 'kind', 'status', 'parent_job', 'epic_order', 'provider', 'model', 'auth_mode', 'auth_user', 'pr_number', 'pr_state', 'total_cost_usd', 'num_turns']
+    list_filter = ['kind', 'status', 'provider', 'model', 'auth_mode', 'auth_credential_source', 'allow_api_key_fallback', 'project', 'pr_state']
     search_fields = ['item__title', 'project__name', 'branch_name', 'session_id', 'error_text']
     autocomplete_fields = ['item', 'project', 'parent_job']
     list_select_related = ['item', 'project', 'auth_user', 'parent_job']
     readonly_fields = ['created_at', 'started_at', 'finished_at']
 
     fieldsets = (
-        (None, {'fields': ('item', 'project', 'kind', 'status', 'model')}),
+        (None, {'fields': ('item', 'project', 'kind', 'status', 'provider', 'model')}),
         ('Epic-Kette', {
             'fields': ('parent_job', 'epic_order'),
             'description': 'Hierarchy of the queue (#1079): an epic node implements '

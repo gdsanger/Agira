@@ -87,7 +87,6 @@ from core.models import (
     ExternalIssueKind,
     ExternalIssueMapping,
     ItemStatus,
-    claude_cli_model_id,
 )
 from core.services.claude_queue.branch import (
     get_default_branch,
@@ -95,10 +94,14 @@ from core.services.claude_queue.branch import (
     resolve_base_branch,
 )
 from core.services.claude_queue.credentials import (
-    ALL_AUTH_ENV_VARS,
     MissingClaudeCredential,
+    MissingOpenAICredential,
     resolve_claude_credential,
+    resolve_openai_credential,
 )
+from core.services.claude_queue.providers import DEFAULT_PROVIDER, get_provider
+from core.services.claude_queue.providers.base import save_progress
+from core.services.claude_queue.providers.claude import ALLOWED_TOOLS  # noqa: F401
 from core.services.claude_queue.epic import can_start, sub_issue_position
 from core.services.claude_queue.review_apply import apply_review_result
 from core.services.claude_queue.review import (
@@ -135,16 +138,6 @@ NO_CHECKS_WAIT_SECONDS = 20
 # and exit cleanly before escalating to SIGKILL.
 INTERRUPT_GRACE_SECONDS = 30
 
-# Headless runs must stay strictly in the foreground. Claude Code can park a
-# long command (typically a full test run) in a background task, or schedule a
-# wakeup/cron, and end its turn to "pick it up later" — but in ``-p`` mode the
-# process then exits and nobody is left listening, so the test result is lost.
-# These variables switch that machinery off for the child process.
-FOREGROUND_ONLY_ENV = {
-    'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
-    'CLAUDE_CODE_DISABLE_CRON': '1',
-}
-
 # Default poll interval for daemon mode.
 DEFAULT_INTERVAL_SECONDS = 5
 
@@ -159,69 +152,6 @@ STALE_BUFFER_SECONDS = 60
 # if the limit still holds it parks again. Kept modest so a rollover that
 # happened in the meantime is picked up promptly rather than slept through.
 DEFAULT_LIMIT_BACKOFF_SECONDS = 15 * 60
-
-# Substrings (checked case-insensitively across the CLI's result text + stderr)
-# that mark a Max/Pro *subscription usage limit* — the reactive signal the
-# worker parks on. Distinct from a plain API error: a limit means "wait for the
-# rollover / fall back to the API key", not "this run is broken".
-LIMIT_MARKERS = (
-    'usage limit reached',
-    'usage limit',
-    'rate limit',
-    'rate_limit',
-    'ratelimit',
-    'too many requests',
-    '"status":429',
-    'status code 429',
-    ' 429 ',
-    'quota',
-    '5-hour limit',
-    '5 hour limit',
-    'weekly limit',
-    'limit reached',
-    'limit exceeded',
-    'nutzungslimit',
-    'kontingent',
-)
-
-# Substrings that mark a broken/expired credential rather than a usage limit.
-# These must fail the job with a clear message (not park it, not silently
-# retry): a bad token never fixes itself by waiting.
-AUTH_ERROR_MARKERS = (
-    'oauth token has expired',
-    'oauth token expired',
-    'token has expired',
-    'invalid api key',
-    'invalid_api_key',
-    'invalid bearer token',
-    'authentication_error',
-    'authentication error',
-    'unauthorized',
-    '401',
-    'please run /login',
-    'please run `claude login`',
-    'run claude login',
-    'no credentials found',
-    'not logged in',
-)
-
-# Tools Claude may use in the headless run: read/edit files, write the
-# PR_BODY_FILE (which lives outside the checkout, so Edit's "must already
-# exist with matching content" semantics don't fit), and drive git.
-ALLOWED_TOOLS = 'Read,Edit,Write,Bash(git*)'
-
-# A review run only reads: files and read-only git queries. Anything that
-# writes, commits or pushes is denied explicitly on top of not being allowed.
-REVIEW_ALLOWED_TOOLS = [
-    'Read', 'Grep', 'Glob',
-    'Bash(git diff*)', 'Bash(git log*)', 'Bash(git show*)',
-    'Bash(git status*)', 'Bash(git blame*)', 'Bash(git ls-files*)',
-]
-REVIEW_DENIED_TOOLS = [
-    'Edit', 'Write', 'NotebookEdit',
-    'Bash(git push*)', 'Bash(git commit*)', 'Bash(git checkout*)',
-    'Bash(git reset*)', 'Bash(git add*)', 'Bash(gh*)',
-]
 
 # Substrings (checked case-insensitively) in a run's final result text that
 # suggest Claude parked the work on a background/wait mechanism instead of
@@ -320,6 +250,11 @@ class _SubscriptionLimitWait(Exception):
 
 
 class Command(BaseCommand):
+    #: Coding-agent CLI behind the worker; resolved per job from
+    #: ``job.provider`` in ``process_job`` (default ``claude``). Everything
+    #: CLI-specific goes through it.
+    provider = get_provider(DEFAULT_PROVIDER)
+
     help = (
         'Claim and run queued Claude Code jobs. Enforces at-most-one running '
         'job per repo (github_owner/github_repo). Runnable as a cron (--once) '
@@ -539,6 +474,12 @@ class Command(BaseCommand):
         An epic node (#1079) never gets here: it has no item to implement, so
         it takes the short orchestration path instead of a CLI run.
         """
+        try:
+            self.provider = get_provider(job.provider)
+        except ValueError as exc:
+            self._fail_job(job, error=str(exc))
+            self.stdout.write(self.style.ERROR(f"Job #{job.pk} rejected: {exc}"))
+            return
         if job.is_epic_node:
             self.process_epic_job(job)
             return
@@ -610,11 +551,11 @@ class Command(BaseCommand):
         *applying* it is a later layer. The item's status is never touched.
         """
         try:
-            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
-        except MissingClaudeCredential as exc:
+            self._check_credential(job)
+        except (MissingClaudeCredential, MissingOpenAICredential) as exc:
             self._fail_job(job, error=str(exc))
             self.stdout.write(self.style.ERROR(
-                f"Review job #{job.pk} failed: missing Claude credential"
+                f"Review job #{job.pk} failed: missing {self.provider.name} credential"
             ))
             return
 
@@ -634,9 +575,7 @@ class Command(BaseCommand):
         try:
             repo_dir = self._prepare_checkout(job)
             diff = self._checkout_pr_state(job, repo_dir, mapping)
-            self._write_trust_settings(
-                repo_dir, allow=REVIEW_ALLOWED_TOOLS, deny=REVIEW_DENIED_TOOLS,
-            )
+            self._write_trust_settings(repo_dir, review=True)
             job.pr_number = mapping.number
             job.pr_url = mapping.html_url
             job.save(update_fields=['pr_number', 'pr_url'])
@@ -674,22 +613,22 @@ class Command(BaseCommand):
             detail = (
                 result.get('result_text')
                 or result.get('stderr')
-                or f"Claude exited with status {result.get('returncode')}."
+                or f"{self._agent_label()} exited with status {result.get('returncode')}."
             ).strip()
-            self._fail_job(job, error=detail or "Claude reported an error.")
+            self._fail_job(job, error=detail or f"{self._agent_label()} reported an error.")
             self.stdout.write(self.style.ERROR(f"Review job #{job.pk} failed"))
             return
 
         if not result.get('saw_result'):
             self._fail_job(
-                job, error="Claude exited without emitting a final result event."
+                job, error=f"{self._agent_label()} exited without emitting a final result event."
             )
             self.stdout.write(self.style.ERROR(
                 f"Review job #{job.pk} failed (no result event)"
             ))
             return
 
-        raw = result.get('result_text') or ''
+        raw = self.provider.review_raw_answer(job, result)
         verdict = parse_review_verdict(raw)
         job.review_report = raw
         job.review_verdict = verdict.verdict
@@ -764,11 +703,11 @@ class Command(BaseCommand):
             # Credential check first: a job whose user has no credential for the
             # chosen mode must fail with that reason, not silently on the other
             # mode — and before a checkout and an empty PR exist for it (#1083).
-            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
-        except MissingClaudeCredential as exc:
+            self._check_credential(job)
+        except (MissingClaudeCredential, MissingOpenAICredential) as exc:
             self._fail_job(job, error=str(exc))
             self.stdout.write(self.style.ERROR(
-                f"Job #{job.pk} failed: missing Claude credential"
+                f"Job #{job.pk} failed: missing {self.provider.name} credential"
             ))
             return
 
@@ -819,9 +758,9 @@ class Command(BaseCommand):
             detail = (
                 result.get('result_text')
                 or result.get('stderr')
-                or f"Claude exited with status {result.get('returncode')}."
+                or f"{self._agent_label()} exited with status {result.get('returncode')}."
             ).strip()
-            error = detail or "Claude reported an error."
+            error = detail or f"{self._agent_label()} reported an error."
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed"))
@@ -830,7 +769,7 @@ class Command(BaseCommand):
         if not result.get('saw_result'):
             # Process exited 0 but never emitted a result event — treat as a
             # failure so it is not silently marked done.
-            error = "Claude exited without emitting a final result event."
+            error = f"{self._agent_label()} exited without emitting a final result event."
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
@@ -842,7 +781,7 @@ class Command(BaseCommand):
             # like a clean "done" — that is exactly the failure mode (an
             # empty PR merged on the strength of an unrelated success body)
             # this check exists to prevent.
-            error = "Kein Code committet – Claude hat keine Änderungen geliefert."
+            error = f"Kein Code committet – {self._agent_label()} hat keine Änderungen geliefert."
             job.completion_uncertain = True
             job.completion_uncertain_reason = (
                 "Leerer PR: keine Änderungen über den Start-Commit hinaus "
@@ -952,24 +891,9 @@ class Command(BaseCommand):
             return f"https://x-access-token:{token}@{host}/{owner}/{repo}.git"
         return f"https://{host}/{owner}/{repo}.git"
 
-    def _write_trust_settings(self, repo_dir, allow=None, deny=None):
-        """Write the Claude whitelist + trust flag into the *checkout*.
-
-        These must live in the working checkout, not the app directory, so the
-        headless run does not prompt for tool permission or project trust.
-        """
-        claude_dir = Path(repo_dir) / '.claude'
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        settings_file = claude_dir / 'settings.local.json'
-        payload = {
-            'hasTrustDialogAccepted': True,
-            'permissions': {
-                'allow': allow or ['Read', 'Edit', 'Write', 'Bash(git*)'],
-            },
-        }
-        if deny:
-            payload['permissions']['deny'] = deny
-        settings_file.write_text(json.dumps(payload, indent=2))
+    def _write_trust_settings(self, repo_dir, review=False):
+        """Let the provider write its trust/permission files into the checkout."""
+        self.provider.prepare_checkout(repo_dir, review=review)
 
     # ------------------------------------------------------------------ #
     # Branch + PR (the up-front trick)
@@ -1765,85 +1689,13 @@ class Command(BaseCommand):
         return self._build_prompt(job.item)
 
     def _build_claude_args(self, job):
-        """Assemble the headless Claude Code command line.
-
-        The prompt is deliberately *not* part of argv (size limit, see
-        ``_run_cli``); ``-p`` without a value makes the CLI read stdin.
-
-        The job's model is a stored slug (``opus-5``), not something the CLI
-        understands — it is translated to a concrete ``--model`` identifier
-        here (#1082).
-        """
-        model = job.model or job.item.suggested_model
-        if job.is_review:
-            # Read-only: no --dangerously-skip-permissions; the checkout's
-            # settings allow only reading and deny writes/commits/pushes.
-            return [
-                settings.CLAUDE_CLI_BIN,
-                '-p',
-                '--model', claude_cli_model_id(model),
-                '--output-format', 'stream-json',
-                '--verbose',
-                '--allowedTools', ','.join(REVIEW_ALLOWED_TOOLS),
-                '--disallowedTools', ','.join(REVIEW_DENIED_TOOLS),
-            ]
-        return [
-            settings.CLAUDE_CLI_BIN,
-            '-p',
-            '--model', claude_cli_model_id(model),
-            '--output-format', 'stream-json',
-            '--verbose',
-            '--dangerously-skip-permissions',
-        ]
+        return self.provider.build_args(job)
 
     def _build_env(self, job, pr_body_file, *, auth_mode=ClaudeQueueJobAuthMode.OAUTH,
                    timeout=DEFAULT_TIMEOUT_SECONDS):
-        """Build the child environment for one Claude run, per ``auth_mode``.
-
-        The CLI's credential precedence is *process-local*: inside a single
-        process it prefers ``ANTHROPIC_API_KEY`` whenever it sees one. So both
-        auth-carrying variables are stripped from the inherited environment
-        first, and exactly the one matching ``auth_mode`` is set. This is what
-        guarantees an OAuth run never silently spends the API key even when the
-        key is exported globally on the host.
-
-        Which secret that is comes from ``job.auth_user`` (#1083) — the run
-        goes on *that* user's subscription or API account. Handing it over via
-        the environment rather than a CLI flag is also the safer channel: argv
-        is visible to every process via ``ps``, the environment is not.
-
-        Background tasks and cron/wakeups are disabled (``FOREGROUND_ONLY_ENV``).
-        With backgrounding off, a long command blocks in the foreground, so a
-        single Bash call may use the job's whole wall-clock budget instead of
-        the CLI's 2/10-minute defaults (which would otherwise kill a long test
-        run). The idle watchdog is paused meanwhile (see ``_iter_events``).
-        """
-        bash_timeout_ms = str(timeout * 1000)
-        env = dict(
-            os.environ,
-            CLAUDE_QUEUE_JOB_ID=str(job.pk),
-            BASH_DEFAULT_TIMEOUT_MS=bash_timeout_ms,
-            BASH_MAX_TIMEOUT_MS=bash_timeout_ms,
-            **FOREGROUND_ONLY_ENV,
+        return self.provider.build_env(
+            job, pr_body_file, auth_mode=auth_mode, timeout=timeout,
         )
-        if pr_body_file:
-            env['PR_BODY_FILE'] = str(pr_body_file)
-        # Start from a clean slate so nothing inherited decides the auth for us.
-        for name in ALL_AUTH_ENV_VARS:
-            env.pop(name, None)
-
-        credential = resolve_claude_credential(job.auth_user, auth_mode)
-        if credential.value:
-            env[credential.env_var] = credential.value
-        self._set_credential_source(job, credential.source)
-        return env
-
-    def _set_credential_source(self, job, source):
-        """Record which credential the current attempt actually used."""
-        if job.auth_credential_source == source:
-            return
-        job.auth_credential_source = source
-        job.save(update_fields=['auth_credential_source'])
 
     # ------------------------------------------------------------------ #
     # Auth mode + reactive limit handling
@@ -1858,6 +1710,21 @@ class Command(BaseCommand):
         including a credential failure — is returned as-is for the normal
         success/failure handling.
         """
+        if self.provider.name == 'openai':
+            # API-key only: no subscription to fall back from, so a limit
+            # always parks (insufficient_quota is classified as auth error).
+            self._set_auth_mode(job, ClaudeQueueJobAuthMode.API_KEY)
+            result = self._run_cli(
+                job, repo_dir, timeout, idle_timeout, pr_body_file,
+                auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+            )
+            if not self._is_auth_error(result) and self._is_limit_error(result):
+                raise _SubscriptionLimitWait(
+                    reset_at=self._parse_limit_reset(result),
+                    detail=self._limit_detail(result),
+                )
+            return result
+
         auth_mode = self._resolve_auth_mode(job)
         self._set_auth_mode(job, auth_mode)
         result = self._run_cli(
@@ -1887,6 +1754,17 @@ class Command(BaseCommand):
             )
 
         return result
+
+    def _agent_label(self):
+        """Display name of the current job's coding agent for messages."""
+        return 'Codex' if self.provider.name == 'openai' else 'Claude'
+
+    def _check_credential(self, job):
+        """Fail fast if the job's provider has no usable credential."""
+        if self.provider.name == 'openai':
+            resolve_openai_credential(job.auth_user)
+        else:
+            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
 
     def _resolve_auth_mode(self, job):
         """Return the auth mode this run must use.
@@ -1928,7 +1806,7 @@ class Command(BaseCommand):
             timezone.now() + timedelta(seconds=DEFAULT_LIMIT_BACKOFF_SECONDS)
         )
         when = timezone.localtime(reset_at).strftime('%Y-%m-%d %H:%M')
-        note = f"Abo-Kontingent erreicht – wartet auf Rollover (frühestens {when})."
+        note = f"Kontingent/Rate-Limit erreicht – wartet auf Rollover (frühestens {when})."
         job.limit_reset_at = reset_at
         job.progress_text = note[:2000]
         job.transition_to(ClaudeQueueJobStatus.WAITING_LIMIT)
@@ -1936,79 +1814,20 @@ class Command(BaseCommand):
             f"Job #{job.pk} waiting for subscription quota until {when}"
         ))
 
-    def _match_markers(self, result, markers):
-        """True if any marker appears in the run's result text or stderr."""
-        haystack = (
-            f"{result.get('result_text', '')}\n{result.get('stderr', '')}"
-        ).lower()
-        return any(marker in haystack for marker in markers)
-
     def _is_limit_error(self, result):
-        """True if an *errored* run looks like a subscription usage-limit hit.
-
-        Gated on the run actually erroring (``is_error`` or a non-zero exit) so a
-        successful run that merely mentions "quota" in its summary is not
-        misread as a limit.
-        """
-        errored = result.get('is_error') or result.get('returncode', 0) != 0
-        return bool(errored) and self._match_markers(result, LIMIT_MARKERS)
+        return self.provider.is_limit_error(result)
 
     def _is_auth_error(self, result):
-        """True if an errored run looks like a broken/expired credential."""
-        errored = result.get('is_error') or result.get('returncode', 0) != 0
-        return bool(errored) and self._match_markers(result, AUTH_ERROR_MARKERS)
+        return self.provider.is_auth_error(result)
 
     def _limit_detail(self, result):
-        """A short, log-safe detail string for a limit hit."""
-        detail = (result.get('result_text') or result.get('stderr') or '').strip()
-        return detail[:500]
+        return self.provider.limit_detail(result)
 
     def _auth_error_message(self, result, job=None):
-        """An actionable failure message for a credential problem.
-
-        Points at the credential the run actually used: a personal one is fixed
-        by its owner in the user profile, a host-wide one by the administrator.
-        """
-        detail = (result.get('result_text') or result.get('stderr') or '').strip()
-        if job is not None and job.auth_credential_source == ClaudeCredentialSource.USER:
-            owner = job.auth_user.name if job.auth_user else 'der Benutzer'
-            base = (
-                f"Claude-Authentifizierung fehlgeschlagen: das persönliche Credential "
-                f"von {owner} ist abgelaufen oder ungültig. Neuen Token per "
-                f"`claude setup-token` erzeugen bzw. den API-Key erneuern und unter "
-                f"„User Settings“ hinterlegen."
-            )
-        else:
-            base = (
-                "Claude-Authentifizierung fehlgeschlagen (Token/Key abgelaufen oder "
-                "ungültig). OAuth-Token per `claude setup-token` erneuern bzw. "
-                "CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY prüfen."
-            )
-        return f"{base}\n\n{detail}".strip() if detail else base
+        return self.provider.auth_error_message(result, job)
 
     def _parse_limit_reset(self, result):
-        """Best-effort parse of a quota reset time from the CLI output.
-
-        Recognises the ``…limit reached|<unix_epoch>`` form the CLI emits, plus
-        a looser ``reset/retry … <epoch>`` fallback. Returns an aware datetime
-        or ``None`` when nothing parseable is present (the caller then applies a
-        default backoff).
-        """
-        text = f"{result.get('result_text', '')}\n{result.get('stderr', '')}"
-        match = re.search(r'\|\s*(\d{10,13})\b', text)
-        if not match:
-            match = re.search(
-                r'(?:reset|retry|available)[^0-9]{0,24}(\d{10,13})\b', text, re.I,
-            )
-        if not match:
-            return None
-        ts = int(match.group(1))
-        if ts > 10_000_000_000:  # value is in milliseconds
-            ts //= 1000
-        try:
-            return datetime.fromtimestamp(ts, tz=datetime_timezone.utc)
-        except (ValueError, OSError, OverflowError):
-            return None
+        return self.provider.parse_limit_reset(result)
 
     def _build_prompt(self, item):
         """Build the task prompt Claude works from."""
@@ -2076,106 +1895,17 @@ class Command(BaseCommand):
                 raise subprocess.TimeoutExpired(proc.args, timeout)
 
     def _consume_stream(self, job, lines):
-        """Parse Claude's stream-json events, updating ``job`` as they arrive.
-
-        ``lines`` is any iterable of raw JSON lines (so it is unit-testable with
-        synthetic input). Returns the accumulated result dict.
-        """
-        result = {
-            'session_id': None,
-            'num_turns': None,
-            'total_cost_usd': None,
-            'is_error': False,
-            'result_text': '',
-            'saw_result': False,
-        }
-
-        for raw in lines:
-            raw = (raw or '').strip()
-            if not raw:
-                continue
-            try:
-                event = json.loads(raw)
-            except json.JSONDecodeError:
-                # Known stdout bug can interleave non-JSON noise — skip it.
-                continue
-
-            etype = event.get('type')
-            if etype == 'system' and event.get('subtype') == 'init':
-                result['session_id'] = event.get('session_id')
-                job.session_id = result['session_id']
-                mcp = event.get('mcp_servers') or []
-                self._save_progress(
-                    job,
-                    f"Session started ({len(mcp)} MCP server(s))",
-                    extra_fields=['session_id'],
-                )
-            elif etype == 'assistant':
-                self._track_tool_calls(event)
-                step = self._describe_assistant(event)
-                if step:
-                    self._save_progress(job, step)
-            elif etype == 'user':
-                self._track_tool_calls(event)
-            elif etype == 'result':
-                result['saw_result'] = True
-                result['is_error'] = bool(event.get('is_error'))
-                result['num_turns'] = event.get('num_turns')
-                result['total_cost_usd'] = event.get('total_cost_usd')
-                result['result_text'] = event.get('result') or ''
-
-                job.num_turns = result['num_turns']
-                if result['total_cost_usd'] is not None:
-                    job.total_cost_usd = result['total_cost_usd']
-                if event.get('session_id'):
-                    job.session_id = event['session_id']
-                self._save_progress(
-                    job,
-                    (result['result_text'] or 'Completed').strip(),
-                    extra_fields=['num_turns', 'total_cost_usd', 'session_id'],
-                )
-
-        return result
+        """Parse the provider's output stream, updating ``job`` as events arrive."""
+        in_flight = self.__dict__.setdefault('_tools_in_flight', set())
+        return self.provider.parse_stream(job, lines, in_flight)
 
     def _track_tool_calls(self, event):
         """Keep ``_tools_in_flight`` in step with tool_use/tool_result blocks."""
         in_flight = self.__dict__.setdefault('_tools_in_flight', set())
-        for block in (event.get('message') or {}).get('content') or []:
-            if not isinstance(block, dict):
-                continue
-            if block.get('type') == 'tool_use' and block.get('id'):
-                in_flight.add(block['id'])
-            elif block.get('type') == 'tool_result':
-                in_flight.discard(block.get('tool_use_id'))
-
-    def _describe_assistant(self, event):
-        """Turn an assistant event into a short 'current step' line."""
-        message = event.get('message') or {}
-        content = message.get('content') or []
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get('type') == 'tool_use':
-                name = block.get('name', 'tool')
-                inp = block.get('input') or {}
-                target = (
-                    inp.get('file_path')
-                    or inp.get('command')
-                    or inp.get('path')
-                    or ''
-                )
-                return f"{name}: {target}".strip().rstrip(':')[:2000]
-        for block in content:
-            if isinstance(block, dict) and block.get('type') == 'text':
-                text = (block.get('text') or '').strip()
-                if text:
-                    return text.splitlines()[0][:2000]
-        return None
+        self.provider._track_tool_calls(event, in_flight)
 
     def _save_progress(self, job, text, extra_fields=None):
-        job.progress_text = (text or '')[:2000]
-        fields = ['progress_text'] + (extra_fields or [])
-        job.save(update_fields=fields)
+        save_progress(job, text, extra_fields)
 
     # ------------------------------------------------------------------ #
     # Subprocess helpers

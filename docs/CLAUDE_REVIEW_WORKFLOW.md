@@ -1,4 +1,4 @@
-# Claude-Review für Items (Integrated / Testing)
+# Review für Items (Integrated / Testing) – Claude oder Codex
 
 Regeln und Hintergrund zum Review-Job (`kind=review`) der Claude-Queue. Die
 verbindliche Kurzfassung steht in `CLAUDE.md` (Abschnitt „Review
@@ -156,3 +156,26 @@ Ein Mensch kann das Ergebnis eines Reviews bewusst überschreiben. Das ist
 `core.services.claude_queue`, `core.management.commands.test_run_claude_worker`
 (inkl. End-to-End für `pass`, `deviations`, `unclear`),
 `core.test_claude_enqueue_view`, `core.test_claude_queue_views`.
+
+## Provider (Claude / OpenAI Codex)
+
+Review-Jobs laufen mit dem Review-Provider des Items (`review_provider`, leer =
+der jeweils andere als bei der Umsetzung). Prompt, Urteils-Schema, Parser und
+`review_apply`/`review_override` sind provider-neutral; der Bericht-Kommentar
+nennt Provider und Modell („Geurteilt von“).
+
+- **Regel „anderer Provider“:** Ohne gesetzten `review_provider` reviewt der
+  andere Provider als der, der zuletzt sauber umgesetzt hat (ein Lauf mit
+  `completion_uncertain` zählt nicht; ohne Lauf: der andere als
+  `implementation_provider`). Ein gesetzter `review_provider` gewinnt.
+  Umsetzung Claude → Review OpenAI und umgekehrt. Einrichtung des
+  OpenAI-Providers: [`OPENAI_PROVIDER_SETUP.md`](OPENAI_PROVIDER_SETUP.md).
+- **Codex read-only:** `codex exec -s read-only -c approval_policy=never`,
+  ohne `--dangerously-bypass-approvals-and-sandbox` (Test:
+  `test_codex_review`). Schreiben, Commit und Push sind damit durch die Sandbox
+  ausgeschlossen.
+- **Urteil:** bevorzugt aus `--output-last-message` (Antwort gegen
+  `--output-schema`, strikt: alle Felder Pflicht, `verdict` nur `pass |
+  deviations`); fehlt die Datei, gilt die letzte Agent-Nachricht aus dem
+  Stream. Beides läuft durch `parse_review_verdict` – Unlesbares oder
+  Schema-Verstöße bleiben `unclear`.

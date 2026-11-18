@@ -34,6 +34,7 @@ from .models import (
     MailTemplate, MailActionMapping, IssueOpenQuestion, IssueStandardAnswer, OpenQuestionStatus, OpenQuestionSource,
     GlobalSettings, SystemSetting, ChangePolicy, ChangePolicyRole,
     ClaudeQueueJob, ClaudeQueueJobKind, ClaudeQueueJobStatus, ClaudeQueueJobModel,
+    AgentProvider, AGENT_MODEL_CHOICES, MODEL_PROVIDERS, models_for_provider, provider_for_model,
     ClaudeQueueJobAuthMode, MCP_TOKEN_ROTATION_DAYS)
 
 
@@ -43,7 +44,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.storage.errors import AttachmentTooLarge
 from .services.agents import AgentService
-from .services.claude_queue.model_classifier import ModelClassifierService
+from .services.claude_queue.model_classifier import ModelClassifierService, suggest_model
 from .services.mail import check_mail_trigger, prepare_mail_preview
 from .services.comments.mentions import extract_mentioned_user_ids
 from .services.change_policy_service import ChangePolicyService
@@ -903,6 +904,12 @@ def claude_queue_jobs(request):
     if status_filter:
         jobs = jobs.filter(status=status_filter)
 
+    provider_filter = request.GET.get('provider', '')
+    if provider_filter in AgentProvider.values:
+        jobs = jobs.filter(provider=provider_filter)
+    else:
+        provider_filter = ''
+
     paginator = Paginator(jobs, 20)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
@@ -913,6 +920,8 @@ def claude_queue_jobs(request):
         'statuses': ClaudeQueueJobStatus.choices,
         'selected_project': project_filter,
         'selected_status': status_filter,
+        'providers': AgentProvider.choices,
+        'selected_provider': provider_filter,
     }
     context.update(_claude_queue_dashboard_context())
     if request.headers.get('HX-Request'):
@@ -1267,7 +1276,8 @@ def item_detail(request, item_id):
         'item_types': item_types,
         'active_tab': active_tab,
         'available_statuses': ItemStatus.choices,
-        'suggested_model_choices': ClaudeQueueJobModel.choices,
+        'suggested_model_choices': _item_model_choices(item),
+        **_agent_provider_context(item),
         'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         'claude_queue_jobs': claude_queue_jobs,
         'claude_total_cost': claude_total_cost,
@@ -1278,6 +1288,57 @@ def item_detail(request, item_id):
         **_review_override_context(item),
     }
     return render(request, 'item_detail.html', context)
+
+
+def _item_model_choices(item):
+    """Model choices offered for ``item``: those of its implementation provider.
+
+    A stored model of the other provider stays selectable so an existing value
+    is never silently dropped from the form.
+    """
+    choices = models_for_provider(getattr(item, 'implementation_provider', None))
+    current = getattr(item, 'suggested_model', '')
+    if current and current not in {value for value, _ in choices}:
+        labels = dict(AGENT_MODEL_CHOICES)
+        choices.append((current, labels.get(current, current)))
+    return choices
+
+
+def _agent_provider_context(item=None):
+    """Template context for the provider selects of an item (#1300)."""
+    from core.services.claude_queue.provider_rule import effective_review_provider
+
+    context = {
+        'agent_provider_choices': AgentProvider.choices,
+        # (value, label, provider) so the form can filter models client-side.
+        'agent_model_options': [
+            (value, label, MODEL_PROVIDERS.get(value, ''))
+            for value, label in AGENT_MODEL_CHOICES
+        ],
+    }
+    if item is not None and item.pk:
+        context['effective_review_provider'] = effective_review_provider(item)
+        context['effective_review_provider_label'] = AgentProvider(
+            context['effective_review_provider']
+        ).label
+    return context
+
+
+def _resolve_agent_providers(request, item):
+    """Apply implementation/review provider from the form (#1300).
+
+    Only valid provider slugs are taken; anything else keeps the current value.
+    An empty review provider means "automatic" and is valid.
+    """
+    value = request.POST.get('implementation_provider', '').strip()
+    if value in AgentProvider.values:
+        item.implementation_provider = value
+    if 'review_provider' in request.POST:
+        value = request.POST.get('review_provider', '').strip()
+        if value in AgentProvider.values or value == '':
+            item.review_provider = value
+
+
 
 
 def _review_override_context(item):
@@ -1366,6 +1427,17 @@ def item_update_field(request, item_id):
     if field_name == 'responsible' and result.changed and result.new_value is not None:
         _send_responsible_notification(item, result.new_value)
 
+    if field_name == 'implementation_provider' and result.changed:
+        # The model select only offers models of the provider; a model of the
+        # other one makes no sense any more -> provider default, then reload
+        # so the select is rebuilt (#1300).
+        if provider_for_model(item.suggested_model) != item.implementation_provider:
+            item.suggested_model = models_for_provider(item.implementation_provider)[0][0]
+            item.save(update_fields=['suggested_model', 'updated_at'])
+        response = _feedback(result=result)
+        response['HX-Refresh'] = 'true'
+        return response
+
     return _feedback(result=result)
 
 
@@ -1427,17 +1499,28 @@ def item_take_over_responsible(request, item_id):
         }, status=500)
 
 
+def _posted_provider(request):
+    """Optional ``provider`` of an enqueue POST; invalid values count as unset."""
+    value = (request.POST.get('provider') or '').strip()
+    return value if value in AgentProvider.values else None
+
+
 @login_required
 @require_http_methods(["POST"])
 def item_claude_review(request, item_id):
     """
-    "Review durch Claude" action - enqueues a read-only review job (#1286).
+    "Review durch Claude/OpenAI" action - enqueues a read-only review job (#1286).
 
     Only for items in Integrated/Testing with a linked PR. Does not change the
     item's status or description. An already active review job is returned
-    instead of creating a second one.
+    instead of creating a second one. POST ``provider`` picks the reviewer;
+    without it the review rule applies (``item.review_provider``, else the other
+    provider than the implementation, #1300).
     """
-    from core.services.claude_queue.credentials import MissingClaudeCredential
+    from core.services.claude_queue.credentials import (
+        MissingClaudeCredential,
+        MissingOpenAICredential,
+    )
     from core.services.claude_queue.enqueue import (
         InvalidClaudeModel,
         ReviewNotAllowed,
@@ -1447,8 +1530,10 @@ def item_claude_review(request, item_id):
     item = get_object_or_404(Item, id=item_id)
 
     try:
-        job, created = enqueue_review_for_claude(item, actor=request.user)
-    except (MissingClaudeCredential, InvalidClaudeModel, ReviewNotAllowed) as e:
+        job, created = enqueue_review_for_claude(
+            item, actor=request.user, provider=_posted_provider(request),
+        )
+    except (MissingClaudeCredential, MissingOpenAICredential, InvalidClaudeModel, ReviewNotAllowed) as e:
         # User-fixable, not server errors; report verbatim.
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
@@ -1458,13 +1543,13 @@ def item_claude_review(request, item_id):
     if not created:
         return JsonResponse({
             'success': True,
-            'message': f'Item already has an active Claude review (job #{job.pk}).',
+            'message': f'Item already has an active review (job #{job.pk}).',
             'no_change': True,
             'job_id': job.pk,
         })
     return JsonResponse({
         'success': True,
-        'message': f'Review enqueued for Claude Code (job #{job.pk}).',
+        'message': f'Review enqueued for {job.get_provider_display()} (job #{job.pk}).',
         'job_id': job.pk,
     })
 
@@ -1480,7 +1565,10 @@ def items_claude_review_bulk(request):
     be reviewed (wrong status, no PR, missing credential, ...) are reported per
     item and never abort the rest of the batch.
     """
-    from core.services.claude_queue.credentials import MissingClaudeCredential
+    from core.services.claude_queue.credentials import (
+        MissingClaudeCredential,
+        MissingOpenAICredential,
+    )
     from core.services.claude_queue.enqueue import (
         InvalidClaudeModel,
         ReviewNotAllowed,
@@ -1510,7 +1598,7 @@ def items_claude_review_bulk(request):
             continue
         try:
             job, created = enqueue_review_for_claude(item, actor=request.user)
-        except (MissingClaudeCredential, InvalidClaudeModel, ReviewNotAllowed) as e:
+        except (MissingClaudeCredential, MissingOpenAICredential, InvalidClaudeModel, ReviewNotAllowed) as e:
             failed.append({'item_id': item_id, 'error': str(e)})
         except Exception as e:
             logger.exception(f"Error enqueueing review for item {item_id}: {e}")
@@ -1578,7 +1666,11 @@ def item_review_override(request, item_id):
 @require_http_methods(["POST"])
 def item_claude_enqueue(request, item_id):
     """
-    "An Claude übergeben" action - enqueues the item for the Claude queue.
+    "Umsetzung durch Claude/OpenAI" action - enqueues the item for the agent queue.
+
+    POST ``provider`` (``claude``/``openai``) picks the agent and is remembered
+    as the item's ``implementation_provider``; without it the item's own
+    setting applies (#1300).
 
     Force-appends the git-workflow hint to the item's description (once),
     creates a queued ClaudeQueueJob, and moves the item to Working. If the
@@ -1589,7 +1681,10 @@ def item_claude_enqueue(request, item_id):
     Claude itself. Running an epic through the CLI directly would ask one run
     to implement the whole vertical slice the sub-issues exist to cut up.
     """
-    from core.services.claude_queue.credentials import MissingClaudeCredential
+    from core.services.claude_queue.credentials import (
+        MissingClaudeCredential,
+        MissingOpenAICredential,
+    )
     from core.services.claude_queue.enqueue import (
         InvalidClaudeModel,
         SubIssueOutsideEpic,
@@ -1603,13 +1698,13 @@ def item_claude_enqueue(request, item_id):
     if item.status == ItemStatus.CLOSED:
         return JsonResponse({
             'success': False,
-            'error': 'Cannot enqueue a closed item for Claude.',
+            'error': 'Cannot enqueue a closed item for the agent queue.',
         }, status=400)
 
     enqueue = enqueue_epic_for_claude if is_epic(item) else enqueue_item_for_claude
     try:
-        job, created = enqueue(item, actor=request.user)
-    except (MissingClaudeCredential, InvalidClaudeModel, SubIssueOutsideEpic) as e:
+        job, created = enqueue(item, actor=request.user, provider=_posted_provider(request))
+    except (MissingClaudeCredential, MissingOpenAICredential, InvalidClaudeModel, SubIssueOutsideEpic) as e:
         # All three are user-fixable situations, not server errors: a missing
         # credential, an unmapped model, or a sub-issue that must go through its
         # epic (#1109). Report verbatim so the message can be acted on.
@@ -1625,7 +1720,7 @@ def item_claude_enqueue(request, item_id):
     if not created:
         return JsonResponse({
             'success': True,
-            'message': f'{kind} already has an active Claude job (#{job.pk}).',
+            'message': f'{kind} already has an active agent job (#{job.pk}).',
             'no_change': True,
             'job_id': job.pk,
         })
@@ -1633,7 +1728,7 @@ def item_claude_enqueue(request, item_id):
     message = (
         f'Epic enqueued – orchestrates its sub-issues (job #{job.pk}).'
         if job.is_epic_node
-        else f'Enqueued for Claude Code (job #{job.pk}).'
+        else f'Enqueued for {job.get_provider_display()} (job #{job.pk}).'
     )
     return JsonResponse({
         'success': True,
@@ -4757,14 +4852,14 @@ def _resolve_suggested_model(item, request):
     Resolve Item.suggested_model (#834) from an explicit UI override or
     the hybrid classifier.
 
-    Any valid ClaudeQueueJobModel value in POST['suggested_model'] is a
+    Any valid model value (Claude or OpenAI) in POST['suggested_model'] is a
     manual override and is used as-is. Any other value (missing, or
     empty for "Auto-detect") triggers (re-)classification.
     """
     override = request.POST.get('suggested_model', '').strip()
-    if override in ClaudeQueueJobModel.values:
+    if override in MODEL_PROVIDERS:
         return override
-    return ModelClassifierService().classify(item)
+    return suggest_model(item, ModelClassifierService())
 
 
 def _resolve_claude_auth_mode(request, current=None):
@@ -5012,7 +5107,8 @@ def item_create(request):
             'default_project': default_project,
             'nodes': nodes,
             'blueprints': blueprints,
-            'suggested_model_choices': ClaudeQueueJobModel.choices,
+            'suggested_model_choices': AGENT_MODEL_CHOICES,
+            **_agent_provider_context(),
             'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         }
         return render(request, 'item_form.html', context)
@@ -5072,6 +5168,7 @@ def item_create(request):
             type=item_type,
             status=request.POST.get('status', ItemStatus.INBOX),
         )
+        _resolve_agent_providers(request, item)
         item.suggested_model = _resolve_suggested_model(item, request)
         item.claude_auth_mode = _resolve_claude_auth_mode(request)
 
@@ -5213,7 +5310,8 @@ def item_edit(request, item_id):
             'releases': releases,
             'parent_items': parent_items,
             'nodes': nodes,
-            'suggested_model_choices': ClaudeQueueJobModel.choices,
+            'suggested_model_choices': AGENT_MODEL_CHOICES,
+            **_agent_provider_context(item),
             'claude_auth_mode_choices': ClaudeQueueJobAuthMode.choices,
         }
         return render(request, 'item_form.html', context)
@@ -5263,6 +5361,7 @@ def item_update(request, item_id):
         item.short_description = request.POST.get('short_description', item.short_description)
         item.status = request.POST.get('status', item.status)
         item._status_changed_by = request.user
+        _resolve_agent_providers(request, item)
         if 'suggested_model' in request.POST:
             item.suggested_model = _resolve_suggested_model(item, request)
         if 'claude_auth_mode' in request.POST:
@@ -12373,6 +12472,7 @@ def user_settings(request):
         # the secrets themselves are never rendered back (#1083).
         'has_claude_oauth_token': request.user.has_claude_oauth_token(),
         'has_claude_api_key': request.user.has_claude_api_key(),
+        'has_openai_api_key': request.user.has_openai_api_key(),
     }
     context.update(_mcp_token_context(request.user))
     return render(request, 'user_settings.html', context)
@@ -12409,6 +12509,7 @@ _USER_SECRET_FIELDS = {
     'github_pat': ('github_pat', 'GitHub Personal Access Token'),
     'claude_oauth_token': ('claude_oauth_token', 'Claude OAuth token'),
     'claude_api_key': ('claude_api_key', 'Anthropic API key'),
+    'openai_api_key': ('openai_api_key', 'OpenAI API key'),
 }
 
 

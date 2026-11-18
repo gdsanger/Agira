@@ -5,20 +5,152 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.views.generic import ListView
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
+import logging
 from django.shortcuts import get_object_or_404, render
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.db.models import Count
 from django_tables2 import SingleTableMixin
 from django_tables2.config import RequestConfig
 from django_filters.views import FilterView
 from django.conf import settings
 
-from .models import Item, ItemStatus, Project, ItemType, Organisation, User, Release
+from .models import Item, ItemStatus, Project, ItemType, Organisation, User, UserRole, Release
 from .tables import ItemTable, LIST_INLINE_FIELDS, render_item_list_field_cell
+from .models import AGENT_MODEL_CHOICES
 from .filters import ItemFilter, KanbanFilter
 from .services.workflow import ItemWorkflowGuard
 from .visibility import scope_items
+
+
+logger = logging.getLogger(__name__)
+
+# Fields the list action bar may set on many items at once (#bulk-actions).
+BULK_FIELDS = ('suggested_model', 'assigned_to', 'parent')
+
+
+def bulk_action_context():
+    """Choices for the bulk action bar of the item lists."""
+    return {
+        'bulk_model_choices': AGENT_MODEL_CHOICES,
+        # Only agents carry out implementation work, so only they can be assigned.
+        'bulk_users': User.objects.filter(active=True, role=UserRole.AGENT).order_by('name', 'username'),
+    }
+
+
+@login_required
+@require_POST
+def items_bulk_field_update(request):
+    """Set one whitelisted field (suggested_model / assigned_to / parent) on many items.
+
+    Runs every item through the shared inline field service, so validation and
+    activity logging are identical to the single-item edit. A rejected item
+    (e.g. parent in another project) is reported but never aborts the batch.
+    An empty ``value`` clears assigned_to / parent.
+    """
+    from .services.item_field_update import apply_field_update, FieldUpdateError
+
+    field = (request.POST.get('field') or '').strip()
+    if field not in BULK_FIELDS:
+        return JsonResponse({'success': False, 'error': 'Feld nicht erlaubt.'}, status=400)
+
+    item_ids = []
+    for raw in request.POST.getlist('item_ids'):
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value not in item_ids:
+            item_ids.append(value)
+    if not item_ids:
+        return JsonResponse({'success': False, 'error': 'Keine Items ausgewählt.'}, status=400)
+
+    value = request.POST.get('value', '')
+    if field == 'assigned_to' and value.strip():
+        # Same rule as the selection offered in the UI: active agents only.
+        if not User.objects.filter(
+            pk=value.strip() if value.strip().isdigit() else None,
+            active=True, role=UserRole.AGENT,
+        ).exists():
+            return JsonResponse(
+                {'success': False, 'error': 'Nur aktive Agenten können zugewiesen werden.'},
+                status=400,
+            )
+    items = {i.id: i for i in Item.objects.filter(id__in=item_ids)}
+    updated, unchanged, failed = [], [], []
+    for item_id in item_ids:
+        item = items.get(item_id)
+        if item is None:
+            failed.append({'item_id': item_id, 'error': 'Item nicht gefunden.'})
+            continue
+        try:
+            result = apply_field_update(item, field, value, actor=request.user)
+        except FieldUpdateError as exc:
+            failed.append({'item_id': item_id, 'error': str(exc)})
+        except Exception:
+            logger.exception('Bulk update of %s failed for item %s', field, item_id)
+            failed.append({
+                'item_id': item_id,
+                'error': 'Unerwarteter Fehler (Details im Server-Log).',
+            })
+        else:
+            (updated if result.changed else unchanged).append(item_id)
+
+    parts = [f'{len(updated)} geändert']
+    if unchanged:
+        parts.append(f'{len(unchanged)} unverändert')
+    if failed:
+        parts.append(f'{len(failed)} nicht möglich')
+    return JsonResponse({
+        'success': bool(updated or unchanged),
+        'message': ', '.join(parts) + '.',
+        'updated': updated,
+        'unchanged': unchanged,
+        'failed': failed,
+    })
+
+
+@login_required
+@require_GET
+def items_parent_search(request):
+    """Autocomplete for the bulk "Parent setzen" field.
+
+    Matches non-closed items by ID (digits) or title. Epics (items that already
+    have sub-issues) come first, since those are the usual parents. ``projects``
+    (comma separated IDs of the selected items' projects) is required: a parent
+    must live in the same project as its child, so the search never looks
+    across projects. Without it nothing is returned.
+    """
+    from django.db.models import Q
+
+    q = (request.GET.get('q') or '').strip()
+    project_ids = [int(x) for x in (request.GET.get('projects') or '').split(',') if x.strip().isdigit()]
+    if not q or not project_ids:
+        return JsonResponse({'results': []})
+
+    qs = scope_items(
+        Item.objects.exclude(status=ItemStatus.CLOSED).filter(project_id__in=project_ids),
+        request.user,
+    )
+    cond = Q(title__icontains=q)
+    if q.lstrip('#').isdigit():
+        cond |= Q(pk=int(q.lstrip('#')))
+    qs = (
+        qs.filter(cond)
+        .select_related('project')
+        .annotate(child_count=Count('children'))
+        .order_by('-child_count', '-updated_at')[:15]
+    )
+    return JsonResponse({'results': [
+        {
+            'id': i.id,
+            'title': i.title,
+            'project': i.project.name,
+            'status': i.status,
+            'children': i.child_count,
+        }
+        for i in qs
+    ]})
 
 
 class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
@@ -75,6 +207,7 @@ class StatusItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         context = super().get_context_data(**kwargs)
         
         # Add page title and description
+        context.update(bulk_action_context())
         context['page_title'] = self.page_title
         context['page_description'] = self.page_description
         
@@ -246,6 +379,7 @@ class UserScopedItemListView(LoginRequiredMixin, SingleTableMixin, FilterView):
         context = super().get_context_data(**kwargs)
 
         # Add page title and description
+        context.update(bulk_action_context())
         context['page_title'] = self.page_title
         context['page_description'] = self.page_description
 
