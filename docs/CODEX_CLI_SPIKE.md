@@ -6,11 +6,12 @@ Umsetzung) und 5/7 (Codex-Provider Review).
 
 ## Status dieses Dokuments
 
-Die Abschnitte 1–8 sind **gemessen** (manuell auf einem Host mit CLI und
-API-Key). Die frühere Fassung dieses Dokuments (Annahmen und Messprotokoll, aus
-einem headless Worker-Lauf ohne CLI/Node/Key) ist in Abschnitt 9 für die
-**noch offenen Punkte** erhalten. Dort gelten weiterhin nur **Annahmen**; sie
-sind nicht verifiziert und dürfen von 4/5 nicht als gesichert behandelt werden.
+Die Abschnitte 1–8 und 9.1–9.5 sind **gemessen** (manuell auf einem Host mit
+CLI und API-Key). Die frühere Fassung dieses Dokuments (Annahmen und
+Messprotokoll, aus einem headless Worker-Lauf ohne CLI/Node/Key) ist in 9.6 und
+9.7 für die **noch offenen Punkte** erhalten. Dort gelten weiterhin nur
+**Annahmen**; sie sind nicht verifiziert und dürfen nicht als gesichert behandelt
+werden.
 
 Alles hier ist **gemessen** auf dem Test-Host (Ubuntu 24.04.5 LTS, Kernel
 6.8.0, VMware-VM, Node v20.20.2, npm 10.8.2) mit **`codex-cli 0.170.0`**,
@@ -209,80 +210,73 @@ Der Claude-Pfad in `core/management/commands/run_claude_worker.py` setzt voraus:
 - Prompt-Weitergabe, Arbeitsverzeichnis = Checkout, Git/`gh` durch Claude selbst
   (Commit, Push, PR-Draft); Merge macht der Worker.
 
-## 9. Noch offen: Messprotokoll (Annahmen, nicht verifiziert)
+## 9. Zweite Messrunde (gemessen) und Rest
 
-Pro Punkt die Annahme aus der früheren Fassung und das, was noch zu messen ist. Vorbereitung wie in Abschnitt 3; der Key kommt als `CODEX_API_KEY` (Abschnitt 5).
+Gleicher Host und CLI-Version wie oben (`codex-cli 0.170.0`), `CODEX_API_KEY`
+per Env, eigenes `CODEX_HOME`.
 
-### 9.1 Weitere Flags
+### 9.1 Flags (gemessen)
 
-Annahme: `codex exec` liest den Prompt von stdin, wenn das Prompt-Argument `-`
-ist oder fehlt; relevante Flags: `-m/--model`, `-s/--sandbox
-{read-only|workspace-write|danger-full-access}`, `--json` (JSONL auf stdout),
-`-o/--output-last-message <file>`, `--output-schema <file>`,
-`-C/--cd <dir>`, `--skip-git-repo-check`, `-c key=value` (Config-Override),
-`--ephemeral`. Fortschritt/Logs gehen auf stderr, nur das Ergebnis auf stdout.
+`codex exec --help` kennt alle benötigten Optionen: `-c/--config`,
+`-m/--model`, `-s/--sandbox`, `-C/--cd`, `--skip-git-repo-check`,
+`--ephemeral`, `--output-schema`, `--json`, `-o/--output-last-message`.
+`-C <dir>` zusammen mit `-c model_reasoning_effort=low` lief erfolgreich
+(`ok`, `turn.completed`).
 
-```bash
-echo "Lege Datei x.txt mit Inhalt hi an" | codex exec --json -s workspace-write -C . - \
-  > events.jsonl 2> stderr.log; echo "exit=$?"
-```
+### 9.2 Modelle (gemessen, teils offen)
 
-Beobachtet: _offen_ (Flags aus `codex exec --help` kopieren; prüfen, ob `-` nötig
-ist; ob `--json` stderr-Ausgaben unterdrückt).
+Die Modellliste des Keys (`GET /v1/models`, erste 60 sortierte IDs, daher
+unvollständig) enthält u. a. `gpt-5.3-codex`, `gpt-5.4` (`-mini`, `-nano`,
+`-pro`), `gpt-5.5` (`-pro`), `gpt-5.6-luna/-sol/-terra`, `gpt-6-astra/-luna/-sol`,
+`gpt-6.1-sol/-terra`, `gpt-6.2-astra/-sol`. **`gpt-5-codex` und
+`gpt-5-codex-mini` sind in dieser Liste nicht enthalten** (sie müssten vor
+`gpt-5-mini` stehen). Das CLI-Standardmodell des Hosts ist `gpt-6.2-sol`
+(Header von `codex exec`).
 
-### 9.2 Sandbox: Netzwerk, Push, Tests
+Ein unbekanntes Modell (`-m gibt-es-nicht`) erzeugte bei `2>/dev/null` **keine**
+Zeile auf stdout. Der Fehler steht also (wenn überhaupt) nur auf stderr.
+Das ist aus der Ausgabe geschlossen und mit sichtbarem stderr und Exit-Code noch
+zu bestätigen.
 
-Annahmen für `workspace-write`: Schreiben nur im Arbeitsverzeichnis (+ tmp);
-`.git` ist je nach Version **schreibgeschützt** → `git commit` scheitert eventuell;
-Netzwerk standardmäßig **aus** (→ `git push`, `gh`, `pip install` scheitern);
-Konfigurierbar über `-c sandbox_workspace_write.network_access=true`. Der
-Worker-Flow (Commit/Push/`gh pr create`) wäre damit ohne Anpassung nicht
-lauffähig. Alternative `--dangerously-bypass-approvals-and-sandbox` (`--yolo`):
-volle Rechte; nur in einem externen Container/VM-Isolat vertretbar, dort aber
-einfachste Variante. Alternative C: Codex nur Code ändern lassen, Commit/Push/PR
-macht der Worker (Abweichung vom Claude-Pfad, aber robust).
+### 9.3 Sandbox: Netzwerk, `gh`, Tests (gemessen)
 
-Zu messen (je Ergebnis + Fehlertext):
+Prompt: drei Befehle (`curl https://github.com`, `gh auth status`,
+`python3 -c "import django"`) in drei Modi.
 
-| Test (in `workspace-write`) | Beobachtet |
-|---|---|
-| Datei schreiben im Repo | **beobachtet:** funktioniert (mit `bubblewrap` + AppArmor-Profil, Abschnitt 2) |
-| `git add && git commit` | **beobachtet:** `.git` schreibgeschützt, `git add` scheitert; mit `writable_roots` auf `.git` gelingt der Commit (Abschnitt 6) |
-| `git push` | _offen_ |
-| `gh pr list` / `gh auth status` | _offen_ |
-| `python manage.py test … --settings=agira.test_settings` (SQLite) | _offen_ |
-| `pip install`/DNS | _offen_ |
-| Gleiche Tests mit `network_access=true` | _offen_ |
-| Gleiche Tests mit `--dangerously-bypass-approvals-and-sandbox` | _offen_ |
+| Modus | `curl github.com` | `gh auth status` | `import django` |
+|---|---|---|---|
+| `workspace-write` (Standard) | `Could not resolve host`, Exit 6 | „token invalid“ (Exit 0, irreführend: ohne Netz nicht prüfbar) | `6.1.2` |
+| `workspace-write` + `-c sandbox_workspace_write.network_access=true` | HTTP 200 | „Logged in“, Scopes `gist, read:org, repo, workflow` | `6.1.2` |
+| `--dangerously-bypass-approvals-and-sandbox` | HTTP 200 | „Logged in“ | `6.1.2` |
 
-Auf Linux zusätzlich prüfen: Landlock/seccomp verfügbar im Worker-Container
-(Sandbox kann in Containern ohne Rechte fehlschlagen).
-Approvals: headless muss `approval_policy=never` greifen (`exec` ist
-nicht-interaktiv; mit `-c approval_policy=never` absichern).
+- Ohne `network_access=true` hat die Sandbox **kein DNS**. Ein `gh`-Befehl
+  schlägt dort unzuverlässig fehl; `gh auth status` meldet fälschlich einen
+  ungültigen Token.
+- Ein Django-Testlauf (`manage.py test … --settings=agira.test_settings`, SQLite)
+  **läuft in der Sandbox** (Testdatenbank wurde angelegt, 8 Tests gefunden). Er
+  brach im Testclone an einem Migrationskonflikt ab (`0083_merge_20261007_0824`
+  gegen `0091_agent_queue_job_verbose_name`). Diese Migration existiert nur in der
+  lokalen Historie von `/opt/Agira`, nicht auf `origin/main`; der Fehler hat mit
+  Codex nichts zu tun.
+- `git push` wurde bewusst nicht getestet (ein Push nach `origin` würde einen
+  echten Branch anlegen; der Worker pusht außerhalb des Agentenlaufs).
 
-### 9.3 Read-only Review mit Diff und Schema
+### 9.4 Read-only Review (gemessen)
 
-Annahme: `--sandbox read-only` erlaubt Dateilesen und lesende Git-Befehle
-(`git log/diff/show`), verbietet Schreiben. Zu prüfen: `git status` (schreibt
-ggf. Index-Lock → Fehler?), `gh pr view` (Netzwerk!), Schreibversuch wird
-abgelehnt und im Event-Strom sichtbar. Review-Urteil als JSON per
-`--output-schema` erzwingen (strukturiertes `pass|deviations`).
+- `--sandbox read-only` erlaubt `git log`, `git status` und `git diff` (auch
+  ein sehr großer Diff kam vollständig in `aggregated_output` zurück).
+- Ein Schreibversuch (`x.txt`) wurde abgelehnt („schreibgeschütztes
+  Dateisystem“), die Datei wurde nicht angelegt.
+- `--output-schema <file> -o <file>` funktioniert: `last.json` enthielt genau
+  ein JSON-Objekt nach dem Schema (Test mit `verdict` und `summary`).
 
-Beobachtet: _offen_.
+### 9.5 `AGENTS.md` (gemessen)
 
-### 9.4 AGENTS.md
+Mit `AGENTS.md` als Symlink auf `CLAUDE.md` (Regel: „Antworte immer nur mit dem
+Wort BANANE“) antwortete Codex `BANANE`; nach dem Entfernen des Symlinks normal
+(`1 + 1 = 2.`). Ein Symlink genügt, `CLAUDE.md` allein wird nicht gelesen.
 
-Annahme: Codex liest `AGENTS.md` im Repo-Root (und Unterverzeichnissen, auch
-`~/.codex/AGENTS.md`); `CLAUDE.md` wird **nicht** gelesen. Symlink
-`AGENTS.md -> CLAUDE.md` sollte funktionieren (Git speichert Symlinks; auf
-Windows-Checkouts problematisch). Es gibt ein Größenlimit (`project_doc_max_bytes`,
-Default 32 KiB) – `CLAUDE.md` ist derzeit deutlich kleiner, prüfen.
-Test: Marker-Regel in AGENTS.md („Antworte immer mit dem Wort BANANE“) und
-Symlink-Variante einzeln ausprobieren.
-
-Beobachtet: _offen_.
-
-### 9.5 Limit-/Rate-Limit-Fehler
+### 9.6 Limit-/Rate-Limit-Fehler (offen)
 
 Annahme: API-Key-Betrieb liefert HTTP 429 (`rate_limit_exceeded`,
 `insufficient_quota`) mit Text à la „Rate limit reached … Please try again in
@@ -295,7 +289,7 @@ CLI retryt 429 intern mehrfach, bevor sie fehlschlägt.
 Beobachtet: _offen_. Praktisch: Limit mit sehr niedrigem Projekt-Limit oder
 Parallel-Last provozieren, Text + Event + Exit-Code festhalten.
 
-### 9.6 Exit-Codes und SIGINT
+### 9.7 Exit-Codes und SIGINT (offen)
 
 Annahme: Exit 0 bei Erfolg, ≠0 bei Fehler (Auth, Netz, `turn.failed`). Bei
 SIGINT beendet sich die CLI ohne garantiertes finales Event; evtl. Exit 130.
@@ -306,42 +300,13 @@ Zu messen: SIGINT mitten im Lauf (`kill -INT`): Exit-Code, kommt ein
 
 Beobachtet: _offen_.
 
-### 9.7 Modelle
+### 9.8 Noch offen
 
-Annahme (unsicher, Stand Wissen): Coding-Modelle der GPT-5-Codex-Linie
-(`gpt-5-codex`, spätere Nachfolger `gpt-5.x-codex`), kleines/billiges Modell für
-leichte Aufgaben (`gpt-5-codex-mini`/`-mini`); Reasoning-Aufwand per
-`-c model_reasoning_effort=low|medium|high`. IDs ändern sich oft → Auswahl in
-Agira konfigurierbar halten, nicht hart verdrahten. Zu messen: Welche IDs akzeptiert
-der verwendete Key (`codex exec -m <id> "ping"`), Fehlertext bei unbekanntem
-Modell.
-
-Beobachtet: _offen_.
-
-### 9.8 Vorläufige Argumentlisten der früheren Fassung (zu verifizieren)
-
-Die in Abschnitt 8 genannten, gemessenen Listen haben Vorrang; diese hier enthalten zusätzlich ungetestete Flags.
-
-Umsetzung:
-
-```
-codex exec --json -m <model> -C <checkout> \
-  -s workspace-write -c approval_policy=never \
-  -c sandbox_workspace_write.network_access=true \
-  -o <tmp>/last_message.txt -        # Prompt via stdin
-```
-(Falls `.git` read-only bleibt: Commit/Push/PR im Worker oder
-`--dangerously-bypass-approvals-and-sandbox` in isolierter Umgebung.)
-
-Review (read-only):
-
-```
-codex exec --json -m <model> -C <checkout> \
-  -s read-only -c approval_policy=never \
-  --output-schema <review_schema.json> -o <tmp>/verdict.json -
-```
-
-Env: `CODEX_API_KEY`, `CODEX_HOME=<pro Worker>`.
+- Limit-/Rate-Limit-Text und Reset-Zeit (9.6), SIGINT und Kindprozesse (9.7).
+- Fehlerausgabe bei unbekanntem Modell mit sichtbarem stderr und Exit-Code.
+- Vollständige Modellliste (nur die ersten 60 IDs wurden gelesen) und welche
+  davon für die Queue taugen.
+- `-o` bei einem Umsetzungslauf, `git push` aus dem Lauf.
 
 ## 10. Hinweise an die Folge-Issues
 
