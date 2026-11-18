@@ -227,7 +227,7 @@ class OverrideUiTests(ReviewOverrideBase):
     def test_job_detail_and_queue_show_override(self):
         job = self._job()
         override_review(self.item, self.user, REASON)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'Überschrieben durch Tina Tester')
         self.assertContains(response, 'Abweichungen')  # original verdict stays
         detail = self.client.get(reverse('claude-queue-job-live', args=[job.pk]))

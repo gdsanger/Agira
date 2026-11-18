@@ -1,0 +1,44 @@
+{% comment %}
+Kanban board of the Agent Queue. Expects `board` (core.services.claude_queue.board.Board).
+Coding and review runs are told apart by the card's left border and a kind badge;
+the column is the derived overarching state (see board.py).
+{% endcomment %}
+<style>
+    .cqb-group-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--bs-secondary-color); margin: 1rem 0 .5rem; }
+    .cqb-row { display: flex; gap: .75rem; overflow-x: auto; align-items: flex-start; padding-bottom: .5rem; }
+    .cqb-col { flex: 1 1 0; min-width: 240px; background: var(--bs-tertiary-bg); border-radius: .5rem; padding: .5rem; }
+    .cqb-col-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; padding: .25rem .25rem .5rem; border-bottom: 3px solid var(--bs-secondary); margin-bottom: .5rem; }
+    .cqb-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-left-width: 4px; border-radius: .375rem; padding: .5rem .6rem; margin-bottom: .5rem; font-size: .85rem; cursor: pointer; }
+    .cqb-card.kind-coding { border-left-color: var(--bs-primary); }
+    .cqb-card.kind-review { border-left-color: var(--bs-purple, #6f42c1); }
+    .cqb-card.kind-epic { border-left-color: var(--bs-teal, #20c997); }
+    .cqb-card .cqb-title { font-weight: 600; line-height: 1.2; }
+    .cqb-empty { color: var(--bs-secondary-color); font-size: .8rem; text-align: center; padding: .5rem; }
+</style>
+<div class="small text-muted mb-1">
+    <span class="badge" style="background:var(--bs-primary)">&nbsp;</span> Coding
+    <span class="badge ms-2" style="background:var(--bs-purple, #6f42c1)">&nbsp;</span> Review
+    <span class="badge ms-2" style="background:var(--bs-teal, #20c997)">&nbsp;</span> Epic
+    · Abgeschlossene Läufe der letzten 14 Tage; offene Merges und unklare Läufe immer.
+</div>
+{% for group in board.groups %}
+<div class="cqb-group-title">{{ group.title }}</div>
+<div class="cqb-row">
+    {% for col in group.columns %}
+    <div class="cqb-col" id="cqb-col-{{ col.column.key }}">
+        <div class="cqb-col-head" style="border-bottom-color: var(--bs-{{ col.column.css }});" title="{{ col.column.hint }}">
+            <span><i class="bi {{ col.column.icon }} text-{{ col.column.css }}"></i> {{ col.column.label }}</span>
+            <span class="badge bg-{{ col.column.css }}{% if col.column.css == 'warning' or col.column.css == 'info' %} text-dark{% endif %}">{{ col.jobs|length }}{% if col.hidden %}+{{ col.hidden }}{% endif %}</span>
+        </div>
+        {% for job in col.jobs %}
+        {% include 'partials/claude_queue_board_card.html' %}
+        {% empty %}
+        <div class="cqb-empty">–</div>
+        {% endfor %}
+        {% if col.hidden %}
+        <div class="cqb-empty">+ {{ col.hidden }} weitere – siehe <a href="?view=list">Liste</a></div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}

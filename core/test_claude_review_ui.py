@@ -74,13 +74,13 @@ class ClaudeReviewUiTestCase(TestCase):
 
     def test_queue_list_shows_review_and_verdict_badge(self):
         self._job(review_verdict=ClaudeQueueReviewVerdict.DEVIATIONS)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, '> Review</span>')
         self.assertContains(response, 'Abweichungen')
 
     def test_unclear_shows_manual_check_hint(self):
         self._job(review_verdict=ClaudeQueueReviewVerdict.UNCLEAR)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'manuelle Prüfung nötig')
 
     def test_job_detail_shows_report_and_followup_link(self):
@@ -100,5 +100,5 @@ class ClaudeReviewUiTestCase(TestCase):
         ClaudeQueueJob.objects.create(
             item=item, project=self.project, status=ClaudeQueueJobStatus.QUEUED,
         )
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertNotContains(response, '> Review</span>')

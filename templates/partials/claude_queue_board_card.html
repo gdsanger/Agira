@@ -1,0 +1,54 @@
+{% load agira_filters %}
+{% comment %}One board card. Expects `job` (with .board_state set by build_board).{% endcomment %}
+<div class="cqb-card {% if job.is_review %}kind-review{% elif job.is_epic_node %}kind-epic{% else %}kind-coding{% endif %}"
+     onclick="window.location='{% url 'claude-queue-job-detail' job.id %}'">
+    <div class="d-flex justify-content-between align-items-start gap-1">
+        <div>
+            {% if job.is_review %}
+            <span class="badge" style="background:var(--bs-purple, #6f42c1)"><i class="bi bi-search"></i> Review</span>
+            {% elif job.is_epic_node %}
+            <span class="badge" style="background:var(--bs-teal, #20c997)"><i class="bi bi-diagram-3"></i> Epic</span>
+            {% else %}
+            <span class="badge bg-primary"><i class="bi bi-code-slash"></i> Coding</span>
+            {% endif %}
+            {% include 'partials/claude_queue_provider_badge.html' %}
+        </div>
+        <small class="text-muted">#{{ job.id }}</small>
+    </div>
+    <div class="cqb-title mt-1">{% if job.parent_job_id %}<span class="text-muted" title="Sub-Eintrag des Epics #{{ job.parent_job.item_id }}">&#8627; </span>{% endif %}{{ job.item.title|truncatechars:70 }}</div>
+    <div class="text-muted">Item #{{ job.item_id }} · {{ job.project.name }}</div>
+
+    {% if job.status == 'blocked' %}
+    <div class="text-muted"><i class="bi bi-lock"></i> {{ job.blocked_reason }}</div>
+    {% elif job.status == 'waiting_limit' %}
+    <div class="text-info"><i class="bi bi-hourglass-split"></i> Wartet auf Abo-Kontingent{% if job.limit_reset_at %} bis {{ job.limit_reset_at|date:"H:i" }}{% endif %}</div>
+    {% elif job.status == 'orchestrating' %}
+    {% with chain=job.epic_chain %}<div class="{% if chain.is_halted %}text-warning{% else %}text-muted{% endif %}"><i class="bi bi-diagram-3"></i> {{ chain.label }} · {{ chain.done }}/{{ chain.total }} gemergt</div>{% endwith %}
+    {% elif job.status == 'running' %}
+    <div class="text-muted">
+        <span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;"></span>
+        {% if job.progress_text %}{{ job.progress_text|render_markdown|striptags|truncatechars:60 }}{% else %}läuft{% endif %}
+        {% if job.is_long_running %}<span class="badge bg-warning text-dark" title="Läuft seit {{ job.started_at|date:'H:i' }}">dauert länger</span>{% endif %}
+    </div>
+    {% elif job.status == 'failed' or job.status == 'cancelled' %}
+    <div class="text-danger" title="{{ job.error_text }}"><i class="bi bi-exclamation-triangle"></i> {% if job.status == 'cancelled' %}Abgebrochen{% else %}{{ job.error_text|truncatechars:70|default:"Fehlgeschlagen" }}{% endif %}</div>
+    {% endif %}
+
+    {% if job.board_state == 'uncertain' %}
+    <div class="text-warning" title="{{ job.completion_uncertain_reason }}"><i class="bi bi-question-circle"></i> {% if job.is_review %}Review-Urteil unklar{% else %}{{ job.completion_uncertain_reason|truncatechars:70|default:"Ggf. unvollständig" }}{% endif %}</div>
+    {% endif %}
+
+    {% if job.is_review %}
+    {% if job.board_state == 'review_pass_hints' %}<div class="text-success"><i class="bi bi-lightbulb"></i> {{ job.review_hint_count }} Hinweis{{ job.review_hint_count|pluralize:"e" }}</div>{% endif %}
+    {% if job.review_followup_item_id %}<div><i class="bi bi-link-45deg"></i> Folge-Issue <a href="{% url 'item-detail' job.review_followup_item_id %}" onclick="event.stopPropagation();">#{{ job.review_followup_item_id }}</a></div>{% endif %}
+    {% if job.review_overridden_at %}<div><span class="badge bg-dark" title="{{ job.review_override_reason }}"><i class="bi bi-shield-check"></i> Überschrieben</span></div>{% endif %}
+    {% endif %}
+
+    {% if job.pr_url and not job.is_review %}
+    <div>
+        <a href="{{ job.pr_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation();"><i class="bi bi-git"></i> PR #{{ job.pr_number }}</a>
+        {% if job.pr_state %}<span class="badge {% if job.pr_state == 'merged' %}bg-success{% elif job.pr_state == 'closed' %}bg-secondary{% else %}bg-info text-dark{% endif %}">{{ job.pr_state }}</span>{% endif %}
+    </div>
+    {% endif %}
+    <div class="text-muted"><small>{{ job.created_at|date:"d.m. H:i" }}{% if job.total_cost_usd is not None %} · ${{ job.total_cost_usd|floatformat:2 }}{% endif %}</small></div>
+</div>

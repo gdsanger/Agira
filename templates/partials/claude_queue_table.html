@@ -7,6 +7,9 @@ Expects `jobs`/`page_obj`, `selected_project`, `selected_status` and
 `active_statuses` in context.
 {% endcomment %}
 <div id="claude-queue-table" hx-swap-oob="true">
+    {% if view_mode == 'board' %}
+    {% include 'partials/claude_queue_board.html' %}
+    {% else %}
     <div class="card">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -71,4 +74,5 @@ Expects `jobs`/`page_obj`, `selected_project`, `selected_status` and
             {% endif %}
         </div>
     </div>
+{% endif %}
 </div>

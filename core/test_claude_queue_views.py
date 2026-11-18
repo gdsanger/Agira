@@ -108,7 +108,7 @@ class ClaudeQueueViewsTestCase(TestCase):
     # ---- auth ----------------------------------------------------------
 
     def test_list_requires_authentication(self):
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
 
@@ -123,7 +123,7 @@ class ClaudeQueueViewsTestCase(TestCase):
     def test_list_shows_jobs(self):
         self.client.login(username='testuser', password='testpass123')
         self._running_job()
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Fix the auth bug')
         self.assertContains(response, 'reads auth.py')
@@ -165,20 +165,20 @@ class ClaudeQueueViewsTestCase(TestCase):
 
     def test_list_kpis_carry_polling_attributes(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'id="claude-queue-kpis"')
         self.assertContains(response, 'hx-trigger="every 5s"')
 
     def test_list_table_carries_oob_attribute_not_its_own_poll(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'id="claude-queue-table"')
         self.assertContains(response, 'hx-swap-oob="true"')
 
     def test_list_rows_do_not_carry_their_own_polling(self):
         self.client.login(username='testuser', password='testpass123')
         job = self._running_job()
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         # The container already polls every 5s; a per-row hx-get would poll
         # the same data a second time.
         self.assertNotContains(response, reverse('claude-queue-job-row', args=[job.id]))
@@ -186,7 +186,7 @@ class ClaudeQueueViewsTestCase(TestCase):
     def test_list_htmx_request_returns_kpis_and_table_fragment_only(self):
         self.client.login(username='testuser', password='testpass123')
         self._running_job()
-        response = self.client.get(reverse('claude-queue-jobs'), HTTP_HX_REQUEST='true')
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list', HTTP_HX_REQUEST='true')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="claude-queue-kpis"')
         self.assertContains(response, 'id="claude-queue-table"')
@@ -341,7 +341,7 @@ class ClaudeQueueViewsTestCase(TestCase):
 
     def test_dashboard_empty_queue_renders_without_errors(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['queue_total_jobs'], 0)
         self.assertIsNone(response.context['queue_avg_cost'])
@@ -353,7 +353,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
         self._job_with_data(cost=Decimal('3.00'), turns=20, duration_seconds=120)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         # Assert on context values, not rendered HTML — the KPI numbers go
         # through the locale-aware floatformat filter (LANGUAGE_CODE=de-DE
@@ -371,7 +371,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         ClaudeQueueJob.objects.create(
             item=self.item, project=self.project, status=ClaudeQueueJobStatus.RUNNING,
         )
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         # Averages should be based on the single job with data, not diluted by the empty one.
         self.assertEqual(response.context['queue_total_jobs'], 2)
@@ -386,7 +386,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         ClaudeQueueJob.objects.filter(pk=old_job.pk).update(
             created_at=timezone.now() - timezone.timedelta(days=30)
         )
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         match = re.search(r'\{"labels".*?\]\}', response.content.decode(), re.DOTALL)
         self.assertIsNotNone(match)
@@ -402,7 +402,7 @@ class ClaudeQueueViewsTestCase(TestCase):
 
     def test_dashboard_days_without_jobs_are_zero(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         match = re.search(r'\{"labels".*?\]\}', response.content.decode(), re.DOTALL)
         chart_data = json.loads(match.group(0))
@@ -413,7 +413,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
         self._job_with_data(cost=Decimal('2.2345'), turns=20, duration_seconds=120)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         expected_cost = floatformat(response.context['queue_avg_cost'], 2)
         self.assertContains(response, f'US${expected_cost}')
@@ -424,7 +424,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         self._job_with_data(cost=Decimal('1.00'), turns=9, duration_seconds=60)
         self._job_with_data(cost=Decimal('1.00'), turns=10, duration_seconds=60)
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['queue_avg_turns'], 9.5)
         expected_turns = floatformat(response.context['queue_avg_turns'], 0)
@@ -437,13 +437,13 @@ class ClaudeQueueViewsTestCase(TestCase):
         ClaudeQueueJob.objects.create(
             item=self.item, project=self.project, status=ClaudeQueueJobStatus.RUNNING,
         )
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '–')  # the "–" placeholder for empty KPIs
 
     def test_dashboard_chart_canvas_is_placed_below_kpi_cards(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         kpi_row_index = content.index('Ø Turns')
@@ -452,7 +452,7 @@ class ClaudeQueueViewsTestCase(TestCase):
 
     def test_dashboard_chart_container_has_increased_height(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'height: 320px;')
 
@@ -462,7 +462,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         for _ in range(20):
             self._running_job()
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context['page_obj'].object_list), 20)
         self.assertFalse(response.context['page_obj'].has_other_pages())
@@ -471,19 +471,19 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         for _ in range(25):
             self._running_job()
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         page_obj = response.context['page_obj']
         self.assertEqual(len(page_obj.object_list), 20)
         self.assertEqual(page_obj.paginator.num_pages, 2)
 
-        response_page_2 = self.client.get(reverse('claude-queue-jobs'), {'page': 2})
+        response_page_2 = self.client.get(reverse('claude-queue-jobs'), {'page': 2, 'view': 'list'})
         self.assertEqual(response_page_2.status_code, 200)
         self.assertEqual(len(response_page_2.context['page_obj'].object_list), 5)
 
     def test_pagination_zero_jobs_renders_without_errors(self):
         self.client.login(username='testuser', password='testpass123')
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['page_obj'].object_list), [])
 
@@ -631,7 +631,7 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         job = self._done_job()
         self.client.post(reverse('claude-queue-job-delete', args=[job.id]))
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertNotContains(response, 'PR #42')
 
     def test_delete_running_job_is_rejected(self):
@@ -737,7 +737,7 @@ class ClaudeQueueEpicHierarchyViewTests(TestCase):
         )
 
     def test_list_orders_the_epic_node_ahead_of_its_sub_entries(self):
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         body = response.content.decode()
         positions = [
             body.index(f'cqj-row-{job.id}')
@@ -750,14 +750,14 @@ class ClaudeQueueEpicHierarchyViewTests(TestCase):
             item=self._item('Einzel'), project=self.project,
             status=ClaudeQueueJobStatus.QUEUED,
         )
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, f'cqj-row-{standalone.id}')
 
     def test_list_marks_a_blocked_entry_as_waiting_for_release(self):
         # A blocked entry names the predecessor it waits on (#1109), so it can
         # never be mistaken for a stalled ``queued`` row. Here ``ui`` waits on
         # the not-yet-merged ``data_model``.
-        response = self.client.get(reverse('claude-queue-jobs'))
+        response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'Wartet auf Merge der Epic-Vorgänger')
         self.assertContains(response, f'#{self.data_model.id}')
 
@@ -820,7 +820,7 @@ class ClaudeQueueTemplateCommentTests(TestCase):
             status=ClaudeQueueJobStatus.ORCHESTRATING,
             error_text='Freigabe nicht möglich',
         )
-        body = client.get(reverse('claude-queue-jobs')).content.decode()
+        body = client.get(reverse('claude-queue-jobs') + '?view=list').content.decode()
         self.assertIn('Freigabe nicht möglich', body)
         self.assertNotIn('{#', body)
         self.assertNotIn('#}', body)
