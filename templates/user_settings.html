@@ -172,8 +172,43 @@
                         {% endif %}
                     </div>
 
+                    <div class="mb-3">
+                        <label for="openai_api_key" class="form-label">
+                            OpenAI API-Key (Codex / Pay-per-use)
+                        </label>
+                        <input type="password"
+                               class="form-control"
+                               id="openai_api_key"
+                               name="openai_api_key"
+                               autocomplete="off"
+                               placeholder="sk-…"
+                               value="">
+                        <div class="form-text">
+                            {% if has_openai_api_key %}
+                            <span class="text-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                                API-Key hinterlegt (••••••). Neuen Key eintragen zum Ersetzen, leer lassen zum Beibehalten.
+                            </span>
+                            {% else %}
+                            <span class="text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                Kein API-Key hinterlegt. Nötig für Issues, die mit dem Provider OpenAI (Codex) laufen.
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% if has_openai_api_key %}
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" value="true"
+                                   id="clear_openai_api_key" name="clear_openai_api_key">
+                            <label class="form-check-label" for="clear_openai_api_key">
+                                API-Key löschen
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-save"></i> Claude-Credentials speichern
+                        <i class="bi bi-save"></i> Credentials speichern
                     </button>
                 </form>
             </div>

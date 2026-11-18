@@ -155,7 +155,7 @@
         </div>
 
         <button type="button" id="items-bulk-review" class="btn btn-sm btn-outline-primary" disabled>
-            <i class="bi bi-robot"></i> Review durch Claude
+            <i class="bi bi-robot"></i> Review (Automatik)
         </button>
     </div>
     <small class="text-muted">Review nur für Items in „Integrated“/„Testing“ mit verknüpftem PR. Parent muss im selben Projekt liegen und darf nicht geschlossen sein; Suchfeld leeren = Parent entfernen.</small>
@@ -312,7 +312,7 @@
     btn.addEventListener('click', function () {
         const ids = selected().map(b => b.value);
         if (!ids.length) return;
-        if (!confirm('Review durch Claude Code für ' + ids.length +
+        if (!confirm('Review (Automatik: der andere Provider als bei der Umsetzung) für ' + ids.length +
                      ' Item(s) starten? Die Items bleiben unverändert, Review-Jobs werden eingereiht.')) {
             return;
         }

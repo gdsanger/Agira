@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Optional
 
-from core.models import ClaudeQueueJobModel
+from core.models import AgentProvider, ClaudeQueueJobModel, OpenAIQueueJobModel
 from core.services.agents.agent_service import AgentService
 
 logger = logging.getLogger(__name__)
@@ -125,3 +125,17 @@ class ModelClassifierService:
 
         logger.warning(f"Haiku model classification returned unexpected value {value!r}, defaulting to sonnet")
         return None
+
+
+def suggest_model(item, classifier: Optional['ModelClassifierService'] = None) -> str:
+    """Provider-aware ``suggested_model`` (#1297).
+
+    The Sonnet/Opus classifier (heuristics + Haiku call) only knows Claude
+    models, so it runs for Claude only. For ``implementation_provider=openai``
+    there is no suggestion logic yet: the default Codex model is returned
+    without a Haiku call (no cost, no Claude credential needed for an OpenAI
+    item). Picking the mini model is a manual UI decision.
+    """
+    if getattr(item, 'implementation_provider', None) == AgentProvider.OPENAI:
+        return OpenAIQueueJobModel.GPT_5_CODEX
+    return (classifier or ModelClassifierService()).classify(item)

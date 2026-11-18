@@ -133,6 +133,9 @@ def serialize_item(item):
         'parent_id': item.parent_id,
         'solution_release_id': item.solution_release_id,
         'intern': item.intern,
+        'implementation_provider': item.implementation_provider,
+        'review_provider': item.review_provider,
+        'suggested_model': item.suggested_model,
         'created_at': item.created_at.isoformat() if item.created_at else None,
         'updated_at': item.updated_at.isoformat() if item.updated_at else None,
     }
@@ -429,6 +432,11 @@ def api_item_update_put(request, item_id):
             item.status = data['status']
         if 'intern' in data:
             item.intern = data['intern']
+        # Agent-queue provider/model fields (#1300); full_clean() below rejects
+        # values outside the choices (review_provider '' = automatic).
+        for field in ('implementation_provider', 'review_provider', 'suggested_model'):
+            if field in data:
+                setattr(item, field, data[field])
         
         # Handle foreign key fields
         if 'type_id' in data and data['type_id']:

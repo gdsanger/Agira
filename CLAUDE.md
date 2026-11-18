@@ -1,11 +1,18 @@
 # CLAUDE.md – Regeln für die Arbeit an Agira
 
 Diese Datei ist die **einzige Quelle der Wahrheit** für Git-Workflow und
-Arbeitsweise von Claude in diesem Repository. Der Claude-Queue-Worker
+Arbeitsweise des Agenten in diesem Repository. Der Queue-Worker
 (`core/management/commands/run_claude_worker.py`) und der Git-Workflow-Hinweis
 am Item (`core/services/claude_queue/hint.py`) setzen dieselben Regeln um und
 dürfen ihr nicht widersprechen. Wer eine Regel ändert, ändert sie hier **und**
 im Code, nicht nur an einer Stelle.
+
+**Provider-neutral:** Die Regeln gelten für jeden Agent-Provider der Queue
+(Claude Code, OpenAI Codex) gleich; kein Provider ist ein Sonderfall. Codex
+liest `AGENTS.md` statt `CLAUDE.md`: Der Worker legt sie als Symlink auf diese
+Datei an und hält sie aus Git heraus. `AGENTS.md` wird also nie separat
+gepflegt. Wo unten „der Agent“ steht, ist der Provider des jeweiligen Jobs
+gemeint.
 
 Detail- und Hintergrunddoku zum Epic-Modus: `docs/EPIC_BRANCH_WORKFLOW.md`.
 
@@ -39,7 +46,7 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   Epic-Branch**.
 - **Reihenfolge:** strikt nach `epic_order` (bei Gleichstand Item-ID). Ein
   Sub-Issue startet erst, wenn alle Vorgänger im Epic-Branch gemergt sind.
-- **Merge in den Epic-Branch macht der Worker**, nicht Claude. Erst nach einem
+- **Merge in den Epic-Branch macht der Worker**, nicht der Agent. Erst nach einem
   sauberen Lauf und deterministisch:
   ```
   gh pr ready <nr>
@@ -47,10 +54,11 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
   gh pr merge <nr> --squash --delete-branch
   ```
   Erst danach startet das nächste Sub-Issue, auf dem aktualisierten Epic-Branch.
-  **Claude merged nie selbst** und ruft keinen der Befehle oben auf.
+  **Kein Agent merged selbst** (gleich welcher Provider) und ruft keinen der
+  Befehle oben auf.
 - **Stopp statt Retry:** Rote oder fehlende CI-Checks, ein Merge-Konflikt, ein
   als „Ggf. unvollständig“ (`completion_uncertain`) markierter Lauf (auch:
-  Claude meldet `TESTS ROT`, siehe „Tests“) oder ein
+  der Agent meldet `TESTS ROT`, siehe „Tests“) oder ein
   fehlgeschlagener Merge halten die Kette an. Das Epic wird in Agira sichtbar
   als blockiert markiert, mit Grund. Es gibt **keinen automatischen Retry**.
   Ein Mensch prüft den Fall und stößt das Sub-Issue neu an – oder bestätigt
@@ -65,6 +73,9 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
 - **Abschluss:** Nach dem letzten Sub-Issue merged der Worker `main` in den
   Epic-Branch (bei Konflikt: Stopp, Epic blockiert) und legt dann den
   **Epic-PR nach `main` als Draft** an. Review und Merge macht ein Mensch.
+- **Provider im Epic:** Gate, Merge und Stopp-Regeln hängen nicht vom Provider
+  ab. Dieselbe Kette läuft mit Claude- und Codex-Läufen identisch; der Provider
+  bestimmt nur, welche CLI die Schicht umsetzt.
 - Einzel-Issues ohne Parent sind davon unberührt (siehe oben).
 
 ## Review (Integrated/Implemented)
@@ -72,12 +83,16 @@ mit **genau einem menschlichen Review – am Epic-PR nach `main`**.
 Optionaler, read-only Review eines Items im Status `Integrated` oder
 `Testing` mit verknüpftem PR (Details: `docs/CLAUDE_REVIEW_WORKFLOW.md`).
 
-- **Read-only:** Claude liest nur (Dateien, lesende Git-Befehle) und ändert
-  weder Code noch Git-Stand noch **irgendetwas in Agira**. Er antwortet mit
+- **Read-only:** Der Review-Agent liest nur (Dateien, lesende Git-Befehle) und
+  ändert weder Code noch Git-Stand noch **irgendetwas in Agira**. Er antwortet mit
   genau einem JSON-Urteil (`pass` oder `deviations`); `unclear` erzeugt nur
   der Parser, wenn das Urteil nicht lesbar oder widersprüchlich ist.
 - **Der Worker wendet das Urteil an:** Bericht-Kommentar, Statuswechsel und
-  Folge-Issue entstehen deterministisch im Worker, nicht durch Claude.
+  Folge-Issue entstehen deterministisch im Worker, nicht durch den Agenten.
+- **Review-Provider:** Ein explizit am Item gesetzter `review_provider` gilt.
+  Sonst reviewt der **andere** Provider als der, der zuletzt sauber umgesetzt
+  hat (ohne solchen Lauf: der andere als `implementation_provider`). Prompt,
+  Schema, Parser und Anwendung des Urteils sind für beide Provider identisch.
 - **Schweregrade:** Jeder Eintrag in `deviations` hat `severity` ∈ {`major`,
   `minor`}. `major`: ein Kriterium ist fachlich nicht erreicht oder
   Verhalten/Funktion fehlt. `minor`: formal, kosmetisch, rein dokumentarisch,
@@ -93,8 +108,8 @@ Optionaler, read-only Review eines Items im Status `Integrated` oder
 - **Menschliches Überschreiben:** Ein Mensch kann ein Item trotz `deviations`/
   `unclear` über „Trotz Befunden schließen“ mit Pflicht-Begründung auf `Closed`
   setzen (Service `override_review`). Das Urteil am Job bleibt unverändert, die
-  Begründung steht als interne Notiz am Item und am Job. **Claude und der Worker
-  tun das nie selbst.**
+  Begründung steht als interne Notiz am Item und am Job. **Weder ein Agent noch
+  der Worker tut das selbst.**
 - **Bewusste, im PR begründete Abweichungen sind zulässig** und zählen als
   `accepted_deviation`; unbegründete Lücken sind `not_met`. Grundlage ist
   die PR-Text-Pflicht „## Warum / Entscheidungen“ (siehe „PR-Text“).

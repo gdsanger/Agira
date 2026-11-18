@@ -216,6 +216,9 @@ def update_item(
     intern: bool | None = None,
     parent_id: int | None = None,
     clear_parent: bool = False,
+    implementation_provider: str | None = None,
+    review_provider: str | None = None,
+    suggested_model: str | None = None,
 ) -> dict:
     """
     Update fields of an existing item (partial update). Only set what changes.
@@ -232,6 +235,13 @@ def update_item(
     relationship, pass ``clear_parent=True`` (``parent_id`` is ignored in that
     case). The parent must exist, must not be Closed, and cannot be the item
     itself.
+
+    ``implementation_provider`` (``claude`` | ``openai``) selects the coding
+    agent of the Agent Queue that implements the item. ``review_provider``
+    (``claude`` | ``openai``, or an empty string for "automatic" = the other
+    provider than the implementation) selects the reviewer. ``suggested_model``
+    is the model slug and must fit the provider (e.g. ``sonnet``, ``opus-5-5``
+    for Claude; ``gpt-5-codex``, ``gpt-5-codex-mini`` for OpenAI).
     """
     payload = {
         k: v
@@ -242,6 +252,9 @@ def update_item(
             "pr_description": pr_description,
             "status": status,
             "intern": intern,
+            "implementation_provider": implementation_provider,
+            "review_provider": review_provider,
+            "suggested_model": suggested_model,
         }.items()
         if v is not None
     }

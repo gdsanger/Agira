@@ -53,17 +53,17 @@ class ClaudeReviewUiTestCase(TestCase):
     def test_button_visible_for_testing_and_integrated_with_pr(self):
         for status in (ItemStatus.TESTING, ItemStatus.INTEGRATED):
             response = self._detail(self._item(status))
-            self.assertContains(response, 'onclick="reviewByClaude()"')
+            self.assertContains(response, "onclick=\"reviewByAgent('claude')\"")
             self.assertTrue(response.context['can_claude_review'])
 
     def test_button_hidden_for_other_status(self):
         response = self._detail(self._item(ItemStatus.WORKING))
-        self.assertNotContains(response, 'onclick="reviewByClaude()"')
+        self.assertNotContains(response, "onclick=\"reviewByAgent('claude')\"")
         self.assertFalse(response.context['can_claude_review'])
 
     def test_button_hidden_without_pr(self):
         response = self._detail(self._item(ItemStatus.TESTING, pr=False))
-        self.assertNotContains(response, 'onclick="reviewByClaude()"')
+        self.assertNotContains(response, "onclick=\"reviewByAgent('claude')\"")
 
     def _job(self, **kw):
         item = self._item(ItemStatus.TESTING)
