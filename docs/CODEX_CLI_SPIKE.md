@@ -1,33 +1,201 @@
 # Codex-CLI-Spike (Epic #1294, Sub-Issue #1295)
 
 Prüft die Annahmen des Epics „OpenAI Codex als zweiter Provider der Agent-Queue“
-gegen die echte Codex-CLI. Kein Produktivcode.
+gegen die echte Codex-CLI. Kein Produktivcode. Grundlage für 4/7 (Codex-Provider
+Umsetzung) und 5/7 (Codex-Provider Review).
 
-## Status dieses Dokuments – bitte zuerst lesen
+## Status dieses Dokuments
 
-**Die Messungen mit der echten CLI stehen noch aus.** Die Umgebung, in der der
-Spike bearbeitet wurde (headless Claude-Worker-Lauf), hatte
+Die Abschnitte 1–8 sind **gemessen** (manuell auf einem Host mit CLI und
+API-Key). Die frühere Fassung dieses Dokuments (Annahmen und Messprotokoll, aus
+einem headless Worker-Lauf ohne CLI/Node/Key) ist in Abschnitt 9 für die
+**noch offenen Punkte** erhalten. Dort gelten weiterhin nur **Annahmen**; sie
+sind nicht verifiziert und dürfen von 4/5 nicht als gesichert behandelt werden.
 
-- keine installierte Codex-CLI (`codex: command not found`),
-- kein Node/npm (Installation via `npm i -g @openai/codex` nicht möglich),
-- keinen `OPENAI_API_KEY` / `CODEX_API_KEY`.
+Alles hier ist **gemessen** auf dem Test-Host (Ubuntu 24.04.5 LTS, Kernel
+6.8.0, VMware-VM, Node v20.20.2, npm 10.8.2) mit **`codex-cli 0.170.0`**,
+Auth per API-Key. Was nicht getestet wurde, steht im Abschnitt „Offen“ und ist
+dort ausdrücklich als Annahme gekennzeichnet.
 
-Es wurden deshalb **keine Events aufgezeichnet und keine Versionsnummer
-ermittelt**. Erfundene „Beobachtungen“ wären für 4/5 schädlicher als Lücken.
-Dieses Dokument enthält daher:
+## 1. Installation
 
-1. pro Punkt die **Annahme** (aus dem Epic bzw. aus der Codex-Dokumentation, aus
-   dem Gedächtnis, **nicht verifiziert**),
-2. das **Messprotokoll** (exakte Kommandos), mit dem ein Mensch auf einer Maschine
-   mit CLI + Key jede Zeile in <1 h verifiziert,
-3. eine **Ergebnisspalte `Beobachtet`**, die beim Ausfüllen die Annahme ersetzt.
+```bash
+npm config set prefix ~/.npm-global      # User-Prefix, kein sudo
+npm install -g @openai/codex
+codex --version                          # codex-cli 0.170.0
+```
 
-> **Akzeptanzkriterien dieses Issues sind damit nicht erfüllt**, solange die
-> Spalte „Beobachtet“ leer ist. 4/5 dürfen die Annahmen unten nicht als
-> gesichert behandeln.
+- Node 20 genügt für 0.170.0 (keine Engine-Warnung, Start fehlerfrei).
+- Der Worker findet `codex` nur, wenn sein `PATH` den npm-Prefix enthält. Läuft
+  er per systemd/Cron: vollen Pfad (`~/.npm-global/bin/codex`) konfigurieren.
 
-CLI-Version: **_offen_** (`codex --version` eintragen).
-Datum/Maschine/Auth: **_offen_**.
+## 2. Sandbox-Voraussetzungen (wichtig für den Worker-Host)
+
+`--sandbox workspace-write` und `read-only` isolieren über `bubblewrap`
+(User-Namespaces).
+
+- Ohne System-`bwrap` warnt Codex („could not find bubblewrap“) und nimmt ein
+  mitgeliefertes Binary. Auf Ubuntu 24.04 scheiterte damit jeder Schreibzugriff
+  („Failed to write file“), weil AppArmor unprivilegierte User-Namespaces
+  blockiert (`kernel.apparmor_restrict_unprivileged_userns = 1`).
+- Fix, nur für `/usr/bin/bwrap`, ohne den Host global zu lockern:
+
+  ```bash
+  sudo apt-get install -y bubblewrap
+  sudo tee /etc/apparmor.d/bwrap >/dev/null <<'EOF'
+  abi <abi/4.0>,
+  include <tunables/global>
+
+  profile bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+
+    include if exists <local/bwrap>
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/bwrap
+  bwrap --ro-bind / / --dev /dev --unshare-user true && echo "bwrap ok"
+  ```
+
+- Danach schreibt Codex im Workdir erfolgreich (Test: `hello.txt` angelegt und
+  selbst verifiziert).
+- Rückbau: `sudo rm /etc/apparmor.d/bwrap && sudo apparmor_parser -R /etc/apparmor.d/bwrap`.
+- Die Ausnahme erlaubt jedem lokalen User, `bwrap` für Namespaces zu nutzen.
+- **Ohne Namespaces** bleibt nur `--dangerously-bypass-approvals-and-sandbox`.
+  Das gehört nur in eine isolierte VM/einen Container, nicht auf einen Host, auf
+  dem die Anwendung selbst läuft.
+
+## 3. Headless-Aufruf
+
+```bash
+echo "<Prompt>" | codex exec --json --sandbox <read-only|workspace-write> -
+```
+
+- Prompt über stdin mit `-` funktioniert (kein argv-Größenlimit).
+- Mit `--json` ist **stdout reines JSONL**. Die Zeilen `ERROR codex_api::…`
+  kommen von stderr (Test mit `2>/dev/null`: nur JSON auf stdout). Der Parser
+  liest nur stdout und überspringt trotzdem Nicht-JSON-Zeilen, wie bei Claude.
+- Der Textheader (Modell, Sandbox, Session-ID) erscheint ohne `--json`, nicht
+  im Stream.
+- Standardmodell des Hosts: `gpt-6.2-sol` (nur beobachtet; keine Modellliste
+  getestet).
+
+## 4. Event-Format und Zuordnung zu Claude
+
+Beobachtete Events (Beispiele aus echten Läufen):
+
+```jsonl
+{"type":"thread.started","thread_id":"01a1ef1a-c3a4-72d0-af71-b8d27295781d"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"..."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'ls -la'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"...","aggregated_output":"...","exit_code":0,"status":"completed"}}
+{"type":"turn.completed","usage":{"input_tokens":29151,"cached_input_tokens":14467,"cache_write_input_tokens":14678,"output_tokens":80,"reasoning_output_tokens":0}}
+```
+
+| Codex | Claude-Äquivalent im Worker |
+|---|---|
+| `thread.started.thread_id` | `system/init.session_id` |
+| `item.completed` / `agent_message` | `assistant`-Text; die **letzte** ist das `result_text` |
+| `item.started` / `command_execution` (`in_progress`) | `tool_use` (Fortschrittszeile, Tool in flight) |
+| `item.completed` / `command_execution` (`exit_code`) | `tool_result` (Tool fertig) |
+| `turn.completed` + `usage` | `result` (Lauf zu Ende) |
+| `turn.failed` (`error.message`) | `result` mit `is_error` |
+
+Folgen für den Parser:
+
+- Es gibt **kein `result`-Event** und kein Ergebnis-Textfeld. Ende des Laufs ist
+  `turn.completed`, der Text die letzte `agent_message`. Fehlt `turn.completed`
+  (und `turn.failed`), gilt der Lauf als unvollständig (`saw_result=False`).
+- **Keine Kosten (USD) und keine Turn-Zahl** im Stream, nur Token-Usage:
+  `input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`,
+  `output_tokens`, `reasoning_output_tokens`. `total_cost_usd` bleibt leer
+  (oder wird später aus einer Preistabelle berechnet).
+- Der Idle-Watchdog verfolgt Tools in flight über `item.id` (started → completed).
+- Verbrauch zur Einordnung: ein Trivialauftrag ≈ 15.000 Input-Tokens (großteils
+  CLI-Systemprompt), ein Lauf mit `git status` ≈ 44.000.
+- Weitere Item-Typen (z. B. Datei-Änderungen, MCP-Aufrufe, Reasoning) wurden
+  **nicht** beobachtet. Der Parser muss unbekannte Item-Typen tolerieren.
+  Ein `item.completed` mit `type: "error"` kommt vor (z. B. „Falling back from
+  WebSockets to HTTPS transport“) und ist **kein** Laufabbruch.
+
+## 5. Authentifizierung
+
+Getestet mit leerem `CODEX_HOME` (ohne `auth.json`), damit der Key allein per
+Env wirkt:
+
+| Env | Ergebnis |
+|---|---|
+| `CODEX_API_KEY=<gültig>` | funktioniert (`ok`, `turn.completed`, Exit 0) |
+| `OPENAI_API_KEY=<gültig>` | **wirkungslos**: `401 … Missing bearer or basic authentication`, Exit 1 |
+| `OPENAI_API_KEY=sk-bad` | identisch (`Missing bearer…`): es wird gar kein Key gesendet |
+| `CODEX_API_KEY=sk-bad` | `401 … Incorrect API key provided … auth error code: invalid_api_key`, Exit 1 |
+
+Entscheidungen:
+
+- Der Worker setzt den Key **ausschließlich als `CODEX_API_KEY`** in der
+  Child-Env. `auth.json` ist nicht nötig. Alle anderen OpenAI-/Codex-Variablen
+  (`OPENAI_API_KEY`, `CODEX_API_KEY`) werden vorher entfernt, analog zu
+  `ALL_AUTH_ENV_VARS` bei Claude.
+- Ein `CODEX_HOME` unter `/tmp` wird für Helper-Binaries abgelehnt (Warnung,
+  Lauf geht weiter). Falls der Worker ein eigenes Home braucht: Verzeichnis
+  unter dem Home des Users.
+- **Auth-Fehler erkennen:** Der Lauf endet mit `turn.failed` und Exit-Code 1.
+  Die Meldung enthält `401 Unauthorized` und je nach Fall `Missing bearer or
+  basic authentication` oder `auth error code: invalid_api_key`.
+- **Retry-Verhalten:** Davor erscheinen viele `{"type":"error",…}`-Events
+  („Reconnecting… n/5“), erst 5× WebSocket, dann 5× HTTPS. Diese `error`-Events
+  sind Zwischenstände, **nicht** das Ende. Der Fehlerlauf dauert grob 20–30 s
+  (aus Zeitstempeln geschätzt, nicht exakt gemessen). Der Auth-Fehler sollte
+  deshalb erkannt werden, ohne den ganzen Retry-Zyklus abzuwarten, z. B. beim
+  ersten `error`-Event mit `401`/`invalid_api_key`.
+
+## 6. Git in der Sandbox
+
+`workspace-write` erlaubt Dateiänderungen im Workdir, aber **`.git` ist
+schreibgeschützt**:
+
+- Test: `git add` scheiterte („`.git` schreibgeschützt“). Der Agent meldete das
+  ehrlich, es entstand kein Commit.
+- Mit `-c 'sandbox_workspace_write.writable_roots=["<repo>/.git"]'` konnten
+  `git add` und `git commit` ausgeführt werden (Commit angelegt).
+
+Optionen für den Worker:
+
+1. **Worker committet (Empfehlung):** Der Worker committet nach dem Lauf alles
+   (`_commit_uncommitted_work` wird für Codex zur Regel), mit
+   Conventional-Commit-Nachricht und Agira-ID (`feat(#<id>): <Titel>`). Der
+   Agent bekommt keinen Schreibzugriff auf `.git` (Hooks!). Im Epic-Modus wird
+   ohnehin je Sub-Issue ein Squash-Commit erzeugt.
+2. `writable_roots` auf `.git`: funktioniert, macht aber Hooks für den Agenten
+   schreibbar. Nur mit bewusster Entscheidung.
+3. Bypass der Sandbox: siehe Abschnitt 2, nicht auf Hosts mit der Anwendung.
+
+Folge für `hint.py`/Prompt: Für Codex-Läufe nicht „committe selbst“ verlangen.
+
+## 7. Review (read-only)
+
+`--sandbox read-only` erlaubt lesende Befehle (`ls -la`, `git status`) und
+schreibt nichts. Ob lesende Git-Befehle wie `git diff`/`git log` reichen, wurde
+mit `git status` indirekt belegt; ein Review-Prompt mit Diff wurde **nicht**
+durchgespielt.
+
+## 8. Empfohlene Argumentlisten (Entwurf, nicht vollständig getestet)
+
+Umsetzung:
+
+```
+codex exec --json --sandbox workspace-write -        # Prompt via stdin
+```
+
+Review:
+
+```
+codex exec --json --sandbox read-only -              # Prompt via stdin
+```
+
+Env für beide: `CODEX_API_KEY=<Key des Job-Users oder host-weit>`, kein
+`OPENAI_API_KEY`. Arbeitsverzeichnis wie bei Claude per `cwd` des Subprozesses
+(die CLI-Option `-C` wurde nicht getestet).
 
 ## Worker-Seite (Ist, aus dem Repo – verifiziert)
 
@@ -41,18 +209,11 @@ Der Claude-Pfad in `core/management/commands/run_claude_worker.py` setzt voraus:
 - Prompt-Weitergabe, Arbeitsverzeichnis = Checkout, Git/`gh` durch Claude selbst
   (Commit, Push, PR-Draft); Merge macht der Worker.
 
-## Messprotokoll und Annahmen
+## 9. Noch offen: Messprotokoll (Annahmen, nicht verifiziert)
 
-Vorbereitung (Wegwerf-Verzeichnis, nicht im Repo):
+Pro Punkt die Annahme aus der früheren Fassung und das, was noch zu messen ist. Vorbereitung wie in Abschnitt 3; der Key kommt als `CODEX_API_KEY` (Abschnitt 5).
 
-```bash
-export WORK=$(mktemp -d); cd "$WORK"
-git clone <agira-testclone> repo && cd repo && git checkout -b spike/codex
-codex --version
-export CODEX_API_KEY=sk-...   # siehe Abschnitt Auth
-```
-
-### 1. Headless-Aufruf
+### 9.1 Weitere Flags
 
 Annahme: `codex exec` liest den Prompt von stdin, wenn das Prompt-Argument `-`
 ist oder fehlt; relevante Flags: `-m/--model`, `-s/--sandbox
@@ -69,38 +230,7 @@ echo "Lege Datei x.txt mit Inhalt hi an" | codex exec --json -s workspace-write 
 Beobachtet: _offen_ (Flags aus `codex exec --help` kopieren; prüfen, ob `-` nötig
 ist; ob `--json` stderr-Ausgaben unterdrückt).
 
-### 2. JSONL-Events
-
-Annahme: Events der Art `thread.started`, `turn.started`, `item.started/updated/
-completed` (Item-Typen u. a. `agent_message`, `reasoning`, `command_execution`,
-`file_change`, `mcp_tool_call`, `web_search`, `todo_list`), `turn.completed`,
-`turn.failed`, `error`. Schemanamen sind versionsabhängig.
-
-Aufzeichnen (jeweils vollständig nach `docs/`-Anhang kopieren, Secrets schwärzen):
-
-```bash
-# a) Umsetzung (workspace-write)
-echo "<echte kleine Aufgabe inkl. Test>" | codex exec --json -s workspace-write - > impl.jsonl
-# b) Review read-only mit Schema
-echo "<Review-Prompt>" | codex exec --json -s read-only \
-  --output-schema review_schema.json -o last.json - > review.jsonl
-# c) Fehlerfälle: falscher Key, kein Key, ungültiges Modell, Schema-Verletzung
-```
-
-Beobachtet: _offen_ – Event-Beispiele (Umsetzung, Review, je ein Fehlerfall) hier
-einfügen. Fragen: Gibt es ein dediziertes Abschluss-Event (Gegenstück zum
-Claude-`result`)? Wie erkennt der Worker Erfolg vs. Fehler (Exit-Code, `turn.failed`)?
-
-### 3. Token-Usage
-
-Annahme: `turn.completed` enthält `usage` mit `input_tokens`,
-`cached_input_tokens`, `output_tokens` (ggf. `reasoning_output_tokens`).
-**Keine Kosten (USD) und keine Turn-Zahl** wie beim Claude-`result`-Event → Kosten
-müssten aus Token × Preistabelle berechnet werden; Turns = Anzahl `turn.completed`.
-
-Beobachtet: _offen_ (Feldnamen, Summe über mehrere Turns oder kumulativ?).
-
-### 4. Sandbox
+### 9.2 Sandbox: Netzwerk, Push, Tests
 
 Annahmen für `workspace-write`: Schreiben nur im Arbeitsverzeichnis (+ tmp);
 `.git` ist je nach Version **schreibgeschützt** → `git commit` scheitert eventuell;
@@ -116,8 +246,8 @@ Zu messen (je Ergebnis + Fehlertext):
 
 | Test (in `workspace-write`) | Beobachtet |
 |---|---|
-| Datei schreiben im Repo | _offen_ |
-| `git add && git commit` | _offen_ |
+| Datei schreiben im Repo | **beobachtet:** funktioniert (mit `bubblewrap` + AppArmor-Profil, Abschnitt 2) |
+| `git add && git commit` | **beobachtet:** `.git` schreibgeschützt, `git add` scheitert; mit `writable_roots` auf `.git` gelingt der Commit (Abschnitt 6) |
 | `git push` | _offen_ |
 | `gh pr list` / `gh auth status` | _offen_ |
 | `python manage.py test … --settings=agira.test_settings` (SQLite) | _offen_ |
@@ -130,7 +260,7 @@ Auf Linux zusätzlich prüfen: Landlock/seccomp verfügbar im Worker-Container
 Approvals: headless muss `approval_policy=never` greifen (`exec` ist
 nicht-interaktiv; mit `-c approval_policy=never` absichern).
 
-### 5. Read-only Review
+### 9.3 Read-only Review mit Diff und Schema
 
 Annahme: `--sandbox read-only` erlaubt Dateilesen und lesende Git-Befehle
 (`git log/diff/show`), verbietet Schreiben. Zu prüfen: `git status` (schreibt
@@ -140,7 +270,7 @@ abgelehnt und im Event-Strom sichtbar. Review-Urteil als JSON per
 
 Beobachtet: _offen_.
 
-### 6. AGENTS.md
+### 9.4 AGENTS.md
 
 Annahme: Codex liest `AGENTS.md` im Repo-Root (und Unterverzeichnissen, auch
 `~/.codex/AGENTS.md`); `CLAUDE.md` wird **nicht** gelesen. Symlink
@@ -152,20 +282,7 @@ Symlink-Variante einzeln ausprobieren.
 
 Beobachtet: _offen_.
 
-### 7. Auth
-
-Annahme: `codex exec` akzeptiert `CODEX_API_KEY` (nur für `exec`);
-`OPENAI_API_KEY` wird je nach Version nur über `codex login --with-api-key`
-bzw. vorhandene `~/.codex/auth.json` genutzt, nicht automatisch aus dem Env.
-Zu testen: (a) nur `OPENAI_API_KEY`, (b) nur `CODEX_API_KEY`, (c) beide,
-(d) keiner, (e) falscher Key; jeweils Exit-Code und Fehlertext (stderr/JSONL)
-notieren. Wichtig für 4: ein vorhandenes `~/.codex/auth.json` (ChatGPT-Login)
-kann den Env-Key überstimmen → dedizierten `CODEX_HOME` pro Worker setzen.
-
-Beobachtet: _offen_ (Tabelle a–e mit Fehlertexten; daraus Substring-Liste für
-„kaputte Credentials“ ableiten, analog zum Claude-Pfad).
-
-### 8. Limit-/Rate-Limit-Fehler
+### 9.5 Limit-/Rate-Limit-Fehler
 
 Annahme: API-Key-Betrieb liefert HTTP 429 (`rate_limit_exceeded`,
 `insufficient_quota`) mit Text à la „Rate limit reached … Please try again in
@@ -178,7 +295,7 @@ CLI retryt 429 intern mehrfach, bevor sie fehlschlägt.
 Beobachtet: _offen_. Praktisch: Limit mit sehr niedrigem Projekt-Limit oder
 Parallel-Last provozieren, Text + Event + Exit-Code festhalten.
 
-### 9. Exit-Codes und SIGINT
+### 9.6 Exit-Codes und SIGINT
 
 Annahme: Exit 0 bei Erfolg, ≠0 bei Fehler (Auth, Netz, `turn.failed`). Bei
 SIGINT beendet sich die CLI ohne garantiertes finales Event; evtl. Exit 130.
@@ -189,7 +306,7 @@ Zu messen: SIGINT mitten im Lauf (`kill -INT`): Exit-Code, kommt ein
 
 Beobachtet: _offen_.
 
-### 10. Modelle
+### 9.7 Modelle
 
 Annahme (unsicher, Stand Wissen): Coding-Modelle der GPT-5-Codex-Linie
 (`gpt-5-codex`, spätere Nachfolger `gpt-5.x-codex`), kleines/billiges Modell für
@@ -201,7 +318,9 @@ Modell.
 
 Beobachtet: _offen_.
 
-## Vorläufige Argumentlisten (zu verifizieren)
+### 9.8 Vorläufige Argumentlisten der früheren Fassung (zu verifizieren)
+
+Die in Abschnitt 8 genannten, gemessenen Listen haben Vorrang; diese hier enthalten zusätzlich ungetestete Flags.
 
 Umsetzung:
 
@@ -224,26 +343,22 @@ codex exec --json -m <model> -C <checkout> \
 
 Env: `CODEX_API_KEY`, `CODEX_HOME=<pro Worker>`.
 
-## Hinweise an 4/5 (Risiken der Epic-Annahmen)
+## 10. Hinweise an die Folge-Issues
 
-Bis zur Verifikation als Risiken führen, nicht als Fakten:
+Aus den Messungen (Abschnitte 1–8):
 
-1. **Git/Netz in `workspace-write`**: Commit/Push/`gh` könnten scheitern → Entscheidung
-   Sandbox-Modus (bypass vs. Worker übernimmt Git) vor Implementierung treffen.
-2. **Kein Kosten-/Turn-Feld**: Kosten aus Tokens berechnen; Schema für Job-Felder
-   anpassen.
-3. **Kein Subscription-Reset-Zeitpunkt**: Backoff-Logik braucht Fallback (feste
-   Wartezeit / relative Zeit aus Text); `insufficient_quota` separat behandeln.
-4. **Eventformat unterscheidet sich** von Claude `stream-json` → eigener Parser;
-   Format gegen die tatsächlich eingesetzte CLI-Version pinnen (Version im
-   Worker loggen).
-5. **`AGENTS.md`** fehlt im Repo; Symlink auf `CLAUDE.md` anlegen (CLAUDE.md nennt
-   sich „einzige Quelle der Wahrheit“ – Symlink erhält das).
-6. **Auth-Isolation** per `CODEX_HOME`; Env-Key-Vorrang prüfen.
-7. **SIGINT/Grace**: erst mit Messung (Punkt 9) entscheiden, ob 30 s und ein
-   einmaliges SIGINT passen; ggf. Prozessgruppen-Kill.
+- **3/7 (bereits auf `main`):** Env-Name des Keys ist `CODEX_API_KEY`;
+  `OPENAI_API_KEY` wirkt bei `codex exec` nicht. Modellliste erst nach Test von
+  `-m` und den verfügbaren Modellen (9.7) füllen.
+- **4/7:** Worker committet für Codex (Abschnitt 6); Parser nach Abschnitt 4;
+  Auth-Fehler früh erkennen (Abschnitt 5); `OPENAI_API_KEY` aus der Env
+  entfernen.
+- **5/7:** `--output-schema` zuerst prüfen (9.3); sonst `parse_review_verdict`
+  auf der letzten `agent_message`.
+- **7/7 (Einrichtungsdoku):** `bubblewrap` und AppArmor-Profil für Ubuntu 24.04,
+  `PATH` bzw. Pfad zu `codex` für den Worker.
 
-## Offene Aufgabe
-
-Messprotokoll durchführen, „Beobachtet“-Zellen und Event-Anhänge füllen,
-CLI-Version nennen, danach Status-Abschnitt oben entfernen und 4/5 anpassen.
+Risiken aus der früheren Fassung, die **weiter offen** sind (Messungen in
+Abschnitt 9): Netzwerk in der Sandbox, kein Reset-Zeitpunkt bei Limits
+(`insufficient_quota` separat behandeln), SIGINT/Grace-Zeit und Prozessgruppen,
+`AGENTS.md`-Symlink.
