@@ -233,10 +233,21 @@ unvollständig) enthält u. a. `gpt-5.3-codex`, `gpt-5.4` (`-mini`, `-nano`,
 `gpt-5-mini` stehen). Das CLI-Standardmodell des Hosts ist `gpt-6.2-sol`
 (Header von `codex exec`).
 
-Ein unbekanntes Modell (`-m gibt-es-nicht`) erzeugte bei `2>/dev/null` **keine**
-Zeile auf stdout. Der Fehler steht also (wenn überhaupt) nur auf stderr.
-Das ist aus der Ausgabe geschlossen und mit sichtbarem stderr und Exit-Code noch
-zu bestätigen.
+Ein unbekanntes Modell (`-m gibt-es-nicht`) liefert auf stdout einen sauberen
+Fehlerstrom, Exit-Code 1:
+
+```jsonl
+{"type":"thread.started","thread_id":"…"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gibt-es-nicht` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"error","message":"The model `gibt-es-nicht` does not exist or you do not have access to it."}
+{"type":"turn.failed","error":{"message":"The model `gibt-es-nicht` does not exist or you do not have access to it."}}
+```
+
+Der Fehler ist über `turn.failed` erkennbar (Text „does not exist or you do not
+have access to it“), nicht über ein fehlendes Ergebnis-Event. Eine erste
+Messrunde mit `2>/dev/null` zeigte dazu keine Ausgabe; das war nicht
+reproduzierbar und ist durch diese Messung ersetzt.
 
 ### 9.3 Sandbox: Netzwerk, `gh`, Tests (gemessen)
 
@@ -303,27 +314,41 @@ Beobachtet: _offen_.
 ### 9.8 Noch offen
 
 - Limit-/Rate-Limit-Text und Reset-Zeit (9.6), SIGINT und Kindprozesse (9.7).
-- Fehlerausgabe bei unbekanntem Modell mit sichtbarem stderr und Exit-Code.
 - Vollständige Modellliste (nur die ersten 60 IDs wurden gelesen) und welche
   davon für die Queue taugen.
 - `-o` bei einem Umsetzungslauf, `git push` aus dem Lauf.
 
-## 10. Hinweise an die Folge-Issues
+## 10. Abgleich mit dem Code auf `main`
 
-Aus den Messungen (Abschnitte 1–8):
+Der Worker hat 3/7 bis 7/7 bereits auf Basis der früheren Annahmen umgesetzt
+(`providers/codex.py`, `models.py`). Die Messungen bestätigen das meiste und
+zeigen zwei Punkte zum Nachziehen.
 
-- **3/7 (bereits auf `main`):** Env-Name des Keys ist `CODEX_API_KEY`;
-  `OPENAI_API_KEY` wirkt bei `codex exec` nicht. Modellliste erst nach Test von
-  `-m` und den verfügbaren Modellen (9.7) füllen.
-- **4/7:** Worker committet für Codex (Abschnitt 6); Parser nach Abschnitt 4;
-  Auth-Fehler früh erkennen (Abschnitt 5); `OPENAI_API_KEY` aus der Env
-  entfernen.
-- **5/7:** `--output-schema` zuerst prüfen (9.3); sonst `parse_review_verdict`
-  auf der letzten `agent_message`.
-- **7/7 (Einrichtungsdoku):** `bubblewrap` und AppArmor-Profil für Ubuntu 24.04,
-  `PATH` bzw. Pfad zu `codex` für den Worker.
+**Bestätigt:**
 
-Risiken aus der früheren Fassung, die **weiter offen** sind (Messungen in
-Abschnitt 9): Netzwerk in der Sandbox, kein Reset-Zeitpunkt bei Limits
-(`insufficient_quota` separat behandeln), SIGINT/Grace-Zeit und Prozessgruppen,
-`AGENTS.md`-Symlink.
+- `CODEX_API_KEY` wird gesetzt (zusätzlich `OPENAI_API_KEY`, harmlos), fremde
+  OpenAI-/Codex-Variablen werden entfernt, `CODEX_HOME` liegt unter
+  `REPO_BASE_DIR` und nicht unter `/tmp` (Abschnitt 5).
+- Event-Parser: `thread.started`, `item.*`, `turn.completed`/`turn.failed`,
+  tolerante `error`-Events und Nicht-JSON-Zeilen entsprechen Abschnitt 4.
+- Review: `-s read-only`, `--output-schema`, `-o`, Fallback auf die letzte
+  `agent_message` (9.4).
+- `AGENTS.md` als Symlink auf `CLAUDE.md` genügt (9.5).
+- Fehler bei unbekanntem Modell kommt als `turn.failed` mit Klartext (9.2); der
+  Parser setzt ihn als `result_text`, der Job schlägt mit dieser Meldung fehl.
+- Umsetzung mit `--dangerously-bypass-approvals-and-sandbox`: nötig, weil
+  `workspace-write` kein Netzwerk hat und `.git` nicht beschreibbar ist
+  (Abschnitt 6, 9.3). Der Worker-Host ist dann die Isolationsgrenze.
+
+**Nachziehen:**
+
+1. **Modell-IDs.** `OpenAIQueueJobModel` kennt nur `gpt-5-codex` und
+   `gpt-5-codex-mini`; beide fehlen in der (gekürzten) Modellliste des Keys
+   (9.2). Ein Lauf mit einer nicht vorhandenen ID scheitert mit „does not exist
+   or you do not have access to it“. Die IDs müssen aus der tatsächlich
+   verfügbaren Liste kommen (CLI-Standard des Hosts: `gpt-6.2-sol`).
+2. **Netzwerk im Review.** `read-only` hat kein Netzwerk. `gh`-Aufrufe im
+   Review-Lauf scheitern; der Review darf nur auf den Checkout und den
+   mitgelieferten Diff bauen (so ist der Prompt heute schon aufgebaut).
+
+Offene Messungen: 9.6 bis 9.8.
