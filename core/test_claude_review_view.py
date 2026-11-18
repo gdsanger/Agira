@@ -325,3 +325,17 @@ class ItemsParentSearchViewTestCase(TestCase):
         # ... and with one, only that project's items.
         results = self.client.get(self.url, {'q': 'login', 'projects': self.project.id}).json()['results']
         self.assertEqual([r['id'] for r in results], [mine.id])
+
+
+class ItemTableSelectionColumnTestCase(TestCase):
+    def test_checkbox_carries_project_id(self):
+        from django.test import RequestFactory
+        from core.tables import ItemTable
+        project = Project.objects.create(name='TP')
+        item = Item.objects.create(
+            title='T', project=project, type=ItemType.objects.create(key='bug', name='Bug'),
+            status=ItemStatus.BACKLOG,
+        )
+        html = ItemTable(Item.objects.all()).as_html(RequestFactory().get('/'))
+        self.assertIn(f'data-project="{project.id}"', html)
+        self.assertIn(f'value="{item.id}"', html)
