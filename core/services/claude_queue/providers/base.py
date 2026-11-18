@@ -77,6 +77,18 @@ class AgentProvider:
         """Actionable failure message for a credential problem."""
         raise NotImplementedError
 
+    def review_raw_answer(self, job, result):
+        """The raw review answer handed to ``parse_review_verdict``.
+
+        Default: the stream's final text. Providers with a dedicated
+        structured-output channel override this and fall back to the text.
+        """
+        return result.get('result_text') or ''
+
+    def display_model(self, job):
+        """Model name shown in the review report."""
+        return self.model_id(job.model or job.item.suggested_model)
+
     def prepare_checkout(self, repo_dir, review=False):
         """Write provider-specific files into the checkout (trust, permissions)."""
         raise NotImplementedError

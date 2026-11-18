@@ -628,7 +628,7 @@ class Command(BaseCommand):
             ))
             return
 
-        raw = result.get('result_text') or ''
+        raw = self.provider.review_raw_answer(job, result)
         verdict = parse_review_verdict(raw)
         job.review_report = raw
         job.review_verdict = verdict.verdict
