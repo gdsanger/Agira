@@ -43,7 +43,7 @@ from .services.activity import ActivityService
 from .services.storage import AttachmentStorageService
 from .services.storage.errors import AttachmentTooLarge
 from .services.agents import AgentService
-from .services.claude_queue.model_classifier import ModelClassifierService
+from .services.claude_queue.model_classifier import ModelClassifierService, suggest_model
 from .services.mail import check_mail_trigger, prepare_mail_preview
 from .services.comments.mentions import extract_mentioned_user_ids
 from .services.change_policy_service import ChangePolicyService
@@ -4764,7 +4764,7 @@ def _resolve_suggested_model(item, request):
     override = request.POST.get('suggested_model', '').strip()
     if override in ClaudeQueueJobModel.values:
         return override
-    return ModelClassifierService().classify(item)
+    return suggest_model(item, ModelClassifierService())
 
 
 def _resolve_claude_auth_mode(request, current=None):
@@ -12373,6 +12373,7 @@ def user_settings(request):
         # the secrets themselves are never rendered back (#1083).
         'has_claude_oauth_token': request.user.has_claude_oauth_token(),
         'has_claude_api_key': request.user.has_claude_api_key(),
+        'has_openai_api_key': request.user.has_openai_api_key(),
     }
     context.update(_mcp_token_context(request.user))
     return render(request, 'user_settings.html', context)
@@ -12409,6 +12410,7 @@ _USER_SECRET_FIELDS = {
     'github_pat': ('github_pat', 'GitHub Personal Access Token'),
     'claude_oauth_token': ('claude_oauth_token', 'Claude OAuth token'),
     'claude_api_key': ('claude_api_key', 'Anthropic API key'),
+    'openai_api_key': ('openai_api_key', 'OpenAI API key'),
 }
 
 

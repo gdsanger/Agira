@@ -264,6 +264,14 @@ CLAUDE_REQUIRE_USER_CREDENTIALS = os.getenv(
     'CLAUDE_REQUIRE_USER_CREDENTIALS', 'false'
 ).strip().lower() in ('1', 'true', 'yes', 'on')
 
+# OpenAI/Codex provider (#1297). Host-wide fallback API key, analogous to
+# ANTHROPIC_API_KEY; a user's personal key (profile) takes precedence. Never log.
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+# When true, an OpenAI job may only run on the personal key of its user.
+OPENAI_REQUIRE_USER_CREDENTIALS = os.getenv(
+    'OPENAI_REQUIRE_USER_CREDENTIALS', 'false'
+).strip().lower() in ('1', 'true', 'yes', 'on')
+
 # Cache configuration
 # Using LocMemCache for simplicity and performance
 # In production, consider Redis or Memcached for multi-server deployments
