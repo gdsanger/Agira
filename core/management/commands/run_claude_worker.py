@@ -1240,6 +1240,7 @@ class Command(BaseCommand):
         try:
             return subprocess.run(
                 command, cwd=repo_dir, capture_output=True, text=True,
+                encoding='utf-8', errors='replace',
                 timeout=timeout, env=self._gh_env(job),
             )
         except subprocess.TimeoutExpired:
@@ -1297,7 +1298,8 @@ class Command(BaseCommand):
         try:
             proc = subprocess.run(
                 ['gh', 'pr', 'view', str(pr_number), '--json', 'state,isDraft'],
-                cwd=repo_dir, capture_output=True, text=True, timeout=60,
+                cwd=repo_dir, capture_output=True, text=True,
+                encoding='utf-8', errors='replace', timeout=60,
                 env=self._gh_env(job),
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -1326,7 +1328,8 @@ class Command(BaseCommand):
         try:
             proc = subprocess.run(
                 ['gh', 'pr', 'ready', str(pr_number)],
-                cwd=repo_dir, capture_output=True, text=True, timeout=60,
+                cwd=repo_dir, capture_output=True, text=True,
+                encoding='utf-8', errors='replace', timeout=60,
                 env=self._gh_env(job),
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -1382,7 +1385,8 @@ class Command(BaseCommand):
             proc = subprocess.run(
                 ['gh', 'pr', 'list', '--head', branch,
                  '--state', 'all', '--json', 'number,url,id', '--limit', '1'],
-                cwd=repo_dir, capture_output=True, text=True, timeout=60,
+                cwd=repo_dir, capture_output=True, text=True,
+                encoding='utf-8', errors='replace', timeout=60,
                 env=self._gh_env(job),
             )
             if proc.returncode != 0:
@@ -1505,7 +1509,7 @@ class Command(BaseCommand):
     def _read_pr_body_file(self, path):
         """Read the PR body file's stripped content, or ``None`` if missing/empty."""
         try:
-            content = path.read_text().strip()
+            content = path.read_text(encoding='utf-8', errors='replace').strip()
         except OSError:
             return None
         return content or None
@@ -1663,6 +1667,7 @@ class Command(BaseCommand):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding='utf-8', errors='replace',
             bufsize=1,
         )
         try:
@@ -1917,6 +1922,7 @@ class Command(BaseCommand):
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding='utf-8', errors='replace',
             timeout=300,
         )
         if proc.returncode != 0:

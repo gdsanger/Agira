@@ -162,7 +162,7 @@ class CodexProvider(AgentProvider):
         schema violation or unreadable text ends up as ``unclear``.
         """
         try:
-            text = (self._review_dir(job) / 'last-message.json').read_text().strip()
+            text = (self._review_dir(job) / 'last-message.json').read_text(encoding='utf-8', errors='replace').strip()
         except OSError:
             text = ''
         return text or (result.get('result_text') or '')
@@ -223,7 +223,7 @@ class CodexProvider(AgentProvider):
         exclude = repo / '.git' / 'info' / 'exclude'
         try:
             exclude.parent.mkdir(parents=True, exist_ok=True)
-            current = exclude.read_text() if exclude.exists() else ''
+            current = exclude.read_text(encoding='utf-8', errors='replace') if exclude.exists() else ''
             if '/AGENTS.md' not in current.splitlines():
                 with exclude.open('a') as fh:
                     fh.write(('' if current.endswith('\n') or not current else '\n') + '/AGENTS.md\n')

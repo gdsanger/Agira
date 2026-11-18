@@ -149,3 +149,58 @@ def lookup(dictionary, key):
         return []
     return dictionary.get(key, [])
 
+
+
+_CRITERION_ICONS = {'met': '✅', 'not_met': '❌', 'accepted_deviation': '⚠️'}
+_CRITERION_LABELS = {
+    'met': 'erfüllt',
+    'not_met': 'nicht erfüllt',
+    'accepted_deviation': 'begründete Abweichung',
+}
+
+
+@register.filter
+def review_report_markdown(raw):
+    """Render a stored review verdict (raw JSON answer) as readable Markdown.
+
+    Falls back to the unchanged text when it is not a parsable verdict, so
+    already formatted reports (or free text) are shown as before.
+    """
+    if not raw:
+        return ''
+    from core.services.claude_queue.review import parse_review_verdict
+
+    try:
+        verdict = parse_review_verdict(raw)
+    except Exception:  # noqa: BLE001 — display only, never break the page
+        return raw
+    if verdict.is_unclear:
+        return raw
+
+    lines = []
+    if verdict.summary:
+        lines += ['### Zusammenfassung', '', verdict.summary, '']
+    if verdict.criteria:
+        lines += ['### Kriterien', '']
+        for c in verdict.criteria:
+            icon = _CRITERION_ICONS.get(c.status, '•')
+            label = _CRITERION_LABELS.get(c.status, c.status)
+            lines.append(f'- {icon} **{c.text}** — _{label}_')
+            if c.evidence:
+                lines.append(f'  \n  {c.evidence}')
+        lines.append('')
+    for heading, items in (
+        ('Abweichungen', verdict.deviations),
+        ('Hinweise (nicht blockierend)', verdict.hints),
+    ):
+        if items:
+            lines += [f'### {heading}', '']
+            for d in items:
+                sev = f' ({d.severity})' if d.severity else ''
+                lines.append(f'- **{d.title}**{sev}')
+                if d.description:
+                    lines.append(f'  \n  {d.description}')
+                if d.criterion:
+                    lines.append(f'  \n  _Kriterium: {d.criterion}_')
+            lines.append('')
+    return '\n'.join(lines).strip()
