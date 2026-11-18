@@ -1513,8 +1513,11 @@ def items_claude_review_bulk(request):
         except (MissingClaudeCredential, InvalidClaudeModel, ReviewNotAllowed) as e:
             failed.append({'item_id': item_id, 'error': str(e)})
         except Exception as e:
-            logger.error(f"Error enqueueing review for item {item_id}: {e}")
-            failed.append({'item_id': item_id, 'error': str(e)})
+            logger.exception(f"Error enqueueing review for item {item_id}: {e}")
+            failed.append({
+                'item_id': item_id,
+                'error': 'Unerwarteter Fehler beim Einreihen (Details im Server-Log).',
+            })
         else:
             (enqueued if created else existing).append(
                 {'item_id': item_id, 'job_id': job.pk}
