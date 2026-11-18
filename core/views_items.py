@@ -116,20 +116,22 @@ def items_parent_search(request):
     """Autocomplete for the bulk "Parent setzen" field.
 
     Matches non-closed items by ID (digits) or title. Epics (items that already
-    have sub-issues) come first, since those are the usual parents. Optional
-    ``projects`` (comma separated IDs) narrows to the projects of the selected
-    items - a parent must live in the same project as its child.
+    have sub-issues) come first, since those are the usual parents. ``projects``
+    (comma separated IDs of the selected items' projects) is required: a parent
+    must live in the same project as its child, so the search never looks
+    across projects. Without it nothing is returned.
     """
     from django.db.models import Q
 
     q = (request.GET.get('q') or '').strip()
-    if not q:
+    project_ids = [int(x) for x in (request.GET.get('projects') or '').split(',') if x.strip().isdigit()]
+    if not q or not project_ids:
         return JsonResponse({'results': []})
 
-    qs = scope_items(Item.objects.exclude(status=ItemStatus.CLOSED), request.user)
-    project_ids = [int(x) for x in (request.GET.get('projects') or '').split(',') if x.strip().isdigit()]
-    if project_ids:
-        qs = qs.filter(project_id__in=project_ids)
+    qs = scope_items(
+        Item.objects.exclude(status=ItemStatus.CLOSED).filter(project_id__in=project_ids),
+        request.user,
+    )
     cond = Q(title__icontains=q)
     if q.lstrip('#').isdigit():
         cond |= Q(pk=int(q.lstrip('#')))

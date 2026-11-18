@@ -148,7 +148,7 @@
 
         <div class="input-group input-group-sm position-relative" style="width: auto;">
             <input type="text" id="bulk-parent-search" class="form-control form-control-sm" autocomplete="off"
-                   placeholder="Epic/Parent suchen (Titel oder ID)" style="width: 18rem;" aria-label="Parent Item suchen">
+                   placeholder="Epic/Parent im Projekt suchen (Titel oder ID)" style="width: 18rem;" aria-label="Parent Item suchen">
             <input type="hidden" id="bulk-parent" value="">
             <button type="button" class="btn btn-outline-secondary bulk-set" data-field="parent" data-source="bulk-parent" data-label="Parent Item" disabled>Parent setzen</button>
             <div id="bulk-parent-results" class="list-group position-absolute shadow-sm d-none" style="top: 100%; left: 0; width: 28rem; z-index: 1050; max-height: 18rem; overflow-y: auto;"></div>
@@ -252,14 +252,30 @@
             box.classList.remove('d-none');
         }
 
+        function selectedProjects() {
+            return Array.from(new Set(selected().map(b => b.dataset.project)));
+        }
+
+        function notice(text) {
+            box.innerHTML = '';
+            const n = document.createElement('div');
+            n.className = 'list-group-item small text-muted';
+            n.textContent = text;
+            box.appendChild(n);
+            box.classList.remove('d-none');
+        }
+
         search.addEventListener('input', function () {
             hidden.value = '';  // typing invalidates the previous pick; empty = "remove parent"
             clearTimeout(timer);
             const q = search.value.trim();
             if (!q) { hide(); return; }
+            const projects = selectedProjects();
+            if (!projects.length) { notice('Bitte zuerst Items markieren – gesucht wird nur im Projekt der Auswahl.'); return; }
+            if (projects.length > 1) { notice('Die Auswahl enthält mehrere Projekte – ein Parent muss im selben Projekt liegen. Bitte pro Projekt einzeln zuweisen.'); return; }
             timer = setTimeout(function () {
                 const mine = ++seq;
-                fetch(parentSearchUrl + '?q=' + encodeURIComponent(q))
+                fetch(parentSearchUrl + '?q=' + encodeURIComponent(q) + '&projects=' + encodeURIComponent(projects.join(',')))
                     .then(r => r.json())
                     .then(d => { if (mine === seq) render(d.results || []); })
                     .catch(hide);

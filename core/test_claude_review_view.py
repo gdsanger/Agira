@@ -302,13 +302,26 @@ class ItemsParentSearchViewTestCase(TestCase):
         epic = self._item('Login Umbau')
         self._item('Kind', parent=epic)
         self._item('Login alt', status=ItemStatus.CLOSED)
-        results = self.client.get(self.url, {'q': 'login'}).json()['results']
+        results = self.client.get(self.url, {'q': 'login', 'projects': self.project.id}).json()['results']
         self.assertEqual([r['id'] for r in results], [epic.id, plain.id])
         self.assertEqual(results[0]['children'], 1)
-        by_id = self.client.get(self.url, {'q': f'#{plain.id}'}).json()['results']
+        by_id = self.client.get(self.url, {'q': f'#{plain.id}', 'projects': self.project.id}).json()['results']
         self.assertEqual([r['id'] for r in by_id], [plain.id])
 
     def test_respects_project_visibility(self):
         other = Project.objects.create(name='Fremd')
         self._item('Login geheim', project=other)
-        self.assertEqual(self.client.get(self.url, {'q': 'geheim'}).json()['results'], [])
+        self.assertEqual(
+            self.client.get(self.url, {'q': 'geheim', 'projects': other.id}).json()['results'], [],
+        )
+
+    def test_never_searches_across_projects(self):
+        second = Project.objects.create(name='Zweit')
+        second.members.add(self.user)
+        mine = self._item('Login hier')
+        self._item('Login dort', project=second)
+        # Without a project scope nothing is returned ...
+        self.assertEqual(self.client.get(self.url, {'q': 'login'}).json()['results'], [])
+        # ... and with one, only that project's items.
+        results = self.client.get(self.url, {'q': 'login', 'projects': self.project.id}).json()['results']
+        self.assertEqual([r['id'] for r in results], [mine.id])

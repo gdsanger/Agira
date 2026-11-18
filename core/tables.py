@@ -155,7 +155,10 @@ class ItemTable(ItemListColumnsMixin, tables.Table):
         orderable=False,
         attrs={
             'th__input': {'class': 'form-check-input item-select-all', 'title': 'Alle auswählen'},
-            'td__input': {'class': 'form-check-input item-select'},
+            'td__input': {
+                'class': 'form-check-input item-select',
+                'data-project': lambda record: record.project_id,
+            },
             'th': {'style': 'width: 40px;'},
         },
     )
