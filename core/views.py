@@ -1471,6 +1471,71 @@ def item_claude_review(request, item_id):
 
 @login_required
 @require_http_methods(["POST"])
+def items_claude_review_bulk(request):
+    """
+    Bulk "Review durch Claude" action for the item list views.
+
+    Takes ``item_ids`` (repeated form field) and enqueues one read-only review
+    job per item via the same service as the single action. Items that cannot
+    be reviewed (wrong status, no PR, missing credential, ...) are reported per
+    item and never abort the rest of the batch.
+    """
+    from core.services.claude_queue.credentials import MissingClaudeCredential
+    from core.services.claude_queue.enqueue import (
+        InvalidClaudeModel,
+        ReviewNotAllowed,
+        enqueue_review_for_claude,
+    )
+
+    raw_ids = request.POST.getlist('item_ids')
+    item_ids = []
+    for raw in raw_ids:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value not in item_ids:
+            item_ids.append(value)
+    if not item_ids:
+        return JsonResponse(
+            {'success': False, 'error': 'Keine Items ausgewählt.'}, status=400,
+        )
+
+    items = {i.id: i for i in Item.objects.filter(id__in=item_ids)}
+    enqueued, existing, failed = [], [], []
+    for item_id in item_ids:
+        item = items.get(item_id)
+        if item is None:
+            failed.append({'item_id': item_id, 'error': 'Item nicht gefunden.'})
+            continue
+        try:
+            job, created = enqueue_review_for_claude(item, actor=request.user)
+        except (MissingClaudeCredential, InvalidClaudeModel, ReviewNotAllowed) as e:
+            failed.append({'item_id': item_id, 'error': str(e)})
+        except Exception as e:
+            logger.error(f"Error enqueueing review for item {item_id}: {e}")
+            failed.append({'item_id': item_id, 'error': str(e)})
+        else:
+            (enqueued if created else existing).append(
+                {'item_id': item_id, 'job_id': job.pk}
+            )
+
+    parts = [f'{len(enqueued)} Review(s) eingereiht']
+    if existing:
+        parts.append(f'{len(existing)} bereits aktiv')
+    if failed:
+        parts.append(f'{len(failed)} nicht möglich')
+    return JsonResponse({
+        'success': bool(enqueued or existing),
+        'message': ', '.join(parts) + '.',
+        'enqueued': enqueued,
+        'existing': existing,
+        'failed': failed,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
 def item_review_override(request, item_id):
     """
     "Trotz Befunden schließen" action - a human overrides a Claude review
