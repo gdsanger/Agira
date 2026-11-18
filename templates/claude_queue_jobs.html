@@ -3,6 +3,10 @@
 {% block title %}Agent Queue - Agira{% endblock %}
 
 {% block extra_head %}
+<style>
+    /* Cards move between columns on every refresh; scroll anchoring would chase them. */
+    html { overflow-anchor: none; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %}
 
@@ -111,6 +115,31 @@ document.addEventListener('DOMContentLoaded', function() {
             document.documentElement.classList.toggle('cq-hide-done', !toggle.checked);
             try { localStorage.setItem(KEY, toggle.checked ? '1' : '0'); } catch (e) {}
         });
+    })();
+    // Keep the reading position across the 5s poll / action refresh: the swap
+    // replaces the whole board, which would otherwise reset the page and the
+    // board's horizontal scroll and make the view jump when a card changes
+    // column. Moving cards between columns must not throw the user out of context.
+    (function () {
+        let saved = null;
+        function isQueueSwap(evt) {
+            const el = evt.detail && (evt.detail.elt || evt.target);
+            return el && el.id === 'claude-queue-kpis';
+        }
+        document.body.addEventListener('htmx:beforeSwap', function (evt) {
+            if (!isQueueSwap(evt)) return;
+            const row = document.querySelector('.cqb-row');
+            saved = { x: window.scrollX, y: window.scrollY, rowLeft: row ? row.scrollLeft : 0 };
+        });
+        function restore() {
+            if (!saved) return;
+            const row = document.querySelector('.cqb-row');
+            if (row) row.scrollLeft = saved.rowLeft;
+            // 'instant': site.css sets smooth scrolling, which would visibly swoop back.
+            window.scrollTo({ left: saved.x, top: saved.y, behavior: 'instant' });
+        }
+        document.body.addEventListener('htmx:afterSwap', function (evt) { if (isQueueSwap(evt)) restore(); });
+        document.body.addEventListener('htmx:afterSettle', function (evt) { if (isQueueSwap(evt)) { restore(); saved = null; } });
     })();
     const ctx = document.getElementById('queueChart');
     if (ctx) {

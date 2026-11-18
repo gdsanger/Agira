@@ -4,14 +4,14 @@ Expects `job`. With `on_board=True` the result is not swapped into a row; the
 whole queue is refreshed instead (the `cq-refresh` event is picked up by the
 polling KPI element).
 {% endcomment %}
-{% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue or job.can_override_review or job.is_deletable %}
+{% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue or job.can_override_review or job.can_acknowledge_hints or job.is_deletable %}
 <div class="dropdown">
     <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1" data-bs-toggle="dropdown"
             data-bs-strategy="fixed" aria-expanded="false" title="Aktionen">
         <i class="bi bi-three-dots-vertical"></i>
     </button>
     <ul class="dropdown-menu dropdown-menu-end">
-        {% if job.can_record_merge and not job.is_review %}
+        {% if job.can_record_merge %}
         <li>
             <button type="button" class="dropdown-item"
                     hx-post="{% url 'claude-queue-job-record-merge' job.id %}"
@@ -40,10 +40,20 @@ polling KPI element).
             <button type="button" class="dropdown-item"
                     hx-post="{% url 'claude-queue-job-confirm-complete' job.id %}"
                     {% if on_board %}hx-swap="none"{% else %}hx-target="closest tr" hx-swap="outerHTML"{% endif %}
-                    hx-vals='js:{reason: window.prompt("Begründung (mind. 10 Zeichen): Warum ist die Umsetzung vollständig?") || ""}'
                     hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'cq-refresh')"
                     hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
                 <i class="bi bi-patch-check me-2"></i>Als vollständig bestätigen
+            </button>
+        </li>
+        {% endif %}
+        {% if job.can_acknowledge_hints %}
+        <li>
+            <button type="button" class="dropdown-item"
+                    hx-post="{% url 'claude-queue-job-ack-hints' job.id %}"
+                    {% if on_board %}hx-swap="none"{% else %}hx-target="closest tr" hx-swap="outerHTML"{% endif %}
+                    hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'cq-refresh')"
+                    hx-on::htmx:response-error="showToast(event.detail.xhr.responseText, 'error')">
+                <i class="bi bi-check2-all me-2"></i>Hinweise gelesen → Erledigt
             </button>
         </li>
         {% endif %}
@@ -73,7 +83,7 @@ polling KPI element).
         </li>
         {% endif %}
         {% if job.is_deletable %}
-        {% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue or job.can_override_review %}<li><hr class="dropdown-divider"></li>{% endif %}
+        {% if job.can_record_merge or job.can_mark_done or job.can_confirm_complete or job.can_requeue or job.can_override_review or job.can_acknowledge_hints %}<li><hr class="dropdown-divider"></li>{% endif %}
         <li>
             <button type="button" class="dropdown-item text-danger"
                     hx-post="{% url 'claude-queue-job-delete' job.id %}"

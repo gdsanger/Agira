@@ -2370,6 +2370,21 @@ class ClaudeQueueJob(models.Model):
         default='',
         help_text=_('Reason given for closing the item despite the review findings'),
     )
+    # A passed review with non-blocking hints stays visible on the board until a
+    # human has read them and ticks them off (the verdict itself is untouched).
+    review_hints_acknowledged_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='hint_acknowledged_review_jobs',
+        help_text=_('User who read the hints of a passed review'),
+    )
+    review_hints_acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_('When the hints of a passed review were marked as read'),
+    )
     parent_job = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -2659,6 +2674,16 @@ class ClaudeQueueJob(models.Model):
             )
             and self.review_overridden_at is None
             and self.item.status != 'Closed'
+        )
+
+    @property
+    def can_acknowledge_hints(self):
+        """True if a human may tick off the hints of this passed review."""
+        return (
+            self.is_review
+            and self.status == ClaudeQueueJobStatus.DONE
+            and self.review_hints_acknowledged_at is None
+            and self.review_hint_count > 0
         )
 
     @property

@@ -42,12 +42,13 @@
     {% endif %}
 
     {% if job.is_review %}
+    {% if job.review_hints_acknowledged_at %}<div class="text-success"><i class="bi bi-check2-all"></i> Hinweise gelesen</div>{% endif %}
     {% if job.board_state == 'review_pass_hints' %}<div class="text-success"><i class="bi bi-lightbulb"></i> {{ job.review_hint_count }} Hinweis{{ job.review_hint_count|pluralize:"e" }}</div>{% endif %}
     {% if job.review_followup_item_id %}<div><i class="bi bi-link-45deg"></i> Folge-Issue <a href="{% url 'item-detail' job.review_followup_item_id %}" onclick="event.stopPropagation();">#{{ job.review_followup_item_id }}</a></div>{% endif %}
     {% if job.review_overridden_at %}<div><span class="badge bg-dark" title="{{ job.review_override_reason }}"><i class="bi bi-shield-check"></i> Überschrieben</span></div>{% endif %}
     {% endif %}
 
-    {% if job.pr_url and not job.is_review %}
+    {% if job.pr_url and job.pr_state != 'merged' or job.pr_url and not job.is_review %}
     <div>
         <a href="{{ job.pr_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation();"><i class="bi bi-git"></i> PR #{{ job.pr_number }}</a>
         {% if job.pr_state %}<span class="badge {% if job.pr_state == 'merged' %}bg-success{% elif job.pr_state == 'closed' %}bg-secondary{% else %}bg-info text-dark{% endif %}">{{ job.pr_state }}</span>{% endif %}

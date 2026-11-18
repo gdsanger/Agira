@@ -67,7 +67,7 @@ COLUMNS: Dict[str, BoardColumn] = {c.key: c for c in [
     BoardColumn(REVIEW_PASS, 'Passed', 'bi-patch-check', 'success',
                 'Review ohne Befund bestanden', capped=True, quiet=True),
     BoardColumn(DONE, 'Erledigt', 'bi-check-lg', 'success',
-                'Erledigt: Umsetzung gemergt (bzw. ohne PR) oder Review-Befund abgehakt (Folge-Issue geschlossen, Item geschlossen, überschrieben)', capped=True, quiet=True),
+                'Erledigt: Umsetzung gemergt (bzw. ohne PR) oder Review abgehakt (Hinweise gelesen, Folge-Issue/Item geschlossen, Befund überschrieben)', capped=True, quiet=True),
 ]}
 
 _QUEUED_STATUSES = (ClaudeQueueJobStatus.QUEUED, ClaudeQueueJobStatus.BLOCKED)
@@ -107,6 +107,8 @@ def derive_board_state(job: ClaudeQueueJob, hint_count=None) -> str:
         verdict = job.review_verdict
         if verdict == ClaudeQueueReviewVerdict.PASS:
             n = job.review_hint_count if hint_count is None else hint_count
+            if n and job.review_hints_acknowledged_at:
+                return DONE
             return REVIEW_PASS_HINTS if n else REVIEW_PASS
         if verdict in (ClaudeQueueReviewVerdict.DEVIATIONS, ClaudeQueueReviewVerdict.UNCLEAR):
             # A finding that has been dealt with leaves the attention columns:

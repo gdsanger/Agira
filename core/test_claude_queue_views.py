@@ -167,7 +167,8 @@ class ClaudeQueueViewsTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
         response = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertContains(response, 'id="claude-queue-kpis"')
-        self.assertContains(response, 'hx-trigger="every 5s, cq-refresh from:body"')
+        self.assertContains(response, 'hx-trigger="every 5s [')
+        self.assertContains(response, 'cq-refresh from:body')
 
     def test_list_table_carries_oob_attribute_not_its_own_poll(self):
         self.client.login(username='testuser', password='testpass123')

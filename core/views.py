@@ -1129,6 +1129,20 @@ def claude_queue_job_confirm_complete(request, job_id):
 
 @login_required
 @require_http_methods(["POST"])
+def claude_queue_job_ack_hints(request, job_id):
+    """Mark the hints of a passed review as read (moves it to "Erledigt")."""
+    from core.services.claude_queue.ack_hints import AcknowledgeHintsError, acknowledge_hints
+
+    job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)
+    try:
+        acknowledge_hints(job, request.user)
+    except AcknowledgeHintsError as exc:
+        return HttpResponse(str(exc), status=400)
+    return _claude_queue_action_response(request, job)
+
+
+@login_required
+@require_http_methods(["POST"])
 def claude_queue_job_requeue(request, job_id):
     """Put a hanging job back to Queued so the worker picks it up again."""
     job = get_object_or_404(ClaudeQueueJob.objects.select_related('item', 'project', 'auth_user'), id=job_id)

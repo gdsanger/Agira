@@ -253,8 +253,8 @@ nach eindeutigem Erfolg läuft die Kette von allein weiter.
 
 Ist ein als „Ggf. unvollständig“ markierter Lauf nach Prüfung **vollständig**,
 kann der Mensch ihn in der Queue (Aktionen der Job-Zeile oder Job-Detail) mit
-**„Als vollständig bestätigen“** freigeben – Pflicht-Begründung, mindestens
-10 Zeichen. Das setzt nur `completion_uncertain = False` (Original-Grund,
+**„Als vollständig bestätigen“** freigeben – die Begründung ist optional (meist
+ist es eine Fehleinschätzung der Heuristik). Das setzt nur `completion_uncertain = False` (Original-Grund,
 Bestätiger, Zeitpunkt und Begründung bleiben am Job; Activity und interner
 Kommentar am Item) und stößt die Kette einmal direkt an. Ist der Sub-PR
 gemergt, gilt das Sub-Issue als erfolgreich und das nächste wird freigegeben;
