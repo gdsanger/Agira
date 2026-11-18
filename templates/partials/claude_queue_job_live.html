@@ -75,7 +75,7 @@ Expects `job` and `active_statuses` in context.
         <div class="p-3 rounded border">
             <div class="mb-2">{% include 'partials/claude_queue_review_badges.html' %}</div>
             {% if job.review_report %}
-            <div class="markdown-viewer">{{ job.review_report|render_markdown }}</div>
+            <div class="markdown-viewer">{{ job.review_report|review_report_markdown|render_markdown }}</div>
             {% endif %}
             {% if job.review_overridden_at %}
             <div class="alert alert-dark mt-2 mb-0">
