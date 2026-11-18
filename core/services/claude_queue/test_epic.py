@@ -259,3 +259,14 @@ class DefaultBranchTests(TestCase):
         from core.services.claude_queue.hint import build_git_workflow_hint
         hint = build_git_workflow_hint('fix/1-x', 'master', 'master')
         self.assertIn('von `master`, Draft-PR', hint)
+
+    def test_hint_names_no_provider(self):
+        # The git workflow is the same for every agent provider (CLAUDE.md).
+        from core.services.claude_queue.hint import (
+            GIT_WORKFLOW_HINT_MARKER, build_git_workflow_hint,
+        )
+        for base in ('main', 'feature/1-epic'):
+            hint = build_git_workflow_hint('fix/1-x', base, 'main')
+            hint = hint.replace(GIT_WORKFLOW_HINT_MARKER, '')
+            for name in ('claude', 'codex', 'openai'):
+                self.assertNotIn(name, hint.lower())

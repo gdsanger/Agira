@@ -164,6 +164,12 @@ der jeweils andere als bei der Umsetzung). Prompt, Urteils-Schema, Parser und
 `review_apply`/`review_override` sind provider-neutral; der Bericht-Kommentar
 nennt Provider und Modell („Geurteilt von“).
 
+- **Regel „anderer Provider“:** Ohne gesetzten `review_provider` reviewt der
+  andere Provider als der, der zuletzt sauber umgesetzt hat (ein Lauf mit
+  `completion_uncertain` zählt nicht; ohne Lauf: der andere als
+  `implementation_provider`). Ein gesetzter `review_provider` gewinnt.
+  Umsetzung Claude → Review OpenAI und umgekehrt. Einrichtung des
+  OpenAI-Providers: [`OPENAI_PROVIDER_SETUP.md`](OPENAI_PROVIDER_SETUP.md).
 - **Codex read-only:** `codex exec -s read-only -c approval_policy=never`,
   ohne `--dangerously-bypass-approvals-and-sandbox` (Test:
   `test_codex_review`). Schreiben, Commit und Push sind damit durch die Sandbox

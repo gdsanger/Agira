@@ -1,6 +1,6 @@
 """Forced git-workflow hint on an item's description (#833, #1076).
 
-Every item handed off to the Claude queue must carry a human- and
+Every item handed off to the agent queue must carry a human- and
 CLI-readable reminder of the git conventions the worker enforces (branch
 naming, PR target, no direct commits to main). The hint is force-appended to
 ``item.description`` on enqueue and guarded by a marker so re-enqueueing an
@@ -32,8 +32,8 @@ def build_git_workflow_hint(
     hand). A sub-issue of an epic gets the epic wording instead: a draft PR
     against the epic branch that the *worker* squash-merges once CI is green,
     because what a human reviews is the assembled epic, not the single layer.
-    Claude itself never merges — the hint says so, since it ends up in the
-    prompt.
+    No agent merges, whatever its provider — the hint says so, since it ends
+    up in the prompt. It names no provider: the rules are the same for all.
     """
     if base_branch == default_branch:
         detail = (
