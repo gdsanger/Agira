@@ -30,6 +30,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
         {% endif %}
         <strong>{{ job.item.title }}</strong>
         <br><small class="text-muted">Item #{{ job.item.id }}</small>
+        <br>{% include 'partials/claude_queue_provider_badge.html' %}
         {% if job.is_epic_node %}
         {% with chain=job.epic_chain %}
         <small class="text-muted">· {{ chain.done }}/{{ chain.total }} Sub-Issues gemergt</small>
@@ -97,7 +98,7 @@ hierarchy while pagination and per-row polling stay exactly as they were.
         {# Whether that cost was actually billed (API) or covered by a subscription (#1083). #}
         <br>
         {% if job.auth_mode == 'api_key' %}
-        <span class="badge bg-warning text-dark" title="Pay-per-use über den API-Key">API</span>
+        <span class="badge bg-warning text-dark" title="Pay-per-use über den {% if job.provider == 'openai' %}OpenAI{% else %}Anthropic{% endif %}-API-Key">API</span>
         {% else %}
         <span class="badge bg-success" title="Über das Abo-Kontingent – keine Pay-per-use-Kosten">ABO</span>
         {% endif %}

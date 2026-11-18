@@ -1,6 +1,6 @@
-"""Enqueue an item for Claude Code processing (#833, #1079).
+"""Enqueue an item for agent processing (#833, #1079, #1300).
 
-The UI entry point into the Claude queue pipeline: creates a queued
+The UI entry point into the agent queue pipeline (Claude Code or OpenAI Codex, see ``provider``): creates a queued
 ``ClaudeQueueJob``, force-appends the git-workflow hint to the item's
 description, and moves the item to ``Working``. Re-enqueueing an item that
 already has an active job is a no-op (returns the existing job) so a stray
@@ -18,6 +18,7 @@ from django.db import transaction
 
 from core.models import (
     CLAUDE_CLI_MODEL_IDS,
+    AgentProvider,
     ClaudeQueueJob,
     ClaudeQueueJobAuthMode,
     ClaudeQueueJobKind,
@@ -26,16 +27,21 @@ from core.models import (
     ExternalIssueKind,
     Item,
     ItemStatus,
+    OpenAIQueueJobModel,
+    provider_for_model,
 )
 from core.services.activity import ActivityService
 from core.services.claude_queue.credentials import (
     resolve_claude_credential,
     resolve_credential_user,
+    resolve_openai_credential,
 )
 from core.services.claude_queue.hint import ensure_git_workflow_hint
+from core.services.claude_queue.provider_rule import effective_review_provider
 from core.services.workflow.item_workflow_guard import ItemWorkflowGuard
 
 DEFAULT_CLAUDE_MODEL = ClaudeQueueJobModel.SONNET
+DEFAULT_OPENAI_MODEL = OpenAIQueueJobModel.GPT_5_CODEX
 
 
 class InvalidClaudeModel(ValueError):
@@ -103,8 +109,50 @@ def _resolve_auth_mode(item) -> str:
     return getattr(item, 'claude_auth_mode', None) or ClaudeQueueJobAuthMode.OAUTH
 
 
+def _normalize_provider(provider) -> str:
+    """Return a valid provider slug; unknown/empty falls back to Claude."""
+    return provider if provider in AgentProvider.values else AgentProvider.CLAUDE
+
+
+def _provider_label(provider) -> str:
+    return 'OpenAI Codex' if provider == AgentProvider.OPENAI else 'Claude Code'
+
+
+def _resolve_run_model(item, provider) -> str:
+    """Model for a run of ``provider``.
+
+    The item's ``suggested_model`` is used when it belongs to that provider.
+    A model of the *other* provider (e.g. a review by OpenAI on an item with a
+    Claude suggestion) is no error — it is simply not applicable, so the
+    provider's default applies.
+    """
+    suggested = getattr(item, 'suggested_model', None)
+    if provider == AgentProvider.OPENAI:
+        if provider_for_model(suggested) == AgentProvider.OPENAI:
+            return suggested
+        return DEFAULT_OPENAI_MODEL
+    if provider_for_model(suggested) == AgentProvider.OPENAI:
+        return DEFAULT_CLAUDE_MODEL
+    return _resolve_model(item)
+
+
+def _resolve_run_auth(item, provider) -> str:
+    """Auth mode frozen on a job: the item's for Claude, always API key for OpenAI."""
+    if provider == AgentProvider.OPENAI:
+        return ClaudeQueueJobAuthMode.API_KEY
+    return _resolve_auth_mode(item)
+
+
+def _check_credential(auth_user, provider, auth_mode) -> None:
+    """Raise the provider's missing-credential error before anything is created."""
+    if provider == AgentProvider.OPENAI:
+        resolve_openai_credential(auth_user)
+    else:
+        resolve_claude_credential(auth_user, auth_mode)
+
+
 def enqueue_item_for_claude(
-    item: Item, *, actor=None, allow_api_key_fallback: bool = False,
+    item: Item, *, actor=None, allow_api_key_fallback: bool = False, provider=None,
 ) -> tuple[ClaudeQueueJob, bool]:
     """Hand ``item`` off to the Claude queue.
 
@@ -174,14 +222,21 @@ def enqueue_item_for_claude(
                 f'Sub-Issue einzeln einzureihen.'
             )
 
-        auth_mode = _resolve_auth_mode(locked_item)
+        # An explicit provider (the "Umsetzung durch …" button) wins and is
+        # remembered on the item; otherwise the item's own choice applies.
+        provider = _normalize_provider(provider or locked_item.implementation_provider)
+        auth_mode = _resolve_run_auth(locked_item, provider)
         auth_user = resolve_credential_user(locked_item, actor=actor)
         # Raises when the mode cannot be served — before the item is moved.
-        resolve_claude_credential(auth_user, auth_mode)
+        _check_credential(auth_user, provider, auth_mode)
         # Raises when the model has no known CLI translation — same reasoning.
-        model = _resolve_model(locked_item)
+        model = _resolve_run_model(locked_item, provider)
 
-        if ensure_git_workflow_hint(locked_item):
+        changed = ensure_git_workflow_hint(locked_item)
+        if locked_item.implementation_provider != provider:
+            locked_item.implementation_provider = provider
+            changed = True
+        if changed:
             locked_item.save()
 
         ItemWorkflowGuard().transition(locked_item, ItemStatus.WORKING, actor=actor)
@@ -190,11 +245,12 @@ def enqueue_item_for_claude(
             item=locked_item,
             project=locked_item.project,
             status=ClaudeQueueJobStatus.QUEUED,
+            provider=provider,
             model=model,
             auth_user=auth_user,
             requested_auth_mode=auth_mode,
             auth_mode=auth_mode,
-            allow_api_key_fallback=allow_api_key_fallback,
+            allow_api_key_fallback=allow_api_key_fallback and provider == AgentProvider.CLAUDE,
             parent_job=parent_job,
             epic_order=locked_item.epic_order if parent_job else 0,
         )
@@ -205,7 +261,7 @@ def enqueue_item_for_claude(
         target=locked_item,
         actor=actor,
         summary=(
-            f'Enqueued for Claude Code (job #{job.pk}, model={model}, '
+            f'Enqueued for {_provider_label(provider)} (job #{job.pk}, model={model}, '
             f'auth={auth_mode} via {who})'
         ),
     )
@@ -213,7 +269,7 @@ def enqueue_item_for_claude(
 
 
 def enqueue_review_for_claude(
-    item: Item, actor=None, *, allow_api_key_fallback: bool = False,
+    item: Item, actor=None, *, allow_api_key_fallback: bool = False, provider=None,
 ) -> tuple[ClaudeQueueJob, bool]:
     """Enqueue a read-only ``review`` job for ``item`` (#1286).
 
@@ -259,21 +315,27 @@ def enqueue_review_for_claude(
                 f'gibt es nichts zu reviewen.'
             )
 
-        auth_mode = _resolve_auth_mode(locked_item)
+        # Explicit provider (button) > item.review_provider > "the other one
+        # than the implementation" (see provider_rule).
+        provider = _normalize_provider(
+            provider or effective_review_provider(locked_item)
+        )
+        auth_mode = _resolve_run_auth(locked_item, provider)
         auth_user = resolve_credential_user(locked_item, actor=actor)
-        resolve_claude_credential(auth_user, auth_mode)
-        model = _resolve_model(locked_item)
+        _check_credential(auth_user, provider, auth_mode)
+        model = _resolve_run_model(locked_item, provider)
 
         job = ClaudeQueueJob.objects.create(
             item=locked_item,
             project=locked_item.project,
             status=ClaudeQueueJobStatus.QUEUED,
             kind=ClaudeQueueJobKind.REVIEW,
+            provider=provider,
             model=model,
             auth_user=auth_user,
             requested_auth_mode=auth_mode,
             auth_mode=auth_mode,
-            allow_api_key_fallback=allow_api_key_fallback,
+            allow_api_key_fallback=allow_api_key_fallback and provider == AgentProvider.CLAUDE,
         )
 
     who = auth_user.username if auth_user else 'host'
@@ -282,7 +344,7 @@ def enqueue_review_for_claude(
         target=locked_item,
         actor=actor,
         summary=(
-            f'Review enqueued for Claude Code (job #{job.pk}, model={model}, '
+            f'Review enqueued for {_provider_label(provider)} (job #{job.pk}, model={model}, '
             f'auth={auth_mode} via {who})'
         ),
     )
@@ -303,7 +365,9 @@ def create_sub_issue_job(sub_issue: Item, epic_job: ClaudeQueueJob, *, actor=Non
     model is stale would hide the two layers that are perfectly fine; the entry
     is created and fails at its own release, where the message is about it.
     """
-    auth_mode = _resolve_auth_mode(sub_issue)
+    # The chain runs on the provider chosen for the epic node.
+    provider = _normalize_provider(epic_job.provider)
+    auth_mode = _resolve_run_auth(sub_issue, provider)
     # The whole chain runs on the credential of whoever started the epic: they
     # pressed the button, so it is their quota. The worker builds the chain
     # without an interactive actor, and falling back to the sub-issue's
@@ -311,9 +375,9 @@ def create_sub_issue_job(sub_issue: Item, epic_job: ClaudeQueueJob, *, actor=Non
     # account — or to none at all ("Not logged in").
     auth_user = resolve_credential_user(sub_issue, actor=actor or epic_job.auth_user)
     try:
-        model = _resolve_model(sub_issue)
+        model = _resolve_run_model(sub_issue, provider)
     except InvalidClaudeModel:
-        model = DEFAULT_CLAUDE_MODEL
+        model = DEFAULT_OPENAI_MODEL if provider == AgentProvider.OPENAI else DEFAULT_CLAUDE_MODEL
 
     return ClaudeQueueJob.objects.create(
         item=sub_issue,
@@ -322,16 +386,17 @@ def create_sub_issue_job(sub_issue: Item, epic_job: ClaudeQueueJob, *, actor=Non
         kind=ClaudeQueueJobKind.ISSUE,
         parent_job=epic_job,
         epic_order=sub_issue.epic_order,
+        provider=provider,
         model=model,
         auth_user=auth_user,
         requested_auth_mode=auth_mode,
         auth_mode=auth_mode,
-        allow_api_key_fallback=epic_job.allow_api_key_fallback,
+        allow_api_key_fallback=epic_job.allow_api_key_fallback and provider == AgentProvider.CLAUDE,
     )
 
 
 def enqueue_epic_for_claude(
-    item: Item, *, actor=None, allow_api_key_fallback: bool = False,
+    item: Item, *, actor=None, allow_api_key_fallback: bool = False, provider=None,
 ) -> tuple[ClaudeQueueJob, bool]:
     """Enqueue ``item`` as an epic node that orchestrates its sub-issues (#1079).
 
@@ -362,12 +427,17 @@ def enqueue_epic_for_claude(
         if existing_job is not None:
             return existing_job, False
 
-        auth_mode = _resolve_auth_mode(locked_item)
+        provider = _normalize_provider(provider or locked_item.implementation_provider)
+        auth_mode = _resolve_run_auth(locked_item, provider)
         auth_user = resolve_credential_user(locked_item, actor=actor)
         # The node runs no CLI itself, but every sub-run below it will — so a
         # missing credential is worth rejecting at the button rather than one
         # layer in.
-        resolve_claude_credential(auth_user, auth_mode)
+        _check_credential(auth_user, provider, auth_mode)
+
+        if locked_item.implementation_provider != provider:
+            locked_item.implementation_provider = provider
+            locked_item.save()
 
         ItemWorkflowGuard().transition(locked_item, ItemStatus.WORKING, actor=actor)
 
@@ -376,29 +446,30 @@ def enqueue_epic_for_claude(
             project=locked_item.project,
             status=ClaudeQueueJobStatus.QUEUED,
             kind=ClaudeQueueJobKind.EPIC,
-            model=_resolve_model_or_default(locked_item),
+            provider=provider,
+            model=_resolve_model_or_default(locked_item, provider),
             auth_user=auth_user,
             requested_auth_mode=auth_mode,
             auth_mode=auth_mode,
-            allow_api_key_fallback=allow_api_key_fallback,
+            allow_api_key_fallback=allow_api_key_fallback and provider == AgentProvider.CLAUDE,
         )
 
     ActivityService().log(
         verb='item.claude_epic_enqueued',
         target=locked_item,
         actor=actor,
-        summary=f'Epic enqueued for Claude Code orchestration (job #{job.pk})',
+        summary=f'Epic enqueued for {_provider_label(provider)} orchestration (job #{job.pk})',
     )
     return job, True
 
 
-def _resolve_model_or_default(item) -> str:
+def _resolve_model_or_default(item, provider=AgentProvider.CLAUDE) -> str:
     """Model for an epic node: the item's, or the default if it is unusable.
 
     An epic node never invokes a model, so a stale slug on the epic item is no
     reason to refuse the chain — unlike on an issue run, where it is.
     """
     try:
-        return _resolve_model(item)
+        return _resolve_run_model(item, provider)
     except InvalidClaudeModel:
-        return DEFAULT_CLAUDE_MODEL
+        return DEFAULT_OPENAI_MODEL if provider == AgentProvider.OPENAI else DEFAULT_CLAUDE_MODEL

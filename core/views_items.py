@@ -17,7 +17,7 @@ from django.conf import settings
 
 from .models import Item, ItemStatus, Project, ItemType, Organisation, User, UserRole, Release
 from .tables import ItemTable, LIST_INLINE_FIELDS, render_item_list_field_cell
-from .models import ClaudeQueueJobModel
+from .models import AGENT_MODEL_CHOICES
 from .filters import ItemFilter, KanbanFilter
 from .services.workflow import ItemWorkflowGuard
 from .visibility import scope_items
@@ -32,7 +32,7 @@ BULK_FIELDS = ('suggested_model', 'assigned_to', 'parent')
 def bulk_action_context():
     """Choices for the bulk action bar of the item lists."""
     return {
-        'bulk_model_choices': ClaudeQueueJobModel.choices,
+        'bulk_model_choices': AGENT_MODEL_CHOICES,
         # Only agents carry out implementation work, so only they can be assigned.
         'bulk_users': User.objects.filter(active=True, role=UserRole.AGENT).order_by('name', 'username'),
     }
