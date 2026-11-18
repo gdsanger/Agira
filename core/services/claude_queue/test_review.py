@@ -111,6 +111,27 @@ class ParseReviewVerdictTests(SimpleTestCase):
             data = _verdict(deviations=[{'title': 'T', 'criterion': crit}])
             self.assertEqual(parse_review_verdict(json.dumps(data)).verdict, VERDICT_UNCLEAR)
 
+    def test_paraphrased_criterion_is_matched_by_word_overlap(self):
+        # Regression for job #640: the model reworded the criterion text.
+        data = _verdict(
+            verdict='deviations',
+            criteria=[
+                {'text': 'Vorlage ohne Reports: Verhalten unverändert.', 'status': 'met'},
+                {'text': 'Report-Paket: Export/Re-Import erhalten alle Report-Zuordnungen '
+                         'inkl. Filter und Dateiname; alte Pakete weiter importierbar.',
+                 'status': 'not_met', 'evidence': 'x'},
+            ],
+            deviations=[{
+                'title': 'Paket ohne Filter', 'severity': 'major',
+                'criterion': 'Export und Re-Import erhalten alle Report-Zuordnungen '
+                             'inklusive Filter und Dateiname.',
+            }],
+        )
+        r = parse_review_verdict(json.dumps(data))
+        self.assertEqual(r.verdict, VERDICT_DEVIATIONS)
+        self.assertEqual(r.deviations[0].title, 'Paket ohne Filter')
+        self.assertTrue(r.deviations[0].criterion.startswith('Report-Paket'))
+
     def test_minor_deviation_without_matching_criterion_becomes_hint(self):
         data = _verdict(deviations=[
             {'title': 'T', 'criterion': 'gibt es nicht', 'severity': 'minor'},

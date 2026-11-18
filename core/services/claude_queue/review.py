@@ -250,7 +250,35 @@ def _match_criterion(ref: str, criteria: List[CriterionResult]) -> Optional[Crit
         if min(len(key), len(_norm(c.text))) >= 12
         and (key in _norm(c.text) or _norm(c.text) in key)
     ]
-    return partial[0] if len(partial) == 1 else None
+    if len(partial) == 1:
+        return partial[0]
+    if partial:
+        return None
+    # Last resort: the model paraphrased the criterion (e.g. "inklusive" for
+    # "inkl.", dropped a prefix). Pick the criterion sharing most words, but
+    # only if it is clearly the best one.
+    ref_tokens = _tokens(key)
+    if len(ref_tokens) < 3:
+        return None
+    scored = sorted(
+        ((len(ref_tokens & _tokens(_norm(c.text))) / len(ref_tokens), idx)
+         for idx, c in enumerate(criteria)),
+        reverse=True,
+    )
+    best_score, best_idx = scored[0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if best_score >= _FUZZY_MIN_SCORE and best_score - runner_up >= _FUZZY_MIN_MARGIN:
+        return criteria[best_idx]
+    return None
+
+
+_FUZZY_MIN_SCORE = 0.6
+_FUZZY_MIN_MARGIN = 0.15
+_TOKEN_RE = re.compile(r'\w{3,}', re.UNICODE)
+
+
+def _tokens(normalised: str) -> set:
+    return set(_TOKEN_RE.findall(normalised))
 
 
 def parse_review_verdict(raw: Any) -> ReviewVerdict:
