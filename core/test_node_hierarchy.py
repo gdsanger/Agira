@@ -1,6 +1,7 @@
 """
 Tests for Node hierarchical functionality.
 """
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from core.models import Project, Node, NodeType
 
@@ -88,3 +89,41 @@ class NodeHierarchyTest(TestCase):
         self.assertEqual(grandchild_tree['id'], self.grandchild.id)
         self.assertEqual(grandchild_tree['name'], 'Grandchild')
         self.assertEqual(len(grandchild_tree['children']), 0)
+
+
+class ClosedParentTests(TestCase):
+    """A closed epic can no longer be chosen as parent, but its children stay editable."""
+
+    def setUp(self):
+        from core.models import Item, ItemStatus, ItemType, Project
+        self.Item, self.ItemStatus = Item, ItemStatus
+        self.project = Project.objects.create(name='P')
+        self.type = ItemType.objects.create(key='bug', name='Bug')
+        self.epic = Item.objects.create(
+            title='Epic', description='d', project=self.project, type=self.type)
+
+    def _item(self, **kw):
+        return self.Item.objects.create(
+            title='Sub', description='d', project=self.project, type=self.type, **kw)
+
+    def test_closed_item_cannot_become_parent_of_new_or_existing_item(self):
+        sub = self._item(parent=self.epic)
+        other = self._item()
+        self.epic.status = self.ItemStatus.CLOSED
+        self.epic.save()
+        with self.assertRaises(ValidationError):
+            self._item(parent=self.epic)
+        other.parent = self.epic
+        with self.assertRaises(ValidationError):
+            other.save()
+
+    def test_child_of_closed_parent_can_still_be_saved(self):
+        sub = self._item(parent=self.epic)
+        self.epic.status = self.ItemStatus.CLOSED
+        self.epic.save()
+        sub = self.Item.objects.get(pk=sub.pk)
+        sub.pr_description = 'PR text'
+        sub.save(update_fields=['pr_description'])
+        sub.status = self.ItemStatus.TESTING
+        sub.save()
+        self.assertEqual(self.Item.objects.get(pk=sub.pk).pr_description, 'PR text')
