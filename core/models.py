@@ -974,6 +974,13 @@ class Item(models.Model):
     class Meta:
         ordering = ['-updated_at']
 
+    def _parent_is_changing(self):
+        """True for a new item, or when ``parent`` differs from the stored value."""
+        if self._state.adding or self.pk is None:
+            return True
+        stored = Item.objects.filter(pk=self.pk).values_list('parent_id', flat=True).first()
+        return stored != self.parent_id
+
     def clean(self):
         super().clean()
         errors = {}
@@ -982,8 +989,11 @@ class Item(models.Model):
         if self.parent_id is not None and self.parent_id == self.id:
             errors['parent'] = _('Cannot set item as its own parent.')
 
-        # Parent status must not be closed
-        elif self.parent and self.parent.status == ItemStatus.CLOSED:
+        # A closed item must not be *chosen* as a parent. Only checked when the
+        # parent is being set or changed: clean() also runs on every other save
+        # (status change, PR description, ...), and an item whose epic was closed
+        # afterwards would otherwise become impossible to save at all.
+        elif self.parent and self.parent.status == ItemStatus.CLOSED and self._parent_is_changing():
             errors['parent'] = _('Cannot set a closed item as parent.')
 
         # Solution release must be in same project
