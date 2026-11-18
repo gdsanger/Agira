@@ -591,6 +591,31 @@ class ClaudeQueueViewsTestCase(TestCase):
             response = self.client.post(reverse('claude-queue-job-record-merge', args=[job.id]))
         self.assertEqual(response.status_code, 400)
 
+    def test_record_merge_failure_names_the_kind_of_problem(self):
+        from unittest import mock
+        from core.services.integrations.errors import (
+            IntegrationAuthError, IntegrationPermanentError,
+        )
+        self.client.login(username='testuser', password='testpass123')
+        job = self._done_job()
+        job.pr_number = 7
+        job.save()
+        cases = [
+            (IntegrationAuthError('secret-detail'), 'verweigert den Zugriff'),
+            (IntegrationPermanentError('secret-detail'), 'kennt PR #7 nicht'),
+            (ValueError('secret-detail'), 'kein GitHub-Repository'),
+            (RuntimeError('secret-detail'), 'Details stehen im Server-Log'),
+        ]
+        for exc, expected in cases:
+            with mock.patch(
+                'core.services.github.service.GitHubService.apply_pr_state_from_github',
+                side_effect=exc,
+            ):
+                response = self.client.post(reverse('claude-queue-job-record-merge', args=[job.id]))
+            self.assertEqual(response.status_code, 502)
+            self.assertIn(expected, response.content.decode())
+            self.assertNotIn('secret-detail', response.content.decode())
+
     # ---- delete --------------------------------------------------------
 
     def test_delete_requires_authentication(self):
