@@ -19,6 +19,7 @@ from core.models import (
     ClaudeQueueJob,
     ClaudeQueueJobStatus,
     ClaudeQueueReviewVerdict,
+    ItemStatus,
 )
 
 # Board state keys.
@@ -42,9 +43,10 @@ class BoardColumn:
     css: str  # bootstrap colour name, used for header accent
     hint: str
     capped: bool = False  # finished columns only show the newest N cards
+    quiet: bool = False  # nothing to do for a human; hideable via the board switch
 
 
-# Display order. ``GROUPS`` splits it into the two board bands.
+# Display order, one flat row of columns.
 COLUMNS: Dict[str, BoardColumn] = {c.key: c for c in [
     BoardColumn(QUEUED, 'Queued', 'bi-hourglass-split', 'secondary',
                 'Wartet auf den Worker (auch: geblockt in der Epic-Kette)'),
@@ -56,25 +58,17 @@ COLUMNS: Dict[str, BoardColumn] = {c.key: c for c in [
                 'Fertig, aber das Ergebnis sieht unvollständig aus bzw. das Review-Urteil ist unklar – Mensch muss prüfen'),
     BoardColumn(MERGE_MISSING, 'Merge fehlt', 'bi-git', 'info',
                 'Umsetzung fertig, PR ist noch nicht gemergt'),
-    BoardColumn(DONE, 'Erledigt', 'bi-check-lg', 'success',
-                'Umsetzung fertig und gemergt (bzw. ohne PR)', capped=True),
     BoardColumn(REVIEW_DEVIATION, 'Abweichung', 'bi-exclamation-diamond', 'warning',
                 'Review fand Abweichungen, noch kein Folge-Issue'),
     BoardColumn(REVIEW_DEVIATION_FOLLOWUP, 'Abweichung + Folge-Issue', 'bi-link-45deg', 'warning',
-                'Review fand Abweichungen, ein Folge-Issue wurde angelegt', capped=True),
+                'Review fand Abweichungen, ein Folge-Issue wurde angelegt – bis dieses geschlossen ist'),
     BoardColumn(REVIEW_PASS_HINTS, 'Passed mit Hinweisen', 'bi-check-circle', 'success',
                 'Review bestanden, mit nicht blockierenden Hinweisen', capped=True),
     BoardColumn(REVIEW_PASS, 'Passed', 'bi-patch-check', 'success',
-                'Review ohne Befund bestanden', capped=True),
+                'Review ohne Befund bestanden', capped=True, quiet=True),
+    BoardColumn(DONE, 'Erledigt', 'bi-check-lg', 'success',
+                'Erledigt: Umsetzung gemergt (bzw. ohne PR) oder Review-Befund abgehakt (Folge-Issue geschlossen, Item geschlossen, überschrieben)', capped=True, quiet=True),
 ]}
-
-# Band 1: what needs attention / is in flight. Band 2: finished work.
-GROUPS = [
-    ('Aktiv & Handlungsbedarf', [QUEUED, RUNNING, FAILED, UNCERTAIN]),
-    ('Umsetzung (Coding)', [MERGE_MISSING, DONE]),
-    ('Review-Ergebnisse', [REVIEW_DEVIATION, REVIEW_DEVIATION_FOLLOWUP,
-                           REVIEW_PASS_HINTS, REVIEW_PASS]),
-]
 
 _QUEUED_STATUSES = (ClaudeQueueJobStatus.QUEUED, ClaudeQueueJobStatus.BLOCKED)
 _RUNNING_STATUSES = (
@@ -83,6 +77,15 @@ _RUNNING_STATUSES = (
     ClaudeQueueJobStatus.WAITING_LIMIT,
 )
 _FAILED_STATUSES = (ClaudeQueueJobStatus.FAILED, ClaudeQueueJobStatus.CANCELLED)
+
+
+def _finding_resolved(job) -> bool:
+    if job.review_overridden_at:
+        return True
+    if job.item.status == ItemStatus.CLOSED:
+        return True
+    followup = job.review_followup_item
+    return followup is not None and followup.status == ItemStatus.CLOSED
 
 
 def derive_board_state(job: ClaudeQueueJob, hint_count=None) -> str:
@@ -105,11 +108,16 @@ def derive_board_state(job: ClaudeQueueJob, hint_count=None) -> str:
         if verdict == ClaudeQueueReviewVerdict.PASS:
             n = job.review_hint_count if hint_count is None else hint_count
             return REVIEW_PASS_HINTS if n else REVIEW_PASS
-        if verdict == ClaudeQueueReviewVerdict.DEVIATIONS:
-            if job.review_followup_item_id:
-                return REVIEW_DEVIATION_FOLLOWUP
-            return REVIEW_DEVIATION
-        # ``unclear`` and a review that finished without any verdict.
+        if verdict in (ClaudeQueueReviewVerdict.DEVIATIONS, ClaudeQueueReviewVerdict.UNCLEAR):
+            # A finding that has been dealt with leaves the attention columns:
+            # overridden by a human, the item closed anyway, or the follow-up
+            # issue (which carries its own review) closed.
+            if _finding_resolved(job):
+                return DONE
+            if verdict == ClaudeQueueReviewVerdict.UNCLEAR:
+                return UNCERTAIN
+            return REVIEW_DEVIATION_FOLLOWUP if job.review_followup_item_id else REVIEW_DEVIATION
+        # A review that finished without any verdict.
         return UNCERTAIN
 
     if job.completion_uncertain and not job.is_completion_confirmed:
@@ -125,15 +133,12 @@ class Board:
     cards: Dict[str, list]
     hidden: Dict[str, int]
 
-    def group(self, keys: Iterable[str]):
-        return [
-            {'column': COLUMNS[k], 'jobs': self.cards[k], 'hidden': self.hidden[k]}
-            for k in keys
-        ]
-
     @property
-    def groups(self):
-        return [{'title': title, 'columns': self.group(keys)} for title, keys in GROUPS]
+    def lanes(self):
+        return [
+            {'column': c, 'jobs': self.cards[c.key], 'hidden': self.hidden[c.key]}
+            for c in self.columns
+        ]
 
 
 def build_board(jobs: Iterable[ClaudeQueueJob], cap: int = 15) -> Board:

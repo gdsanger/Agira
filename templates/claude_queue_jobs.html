@@ -42,6 +42,14 @@
             </div>
         </div>
         {% if view_mode == 'list' %}<input type="hidden" name="view" value="list">{% endif %}
+        {% if view_mode == 'board' %}
+        <div class="col-auto d-flex align-items-center">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="cqShowDone">
+                <label class="form-check-label" for="cqShowDone" title="Blendet die Spalten „Passed“ und „Erledigt“ ein">Erledigte anzeigen</label>
+            </div>
+        </div>
+        {% endif %}
         <div class="col-md-3">
             <select name="project" class="form-select">
                 <option value="">All Projects</option>
@@ -89,6 +97,21 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // "Erledigte anzeigen": default hidden, remembered in localStorage. The
+    // class sits on <html> so the 5s board swap cannot reset it.
+    (function () {
+        const KEY = 'agira.claudeQueue.showDone';
+        const toggle = document.getElementById('cqShowDone');
+        let show = false;
+        try { show = localStorage.getItem(KEY) === '1'; } catch (e) {}
+        document.documentElement.classList.toggle('cq-hide-done', !show);
+        if (!toggle) return;
+        toggle.checked = show;
+        toggle.addEventListener('change', function () {
+            document.documentElement.classList.toggle('cq-hide-done', !toggle.checked);
+            try { localStorage.setItem(KEY, toggle.checked ? '1' : '0'); } catch (e) {}
+        });
+    })();
     const ctx = document.getElementById('queueChart');
     if (ctx) {
         const chartData = {{ queue_chart_json|safe }};

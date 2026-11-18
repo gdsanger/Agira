@@ -9,7 +9,7 @@ Expects the queue_* dashboard vars in context, see _claude_queue_dashboard_conte
 <div id="claude-queue-kpis"
      class="row g-3 mb-3"
      hx-get="{% url 'claude-queue-jobs' %}?{{ request.GET.urlencode }}"
-     hx-trigger="every 5s"
+     hx-trigger="every 5s, cq-refresh from:body"
      hx-swap="outerHTML">
     <div class="col-md-3 col-6">
         <div class="kpi-card">

@@ -2649,6 +2649,19 @@ class ClaudeQueueJob(models.Model):
         return len(parse_review_verdict(self.review_report).hints)
 
     @property
+    def can_override_review(self):
+        """True if a human may close the item despite this review's finding."""
+        return (
+            self.is_review
+            and self.status == ClaudeQueueJobStatus.DONE
+            and self.review_verdict in (
+                ClaudeQueueReviewVerdict.DEVIATIONS, ClaudeQueueReviewVerdict.UNCLEAR,
+            )
+            and self.review_overridden_at is None
+            and self.item.status != 'Closed'
+        )
+
+    @property
     def is_review(self):
         """True if this entry is a review of an item's implementation."""
         return self.kind == ClaudeQueueJobKind.REVIEW

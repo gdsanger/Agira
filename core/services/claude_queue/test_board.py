@@ -62,6 +62,35 @@ class BoardStateTests(TestCase):
             self.job(review_verdict='pass', pr_number=3, pr_state='open', **rv), hint_count=0),
             b.REVIEW_PASS)
 
+    def test_resolved_review_findings_leave_the_attention_columns(self):
+        from core.models import ItemStatus
+        rv = dict(kind=ClaudeQueueJobKind.REVIEW)
+        followup = Item.objects.create(
+            title='F', description='d', project=self.project, type=self.type)
+        job = self.job(review_verdict='deviations', review_followup_item=followup, **rv)
+        self.assertEqual(b.derive_board_state(job), b.REVIEW_DEVIATION_FOLLOWUP)
+        followup.status = ItemStatus.CLOSED
+        followup.save()
+        job = ClaudeQueueJob.objects.select_related('item', 'review_followup_item').get(pk=job.pk)
+        self.assertEqual(b.derive_board_state(job), b.DONE)
+
+        unclear = self.job(review_verdict='unclear', **rv)
+        self.assertEqual(b.derive_board_state(unclear), b.UNCERTAIN)
+        unclear.review_overridden_at = timezone.now()
+        self.assertEqual(b.derive_board_state(unclear), b.DONE)
+
+        dev = self.job(review_verdict='deviations', **rv)
+        self.item.status = ItemStatus.CLOSED
+        self.item.save()
+        dev = ClaudeQueueJob.objects.select_related('item').get(pk=dev.pk)
+        self.assertEqual(b.derive_board_state(dev), b.DONE)
+
+    def test_can_override_review(self):
+        rv = dict(kind=ClaudeQueueJobKind.REVIEW)
+        self.assertTrue(self.job(review_verdict='unclear', **rv).can_override_review)
+        self.assertFalse(self.job(review_verdict='pass', **rv).can_override_review)
+        self.assertFalse(self.job().can_override_review)
+
     def test_build_board_caps_finished_columns_only(self):
         jobs = [self.job() for _ in range(4)] + [self.job(status=S.QUEUED) for _ in range(4)]
         board = b.build_board(jobs, cap=2)
@@ -89,9 +118,26 @@ class BoardViewTests(TestCase):
         r = self.client.get(reverse('claude-queue-jobs'))
         self.assertContains(r, 'cqb-col-merge_missing')
         self.assertContains(r, 'Board item')
+        # Card carries the action menu with the merge action.
+        self.assertContains(r, 'Merge hinterlegen')
         r = self.client.get(reverse('claude-queue-jobs') + '?view=list')
         self.assertNotContains(r, 'cqb-col-')
         self.assertContains(r, 'Current step')
         # HTMX poll keeps the board.
         r = self.client.get(reverse('claude-queue-jobs'), HTTP_HX_REQUEST='true')
         self.assertContains(r, 'cqb-col-queued')
+
+    def test_unclear_review_card_offers_override_and_quiet_columns_are_flagged(self):
+        ClaudeQueueJob.objects.create(
+            item=self.item, project=self.project, status=S.DONE,
+            kind=ClaudeQueueJobKind.REVIEW, review_verdict='unclear')
+        r = self.client.get(reverse('claude-queue-jobs'))
+        self.assertContains(r, 'Trotz Befunden schließen')
+        self.assertContains(r, 'cqb-col is-quiet')
+
+    def test_list_pagination_links_keep_list_view(self):
+        for _ in range(25):
+            ClaudeQueueJob.objects.create(item=self.item, project=self.project, status=S.DONE)
+        r = self.client.get(reverse('claude-queue-jobs') + '?view=list')
+        self.assertContains(r, '?page=2')
+        self.assertContains(r, '&view=list">Next')

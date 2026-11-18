@@ -13,7 +13,10 @@
             {% endif %}
             {% include 'partials/claude_queue_provider_badge.html' %}
         </div>
-        <small class="text-muted">#{{ job.id }}</small>
+        <div class="d-flex align-items-center gap-1" onclick="event.stopPropagation();">
+            <small class="text-muted">#{{ job.id }}</small>
+            {% include 'partials/claude_queue_job_actions.html' with on_board=True %}
+        </div>
     </div>
     <div class="cqb-title mt-1">{% if job.parent_job_id %}<span class="text-muted" title="Sub-Eintrag des Epics #{{ job.parent_job.item_id }}">&#8627; </span>{% endif %}{{ job.item.title|truncatechars:70 }}</div>
     <div class="text-muted">Item #{{ job.item_id }} · {{ job.project.name }}</div>
