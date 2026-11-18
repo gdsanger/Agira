@@ -128,3 +128,22 @@ CLAUDE_REQUIRE_USER_CREDENTIALS=false
 
 `CLAUDE_AUTH_MODE` bleibt nur noch der Host-Default für Jobs **ohne** eigene
 Modus-Angabe (Alt-Jobs von vor #1083); die Wahl je Issue hat Vorrang.
+
+## OpenAI / Codex (#1297)
+
+Datenmodell für den zweiten Provider der Agent-Queue:
+
+- `AgentProvider` (`claude`, `openai`); `Item.implementation_provider` (Default
+  `claude`), `Item.review_provider` (leer = Automatik „anderer als Umsetzung“),
+  `ClaudeQueueJob.provider` (Default `claude`, bei Review-Jobs der
+  Review-Provider). Bestehende Zeilen behalten implizit `claude`.
+- `OpenAIQueueJobModel` + `OPENAI_CLI_MODEL_IDS` (Slug → `codex exec -m`);
+  `ClaudeQueueJob.model` bleibt ein Slug, Slugs sind providerübergreifend
+  eindeutig (`provider_for_model`).
+- `User.openai_api_key` (verschlüsselt, write-only im Profil, nicht im Admin),
+  `User.openai_credential_for()`. Auflösung `resolve_openai_credential`:
+  persönlicher Key → `OPENAI_API_KEY` (Settings/Env) → Fehler. Mit
+  `OPENAI_REQUIRE_USER_CREDENTIALS=true` ist nur der persönliche Key erlaubt.
+- `suggested_model` / Classifier: providerabhängig. Der Sonnet/Opus-Classifier
+  kennt nur Claude-Modelle und läuft nur für `claude`; bei `openai` liefert
+  `suggest_model` ohne Haiku-Aufruf das Default-Codex-Modell (`gpt-5-codex`).
