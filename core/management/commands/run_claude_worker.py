@@ -95,7 +95,9 @@ from core.services.claude_queue.branch import (
 )
 from core.services.claude_queue.credentials import (
     MissingClaudeCredential,
+    MissingOpenAICredential,
     resolve_claude_credential,
+    resolve_openai_credential,
 )
 from core.services.claude_queue.providers import DEFAULT_PROVIDER, get_provider
 from core.services.claude_queue.providers.base import save_progress
@@ -248,8 +250,9 @@ class _SubscriptionLimitWait(Exception):
 
 
 class Command(BaseCommand):
-    #: Coding-agent CLI behind the worker; resolved via ``get_provider`` (only
-    #: ``claude`` exists so far). Everything CLI-specific goes through it.
+    #: Coding-agent CLI behind the worker; resolved per job from
+    #: ``job.provider`` in ``process_job`` (default ``claude``). Everything
+    #: CLI-specific goes through it.
     provider = get_provider(DEFAULT_PROVIDER)
 
     help = (
@@ -471,6 +474,12 @@ class Command(BaseCommand):
         An epic node (#1079) never gets here: it has no item to implement, so
         it takes the short orchestration path instead of a CLI run.
         """
+        try:
+            self.provider = get_provider(job.provider)
+        except ValueError as exc:
+            self._fail_job(job, error=str(exc))
+            self.stdout.write(self.style.ERROR(f"Job #{job.pk} rejected: {exc}"))
+            return
         if job.is_epic_node:
             self.process_epic_job(job)
             return
@@ -542,11 +551,11 @@ class Command(BaseCommand):
         *applying* it is a later layer. The item's status is never touched.
         """
         try:
-            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
-        except MissingClaudeCredential as exc:
+            self._check_credential(job)
+        except (MissingClaudeCredential, MissingOpenAICredential) as exc:
             self._fail_job(job, error=str(exc))
             self.stdout.write(self.style.ERROR(
-                f"Review job #{job.pk} failed: missing Claude credential"
+                f"Review job #{job.pk} failed: missing {self.provider.name} credential"
             ))
             return
 
@@ -604,15 +613,15 @@ class Command(BaseCommand):
             detail = (
                 result.get('result_text')
                 or result.get('stderr')
-                or f"Claude exited with status {result.get('returncode')}."
+                or f"{self._agent_label()} exited with status {result.get('returncode')}."
             ).strip()
-            self._fail_job(job, error=detail or "Claude reported an error.")
+            self._fail_job(job, error=detail or f"{self._agent_label()} reported an error.")
             self.stdout.write(self.style.ERROR(f"Review job #{job.pk} failed"))
             return
 
         if not result.get('saw_result'):
             self._fail_job(
-                job, error="Claude exited without emitting a final result event."
+                job, error=f"{self._agent_label()} exited without emitting a final result event."
             )
             self.stdout.write(self.style.ERROR(
                 f"Review job #{job.pk} failed (no result event)"
@@ -694,11 +703,11 @@ class Command(BaseCommand):
             # Credential check first: a job whose user has no credential for the
             # chosen mode must fail with that reason, not silently on the other
             # mode — and before a checkout and an empty PR exist for it (#1083).
-            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
-        except MissingClaudeCredential as exc:
+            self._check_credential(job)
+        except (MissingClaudeCredential, MissingOpenAICredential) as exc:
             self._fail_job(job, error=str(exc))
             self.stdout.write(self.style.ERROR(
-                f"Job #{job.pk} failed: missing Claude credential"
+                f"Job #{job.pk} failed: missing {self.provider.name} credential"
             ))
             return
 
@@ -749,9 +758,9 @@ class Command(BaseCommand):
             detail = (
                 result.get('result_text')
                 or result.get('stderr')
-                or f"Claude exited with status {result.get('returncode')}."
+                or f"{self._agent_label()} exited with status {result.get('returncode')}."
             ).strip()
-            error = detail or "Claude reported an error."
+            error = detail or f"{self._agent_label()} reported an error."
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed"))
@@ -760,7 +769,7 @@ class Command(BaseCommand):
         if not result.get('saw_result'):
             # Process exited 0 but never emitted a result event — treat as a
             # failure so it is not silently marked done.
-            error = "Claude exited without emitting a final result event."
+            error = f"{self._agent_label()} exited without emitting a final result event."
             self._fail_job(job, error=error)
             self._update_pr_body(job, error=error)
             self.stdout.write(self.style.ERROR(f"Job #{job.pk} failed (no result event)"))
@@ -772,7 +781,7 @@ class Command(BaseCommand):
             # like a clean "done" — that is exactly the failure mode (an
             # empty PR merged on the strength of an unrelated success body)
             # this check exists to prevent.
-            error = "Kein Code committet – Claude hat keine Änderungen geliefert."
+            error = f"Kein Code committet – {self._agent_label()} hat keine Änderungen geliefert."
             job.completion_uncertain = True
             job.completion_uncertain_reason = (
                 "Leerer PR: keine Änderungen über den Start-Commit hinaus "
@@ -1701,6 +1710,21 @@ class Command(BaseCommand):
         including a credential failure — is returned as-is for the normal
         success/failure handling.
         """
+        if self.provider.name == 'openai':
+            # API-key only: no subscription to fall back from, so a limit
+            # always parks (insufficient_quota is classified as auth error).
+            self._set_auth_mode(job, ClaudeQueueJobAuthMode.API_KEY)
+            result = self._run_cli(
+                job, repo_dir, timeout, idle_timeout, pr_body_file,
+                auth_mode=ClaudeQueueJobAuthMode.API_KEY,
+            )
+            if not self._is_auth_error(result) and self._is_limit_error(result):
+                raise _SubscriptionLimitWait(
+                    reset_at=self._parse_limit_reset(result),
+                    detail=self._limit_detail(result),
+                )
+            return result
+
         auth_mode = self._resolve_auth_mode(job)
         self._set_auth_mode(job, auth_mode)
         result = self._run_cli(
@@ -1730,6 +1754,17 @@ class Command(BaseCommand):
             )
 
         return result
+
+    def _agent_label(self):
+        """Display name of the current job's coding agent for messages."""
+        return 'Codex' if self.provider.name == 'openai' else 'Claude'
+
+    def _check_credential(self, job):
+        """Fail fast if the job's provider has no usable credential."""
+        if self.provider.name == 'openai':
+            resolve_openai_credential(job.auth_user)
+        else:
+            resolve_claude_credential(job.auth_user, self._resolve_auth_mode(job))
 
     def _resolve_auth_mode(self, job):
         """Return the auth mode this run must use.
@@ -1771,7 +1806,7 @@ class Command(BaseCommand):
             timezone.now() + timedelta(seconds=DEFAULT_LIMIT_BACKOFF_SECONDS)
         )
         when = timezone.localtime(reset_at).strftime('%Y-%m-%d %H:%M')
-        note = f"Abo-Kontingent erreicht – wartet auf Rollover (frühestens {when})."
+        note = f"Kontingent/Rate-Limit erreicht – wartet auf Rollover (frühestens {when})."
         job.limit_reset_at = reset_at
         job.progress_text = note[:2000]
         job.transition_to(ClaudeQueueJobStatus.WAITING_LIMIT)

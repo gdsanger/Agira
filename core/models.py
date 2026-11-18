@@ -2453,6 +2453,11 @@ class ClaudeQueueJob(models.Model):
     session_id = models.CharField(max_length=255, null=True, blank=True)
     num_turns = models.IntegerField(null=True, blank=True)
     total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    # Token usage of a run (#1298). Codex reports tokens but no USD cost, so for
+    # ``provider=openai`` these are filled while ``total_cost_usd`` stays empty.
+    input_tokens = models.IntegerField(null=True, blank=True)
+    cached_input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
 
     # Live progress / diagnostics
     progress_text = models.TextField(blank=True, help_text=_('Current step, advanced by the worker — basis for the live view'))
