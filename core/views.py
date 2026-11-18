@@ -880,7 +880,7 @@ def _claude_queue_board(jobs):
         | Q(status=ClaudeQueueJobStatus.DONE, completion_uncertain=True,
             completion_confirmed_at__isnull=True)
         | (Q(status=ClaudeQueueJobStatus.DONE, pr_number__isnull=False,
-              kind__in=['issue', 'epic']) & ~Q(pr_state='merged'))
+              kind__in=['issue', 'epic']) & ~Q(pr_state__in=['merged', 'closed']))
         | Q(status=ClaudeQueueJobStatus.DONE, kind='review',
             review_verdict__in=['deviations', 'unclear'],
             review_overridden_at__isnull=True)
@@ -1213,11 +1213,16 @@ def claude_queue_job_record_merge(request, job_id):
         return HttpResponse(_record_merge_failure_text(exc, job), status=502)
 
     if not result.get('matched'):
+        logger.warning("Record merge refused for job #%s: no PR mapping for PR #%s", job.id, job.pr_number)
         return HttpResponse(
             f"Kein PR-Mapping für PR #{job.pr_number} gefunden – Merge nicht hinterlegt.",
             status=400,
         )
     if result.get('new_state') != 'merged':
+        logger.warning(
+            "Record merge refused for job #%s: PR #%s is '%s' on GitHub, not merged",
+            job.id, job.pr_number, result.get('new_state'),
+        )
         return HttpResponse(
             f"PR #{job.pr_number} ist auf GitHub nicht gemergt (Status: {result.get('new_state')}).",
             status=400,

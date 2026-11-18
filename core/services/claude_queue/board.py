@@ -124,8 +124,11 @@ def derive_board_state(job: ClaudeQueueJob, hint_count=None) -> str:
 
     if job.completion_uncertain and not job.is_completion_confirmed:
         return UNCERTAIN
-    if job.pr_number and job.pr_state != 'merged':
+    if job.pr_number and job.pr_state not in ('merged', 'closed'):
         return MERGE_MISSING
+    # A PR closed without a merge can never be merged any more (there was no
+    # implementation, or it was finished by hand): "Merge fehlt" would stay
+    # true forever, so it counts as dealt with. The card says "PR geschlossen".
     return DONE
 
 
