@@ -127,6 +127,21 @@ class ApplyReviewResultTests(ApplyReviewResultTestsBase):
         self.assertEqual(self.item.status, ItemStatus.INTEGRATED)
         self.assertEqual(Item.objects.count(), 2)
 
+    def test_followup_requester_is_codex_with_its_primary_organisation(self):
+        from core.models import Organisation, User, UserOrganisation
+
+        org = Organisation.objects.create(name='ISARTec', short='ISAR')
+        codex = User.objects.create(username='cx', email='cx@example.com', name='Codex')
+        UserOrganisation.objects.create(user=codex, organisation=org, is_primary=True)
+        self._pr()
+        job = self._job(_verdict(**DEVIATIONS), provider='openai')
+        apply_review_result(job)
+
+        f = Item.objects.get(pk=job.review_followup_item_id)
+        self.assertEqual(f.requester, codex)
+        self.assertEqual(f.organisation, org)
+        self.assertIsNone(f.parent)
+
     def test_deviations_create_single_self_contained_followup(self):
         self._pr()
         job = self._job(_verdict(**DEVIATIONS))
@@ -140,7 +155,8 @@ class ApplyReviewResultTests(ApplyReviewResultTestsBase):
         self.assertEqual(f.status, ItemStatus.BACKLOG)
         self.assertEqual(f.type, self.type)
         self.assertEqual(f.project, self.project)
-        self.assertEqual(f.parent, self.epic)
+        self.assertIsNone(f.parent)                          # epic is not inherited
+        self.assertEqual(f.requester.name, 'Claude Code')
         self.assertIn(PR_URL, f.description)
         self.assertIn('acme/repo-a#7', f.description)
         self.assertIn('Kriterium A', f.description)          # original task inline
