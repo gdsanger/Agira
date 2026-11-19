@@ -150,6 +150,31 @@ def build_followup_description(item, verdict: ReviewVerdict, mapping, pr_text: s
     return '\n'.join(lines).strip() + '\n'
 
 
+_AGENT_REQUESTERS = {
+    # provider -> (display name, username, email)
+    'claude': ('Claude Code', 'claude-code', 'claude-code@agira.invalid'),
+    'openai': ('Codex', 'codex', 'codex@agira.invalid'),
+}
+
+
+def _agent_requester(job):
+    """User representing the agent behind ``job`` (``Claude Code`` / ``Codex``).
+
+    Found by display name first so an existing, manually maintained agent user
+    (with its organisation membership) is reused; created only as a fallback.
+    """
+    from core.models import User
+
+    provider = getattr(job, 'provider', '') or 'claude'
+    name, username, email = _AGENT_REQUESTERS.get(provider, _AGENT_REQUESTERS['claude'])
+    user = User.objects.filter(name=name).first() or User.objects.filter(username=username).first()
+    if user is None:
+        user = User(username=username, email=email, name=name)
+        user.set_unusable_password()
+        user.save()
+    return user
+
+
 def _judge_label(job) -> str:
     """``Provider (Modell)`` of the run that produced the verdict."""
     from core.services.claude_queue.providers import get_provider
@@ -248,9 +273,15 @@ def apply_review_result(job) -> ReviewApplyResult:
     followup = None
     with transaction.atomic():
         if decision == VERDICT_DEVIATIONS:
+            # No parent/epic: the epic is done, and an item with an epic cannot
+            # be implemented on its own (the chain would hang). The requester
+            # is the reviewing agent; the organisation follows from it.
+            requester = _agent_requester(job)
             followup = Item.objects.create(
                 project=item.project,
-                parent=item.parent,
+                parent=None,
+                requester=requester,
+                organisation=requester.get_primary_organisation(),
                 type=item.type,
                 status=ItemStatus.BACKLOG,
                 title=followup_title(item, mapping),
