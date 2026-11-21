@@ -263,7 +263,7 @@ class ProcessJobTests(ClaudeWorkerTestBase):
         self.assertEqual(job.item.status, ItemStatus.BACKLOG)
 
     def test_default_timeout_is_sixty_minutes(self):
-        self.assertEqual(DEFAULT_TIMEOUT_SECONDS, 3600)
+        self.assertEqual(DEFAULT_TIMEOUT_SECONDS, 7200)
 
     def test_timeout_marks_failed(self):
         job = self._claimed_job(self.project_a)

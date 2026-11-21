@@ -111,9 +111,9 @@ from core.services.claude_queue.review import (
 
 logger = logging.getLogger(__name__)
 
-# Default wall-clock budget for a single Claude invocation (60 minutes). A hung
+# Default wall-clock budget for a single Claude invocation (120 minutes). A hung
 # job must not block its project lane forever.
-DEFAULT_TIMEOUT_SECONDS = 60 * 60
+DEFAULT_TIMEOUT_SECONDS = 120 * 60
 
 # Watchdog: if no stream event arrives for this long, SIGINT the Claude process.
 # A known stdout-buffering bug means the stream can fall silent while Claude is
@@ -890,6 +890,17 @@ class Command(BaseCommand):
             self._git(['clone', clone_url, str(repo_dir)], cwd=str(base))
 
         trunk = get_default_branch(project)
+        # A previously aborted worker can leave a dirty tree, a half-done
+        # merge/rebase/cherry-pick or untracked files behind; any of them makes
+        # the checkout below fail. Wipe them first, before every new job.
+        for abort in (['merge', '--abort'], ['rebase', '--abort'],
+                      ['cherry-pick', '--abort']):
+            try:
+                self._git(abort, cwd=str(repo_dir))
+            except Exception:  # nothing to abort — expected
+                pass
+        self._git(['reset', '--hard'], cwd=str(repo_dir))
+        self._git(['clean', '-fd'], cwd=str(repo_dir))
         self._git(['checkout', trunk], cwd=str(repo_dir))
         self._git(['reset', '--hard', f'origin/{trunk}'], cwd=str(repo_dir))
         self._git(['clean', '-fd'], cwd=str(repo_dir))
