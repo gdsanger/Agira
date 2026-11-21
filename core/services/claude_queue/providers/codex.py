@@ -35,7 +35,7 @@ from core.services.claude_queue.credentials import resolve_openai_credential
 from core.services.claude_queue.review import VERDICT_JSON_SCHEMA
 from core.services.claude_queue.providers.base import AgentProvider, save_progress
 
-DEFAULT_TIMEOUT_SECONDS = 60 * 60
+DEFAULT_TIMEOUT_SECONDS = 120 * 60
 
 # Variables that could steer auth or routing of the child. All are removed
 # before the job's own key is set, so nothing inherited from the host decides.

@@ -24,7 +24,7 @@ from core.services.claude_queue.credentials import (
 from core.services.claude_queue.providers.base import AgentProvider, save_progress
 
 # Fallback wall-clock budget (seconds) when ``build_env`` is called without one.
-DEFAULT_TIMEOUT_SECONDS = 60 * 60
+DEFAULT_TIMEOUT_SECONDS = 120 * 60
 
 # Headless runs must stay strictly in the foreground. Claude Code can park a
 # long command (typically a full test run) in a background task, or schedule a

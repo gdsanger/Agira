@@ -2289,7 +2289,7 @@ class ClaudeQueueReviewVerdict(models.TextChoices):
 
 
 # Runtime after which a still-running job is flagged in the UI as taking
-# longer than usual. Well below the worker's hard kill timeout (60 minutes,
+# longer than usual. Well below the worker's hard kill timeout (120 minutes,
 # see run_claude_worker.DEFAULT_TIMEOUT_SECONDS) — this is an early warning,
 # not a failure state.
 CLAUDE_QUEUE_JOB_LONG_RUNNING_SECONDS = 15 * 60
