@@ -72,7 +72,7 @@ def copy_item_to_project(item, target_project, actor=None, copy_title_prefix='')
     try:
         new_item.full_clean()
     except ValidationError as exc:
-        raise ItemCopyError(str(exc)) from exc
+        raise ItemCopyError('; '.join(exc.messages)) from exc
     new_item.save()
 
     ItemRelation.objects.get_or_create(

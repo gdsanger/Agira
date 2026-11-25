@@ -192,7 +192,7 @@ def api_change_detail_handler(request, change_id):
         change.full_clean()
         change.save()
     except ValidationError as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        return JsonResponse({'error': '; '.join(e.messages)}, status=400)
     msg = _set_organisations(change, data)
     if msg:
         return JsonResponse({'error': msg}, status=400)
@@ -227,7 +227,7 @@ def api_project_create_change(request, project_id):
         change.full_clean()
         change.save()
     except ValidationError as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        return JsonResponse({'error': '; '.join(e.messages)}, status=400)
     msg = _set_organisations(change, data)
     if msg:
         change.delete()

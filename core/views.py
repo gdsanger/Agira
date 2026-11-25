@@ -5970,7 +5970,8 @@ def item_copy_to_project(request, item_id):
         with transaction.atomic():
             copies = [copy_item_to_project(item, p, actor=request.user) for p in projects]
     except ItemCopyError as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        logger.warning(f"Copy of item {item_id} rejected: {e}")
+        return JsonResponse({'success': False, 'error': 'Item could not be copied (validation failed in a target project)'}, status=400)
     except Exception as e:
         logger.error(f"Failed to copy item {item_id}: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': 'An unexpected error occurred while copying the item.'}, status=500)

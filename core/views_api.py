@@ -732,7 +732,8 @@ def api_item_copy(request, item_id):
         with transaction.atomic():
             copies = [copy_item_to_project(item, p, actor=actor) for p in projects]
     except ItemCopyError as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        logger.warning(f"Copy of item {item_id} rejected: {e}")
+        return JsonResponse({'error': 'Item could not be copied (validation failed in a target project)'}, status=400)
     except Exception as e:
         logger.error(f"Error copying item {item_id}: {e}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
