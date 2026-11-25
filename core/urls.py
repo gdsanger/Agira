@@ -86,6 +86,7 @@ urlpatterns = [
     path('items/<int:item_id>/send-status-mail/', views.item_send_status_mail, name='item-send-status-mail'),
     path('items/<int:item_id>/send-status-update/', views.item_send_status_update, name='item-send-status-update'),
     path('items/<int:item_id>/move-project/', views.item_move_project, name='item-move-project'),
+    path('items/<int:item_id>/copy-to-project/', views.item_copy_to_project, name='item-copy-to-project'),
     path('items/<int:item_id>/classify/', views.item_classify, name='item-classify'),
     path('items/<int:item_id>/change-status/', views.item_change_status, name='item-change-status'),
     path('items/<int:item_id>/add-comment/', views.item_add_comment, name='item-add-comment'),

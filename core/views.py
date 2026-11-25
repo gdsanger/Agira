@@ -5939,6 +5939,54 @@ def item_move_project(request, item_id):
 
 
 @login_required
+@require_POST
+def item_copy_to_project(request, item_id):
+    """Copy an item into one or more other projects; the original stays untouched."""
+    from .services.item_copy import copy_item_to_project, ItemCopyError
+
+    item = get_object_or_404(Item, id=item_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+
+    target_ids = data.get('target_project_ids')
+    if target_ids is None and data.get('target_project_id'):
+        target_ids = [data['target_project_id']]
+    if not target_ids or not isinstance(target_ids, list):
+        return JsonResponse({'success': False, 'error': 'At least one target project is required'}, status=400)
+
+    try:
+        target_ids = list(dict.fromkeys(int(t) for t in target_ids))
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid project id'}, status=400)
+    projects = list(Project.objects.filter(id__in=target_ids))
+    if len(projects) != len(target_ids):
+        return JsonResponse({'success': False, 'error': 'Target project not found'}, status=404)
+    if any(p.id == item.project_id for p in projects):
+        return JsonResponse({'success': False, 'error': 'Pick a project other than the original item\'s project'}, status=400)
+
+    try:
+        with transaction.atomic():
+            copies = [copy_item_to_project(item, p, actor=request.user) for p in projects]
+    except ItemCopyError as e:
+        logger.warning(f"Copy of item {item_id} rejected: {e}")
+        return JsonResponse({'success': False, 'error': 'Item could not be copied (validation failed in a target project)'}, status=400)
+    except Exception as e:
+        logger.error(f"Failed to copy item {item_id}: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': 'An unexpected error occurred while copying the item.'}, status=500)
+
+    return JsonResponse({
+        'success': True,
+        'message': f'{len(copies)} copy/copies created',
+        'copies': [
+            {'id': c.id, 'project_id': c.project_id, 'project_name': c.project.name, 'url': reverse('item-detail', args=[c.id])}
+            for c in copies
+        ],
+    })
+
+
+@login_required
 
 @require_POST
 def ai_generate_title(request):

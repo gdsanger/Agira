@@ -89,3 +89,34 @@ class AgiraClient:
     def link_github_pr(self, item_id: int, payload: dict, *, user_token: str | None) -> dict:
         return self._request("POST", f"items/{item_id}/github-pr",
                              json=payload, user_token=user_token)
+
+    def copy_item(self, item_id: int, payload: dict, *, user_token: str | None) -> dict:
+        return self._request("POST", f"items/{item_id}/copy",
+                             json=payload, user_token=user_token)
+
+    # ----- Changes --------------------------------------------------------
+    def list_changes(self, params: dict | None = None) -> list:
+        from urllib.parse import urlencode
+        query = urlencode({k: v for k, v in (params or {}).items() if v is not None})
+        return self._request("GET", f"changes?{query}" if query else "changes")
+
+    def get_change(self, change_id: int) -> dict:
+        return self._request("GET", f"changes/{change_id}")
+
+    def create_change(self, project_id: int, payload: dict, *, user_token: str | None) -> dict:
+        return self._request("POST", f"projects/{project_id}/changes",
+                             json=payload, user_token=user_token)
+
+    def update_change(self, change_id: int, payload: dict, *, user_token: str | None) -> dict:
+        return self._request("PATCH", f"changes/{change_id}",
+                             json=payload, user_token=user_token)
+
+    def update_change_items(self, change_id: int, payload: dict, *, user_token: str | None) -> dict:
+        return self._request("POST", f"changes/{change_id}/items",
+                             json=payload, user_token=user_token)
+
+    def list_project_releases(self, project_id: int) -> list:
+        return self._request("GET", f"projects/{project_id}/releases")
+
+    def list_organisations(self) -> list:
+        return self._request("GET", "organisations")

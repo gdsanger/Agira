@@ -683,6 +683,64 @@ def api_project_create_item(request, project_id):
 
 
 @csrf_exempt
+@require_http_methods(['POST'])
+def api_item_copy(request, item_id):
+    """
+    POST /api/customgpt/items/{item_id}/copy
+
+    Copy an item into one or more other projects. The original stays
+    unchanged; every copy is linked to it with a "Related" relation.
+
+    Request Body:
+        {"target_project_ids": [2, 3]}   (or {"target_project_id": 2})
+
+    Returns:
+        201: {"original_id": ..., "copies": [Item, ...]}
+        400: Invalid payload / same project
+        404: Item or project not found
+    """
+    from core.services.item_copy import copy_item_to_project, ItemCopyError
+    from django.db import transaction
+
+    try:
+        item = Item.objects.select_related('project').get(id=item_id)
+    except Item.DoesNotExist:
+        return JsonResponse({'error': 'Item not found'}, status=404)
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+    ids = data.get('target_project_ids')
+    if ids is None and data.get('target_project_id') is not None:
+        ids = [data['target_project_id']]
+    if not ids or not isinstance(ids, list):
+        return JsonResponse({'error': 'target_project_ids (list of project ids) is required'}, status=400)
+    try:
+        ids = list(dict.fromkeys(int(i) for i in ids))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'target_project_ids must be integers'}, status=400)
+    projects = list(Project.objects.filter(id__in=ids))
+    missing = set(ids) - {p.id for p in projects}
+    if missing:
+        return JsonResponse({'error': f'Project not found: {sorted(missing)}'}, status=404)
+    if any(p.id == item.project_id for p in projects):
+        return JsonResponse({'error': 'A target project is the original item\'s project; pick other projects'}, status=400)
+
+    actor = resolve_mcp_user(request)
+    try:
+        with transaction.atomic():
+            copies = [copy_item_to_project(item, p, actor=actor) for p in projects]
+    except ItemCopyError as e:
+        logger.warning(f"Copy of item {item_id} rejected: {e}")
+        return JsonResponse({'error': 'Item could not be copied (validation failed in a target project)'}, status=400)
+    except Exception as e:
+        logger.error(f"Error copying item {item_id}: {e}", exc_info=True)
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+    return JsonResponse({'original_id': item.id, 'copies': [serialize_item(c) for c in copies]}, status=201)
+
+
+@csrf_exempt
 def api_item_context(request, item_id):
     """
     GET /api/customgpt/items/{item_id}/context
