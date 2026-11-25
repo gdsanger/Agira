@@ -1,0 +1,75 @@
+<!-- Copy Item Modal: creates a copy per selected project, the original stays unchanged -->
+<div class="modal fade" id="copyItemModal" tabindex="-1" aria-labelledby="copyItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="copyItemModalLabel"><i class="bi bi-files me-2"></i>Item in andere Projekte kopieren</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    Pro gewähltem Projekt entsteht ein neues Item (Status <strong>Inbox</strong>). Das Original bleibt unverändert und ist mit jeder Kopie als „Related“ verknüpft.
+                    Kopiert werden Titel, Beschreibung, Original-Text, Typ, Requester, Intern-Flag und Agent-Einstellungen.
+                    Nicht kopiert werden Status, Zuständigkeiten, Parent, Solution, Release, Nodes, Changes, Kommentare, Anhänge und GitHub-Verknüpfungen.
+                </div>
+                <form id="copyItemForm">
+                    <label class="form-label fw-bold">Zielprojekte <span class="text-danger">*</span></label>
+                    <div class="border rounded p-2" style="max-height: 280px; overflow-y: auto;">
+                        {% for proj in projects %}
+                            {% if proj.id != item.project.id %}
+                            <div class="form-check">
+                                <input class="form-check-input copy-target-project" type="checkbox" value="{{ proj.id }}" id="copyTarget{{ proj.id }}">
+                                <label class="form-check-label" for="copyTarget{{ proj.id }}">{{ proj.name }}</label>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <div id="copyItemError" class="alert alert-danger d-none mt-3"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="confirmCopyItemBtn"><i class="bi bi-files me-1"></i>Kopieren</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('confirmCopyItemBtn');
+    const errorBox = document.getElementById('copyItemError');
+    if (!btn) return;
+    const label = btn.innerHTML;
+    btn.addEventListener('click', function() {
+        const ids = Array.from(document.querySelectorAll('.copy-target-project:checked')).map(function(el) { return el.value; });
+        if (!ids.length) {
+            errorBox.textContent = 'Bitte mindestens ein Zielprojekt auswählen.';
+            errorBox.classList.remove('d-none');
+            return;
+        }
+        errorBox.classList.add('d-none');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Kopiere...';
+        fetch('{% url "item-copy-to-project" item.id %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+            body: JSON.stringify({target_project_ids: ids})
+        })
+        .then(function(r) { return r.json().then(function(d) { if (!r.ok) { throw new Error(d.error || 'Server error'); } return d; }); })
+        .then(function(data) {
+            if (typeof showToast === 'function') {
+                showToast('success', 'Erfolg', data.message + ': ' + data.copies.map(function(c) { return '#' + c.id + ' (' + c.project_name + ')'; }).join(', '));
+            }
+            bootstrap.Modal.getInstance(document.getElementById('copyItemModal')).hide();
+            setTimeout(function() { window.location.reload(); }, 1200);
+        })
+        .catch(function(err) {
+            errorBox.textContent = 'Fehler: ' + err.message;
+            errorBox.classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = label;
+        });
+    });
+});
+</script>

@@ -1,7 +1,7 @@
 """
 Agira MCP server.
 
-Exposes Agira projects and items to Claude (Desktop / Code) as MCP tools.
+Exposes Agira projects, items and changes to Claude (Desktop / Code) as MCP tools.
 It is a thin wrapper around the existing ``/api/customgpt/*`` REST API:
 
   Claude  --(per-user token)-->  this MCP server  --(shared x-api-secret
@@ -107,7 +107,32 @@ def _transport_security() -> TransportSecuritySettings | None:
 
 
 _security = _transport_security()
-mcp = FastMCP("agira", **({"transport_security": _security} if _security else {}))
+_INSTRUCTIONS = """\
+Agira is a project/issue management system. This server exposes two domains:
+
+ITEMS (issues): list_projects, get_project, list_open_items, get_item,
+  get_item_context, create_item, update_item, copy_item, link_github_pr.
+  Use copy_item when one problem affects several projects and each project
+  needs its own issue (the original is kept and linked as "Related").
+
+CHANGES (ITIL-style change records, e.g. a planned deployment/rollout):
+  describe_changes   -> START HERE: explains the model, status workflow,
+                        risk levels, field formats and what is NOT allowed.
+  list_changes, get_change                      (read)
+  create_change, update_change                  (write)
+  link_items_to_change                          (attach/detach items)
+  list_project_releases, list_organisations     (lookup of ids for a change)
+
+Approvals of a change are read-only for the AI: they are visible in
+get_change, but approving/rejecting, adding approvers and deleting a change
+are human-only actions and not available here.
+"""
+
+mcp = FastMCP(
+    "agira",
+    instructions=_INSTRUCTIONS,
+    **({"transport_security": _security} if _security else {}),
+)
 
 
 # --------------------------------------------------------------------------
@@ -266,6 +291,34 @@ def update_item(
 
 
 @mcp.tool()
+def copy_item(item_id: int, target_project_ids: list[int]) -> dict:
+    """
+    Copy an item into one or more OTHER projects (one new item per project).
+
+    Use this when a reported problem affects several projects and each project
+    needs its own issue. The original item is NOT changed; every copy is linked
+    to the original with a "Related" relation, so the connection stays visible.
+
+    Copied: title, description, user_input, type, intern flag, requester,
+    organisation (only if it is a client of the target project) and the agent
+    settings (providers/model). NOT copied: status (the copy starts in
+    ``Inbox``), assignee/responsible, parent/epic order, solution and PR
+    description, release, nodes, changes, comments, attachments and GitHub
+    issue/PR mappings.
+
+    ``target_project_ids`` must not contain the original item's own project.
+    Find project ids with ``list_projects``. All copies are created together
+    or not at all.
+
+    Returns ``{"original_id": ..., "copies": [item, ...]}`` where each copy is
+    a full item dict (``id``, ``project_id``, ``status`` ...).
+    """
+    return _client().copy_item(
+        item_id, {"target_project_ids": target_project_ids}, user_token=_user_token()
+    )
+
+
+@mcp.tool()
 def link_github_pr(item_id: int, pr_number: int) -> dict:
     """
     Link a GitHub pull request to an Agira item via an ExternalIssueMapping
@@ -294,6 +347,250 @@ def link_github_pr(item_id: int, pr_number: int) -> dict:
     PR number cannot be resolved on GitHub.
     """
     return _client().link_github_pr(item_id, {"pr_number": pr_number}, user_token=_user_token())
+
+
+# --------------------------------------------------------------------------
+# Change tools
+# --------------------------------------------------------------------------
+_CHANGE_STATUSES = ["Draft", "Planned", "InProgress", "Deployed", "RolledBack", "Canceled"]
+_RISK_LEVELS = ["Low", "Normal", "High", "VeryHigh"]
+
+
+@mcp.tool()
+def describe_changes() -> dict:
+    """
+    Explain how Changes work in Agira — call this first before creating or
+    editing a change. No network call; returns the static reference below.
+
+    A Change is a planned modification of a system (deployment, migration,
+    configuration change ...) with risk assessment, mitigation, rollback and
+    communication plan. It belongs to exactly one project, may be attached to
+    a release of that project, can have affected organisations and can be
+    linked to items (issues) that it implements.
+    """
+    return {
+        "purpose": "A Change documents a planned modification incl. risk, mitigation, "
+                   "rollback and communication. It belongs to one project.",
+        "tools": {
+            "list_changes": "Overview, filterable by project/status/release.",
+            "get_change": "Everything about one change incl. linked items and approvals.",
+            "create_change": "New change in a project (starts as Draft unless set).",
+            "update_change": "Partial update; only send fields that change.",
+            "link_items_to_change": "Attach/detach items (issues) to a change.",
+            "list_project_releases": "Find release_id values for a project.",
+            "list_organisations": "Find organisation_ids.",
+        },
+        "status_values": _CHANGE_STATUSES,
+        "status_meaning": {
+            "Draft": "Being written, not yet proposed (default).",
+            "Planned": "Ready for approval/scheduling.",
+            "InProgress": "Is being executed right now.",
+            "Deployed": "Successfully executed (set executed_at).",
+            "RolledBack": "Executed, then reverted.",
+            "Canceled": "Will not happen.",
+        },
+        "risk_values": _RISK_LEVELS,
+        "fields": {
+            "title": "required, short summary",
+            "description": "Markdown",
+            "risk_description": "Markdown — what can go wrong",
+            "mitigation": "Markdown — how the risk is reduced",
+            "rollback_plan": "Markdown — how to undo",
+            "communication_plan": "Markdown — who is informed when",
+            "planned_start / planned_end / executed_at": "ISO 8601 datetime, "
+                                                         "e.g. 2026-12-01T09:00:00+01:00; null clears",
+            "planned_date": "ISO date, e.g. 2026-12-01; null clears",
+            "release_id": "Release of the SAME project; null removes it",
+            "organisation_ids": "List of affected organisation ids; replaces the whole list",
+            "is_safety_relevant": "bool",
+        },
+        "rules": [
+            "The project of an existing change cannot be changed.",
+            "A release must belong to the change's project.",
+            "Approvers are assigned automatically from the change policy after "
+            "create/update (same as in the web UI).",
+            "Approvals are read-only here: approving/rejecting, adding/removing "
+            "approvers and deleting a change are human-only.",
+            "update_change is a partial update: omitted fields stay unchanged.",
+        ],
+        "typical_flow": [
+            "get_project / list_projects -> project_id",
+            "optional: list_project_releases, list_organisations",
+            "create_change(project_id, title, description, risk, risk_description, "
+            "mitigation, rollback_plan, communication_plan, planned_start ...)",
+            "link_items_to_change(change_id, add_item_ids=[...])",
+            "update_change(change_id, status='Planned')",
+        ],
+    }
+
+
+@mcp.tool()
+def list_changes(
+    project_id: int | None = None,
+    status: str | None = None,
+    release_id: int | None = None,
+    open_only: bool = False,
+) -> list:
+    """
+    List changes (newest first, max. 200), optionally filtered.
+
+    ``status`` is one of Draft, Planned, InProgress, Deployed, RolledBack,
+    Canceled. ``open_only=True`` hides finished changes (Deployed, RolledBack,
+    Canceled). Each entry is a summary (id, title, project_id, status, risk,
+    release_id, planned dates ...); use ``get_change`` for texts, items and
+    approvals.
+    """
+    return _client().list_changes({
+        "project_id": project_id,
+        "status": status,
+        "release_id": release_id,
+        "open_only": "true" if open_only else None,
+    })
+
+
+@mcp.tool()
+def get_change(change_id: int) -> dict:
+    """
+    Get one change in full: all texts (description, risk_description,
+    mitigation, rollback_plan, communication_plan), dates, ``organisation_ids``,
+    ``item_ids`` (items linked directly), ``associated_item_ids`` (linked items
+    plus items of the change's release) and ``approvals`` (read-only: approver,
+    role, is_required, status Pending/Accept/Reject/Abstained/Info, comment).
+    """
+    return _client().get_change(change_id)
+
+
+@mcp.tool()
+def create_change(
+    project_id: int,
+    title: str,
+    description: str = "",
+    status: str | None = None,
+    risk: str | None = None,
+    risk_description: str = "",
+    mitigation: str = "",
+    rollback_plan: str = "",
+    communication_plan: str = "",
+    planned_start: str | None = None,
+    planned_end: str | None = None,
+    planned_date: str | None = None,
+    release_id: int | None = None,
+    organisation_ids: list[int] | None = None,
+    is_safety_relevant: bool = False,
+    item_ids: list[int] | None = None,
+) -> dict:
+    """
+    Create a change in a project. Call ``describe_changes`` first for the
+    reference. Only ``project_id`` and ``title`` are required.
+
+    ``status``: Draft (default) | Planned | InProgress | Deployed | RolledBack
+    | Canceled. ``risk``: Low | Normal (default) | High | VeryHigh.
+    Text fields accept Markdown. ``planned_start``/``planned_end`` are ISO 8601
+    datetimes (e.g. ``2026-12-01T09:00:00+01:00``), ``planned_date`` an ISO date.
+    ``release_id`` must belong to the same project (see
+    ``list_project_releases``); ``organisation_ids`` come from
+    ``list_organisations``; ``item_ids`` links existing items right away.
+
+    The connecting user is recorded as creator. Approvers are assigned
+    automatically from the change policy; approving is human-only.
+    Returns the created change (same shape as ``get_change``).
+    """
+    payload = {
+        k: v for k, v in {
+            "title": title, "description": description, "status": status, "risk": risk,
+            "risk_description": risk_description, "mitigation": mitigation,
+            "rollback_plan": rollback_plan, "communication_plan": communication_plan,
+            "planned_start": planned_start, "planned_end": planned_end,
+            "planned_date": planned_date, "release_id": release_id,
+            "organisation_ids": organisation_ids, "is_safety_relevant": is_safety_relevant,
+            "item_ids": item_ids,
+        }.items() if v is not None
+    }
+    return _client().create_change(project_id, payload, user_token=_user_token())
+
+
+@mcp.tool()
+def update_change(
+    change_id: int,
+    title: str | None = None,
+    description: str | None = None,
+    status: str | None = None,
+    risk: str | None = None,
+    risk_description: str | None = None,
+    mitigation: str | None = None,
+    rollback_plan: str | None = None,
+    communication_plan: str | None = None,
+    planned_start: str | None = None,
+    planned_end: str | None = None,
+    planned_date: str | None = None,
+    executed_at: str | None = None,
+    release_id: int | None = None,
+    organisation_ids: list[int] | None = None,
+    is_safety_relevant: bool | None = None,
+    clear_release: bool = False,
+    clear_dates: list[str] | None = None,
+) -> dict:
+    """
+    Partial update of a change — only set what changes; unset (None) fields
+    stay as they are. Values/formats as in ``create_change``; additionally
+    ``executed_at`` (ISO 8601 datetime, when it was actually executed).
+
+    ``organisation_ids`` REPLACES the whole list (pass the complete set).
+    ``clear_release=True`` removes the release. ``clear_dates`` is a list of
+    date field names to empty (``planned_start``, ``planned_end``,
+    ``planned_date``, ``executed_at``). The project of a change cannot be
+    changed, and deleting a change or deciding approvals is not possible here.
+    Use ``link_items_to_change`` for items. Returns the updated change.
+    """
+    payload = {
+        k: v for k, v in {
+            "title": title, "description": description, "status": status, "risk": risk,
+            "risk_description": risk_description, "mitigation": mitigation,
+            "rollback_plan": rollback_plan, "communication_plan": communication_plan,
+            "planned_start": planned_start, "planned_end": planned_end,
+            "planned_date": planned_date, "executed_at": executed_at,
+            "release_id": release_id, "organisation_ids": organisation_ids,
+            "is_safety_relevant": is_safety_relevant,
+        }.items() if v is not None
+    }
+    if clear_release:
+        payload["release_id"] = None
+    for name in clear_dates or []:
+        if name not in ("planned_start", "planned_end", "planned_date", "executed_at"):
+            raise ValueError(f"clear_dates: unknown field {name!r}")
+        payload[name] = None
+    return _client().update_change(change_id, payload, user_token=_user_token())
+
+
+@mcp.tool()
+def link_items_to_change(
+    change_id: int,
+    add_item_ids: list[int] | None = None,
+    remove_item_ids: list[int] | None = None,
+) -> dict:
+    """
+    Attach and/or detach items (issues) to a change. Idempotent: adding an
+    already linked item or removing a non-linked one is a no-op. Unknown ids
+    in ``add_item_ids`` are rejected. Returns the updated change
+    (see ``item_ids`` / ``associated_item_ids``).
+    """
+    return _client().update_change_items(
+        change_id,
+        {"add_item_ids": add_item_ids or [], "remove_item_ids": remove_item_ids or []},
+        user_token=_user_token(),
+    )
+
+
+@mcp.tool()
+def list_project_releases(project_id: int) -> list:
+    """List the releases of a project (id, name, version, status, planned_date) — gives valid ``release_id`` values for a change."""
+    return _client().list_project_releases(project_id)
+
+
+@mcp.tool()
+def list_organisations() -> list:
+    """List all organisations (id, name) — gives valid ``organisation_ids`` for a change."""
+    return _client().list_organisations()
 
 
 # --------------------------------------------------------------------------

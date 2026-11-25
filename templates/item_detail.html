@@ -227,6 +227,11 @@
                         <i class="bi bi-arrow-left-right me-2"></i>Move
                     </button>
                 </li>
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#copyItemModal">
+                        <i class="bi bi-files me-2"></i>Kopie in anderes Projekt
+                    </button>
+                </li>
                 {% if user.role == 'Agent' %}
                 <li>
                     <button type="button" class="dropdown-item" onclick="takeOverResponsible()">
@@ -2505,6 +2510,7 @@
 
 <!-- Include move item modal -->
 {% include 'partials/move_item_modal.html' %}
+{% include 'partials/copy_item_modal.html' %}
 
 <!-- Release Detail Modal -->
 <div class="modal fade" id="releaseDetailModal" tabindex="-1" aria-labelledby="releaseDetailModalLabel" aria-hidden="true">
