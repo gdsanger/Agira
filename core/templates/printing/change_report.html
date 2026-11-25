@@ -1,272 +1,195 @@
 {% extends "printing/base.html" %}
+{% load agira_filters %}
 
 {% block title %}Change Report - {{ change.id }}{% endblock %}
 
 {% block inline_styles %}
-/* Custom styles for Change PDF report with specified margins */
 @page {
     size: A4;
-    margin: 18mm 20mm 18mm 20mm; /* top, right, bottom, left */
+    margin: 20mm 18mm 20mm 18mm;
 }
 
-/* Header-specific styles */
-.header-content h2 {
-    margin: 0;
-    padding: 0;
-    border: none;
-    font-size: 14pt;
-    color: #1a202c;
-}
+:root { --accent: #1f4e79; }
 
-.header-content img {
-    display: block;
-}
-
-/* Typography */
 body {
     font-family: 'Helvetica', 'Arial', sans-serif;
-    font-size: 10pt;
-    line-height: 1.4;
-    color: #333;
-}
-
-h1 {
-    font-size: 18pt;
-    font-weight: bold;
-    margin-bottom: 10pt;
-    color: #1a202c;
-}
-
-h2 {
-    font-size: 14pt;
-    font-weight: bold;
-    margin-top: 15pt;
-    margin-bottom: 8pt;
+    font-size: 9.5pt;
+    line-height: 1.45;
     color: #2d3748;
-    border-bottom: 1px solid #cbd5e0;
-    padding-bottom: 3pt;
 }
 
-/* Key-value table styles */
-table.kv-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 15pt;
+/* Running header */
+.header-content { border-bottom: 1.5pt solid #1f4e79; padding: 0 0 4pt 0; }
+.header-content table { margin: 0; border: none; }
+.header-content td { border: none; padding: 0; background: none; }
+.header-system { font-size: 11pt; font-weight: bold; color: #1f4e79; }
+.header-doc { font-size: 8pt; color: #718096; text-align: right; }
+.header-content img { display: block; margin-left: auto; }
+
+/* Title block */
+.title-block { margin: 0 0 14pt 0; }
+.title-kicker { font-size: 8.5pt; letter-spacing: 1.5pt; text-transform: uppercase; color: #718096; margin: 0 0 3pt 0; }
+h1.title { font-size: 19pt; line-height: 1.2; color: #1a202c; margin: 0 0 8pt 0; padding: 0; }
+.badges { margin: 0 0 6pt 0; }
+.badge { display: inline-block; font-size: 8pt; font-weight: bold; padding: 2pt 8pt; border-radius: 8pt; margin-right: 4pt; color: #fff; background: #718096; }
+.badge-status-Draft { background: #718096; }
+.badge-status-Planned { background: #2b6cb0; }
+.badge-status-InProgress { background: #c05621; }
+.badge-status-Deployed { background: #2f855a; }
+.badge-status-RolledBack { background: #b83280; }
+.badge-status-Canceled { background: #4a5568; }
+.badge-risk-Low { background: #2f855a; }
+.badge-risk-Normal { background: #b7791f; }
+.badge-risk-High { background: #c05621; }
+.badge-risk-VeryHigh { background: #c53030; }
+.badge-security { background: #c53030; }
+
+/* Section headings */
+h2.section {
+    font-size: 12pt; font-weight: bold; color: #1f4e79;
+    margin: 18pt 0 8pt 0; padding: 0 0 3pt 0;
+    border-bottom: 1pt solid #1f4e79;
+    page-break-after: avoid; break-after: avoid;
+}
+h3.sub {
+    font-size: 9pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6pt;
+    color: #4a5568; margin: 12pt 0 4pt 0;
+    page-break-after: avoid; break-after: avoid;
 }
 
-table.kv-table th,
-table.kv-table td {
-    border: 0.5pt solid #cbd5e0;
-    padding: 6pt 8pt;
-    text-align: left;
-    vertical-align: top;
-}
+/* Meta cards (two-column layout via table) */
+table.meta { width: 100%; border-collapse: collapse; margin: 0 0 6pt 0; border: 0.5pt solid #cbd5e0; page-break-inside: avoid; }
+table.meta td { border: none; border-bottom: 0.5pt solid #e2e8f0; padding: 5pt 8pt; vertical-align: top; background: none; }
+table.meta tr:last-child td { border-bottom: none; }
+table.meta td.k { width: 17%; background: #edf2f7; color: #4a5568; font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.4pt; }
+table.meta td.v { width: 33%; color: #1a202c; }
+table.meta td.v.wide { width: 83%; }
 
-table.kv-table th {
-    background-color: #4a5568;
-    color: white;
-    font-weight: bold;
-}
+/* Data tables */
+table.data { width: 100%; border-collapse: collapse; margin: 0 0 10pt 0; page-break-inside: auto; }
+table.data thead { display: table-header-group; }
+table.data th { background: #1f4e79; color: #fff; font-size: 8.5pt; text-align: left; padding: 5pt 7pt; border: none; }
+table.data td { padding: 5pt 7pt; border: none; border-bottom: 0.5pt solid #e2e8f0; vertical-align: top; }
+table.data tbody tr:nth-child(even) td { background: #f7fafc; }
+table.data tr { page-break-inside: avoid; }
+.item-title { font-weight: bold; }
+.item-desc { color: #4a5568; font-size: 9pt; }
 
-table.kv-table tbody tr:nth-child(odd) {
-    background-color: #f7fafc;
-}
+.pill { display: inline-block; font-size: 8pt; font-weight: bold; padding: 1pt 6pt; border-radius: 6pt; background: #edf2f7; color: #2d3748; }
+.pill-Accept { background: #c6f6d5; color: #22543d; }
+.pill-Reject { background: #fed7d7; color: #742a2a; }
+.pill-Pending { background: #feebc8; color: #7b341e; }
+.pill-Abstained, .pill-Info { background: #e2e8f0; color: #2d3748; }
 
-table.kv-table tbody tr:nth-child(even) {
-    background-color: white;
-}
+.empty-value { color: #a0aec0; font-style: italic; }
 
-table.kv-table td:first-child {
-    font-weight: bold;
-    width: 35%;
+/* Rendered Markdown */
+.md { margin: 0 0 6pt 0; word-wrap: break-word; overflow-wrap: break-word; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 5pt 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { color: #1a202c; border: none; padding: 0; margin: 9pt 0 3pt 0; page-break-after: avoid; }
+.md h1 { font-size: 12pt; } .md h2 { font-size: 11pt; } .md h3 { font-size: 10pt; } .md h4, .md h5, .md h6 { font-size: 9.5pt; }
+.md ul, .md ol { margin: 2pt 0 6pt 0; padding-left: 16pt; }
+.md li { margin: 1pt 0; }
+.md strong { color: #1a202c; }
+.md a { color: #2b6cb0; text-decoration: underline; word-break: break-all; }
+.md blockquote { margin: 5pt 0; padding: 3pt 10pt; border-left: 2.5pt solid #90cdf4; background: #ebf8ff; color: #2c5282; }
+.md code { font-family: 'Courier New', monospace; font-size: 8.5pt; background: #edf2f7; color: #2d3748; padding: 0 3pt; border-radius: 2pt; }
+.md pre {
+    font-family: 'Courier New', monospace; font-size: 7.5pt; line-height: 1.35;
+    background: #f7fafc; border: 0.5pt solid #cbd5e0; border-left: 2.5pt solid #1f4e79;
+    padding: 5pt 8pt; margin: 5pt 0 7pt 0;
+    white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
+    page-break-inside: auto;
 }
-
-/* Data table styles */
-table.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 15pt;
-}
-
-table.data-table th,
-table.data-table td {
-    border: 0.5pt solid #cbd5e0;
-    padding: 6pt 8pt;
-    text-align: left;
-    vertical-align: top;
-}
-
-table.data-table th {
-    background-color: #4a5568;
-    color: white;
-    font-weight: bold;
-}
-
-table.data-table tbody tr:nth-child(odd) {
-    background-color: #f7fafc;
-}
-
-table.data-table tbody tr:nth-child(even) {
-    background-color: white;
-}
-
-/* Metadata section */
-.metadata {
-    font-size: 9pt;
-    color: #718096;
-    margin-bottom: 15pt;
-}
-
-/* Text content */
-.text-content {
-    margin-bottom: 10pt;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.text-label {
-    font-weight: bold;
-    margin-bottom: 5pt;
-}
-
-.empty-value {
-    color: #a0aec0;
-    font-style: italic;
-}
+.md pre code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
+.md table { width: 100%; border-collapse: collapse; margin: 5pt 0 8pt 0; page-break-inside: auto; }
+.md table th { background: #edf2f7; color: #1a202c; border: 0.5pt solid #cbd5e0; padding: 3pt 6pt; text-align: left; }
+.md table td { border: 0.5pt solid #cbd5e0; padding: 3pt 6pt; background: none; }
+.md hr { border: none; border-top: 0.5pt solid #cbd5e0; margin: 8pt 0; }
 {% endblock %}
 
 {% block header_content %}
-<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5em 0;">
-    <div style="flex: 1;">
-        <h2 style="margin: 0; font-size: 14pt; color: #1a202c;">{{ system_setting.system_name }}</h2>
-    </div>
-    {% if system_setting.company_logo %}
-    <div style="flex: 0 0 auto; text-align: right;">
-        <img src="{{ system_setting.company_logo.url }}" alt="Company Logo" style="max-height: 40px; max-width: 150px;" />
-    </div>
-    {% endif %}
-</div>
+<table style="width:100%;">
+    <tr>
+        <td class="header-system">{{ system_setting.system_name }}</td>
+        <td class="header-doc">
+            Change {{ change_reference }}
+            {% if system_setting.company_logo %}<img src="{{ system_setting.company_logo.url }}" alt="Logo" style="max-height: 30px; max-width: 130px; margin-top: 3pt;" />{% endif %}
+        </td>
+    </tr>
+</table>
 {% endblock %}
 
 {% block content %}
-<!-- 1. HEADER SECTION -->
-<h1>Change Report</h1>
-
-<div class="metadata">
-    <strong>Change-Referenz:</strong> {{ change.created_at|date:"Ymd" }}-{{ change.id }}<br>
-    <strong>Report erstellt:</strong> {{ now|date:"Y-m-d H:i:s" }}
+<div class="title-block">
+    <p class="title-kicker">Change Report &middot; {{ change_reference }}</p>
+    <h1 class="title">{{ change.title|default:"—" }}</h1>
+    <div class="badges">
+        <span class="badge badge-status-{{ change.status }}">{{ change.get_status_display }}</span>
+        <span class="badge badge-risk-{{ change.risk }}">Risiko: {{ change.get_risk_display }}</span>
+        {% if change.is_safety_relevant %}<span class="badge badge-security">Security-relevant</span>{% endif %}
+    </div>
 </div>
 
-<!-- 2. CHANGE OVERVIEW SECTION -->
-<h2>Change-Übersicht</h2>
-
-<table class="kv-table">
-    <thead>
-        <tr>
-            <th>Feld</th>
-            <th>Wert</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>Titel</td>
-            <td>{{ change.title|default:"—" }}</td>
-        </tr>
-        <tr>
-            <td>Projekt</td>
-            <td>{{ change.project.name|default:"—" }}</td>
-        </tr>
-        <tr>
-            <td>Status</td>
-            <td>{{ change.get_status_display|default:"—" }}</td>
-        </tr>
-        <tr>
-            <td>Risikostufe</td>
-            <td>{{ change.get_risk_display|default:"—" }}</td>
-        </tr>
-        <tr>
-            <td>Security Relevant</td>
-            <td>{% if change.is_safety_relevant %}Ja{% else %}Nein{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Release</td>
-            <td>{% if change.release %}{{ change.release.version }} ({{ change.release.get_type_display }}){% else %}—{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Erstellt von</td>
-            <td>{{ change.created_by.name|default:"—" }}</td>
-        </tr>
-        <tr>
-            <td>Erstellt am</td>
-            <td>{% if change.created_at %}{{ change.created_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Aktualisiert am</td>
-            <td>{% if change.updated_at %}{{ change.updated_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
-        </tr>
-    </tbody>
+<h2 class="section">Übersicht</h2>
+<table class="meta">
+    <tr>
+        <td class="k">Projekt</td><td class="v">{{ change.project.name|default:"—" }}</td>
+        <td class="k">Release</td><td class="v">{% if change.release %}{{ change.release.version }} ({{ change.release.get_type_display }}){% else %}—{% endif %}</td>
+    </tr>
+    <tr>
+        <td class="k">Status</td><td class="v">{{ change.get_status_display|default:"—" }}</td>
+        <td class="k">Risikostufe</td><td class="v">{{ change.get_risk_display|default:"—" }}</td>
+    </tr>
+    <tr>
+        <td class="k">Security-relevant</td><td class="v">{% if change.is_safety_relevant %}Ja{% else %}Nein{% endif %}</td>
+        <td class="k">Erstellt von</td><td class="v">{{ change.created_by.name|default:"—" }}</td>
+    </tr>
+    <tr>
+        <td class="k">Erstellt am</td><td class="v">{% if change.created_at %}{{ change.created_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
+        <td class="k">Aktualisiert am</td><td class="v">{% if change.updated_at %}{{ change.updated_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
+    </tr>
 </table>
 
-<!-- 3. DESCRIPTION & JUSTIFICATION SECTION -->
-<h2>Beschreibung &amp; Begründung</h2>
+<h2 class="section">Beschreibung &amp; Begründung</h2>
+<h3 class="sub">Beschreibung</h3>
+<div class="md">{% if change.description %}{{ change.description|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
-<div class="text-label">Beschreibung:</div>
-<div class="text-content">{% if change.description %}{{ change.description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+<h3 class="sub">Risikobeschreibung</h3>
+<div class="md">{% if change.risk_description %}{{ change.risk_description|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
-<div class="text-label">Risikobeschreibung:</div>
-<div class="text-content">{% if change.risk_description %}{{ change.risk_description }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
-
-<!-- 4. IMPLEMENTATION / PLAN SECTION -->
-<h2>Implementierung &amp; Planung</h2>
-
-<table class="kv-table">
-    <thead>
-        <tr>
-            <th>Planungsaspekt</th>
-            <th>Details</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>Geplanter Start</td>
-            <td>{% if change.planned_start %}{{ change.planned_start|date:"Y-m-d H:i:s" }}{% else %}Nicht geplant{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Geplantes Ende</td>
-            <td>{% if change.planned_end %}{{ change.planned_end|date:"Y-m-d H:i:s" }}{% else %}Nicht geplant{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Geplantes Datum</td>
-            <td>{% if change.planned_date %}{{ change.planned_date|date:"Y-m-d" }}{% else %}Nicht geplant{% endif %}</td>
-        </tr>
-        <tr>
-            <td>Ausgeführt am</td>
-            <td>{% if change.executed_at %}{{ change.executed_at|date:"Y-m-d H:i:s" }}{% else %}Noch nicht ausgeführt{% endif %}</td>
-        </tr>
-    </tbody>
+<h2 class="section">Implementierung &amp; Planung</h2>
+<table class="meta">
+    <tr>
+        <td class="k">Geplanter Start</td><td class="v">{% if change.planned_start %}{{ change.planned_start|date:"d.m.Y H:i" }}{% else %}Nicht geplant{% endif %}</td>
+        <td class="k">Geplantes Ende</td><td class="v">{% if change.planned_end %}{{ change.planned_end|date:"d.m.Y H:i" }}{% else %}Nicht geplant{% endif %}</td>
+    </tr>
+    <tr>
+        <td class="k">Geplantes Datum</td><td class="v">{% if change.planned_date %}{{ change.planned_date|date:"d.m.Y" }}{% else %}Nicht geplant{% endif %}</td>
+        <td class="k">Ausgeführt am</td><td class="v">{% if change.executed_at %}{{ change.executed_at|date:"d.m.Y H:i" }}{% else %}Noch nicht ausgeführt{% endif %}</td>
+    </tr>
 </table>
 
-<div class="text-label">Mitigation Plan:</div>
-<div class="text-content">{% if change.mitigation %}{{ change.mitigation }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+<h3 class="sub">Mitigation Plan</h3>
+<div class="md">{% if change.mitigation %}{{ change.mitigation|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
-<div class="text-label">Rollback Plan:</div>
-<div class="text-content">{% if change.rollback_plan %}{{ change.rollback_plan }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+<h3 class="sub">Rollback Plan</h3>
+<div class="md">{% if change.rollback_plan %}{{ change.rollback_plan|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
-<div class="text-label">Kommunikationsplan:</div>
-<div class="text-content">{% if change.communication_plan %}{{ change.communication_plan }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
+<h3 class="sub">Kommunikationsplan</h3>
+<div class="md">{% if change.communication_plan %}{{ change.communication_plan|render_markdown }}{% else %}<span class="empty-value">Nicht vorhanden</span>{% endif %}</div>
 
-
-<!-- 5. APPROVALS / REVIEW / AUDIT TRAIL SECTION -->
-<h2>Genehmigungen &amp; Review</h2>
-
+<h2 class="section">Genehmigungen &amp; Review</h2>
 {% if approvals %}
-<table class="data-table">
+<table class="data">
     <thead>
         <tr>
             <th>Genehmiger</th>
             <th>Status</th>
             <th>Erforderlich</th>
-            <th>Genehmigt</th>
+            <th>Datum</th>
             <th>Kommentar</th>
         </tr>
     </thead>
@@ -274,10 +197,10 @@ table.data-table tbody tr:nth-child(even) {
         {% for approval in approvals %}
         <tr>
             <td>{{ approval.approver.name|default:"—" }}</td>
-            <td>{{ approval.get_status_display|default:"—" }}</td>
+            <td><span class="pill pill-{{ approval.status }}">{{ approval.get_status_display|default:"—" }}</span></td>
             <td>{% if approval.is_required %}Ja{% else %}Nein{% endif %}</td>
-            <td>{% if approval.approved_at %}{{ approval.approved_at|date:"Y-m-d" }}{% else %}—{% endif %}</td>
-            <td>{% if approval.comment %}{% if approval.comment|length > 50 %}{{ approval.comment|slice:":50" }}...{% else %}{{ approval.comment }}{% endif %}{% else %}—{% endif %}</td>
+            <td>{% if approval.approved_at %}{{ approval.approved_at|date:"d.m.Y" }}{% else %}—{% endif %}</td>
+            <td>{% if approval.comment %}{{ approval.comment }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -286,16 +209,14 @@ table.data-table tbody tr:nth-child(even) {
 <p class="empty-value">Keine Genehmiger zugewiesen</p>
 {% endif %}
 
-<!-- 6. ITEMS SECTION -->
 {% if items %}
-<h2>Items aus Release</h2>
-
-<table class="data-table">
+<h2 class="section">Items aus Release</h2>
+<table class="data">
     <thead>
         <tr>
-            <th style="width: 10%;">Item ID</th>
-            <th style="width: 15%;">Type</th>
-            <th style="width: 75%;">Title</th>
+            <th style="width: 10%;">ID</th>
+            <th style="width: 15%;">Typ</th>
+            <th style="width: 75%;">Titel</th>
         </tr>
     </thead>
     <tbody>
@@ -304,8 +225,8 @@ table.data-table tbody tr:nth-child(even) {
             <td>#{{ item.id }}</td>
             <td>{{ item.type.name|default:"—" }}</td>
             <td>
-                <div style="font-weight: bold;">{{ item.title|default:"—" }}</div>
-                <div>{% if item.short_description %}{{ item.short_description }}{% else %}&nbsp;{% endif %}</div>
+                <div class="item-title">{{ item.title|default:"—" }}</div>
+                {% if item.short_description %}<div class="item-desc">{{ item.short_description }}</div>{% endif %}
             </td>
         </tr>
         {% endfor %}
@@ -313,42 +234,32 @@ table.data-table tbody tr:nth-child(even) {
 </table>
 {% endif %}
 
-<!-- 7. ORGANISATIONS SECTION -->
 {% if organisations %}
-<h2>Zugeordnete Organisationen</h2>
-
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Organisationsname</th>
-        </tr>
-    </thead>
+<h2 class="section">Zugeordnete Organisationen</h2>
+<table class="data">
+    <thead><tr><th>Organisation</th></tr></thead>
     <tbody>
         {% for org in organisations %}
-        <tr>
-            <td>{{ org.name }}</td>
-        </tr>
+        <tr><td>{{ org.name }}</td></tr>
         {% endfor %}
     </tbody>
 </table>
 {% endif %}
 
-<!-- 8. ATTACHMENTS / REFERENCES SECTION -->
-<h2>Anhänge &amp; Referenzen</h2>
-
+<h2 class="section">Anhänge &amp; Referenzen</h2>
 {% if change_attachments %}
-<table class="data-table">
+<table class="data">
     <thead>
         <tr>
             <th>Dateiname</th>
-            <th>Upload-Datum</th>
+            <th style="width: 25%;">Upload-Datum</th>
         </tr>
     </thead>
     <tbody>
         {% for attachment in change_attachments %}
         <tr>
             <td>{{ attachment.original_name }}</td>
-            <td>{% if attachment.created_at %}{{ attachment.created_at|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if attachment.created_at %}{{ attachment.created_at|date:"d.m.Y H:i" }}{% else %}&mdash;{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -356,7 +267,6 @@ table.data-table tbody tr:nth-child(even) {
 {% else %}
 <p class="empty-value">Keine Anhänge vorhanden.</p>
 {% endif %}
-
 {% endblock %}
 
 {% block footer_left %}
@@ -364,5 +274,5 @@ table.data-table tbody tr:nth-child(even) {
 {% endblock %}
 
 {% block footer_center %}
-{{ now|date:"Y-m-d H:i" }}
+Erstellt {{ now|date:"d.m.Y H:i" }}
 {% endblock %}
